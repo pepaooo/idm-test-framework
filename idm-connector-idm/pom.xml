@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+         https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.idm.test</groupId>
+        <artifactId>idm-test-framework</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>idm-connector-idm</artifactId>
+    <name>IdM Connector - IdM</name>
+    <description>OpenText Identity Manager REST and SOAP connectors</description>
+
+    <dependencies>
+        <!-- Core Module -->
+        <dependency>
+            <groupId>com.idm.test</groupId>
+            <artifactId>idm-test-core</artifactId>
+        </dependency>
+
+        <!-- REST Connector -->
+        <dependency>
+            <groupId>com.idm.test</groupId>
+            <artifactId>idm-connector-rest</artifactId>
+        </dependency>
+
+        <!-- SOAP Connector -->
+        <dependency>
+            <groupId>com.idm.test</groupId>
+            <artifactId>idm-connector-soap</artifactId>
+        </dependency>
+
+        <!-- Testing -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.assertj</groupId>
+            <artifactId>assertj-core</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

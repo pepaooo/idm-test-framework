@@ -1,689 +1,149 @@
-# Identity Management Testing Framework - Complete Specification v2.0
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Overview
 
-### Purpose
-Build a comprehensive **integration testing framework** for Identity Management (IdM) integrations, similar to OpenText Identity Validator, capable of testing provisioning workflows across multiple repository types (LDAP, Databases, REST APIs, SOAP Services).
+This is an **integration testing framework** for Identity Management (IdM) systems, designed to test provisioning workflows across LDAP, databases, REST APIs, and SOAP services. Think of it as similar to OpenText Identity Validator but built on modern Spring Boot and JUnit 5.
 
-### Target Use Case
-Execute **integration tests against real systems** to validate OpenText Identity Manager integrations with applications:
-- Test provisioning from IdM to applications
-- Creating and validating objects in IdM/eDirectory
-- Assigning roles/resources and validating access
-- Verifying account creation/modification in target systems
+**Critical Context**: See `SPECIFICATION.md` for the complete architectural specification and design decisions. This file focuses on day-to-day development commands and architectural principles.
 
-### Typical End-to-End Flow
-1. **User creation in IdM**: Create user object in IdM/eDirectory via REST API (primary) or LDAP (secondary)
-2. **Attribute verification**: Validate specific attributes in eDirectory match the creation request
-3. **Application assignment**: Invoke SOAP Role Service to assign application/roles/resources using UserApplication endpoint
-4. **Provisioning wait**: Wait for IdM provisioning to complete (async operation)
-5. **Downstream validation**: Verify account in target application via JDBC, SOAP API, or REST API
+## Core Architectural Principles
 
-### Core Principle
-Backend-focused **integration testing framework** using JUnit 5, with no front-end initially. Tests should be executable from IDE, command line, and CI/CD pipelines. **Tests orchestrate their own workflows explicitly** - no hidden orchestration layers.
+### What We DO
+- **Use Spring's built-in clients**: RestClient, RestTemplate, WebClient (NO custom REST wrappers)
+- **Use Spring Security OAuth2 Client**: For automatic token management (NO custom OAuth managers)
+- **Raw SQL with JdbcTemplate**: For database validation (NO JPA/Hibernate entities)
+- **Tests as orchestrators**: Each test explicitly shows its workflow (NO hidden orchestration layers)
+- **Integration-first**: 90% integration tests against real systems, 10% unit tests for utilities only
 
----
+### What We DON'T DO
+- ❌ Custom REST client wrappers (Spring provides excellent ones)
+- ❌ Custom OAuth token managers (Spring Security handles this)
+- ❌ JPA/Hibernate for test validation queries (raw SQL is more flexible)
+- ❌ Orchestration layers that hide test logic (tests must be explicit)
+- ❌ Mocking external systems in integration tests (use real systems or Testcontainers)
 
-## Technology Stack
+## Development Commands
 
-### Core Framework
-- **Java**: 21 (LTS) - with planned migration path to Java 25
-- **Spring Boot**: 3.5.6 (latest stable)
-- **Spring Framework**: 6.2.x (bundled with Spring Boot 3.5.6)
-- **Build Tool**: Maven 3.9.x (recommended for enterprise compatibility)
+### Build & Run
+```bash
+# Build the project
+./mvnw clean install
 
-### Testing Framework
-- **JUnit 5**: 5.11.x (Jupiter)
-- **AssertJ**: 3.26.x (fluent assertions)
-- **Mockito**: 5.14.x (minimal usage - only for utilities)
-- **Testcontainers**: 1.20.x (containerized test dependencies)
+# Run tests
+./mvnw test
 
-### Repository Connectors
-- **LDAP**: Spring LDAP 3.2.x + UnboundID LDAP SDK 7.0.x
-- **Database**: Spring JDBC (JdbcTemplate) - **NO JPA/Hibernate for test queries**
-- **REST**: Spring RestClient 6.2.x (modern) + RestTemplate (fallback)
-- **SOAP**: Spring Web Services 4.0.x + JAXB 4.0.x
-- **OAuth**: Spring Security OAuth2 Client 6.2.x
+# Run specific test class
+./mvnw test -Dtest=UserProvisioningTest
 
-### Supporting Libraries
-- **Logging**: SLF4J 2.0.x + Logback 1.5.x
-- **Configuration**: Spring Boot Configuration Processor
-- **Validation**: Jakarta Validation 3.1.x + Hibernate Validator 8.0.x
-- **JSON Processing**: Jackson 2.17.x
-- **XML Processing**: JAXB 4.0.x
-- **Utilities**: Apache Commons Lang3 3.17.x
+# Run specific test method
+./mvnw test -Dtest=UserProvisioningTest#testCompleteProvisioningWorkflow
 
-### Embedded Test Servers
-- **LDAP**: Apache Directory Server 2.0.x (embedded for tests)
-- **Database**: H2 2.3.x, PostgreSQL (via Testcontainers)
-- **Mock Servers**: WireMock 3.x (for REST/SOAP mocking)
+# Skip tests during build
+./mvnw clean install -DskipTests
 
----
+# Run with debug logging
+./mvnw test -Dlogging.level.com.idm.test=DEBUG
+```
 
-## Key Architectural Decisions
+### IDE Integration
+```bash
+# IntelliJ IDEA: Import as Maven project
+# Right-click on test class → Run 'ClassName'
+# Right-click on test method → Run 'methodName'
 
-### ✅ What We're Doing (Best Practices)
+# VS Code: Install "Java Extension Pack"
+# Tests are automatically discovered and runnable from Test Explorer
+```
 
-1. **Use Spring's Built-in REST Clients**
-   - `RestClient` (Spring 6.1+) for modern fluent API
-   - `RestTemplate` as fallback
-   - `WebClient` for reactive scenarios
-   - **NO custom REST client wrappers**
-
-2. **Use Spring Security OAuth2 Client**
-   - Automatic token acquisition, caching, and refresh
-   - Configuration-driven OAuth setup
-   - **NO custom OAuth token managers**
-
-3. **Raw SQL with JdbcTemplate**
-   - Execute custom SELECT statements like Validator
-   - Results as `List<Map<String, Object>>`
-   - Support multiple databases dynamically
-   - **NO JPA/Hibernate entities for validation**
-
-4. **Tests as Orchestrators**
-   - Each test explicitly defines its workflow
-   - Step-by-step execution visible in test code
-   - **NO hidden orchestration layers**
-
-5. **Focus on Integration Tests**
-   - 90% integration tests against real systems
-   - 10% unit tests for utilities only
-   - **NO mocking of external systems in integration tests**
-
-### ❌ What We're NOT Doing (Avoiding Over-Engineering)
-
-- ❌ Custom REST client wrappers (use Spring's)
-- ❌ Custom OAuth token managers (use Spring Security)
-- ❌ JPA entities for database validation (use raw SQL)
-- ❌ Orchestration layers hiding workflow logic
-- ❌ Extensive unit testing of integration code
-- ❌ Complex abstractions where simple solutions work
-
----
-
-## Project Structure
+## Project Structure (Current & Target)
 
 ```
 idm-test-framework/
+├── pom.xml                          # Maven parent POM (currently single module)
+├── SPECIFICATION.md                 # Complete architecture spec (READ THIS!)
+├── CLAUDE.md                        # This file
 │
-├── pom.xml                                 # Maven parent POM
-├── README.md                               # Project documentation
-├── CLAUDE.md                               # This specification file
+├── src/main/java/com/idm/test/
+│   └── IdmTestFrameworkApplication.java  # Spring Boot entry point
 │
-├── idm-test-core/                          # Core testing engine
-│   ├── src/main/java/
-│   │   └── com/idm/test/core/
-│   │       ├── config/                     # Spring configuration
-│   │       ├── engine/                     # Test execution utilities
-│   │       ├── model/                      # Domain models
-│   │       └── exception/                  # Custom exceptions
-│   └── src/test/java/
-│
-├── idm-test-connectors/                    # Simple, focused connectors
-│   ├── idm-connector-ldap/                 # eDirectory/LDAP connector
-│   ├── idm-connector-database/             # Multi-database JDBC connector
-│   ├── idm-connector-rest/                 # REST client configuration
-│   ├── idm-connector-soap/                 # SOAP client for Role Service
-│   └── idm-connector-idm/                  # IdM REST/SOAP clients
-│
-├── idm-test-scenarios/                     # Test implementations
-│   └── src/test/java/
-│       └── com/idm/test/scenarios/
-│           ├── provisioning/               # User creation & provisioning
-│           ├── modification/               # Updates & changes
-│           ├── deprovisioning/             # Termination & cleanup
-│           ├── synchronization/            # Sync tests
-│           └── integration/                # App-specific workflows
-│
-└── idm-test-utils/                         # Shared utilities
-    └── src/main/java/
-        └── com/idm/test/utils/
-            ├── data/                       # Test data generators
-            ├── assertion/                  # Custom assertions
-            └── wait/                       # Wait/retry utilities
+└── src/test/java/com/idm/test/
+    └── IdmTestFrameworkApplicationTests.java  # Basic context test
+
+# Target structure (to be implemented):
+idm-test-core/                       # Test execution engine
+idm-test-connectors/                 # Repository connectors
+│   ├── idm-connector-ldap/          # eDirectory/LDAP
+│   ├── idm-connector-database/      # Multi-DB JDBC
+│   ├── idm-connector-rest/          # REST clients
+│   ├── idm-connector-soap/          # SOAP/Role Service
+│   └── idm-connector-idm/           # IdM REST/SOAP
+idm-test-scenarios/                  # Test implementations
+└── idm-test-utils/                  # Shared utilities
 ```
 
----
+## Key Components to Implement
 
-## Architecture Design
+### 1. TestExecutor (Core Utility)
+Location: `idm-test-core/src/main/java/com/idm/test/core/engine/TestExecutor.java`
 
-### Layered Architecture
+Purpose: Provides `waitUntil()` and `executeWithRetry()` for async provisioning validation.
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│              Test Layer (JUnit 5)                           │
-│  Tests orchestrate workflows EXPLICITLY in test code        │
-│  - Each step visible and clear                             │
-│  - Full control over payloads                              │
-│  - No hidden magic                                         │
-└─────────────────────────┬───────────────────────────────────┘
-                          │
-┌─────────────────────────▼───────────────────────────────────┐
-│              Test Execution Utilities                       │
-│  - TestExecutor (retry, wait, polling)                     │
-│  - Custom assertions                                        │
-│  - Test data generators                                     │
-└─────────────────────────┬───────────────────────────────────┘
-                          │
-┌─────────────────────────▼───────────────────────────────────┐
-│           Simple, Focused Connectors                        │
-│  ┌────────────┐  ┌──────────┐  ┌──────────┐  ┌─────────┐  │
-│  │ IdM REST   │  │   LDAP   │  │ Database │  │  SOAP   │  │
-│  │ Connector  │  │Connector │  │Connector │  │Connector│  │
-│  └────────────┘  └──────────┘  └──────────┘  └─────────┘  │
-│  Each does ONE thing - no workflow logic                   │
-└─────────────────────────┬───────────────────────────────────┘
-                          │
-┌─────────────────────────▼───────────────────────────────────┐
-│           Spring's Built-in Clients                         │
-│  - RestClient (Spring 6.1+)                                │
-│  - OAuth2AuthorizedClientManager                           │
-│  - JdbcTemplate                                            │
-│  - WebServiceTemplate                                       │
-└─────────────────────────┬───────────────────────────────────┘
-                          │
-┌─────────────────────────▼───────────────────────────────────┐
-│                   Target Systems                            │
-│  - IdM REST API                                             │
-│  - NetIQ Role Service (SOAP)                               │
-│  - eDirectory (LDAP)                                        │
-│  - Application Databases (SQL queries)                     │
-│  - Application REST APIs                                    │
-└─────────────────────────────────────────────────────────────┘
-```
+### 2. Connectors (Simple, Focused)
+Each connector does ONE thing:
+- **EdirectoryConnector**: LDAP CRUD operations
+- **MultiDatabaseConnector**: Execute raw SQL on any configured database
+- **IdmRestConnector**: Thin wrapper around Spring's RestClient
+- **RoleServiceConnector**: SOAP client for NetIQ Role Service
 
----
-
-## Testing Strategy
-
-### Test Distribution
-
-```
-┌────────────────────────────────────┐
-│     Integration Tests: 90%         │
-│  - Tests against real systems      │
-│  - End-to-end workflows            │
-│  - Multi-system validation         │
-└────────────────────────────────────┘
-
-┌────────────────────────────────────┐
-│       Unit Tests: 10%              │
-│  - Utility classes only            │
-│  - Data generators                 │
-│  - String/date helpers             │
-└────────────────────────────────────┘
-```
-
-### Test Organization by Use Case
-
-Each test class covers multiple related use cases:
-
-```
-idm-test-scenarios/src/test/java/com/idm/test/scenarios/
-
-├── provisioning/
-│   ├── UserCreationTest.java              # UC-001 to UC-010
-│   ├── AccountProvisioningTest.java       # UC-011 to UC-020
-│   ├── RoleAssignmentTest.java            # UC-021 to UC-030
-│   └── ResourceEntitlementTest.java       # UC-031 to UC-040
-│
-├── modification/
-│   ├── UserAttributeUpdateTest.java       # UC-041 to UC-050
-│   ├── AccountModificationTest.java       # UC-051 to UC-060
-│   └── DepartmentTransferTest.java        # UC-061 to UC-070
-│
-├── deprovisioning/
-│   ├── UserTerminationTest.java           # UC-071 to UC-080
-│   ├── AccountDisableTest.java            # UC-081 to UC-090
-│   └── AccessRemovalTest.java             # UC-091 to UC-100
-│
-└── integration/
-    ├── SapProvisioningTest.java           # SAP workflows
-    ├── OracleHrProvisioningTest.java      # Oracle HR workflows
-    └── ServiceNowTest.java                # ServiceNow workflows
-```
-
----
-
-## Core Implementation
-
-### 1. Test Execution Engine
-
+### 3. Test Scenarios (Explicit Workflows)
+Tests orchestrate their own flows step-by-step:
 ```java
-package com.idm.test.core.engine;
+@Test
+void testUserProvisioning() {
+    // STEP 1: Create user in IdM
+    idmRestConnector.post("/users", request, CreateUserResponse.class);
 
-import org.springframework.stereotype.Component;
-import java.time.Duration;
-import java.util.function.Supplier;
+    // STEP 2: Wait and verify in eDirectory
+    testExecutor.waitUntil(() -> edirectoryConnector.read(dn).isSuccess(), ...);
 
-/**
- * Test execution utilities for retry and wait logic
- * Essential for handling async IdM provisioning
- */
-@Component
-public class TestExecutor {
-    
-    /**
-     * Wait until condition is met or timeout
-     * Used extensively for async provisioning validation
-     */
-    public boolean waitUntil(
-            Supplier<Boolean> condition,
-            Duration timeout,
-            Duration pollInterval) {
-        
-        long endTime = System.currentTimeMillis() + timeout.toMillis();
-        
-        while (System.currentTimeMillis() < endTime) {
-            if (condition.get()) {
-                return true;
-            }
-            sleep(pollInterval);
-        }
-        
-        return false;
-    }
-    
-    /**
-     * Execute operation with retry logic
-     */
-    public <T> OperationResult<T> executeWithRetry(
-            Supplier<OperationResult<T>> operation,
-            int maxAttempts,
-            Duration delayBetweenAttempts) {
-        
-        int attempt = 1;
-        OperationResult<T> result = null;
-        
-        while (attempt <= maxAttempts) {
-            result = operation.get();
-            
-            if (result.isSuccess()) {
-                return result;
-            }
-            
-            if (attempt < maxAttempts) {
-                sleep(delayBetweenAttempts);
-            }
-            
-            attempt++;
-        }
-        
-        return result;
-    }
-    
-    private void sleep(Duration duration) {
-        try {
-            Thread.sleep(duration.toMillis());
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new RuntimeException("Sleep interrupted", e);
-        }
-    }
+    // STEP 3: Assign role via SOAP
+    roleServiceConnector.assignRole(request);
+
+    // STEP 4: Wait for provisioning to target app
+    testExecutor.waitUntil(() -> checkTargetAccount(), ...);
+
+    // STEP 5: Verify final state
+    assertThat(targetAccount).hasExpectedAttributes();
 }
 ```
 
-### 2. eDirectory/LDAP Connector
+## Configuration Approach
 
-```java
-package com.idm.test.connector.ldap.client;
+### Use application.yml (not .properties)
+The framework requires complex nested configuration for multiple databases, OAuth clients, and LDAP servers. YAML is more readable for this.
 
-import org.springframework.ldap.core.LdapTemplate;
-import org.springframework.stereotype.Component;
-
-/**
- * Simple LDAP connector - no workflow logic
- * Just CRUD operations and attribute verification
- */
-@Component
-public class EdirectoryConnector {
-    
-    private final LdapTemplate ldapTemplate;
-    
-    public EdirectoryConnector(LdapTemplate ldapTemplate) {
-        this.ldapTemplate = ldapTemplate;
-    }
-    
-    public OperationResult<LdapUser> create(LdapUser user) {
-        // Create user in eDirectory
-    }
-    
-    public OperationResult<LdapUser> read(String dn) {
-        // Read user from eDirectory
-    }
-    
-    public OperationResult<Boolean> verifyAttributes(
-            String dn, 
-            Map<String, String> expectedAttributes) {
-        // Verify attributes match expected values
-    }
-    
-    public OperationResult<Void> delete(String dn) {
-        // Delete user from eDirectory
-    }
-}
-```
-
-### 3. Multi-Database Connector (Raw SQL)
-
-```java
-package com.idm.test.connector.database.client;
-
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.stereotype.Component;
-import java.util.List;
-import java.util.Map;
-
-/**
- * Generic database connector using raw SQL
- * Similar to OpenText Validator - execute any SQL query
- */
-@Component
-public class MultiDatabaseConnector {
-    
-    private final Map<String, JdbcTemplate> jdbcTemplates;
-    
-    public MultiDatabaseConnector(Map<String, JdbcTemplate> jdbcTemplates) {
-        this.jdbcTemplates = jdbcTemplates;
-    }
-    
-    /**
-     * Execute SELECT query on any database
-     * Returns results as List<Map<String, Object>>
-     */
-    public OperationResult<List<Map<String, Object>>> executeQuery(
-            String databaseName,
-            String sql,
-            Object... params) {
-        
-        try {
-            JdbcTemplate template = jdbcTemplates.get(databaseName);
-            
-            if (template == null) {
-                return OperationResult.<List<Map<String, Object>>>builder()
-                    .success(false)
-                    .message("Database not found: " + databaseName)
-                    .build();
-            }
-            
-            List<Map<String, Object>> results = template.queryForList(sql, params);
-            
-            return OperationResult.<List<Map<String, Object>>>builder()
-                .success(true)
-                .data(results)
-                .message("Query returned " + results.size() + " rows")
-                .build();
-                
-        } catch (Exception e) {
-            return OperationResult.<List<Map<String, Object>>>builder()
-                .success(false)
-                .message("Query failed: " + e.getMessage())
-                .build();
-        }
-    }
-    
-    /**
-     * Verify record exists with expected values
-     */
-    public OperationResult<Boolean> verifyRecord(
-            String databaseName,
-            String tableName,
-            String keyColumn,
-            Object keyValue,
-            Map<String, Object> expectedValues) {
-        // Verify record values match expected
-    }
-}
-```
-
-### 4. IdM REST Connector (Using Spring's RestClient)
-
-```java
-package com.idm.test.connector.idm.client;
-
-import org.springframework.stereotype.Component;
-import org.springframework.web.client.RestClient;
-
-/**
- * IdM REST connector using Spring's RestClient
- * NO custom wrapper - just a thin helper
- */
-@Component
-public class IdmRestConnector {
-    
-    private final RestClient restClient;
-    private final String baseUrl;
-    
-    public IdmRestConnector(RestClient restClient, 
-                           @Value("${idm.rest.url}") String baseUrl) {
-        this.restClient = restClient;
-        this.baseUrl = baseUrl;
-    }
-    
-    public <T> OperationResult<T> post(
-            String endpoint, 
-            Object body, 
-            Class<T> responseType) {
-        
-        try {
-            T response = restClient.post()
-                .uri(baseUrl + endpoint)
-                .header("Authorization", getAuthHeader())
-                .body(body)
-                .retrieve()
-                .body(responseType);
-            
-            return OperationResult.<T>builder()
-                .success(true)
-                .data(response)
-                .build();
-                
-        } catch (Exception e) {
-            return OperationResult.<T>builder()
-                .success(false)
-                .message(e.getMessage())
-                .build();
-        }
-    }
-}
-```
-
-### 5. SOAP Role Service Connector
-
-```java
-package com.idm.test.connector.idm.client;
-
-import org.springframework.ws.client.core.WebServiceTemplate;
-import org.springframework.stereotype.Component;
-
-/**
- * NetIQ Role Service SOAP connector
- * Calls UserApplication endpoint for role assignments
- */
-@Component
-public class RoleServiceConnector {
-    
-    private final WebServiceTemplate webServiceTemplate;
-    
-    public RoleServiceConnector(WebServiceTemplate webServiceTemplate) {
-        this.webServiceTemplate = webServiceTemplate;
-    }
-    
-    public OperationResult<AssignRoleResponse> assignRole(
-            AssignRoleRequest request) {
-        
-        try {
-            AssignRoleResponse response = (AssignRoleResponse) 
-                webServiceTemplate.marshalSendAndReceive(request);
-            
-            return OperationResult.<AssignRoleResponse>builder()
-                .success(response.isSuccess())
-                .data(response)
-                .build();
-                
-        } catch (Exception e) {
-            return OperationResult.<AssignRoleResponse>builder()
-                .success(false)
-                .message("SOAP call failed: " + e.getMessage())
-                .build();
-        }
-    }
-}
-```
-
----
-
-## Complete Test Example
-
-```java
-package com.idm.test.scenarios.provisioning;
-
-import org.junit.jupiter.api.*;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.web.client.RestClient;
-
-import java.time.Duration;
-import java.util.List;
-import java.util.Map;
-
-import static org.assertj.core.api.Assertions.assertThat;
-
-/**
- * Complete user provisioning workflow
- * Test orchestrates its own flow - explicit and clear!
- */
-@SpringBootTest
-@TestMethodOrder(MethodOrderer.OrderAnnotation.class)
-class UserProvisioningToSapTest {
-    
-    @Autowired
-    private IdmRestConnector idmRestConnector;
-    
-    @Autowired
-    private RoleServiceConnector roleServiceConnector;
-    
-    @Autowired
-    private EdirectoryConnector edirectoryConnector;
-    
-    @Autowired
-    private MultiDatabaseConnector databaseConnector;
-    
-    @Autowired
-    private RestClient restClient;  // Spring's built-in!
-    
-    @Autowired
-    private TestExecutor testExecutor;
-    
-    private String testUserId;
-    
-    @BeforeAll
-    void setup() {
-        testUserId = "test.user." + System.currentTimeMillis();
-    }
-    
-    @Test
-    @Order(1)
-    @DisplayName("Complete workflow: Create → Assign → Verify")
-    void testCompleteProvisioningWorkflow() {
-        
-        // STEP 1: Create user in IdM via REST
-        log.info("Creating user in IdM");
-        CreateUserRequest request = new CreateUserRequest(testUserId);
-        
-        OperationResult<CreateUserResponse> createResult = 
-            idmRestConnector.post("/users", request, CreateUserResponse.class);
-        
-        assertThat(createResult.isSuccess()).isTrue();
-        
-        
-        // STEP 2: Wait and verify in eDirectory
-        log.info("Verifying user in eDirectory");
-        
-        boolean userExists = testExecutor.waitUntil(
-            () -> {
-                OperationResult<LdapUser> result = 
-                    edirectoryConnector.read("cn=" + testUserId + ",ou=users");
-                return result.isSuccess();
-            },
-            Duration.ofSeconds(30),
-            Duration.ofSeconds(2)
-        );
-        
-        assertThat(userExists).isTrue();
-        
-        
-        // STEP 3: Assign SAP via SOAP
-        log.info("Assigning SAP application");
-        
-        AssignRoleRequest roleRequest = new AssignRoleRequest(testUserId, "SAP_ACCESS");
-        OperationResult<AssignRoleResponse> assignResult = 
-            roleServiceConnector.assignRole(roleRequest);
-        
-        assertThat(assignResult.isSuccess()).isTrue();
-        
-        
-        // STEP 4: Wait for provisioning to SAP database
-        log.info("Waiting for SAP provisioning");
-        
-        boolean provisioned = testExecutor.waitUntil(
-            () -> {
-                String sql = "SELECT COUNT(*) as cnt FROM SAP_USERS WHERE USERNAME = ?";
-                OperationResult<List<Map<String, Object>>> result = 
-                    databaseConnector.executeQuery("SAP", sql, testUserId);
-                
-                if (result.isSuccess() && result.getData().isPresent()) {
-                    Number count = (Number) result.getData().get().get(0).get("cnt");
-                    return count.intValue() > 0;
-                }
-                return false;
-            },
-            Duration.ofMinutes(5),
-            Duration.ofSeconds(5)
-        );
-        
-        assertThat(provisioned).isTrue();
-        
-        
-        // STEP 5: Verify in SAP via REST API (Spring's RestClient!)
-        log.info("Verifying SAP account via REST");
-        
-        SapUser sapUser = restClient.get()
-            .uri("https://sap.company.com/api/users/{id}", testUserId)
-            .header("Authorization", "Basic " + sapCredentials())
-            .retrieve()
-            .body(SapUser.class);
-        
-        assertThat(sapUser).isNotNull();
-        assertThat(sapUser.getUsername()).isEqualTo(testUserId);
-        
-        log.info("✅ Complete workflow verified!");
-    }
-    
-    @AfterAll
-    void cleanup() {
-        // Clean up in reverse order
-        databaseConnector.executeUpdate("SAP", 
-            "DELETE FROM SAP_USERS WHERE USERNAME = ?", testUserId);
-        edirectoryConnector.delete("cn=" + testUserId + ",ou=users");
-        idmRestConnector.delete("/users/" + testUserId);
-    }
-}
-```
-
----
-
-## Configuration
-
-### application.yml
-
+Example structure:
 ```yaml
+idm:
+  test:
+    ldap:
+      url: ldap://localhost:389
+      base-dn: dc=company,dc=com
+
+    databases:
+      sap:
+        jdbc-url: jdbc:oracle:thin:@localhost:1521:SAP
+        username: ${SAP_USER}
+        password: ${SAP_PASS}
+
+      oracle-hr:
+        jdbc-url: jdbc:oracle:thin:@localhost:1521:HRDB
+        username: ${HR_USER}
+        password: ${HR_PASS}
+
 spring:
-  application:
-    name: idm-test-framework
-  
-  # OAuth2 for applications (Spring handles tokens!)
   security:
     oauth2:
       client:
@@ -692,198 +152,126 @@ spring:
             client-id: ${APP1_CLIENT_ID}
             client-secret: ${APP1_CLIENT_SECRET}
             authorization-grant-type: client_credentials
-        provider:
-          app1:
-            token-uri: https://app1.company.com/oauth/token
-
-# LDAP
-idm:
-  test:
-    ldap:
-      url: ldap://localhost:389
-      base-dn: dc=company,dc=com
-      user-dn: cn=admin,dc=company,dc=com
-      password: admin
-    
-    # Multiple databases (raw SQL)
-    databases:
-      sap:
-        jdbc-url: jdbc:oracle:thin:@localhost:1521:SAP
-        username: sapuser
-        password: sappass
-        driver-class-name: oracle.jdbc.OracleDriver
-        
-      oracle-hr:
-        jdbc-url: jdbc:oracle:thin:@localhost:1521:HRDB
-        username: hruser
-        password: hrpass
-        driver-class-name: oracle.jdbc.OracleDriver
-    
-    # IdM
-    idm:
-      rest-url: https://idm.company.com:8443/IDMProv
-      username: idm_admin
-      password: idm_password
-
-logging:
-  level:
-    com.idm.test: DEBUG
 ```
 
----
+## Dependencies to Add
 
-## Maven POM
+When implementing modules, add these dependencies to pom.xml:
 
-```xml
-<project>
-    <parent>
-        <groupId>org.springframework.boot</groupId>
-        <artifactId>spring-boot-starter-parent</artifactId>
-        <version>3.5.6</version>
-    </parent>
-    
-    <groupId>com.idm.test</groupId>
-    <artifactId>idm-test-framework</artifactId>
-    <version>1.0.0-SNAPSHOT</version>
-    
-    <properties>
-        <java.version>21</java.version>
-    </properties>
-    
-    <dependencies>
-        <!-- Spring Boot Starters -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter</artifactId>
-        </dependency>
-        
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-web</artifactId>
-        </dependency>
-        
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-jdbc</artifactId>
-        </dependency>
-        
-        <!-- OAuth2 Client (for token management) -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-oauth2-client</artifactId>
-        </dependency>
-        
-        <!-- LDAP -->
-        <dependency>
-            <groupId>org.springframework.ldap</groupId>
-            <artifactId>spring-ldap-core</artifactId>
-        </dependency>
-        
-        <!-- SOAP -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-web-services</artifactId>
-        </dependency>
-        
-        <!-- Testing -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-test</artifactId>
-            <scope>test</scope>
-        </dependency>
-        
-        <dependency>
-            <groupId>org.assertj</groupId>
-            <artifactId>assertj-core</artifactId>
-            <scope>test</scope>
-        </dependency>
-    </dependencies>
-</project>
+### Core Testing
+- spring-boot-starter-test (already present)
+- assertj-core (better assertions than JUnit)
+- testcontainers (for embedded test systems)
+
+### Connectors
+- spring-ldap-core + unboundid-ldapsdk (LDAP)
+- spring-boot-starter-jdbc (databases)
+- spring-boot-starter-web-services (SOAP)
+- spring-boot-starter-oauth2-client (OAuth)
+
+### Database Drivers (as needed)
+- oracle-jdbc (Oracle)
+- postgresql (PostgreSQL)
+- h2 (embedded testing)
+
+## Testing Philosophy
+
+### Integration Tests (90% of tests)
+- Test against real systems or Testcontainers
+- Full end-to-end workflows
+- No mocking of external systems
+- Located in: `idm-test-scenarios/src/test/java/`
+
+### Unit Tests (10% of tests)
+- ONLY for utilities and helpers
+- Data generators, string formatters, date utilities
+- Located alongside utility classes
+
+### Test Naming Convention
+```java
+@DisplayName("Complete workflow: Create → Assign → Verify")
+void testCompleteProvisioningWorkflow()
+
+@DisplayName("Should retry failed operations with exponential backoff")
+void testExecutorRetriesOperation()
 ```
 
----
+## Common Patterns
 
-## Development Guidelines
+### Using Spring's RestClient (Correct Way)
+```java
+@Component
+public class IdmRestConnector {
+    private final RestClient restClient;
 
-### 1. Keep It Simple
-- Use Spring's built-in features
-- Don't create custom wrappers
-- Raw SQL for database validation
-- Tests orchestrate their own flows
-
-### 2. Focus on Integration Tests
-- 90% integration tests
-- Test against real systems
-- No mocking in integration tests
-
-### 3. Test Clarity
-- Each test shows complete workflow
-- Step-by-step execution visible
-- Easy to debug when tests fail
-
-### 4. Security
-- Never hardcode credentials
-- Use environment variables
-- Store sensitive config securely
-
----
-
-## Quick Start
-
-### 1. Setup Test Infrastructure
-
-```bash
-# Start LDAP
-docker run -d -p 389:389 osixia/openldap
-
-# Start PostgreSQL
-docker run -d -p 5432:5432 -e POSTGRES_PASSWORD=pass postgres
+    public <T> OperationResult<T> post(String endpoint, Object body, Class<T> responseType) {
+        T response = restClient.post()
+            .uri(baseUrl + endpoint)
+            .body(body)
+            .retrieve()
+            .body(responseType);
+        return OperationResult.success(response);
+    }
+}
 ```
 
-### 2. Run Tests
+### Database Validation (Raw SQL)
+```java
+@Component
+public class MultiDatabaseConnector {
+    private final Map<String, JdbcTemplate> jdbcTemplates;
 
-```bash
-# All tests
-mvn test
-
-# Specific test
-mvn test -Dtest=UserProvisioningTest
-
-# Integration tests only
-mvn test -Pintegration
+    public OperationResult<List<Map<String, Object>>> executeQuery(
+            String dbName, String sql, Object... params) {
+        JdbcTemplate template = jdbcTemplates.get(dbName);
+        List<Map<String, Object>> results = template.queryForList(sql, params);
+        return OperationResult.success(results);
+    }
+}
 ```
 
-### 3. Review Results
-
-```bash
-# Generate test report
-mvn surefire-report:report
-
-# View at target/site/surefire-report.html
+### Async Provisioning Validation
+```java
+boolean provisioned = testExecutor.waitUntil(
+    () -> {
+        OperationResult<User> result = connector.getUser(userId);
+        return result.isSuccess() && result.getData().isPresent();
+    },
+    Duration.ofMinutes(5),   // timeout
+    Duration.ofSeconds(5)     // poll interval
+);
 ```
 
----
+## Development Workflow
 
-## Summary
+1. **Start with SPECIFICATION.md**: Understand the full architecture
+2. **Implement core utilities first**: TestExecutor, OperationResult
+3. **Build connectors one at a time**: Start with LDAP, then database, then REST
+4. **Write integration tests alongside connectors**: Validate each connector works
+5. **Create test scenarios last**: Compose connectors into full workflows
 
-### What Makes This Framework Special
+## Migration Path
 
-1. **Integration-First**: Real system testing, not mocked
-2. **Spring Native**: Uses Spring's excellent built-in features
-3. **Test as Orchestrator**: Explicit workflows, no hidden magic
-4. **Raw SQL**: Flexible database validation like Validator
-5. **Simple Design**: No over-engineering, just what's needed
+Current state: Single module Spring Boot scaffold
+Target state: Multi-module Maven project
 
-### Key Decisions
+When ready to modularize:
+1. Create parent POM with modules
+2. Extract core, connectors, scenarios, utils as separate modules
+3. Each module has its own pom.xml
+4. Keep dependencies clean (connectors don't depend on each other)
 
-✅ Spring RestClient (not custom wrappers)  
-✅ Spring OAuth2 Client (not custom token managers)  
-✅ Raw SQL with JdbcTemplate (not JPA)  
-✅ Tests orchestrate workflows (no orchestration layer)  
-✅ Integration tests focus (not extensive unit tests)  
+## Important Notes
 
----
+- **Java 21 LTS**: Use modern Java features (records, pattern matching, switch expressions)
+- **Spring Boot 3.5.6**: Latest stable version with Spring Framework 6.2.x
+- **No Lombok**: Use Java records instead
+- **Logback for logging**: SLF4J facade with Logback implementation
+- **Maven over Gradle**: Better enterprise tooling support
 
-**Version 2.0** - Updated January 2025
+## Reference
 
-This specification reflects architectural best practices and lessons learned. Use it as your guide for building a robust, maintainable IdM testing framework.
+- Full specification: `SPECIFICATION.md`
+- Spring Boot docs: https://docs.spring.io/spring-boot/3.5.6/reference/
+- Spring Framework docs: https://docs.spring.io/spring-framework/6.2.x/reference/
+- JUnit 5 docs: https://junit.org/junit5/docs/current/user-guide/

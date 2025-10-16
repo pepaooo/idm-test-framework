@@ -1,0 +1,352 @@
+# =================================================================
+# IdM Test Framework Configuration
+# =================================================================
+# This file contains configuration for all connectors and test infrastructure.
+# Use environment variables for sensitive data in production.
+#
+# Profiles:
+# - default: Local development with embedded/mock services
+# - dev: Development environment with real services
+# - test: CI/CD test environment
+# - prod: Production-like integration testing environment
+# =================================================================
+
+# =================================================================
+# SPRING BOOT CONFIGURATION
+# =================================================================
+spring:
+  application:
+    name: idm-test-framework
+
+  # Profile-specific configurations can override these defaults
+  profiles:
+    active: ${IDM_TEST_PROFILE:default}
+
+  # Security OAuth2 Client Configuration (for REST APIs requiring OAuth)
+  security:
+    oauth2:
+      client:
+        registration:
+          # Example: SAP OAuth2 client
+          sap:
+            client-id: ${SAP_CLIENT_ID:sap-test-client}
+            client-secret: ${SAP_CLIENT_SECRET:sap-test-secret}
+            authorization-grant-type: client_credentials
+            scope: api.read,api.write
+
+          # Example: Workday OAuth2 client
+          workday:
+            client-id: ${WORKDAY_CLIENT_ID:workday-client}
+            client-secret: ${WORKDAY_CLIENT_SECRET:workday-secret}
+            authorization-grant-type: client_credentials
+            scope: workday.api
+
+          # Example: ServiceNow OAuth2 client
+          servicenow:
+            client-id: ${SERVICENOW_CLIENT_ID:snow-client}
+            client-secret: ${SERVICENOW_CLIENT_SECRET:snow-secret}
+            authorization-grant-type: client_credentials
+
+        provider:
+          sap:
+            token-uri: ${SAP_TOKEN_URI:https://sap.company.com/oauth/token}
+          workday:
+            token-uri: ${WORKDAY_TOKEN_URI:https://workday.company.com/oauth/token}
+          servicenow:
+            token-uri: ${SERVICENOW_TOKEN_URI:https://instance.service-now.com/oauth/token}
+
+# =================================================================
+# IDM TEST FRAMEWORK CONFIGURATION
+# =================================================================
+idm:
+  test:
+    # ============================================================
+    # LDAP / eDirectory Configuration
+    # ============================================================
+    ldap:
+      url: ${IDM_LDAP_URL:ldap://localhost:389}
+      base-dn: ${IDM_LDAP_BASE_DN:dc=company,dc=com}
+      user-dn: ${IDM_LDAP_USER_DN:cn=admin,dc=company,dc=com}
+      password: ${IDM_LDAP_PASSWORD:secret}
+
+      # Connection pool settings
+      pooled: true
+      min-idle: 1
+      max-active: 8
+      max-total: 8
+      max-wait: -1  # -1 means no timeout
+
+    # ============================================================
+    # Database Connections Configuration
+    # Multiple databases can be configured for validation
+    # ============================================================
+    databases:
+      # PostgreSQL - SAP Application Database
+      sap:
+        jdbc-url: ${SAP_DB_URL:jdbc:postgresql://localhost:5432/sap}
+        username: ${SAP_DB_USER:sapuser}
+        password: ${SAP_DB_PASSWORD:sappass}
+        driver-class-name: org.postgresql.Driver
+        max-pool-size: 5
+        min-idle: 1
+        connection-timeout: 30000
+        idle-timeout: 600000
+        max-lifetime: 1800000
+
+      # Oracle - HR Application Database
+      oracle-hr:
+        jdbc-url: ${HR_DB_URL:jdbc:oracle:thin:@localhost:1521:HRDB}
+        username: ${HR_DB_USER:hruser}
+        password: ${HR_DB_PASSWORD:hrpass}
+        driver-class-name: oracle.jdbc.OracleDriver
+        max-pool-size: 5
+        min-idle: 1
+        connection-timeout: 30000
+        idle-timeout: 600000
+        max-lifetime: 1800000
+
+      # PostgreSQL - Workday Integration Database
+      workday:
+        jdbc-url: ${WORKDAY_DB_URL:jdbc:postgresql://localhost:5432/workday}
+        username: ${WORKDAY_DB_USER:wdayuser}
+        password: ${WORKDAY_DB_PASSWORD:wdaypass}
+        driver-class-name: org.postgresql.Driver
+        max-pool-size: 3
+        min-idle: 1
+        connection-timeout: 30000
+        idle-timeout: 600000
+        max-lifetime: 1800000
+
+      # H2 - Embedded test database for unit tests
+      test-db:
+        jdbc-url: jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+        username: sa
+        password:
+        driver-class-name: org.h2.Driver
+        max-pool-size: 2
+        min-idle: 1
+
+    # ============================================================
+    # SOAP Service Configuration
+    # NetIQ Identity Manager SOAP services
+    # ============================================================
+    soap:
+      # NetIQ Role Service endpoint
+      url: ${IDM_SOAP_URL:https://idm.company.com:8543/IDMProv/role/service}
+      username: ${IDM_SOAP_USER:idmadmin}
+      password: ${IDM_SOAP_PASSWORD:idmpass}
+
+      # Connection settings
+      connection-timeout: 10000  # 10 seconds
+      read-timeout: 30000        # 30 seconds
+      message-logging: false     # Enable for debugging SOAP messages
+
+    # ============================================================
+    # REST API Configuration
+    # ============================================================
+    rest:
+      # NetIQ Identity Manager REST API
+      idm:
+        base-url: ${IDM_REST_URL:https://idm.company.com:8543/IDMProv}
+        username: ${IDM_REST_USER:idmadmin}
+        password: ${IDM_REST_PASSWORD:idmpass}
+        connect-timeout: 10000
+        read-timeout: 30000
+
+      # SAP REST API
+      sap:
+        base-url: ${SAP_REST_URL:https://sap.company.com/api/v1}
+        # Uses OAuth2 configuration from spring.security.oauth2.client
+        connect-timeout: 15000
+        read-timeout: 45000
+
+      # Workday REST API
+      workday:
+        base-url: ${WORKDAY_REST_URL:https://workday.company.com/api/v1}
+        # Uses OAuth2 configuration from spring.security.oauth2.client
+        connect-timeout: 15000
+        read-timeout: 60000
+
+      # ServiceNow REST API
+      servicenow:
+        base-url: ${SERVICENOW_REST_URL:https://instance.service-now.com/api}
+        # Uses OAuth2 configuration from spring.security.oauth2.client
+        connect-timeout: 10000
+        read-timeout: 30000
+
+    # ============================================================
+    # Test Execution Configuration
+    # ============================================================
+    executor:
+      # Default timeout for waitUntil operations
+      default-timeout-seconds: 300  # 5 minutes
+
+      # Default poll interval for waitUntil operations
+      default-poll-interval-seconds: 5
+
+      # Retry configuration
+      max-retries: 3
+      retry-delay-ms: 1000
+
+      # Async provisioning wait times
+      ldap-provision-timeout-seconds: 120    # 2 minutes for LDAP
+      database-provision-timeout-seconds: 180 # 3 minutes for databases
+      rest-provision-timeout-seconds: 300     # 5 minutes for REST APIs
+
+# =================================================================
+# LOGGING CONFIGURATION
+# =================================================================
+logging:
+  level:
+    root: INFO
+    com.idm.test: DEBUG
+    org.springframework.ldap: INFO
+    org.springframework.web.client: INFO
+    org.springframework.jdbc: INFO
+    jakarta.xml.ws: INFO
+
+  pattern:
+    console: "%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} -- %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{50} -- %msg%n"
+
+  file:
+    name: logs/idm-test-framework.log
+    max-size: 10MB
+    max-history: 30
+
+---
+# =================================================================
+# DEVELOPMENT PROFILE
+# =================================================================
+spring:
+  config:
+    activate:
+      on-profile: dev
+
+idm:
+  test:
+    ldap:
+      url: ldap://dev-edirectory.company.com:389
+      base-dn: dc=dev,dc=company,dc=com
+      user-dn: cn=idmadmin,dc=dev,dc=company,dc=com
+
+    databases:
+      sap:
+        jdbc-url: jdbc:postgresql://dev-db.company.com:5432/sap_dev
+      oracle-hr:
+        jdbc-url: jdbc:oracle:thin:@dev-db.company.com:1521:HRDEV
+      workday:
+        jdbc-url: jdbc:postgresql://dev-db.company.com:5432/workday_dev
+
+    soap:
+      url: https://dev-idm.company.com:8543/IDMProv/role/service
+      message-logging: true  # Enable detailed logging in dev
+
+    rest:
+      idm:
+        base-url: https://dev-idm.company.com:8543/IDMProv
+      sap:
+        base-url: https://dev-sap.company.com/api/v1
+      workday:
+        base-url: https://dev-workday.company.com/api/v1
+
+logging:
+  level:
+    com.idm.test: TRACE
+    org.springframework.ldap: DEBUG
+    org.springframework.web.client: DEBUG
+    org.springframework.jdbc: DEBUG
+
+---
+# =================================================================
+# TEST / CI PROFILE
+# =================================================================
+spring:
+  config:
+    activate:
+      on-profile: test
+
+idm:
+  test:
+    # Use Testcontainers or embedded services
+    ldap:
+      url: ldap://localhost:10389
+      base-dn: dc=test,dc=com
+      user-dn: cn=admin,dc=test,dc=com
+      password: test
+
+    databases:
+      sap:
+        jdbc-url: jdbc:h2:mem:sap_test;MODE=PostgreSQL
+        driver-class-name: org.h2.Driver
+        username: sa
+        password:
+      oracle-hr:
+        jdbc-url: jdbc:h2:mem:hr_test;MODE=Oracle
+        driver-class-name: org.h2.Driver
+        username: sa
+        password:
+      workday:
+        jdbc-url: jdbc:h2:mem:workday_test
+        driver-class-name: org.h2.Driver
+        username: sa
+        password:
+
+    soap:
+      url: http://localhost:8090/IDMProv/role/service  # WireMock
+      connection-timeout: 5000
+      read-timeout: 10000
+
+    executor:
+      default-timeout-seconds: 60  # Shorter timeouts for tests
+      default-poll-interval-seconds: 1
+
+logging:
+  level:
+    com.idm.test: DEBUG
+
+---
+# =================================================================
+# PRODUCTION PROFILE
+# =================================================================
+spring:
+  config:
+    activate:
+      on-profile: prod
+
+idm:
+  test:
+    ldap:
+      url: ldaps://prod-edirectory.company.com:636
+      base-dn: dc=company,dc=com
+      user-dn: cn=idmadmin,dc=company,dc=com
+
+    databases:
+      sap:
+        jdbc-url: jdbc:postgresql://prod-db.company.com:5432/sap
+        max-pool-size: 10
+      oracle-hr:
+        jdbc-url: jdbc:oracle:thin:@prod-db.company.com:1521:HRPROD
+        max-pool-size: 10
+      workday:
+        jdbc-url: jdbc:postgresql://prod-db.company.com:5432/workday
+        max-pool-size: 5
+
+    soap:
+      url: https://idm.company.com:8543/IDMProv/role/service
+      message-logging: false
+
+    rest:
+      idm:
+        base-url: https://idm.company.com:8543/IDMProv
+      sap:
+        base-url: https://sap.company.com/api/v1
+      workday:
+        base-url: https://workday.company.com/api/v1
+      servicenow:
+        base-url: https://company.service-now.com/api
+
+logging:
+  level:
+    root: WARN
+    com.idm.test: INFO

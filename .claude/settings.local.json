@@ -3,7 +3,9 @@
     "allow": [
       "Bash(mkdir:*)",
       "Bash(cp:*)",
-      "Bash(./mvnw test:*)"
+      "Bash(./mvnw test:*)",
+      "Bash(mvn test:*)",
+      "Bash(findstr:*)"
     ],
     "deny": [],
     "ask": []

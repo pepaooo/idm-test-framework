@@ -1,0 +1,36 @@
+spring:
+  application:
+    name: idm-connector-database-test
+
+# Test database configurations
+idm:
+  test:
+    databases:
+      # H2 in-memory database for testing
+      testdb:
+        jdbc-url: jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1;MODE=PostgreSQL
+        username: sa
+        password:
+        driver-class-name: org.h2.Driver
+        max-pool-size: 5
+        min-idle: 1
+        connection-timeout: 5000
+        idle-timeout: 300000
+        max-lifetime: 600000
+
+      # Second H2 database to test multi-database support
+      testdb2:
+        jdbc-url: jdbc:h2:mem:testdb2;DB_CLOSE_DELAY=-1;MODE=PostgreSQL
+        username: sa
+        password:
+        driver-class-name: org.h2.Driver
+        max-pool-size: 5
+        min-idle: 1
+        connection-timeout: 5000
+        idle-timeout: 300000
+        max-lifetime: 600000
+
+logging:
+  level:
+    com.idm.test: DEBUG
+    org.springframework.jdbc: DEBUG

@@ -1,0 +1,20 @@
+spring:
+  application:
+    name: idm-connector-ldap-test
+
+# LDAP test configuration (will use embedded UnboundID)
+idm:
+  test:
+    ldap:
+      url: ldap://localhost:10389
+      base-dn: dc=springframework,dc=org
+      user-dn: uid=admin,ou=system,dc=springframework,dc=org
+      password: secret
+      pooled: true
+      min-idle: 1
+      max-active: 8
+
+logging:
+  level:
+    com.idm.test: DEBUG
+    org.springframework.ldap: DEBUG

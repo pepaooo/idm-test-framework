@@ -5,7 +5,8 @@
       "Bash(cp:*)",
       "Bash(./mvnw test:*)",
       "Bash(mvn test:*)",
-      "Bash(findstr:*)"
+      "Bash(findstr:*)",
+      "Bash(mvn clean test:*)"
     ],
     "deny": [],
     "ask": []

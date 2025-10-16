@@ -40,6 +40,13 @@
             <artifactId>unboundid-ldapsdk</artifactId>
         </dependency>
 
+        <!-- Apache Commons Pool for LDAP connection pooling -->
+        <dependency>
+            <groupId>commons-pool</groupId>
+            <artifactId>commons-pool</artifactId>
+            <version>1.6</version>
+        </dependency>
+
         <!-- Testing -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

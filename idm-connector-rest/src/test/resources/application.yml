@@ -1,0 +1,8 @@
+spring:
+  application:
+    name: idm-connector-rest-test
+
+logging:
+  level:
+    com.idm.test: DEBUG
+    org.springframework.web.client: DEBUG

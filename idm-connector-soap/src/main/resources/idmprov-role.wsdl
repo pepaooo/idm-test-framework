@@ -1,0 +1,1911 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://schemas.xmlsoap.org/wsdl/" xmlns:soap="http://schemas.xmlsoap.org/wsdl/soap/" xmlns:tns="http://www.novell.com/role/service" xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/" xmlns:xsd="http://www.w3.org/2001/XMLSchema" name="IRemoteRoleService" targetNamespace="http://www.novell.com/role/service">
+  <types>
+    <xsd:schema xmlns="http://www.w3.org/2001/XMLSchema" attributeFormDefault="unqualified" elementFormDefault="qualified" targetNamespace="http://www.novell.com/role/service" xmlns:tns="http://www.novell.com/role/service" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+ <xsd:simpleType name="VersionVO">
+    <xsd:restriction base="xsd:string">
+      <xsd:enumeration value="3.6"/>
+    </xsd:restriction>
+  </xsd:simpleType>
+<xsd:element name="VersionVO" type="tns:VersionVO"/>
+
+ <xsd:simpleType name="IdentityType">
+    <xsd:restriction base="xsd:string">
+      <xsd:enumeration value="USER"/>
+      <xsd:enumeration value="GROUP"/>
+      <xsd:enumeration value="CONTAINER"/>
+      <xsd:enumeration value="ROLE"/>
+    </xsd:restriction>
+  </xsd:simpleType>
+<xsd:element name="IdentityType" type="tns:IdentityType"/>
+
+ <xsd:simpleType name="RequestCategoryType">
+    <xsd:restriction base="xsd:string">
+      <xsd:enumeration value="ROLE_TO_USER_ADD"/>
+      <xsd:enumeration value="ROLE_TO_USER_REMOVE"/>
+      <xsd:enumeration value="ROLE_TO_ROLE_ADD"/>
+      <xsd:enumeration value="ROLE_TO_ROLE_REMOVE"/>
+      <xsd:enumeration value="ROLE_TO_GROUP_ADD"/>
+      <xsd:enumeration value="ROLE_TO_GROUP_REMOVE"/>
+      <xsd:enumeration value="ROLE_TO_CONTAINER_ADD"/>
+      <xsd:enumeration value="ROLE_TO_CONTAINER_ADD_SUBTREE"/>
+      <xsd:enumeration value="ROLE_TO_CONTAINER_REMOVE"/>
+    </xsd:restriction>
+  </xsd:simpleType>
+<xsd:element name="RequestCategoryType" type="tns:RequestCategoryType"/>
+
+ <xsd:simpleType name="RequestStatus">
+    <xsd:restriction base="xsd:string">
+      <xsd:enumeration value="NEW_REQUEST"/>
+      <xsd:enumeration value="SOD_EXCEPTION_APPROVAL_PENDING"/>
+      <xsd:enumeration value="SOD_EXCEPTION_APPROVED"/>
+      <xsd:enumeration value="APPROVAL_PENDING"/>
+      <xsd:enumeration value="APPROVED"/>
+      <xsd:enumeration value="ACTIVATION_TIME_PENDING"/>
+      <xsd:enumeration value="PROVISION"/>
+      <xsd:enumeration value="PROVISIONED"/>
+      <xsd:enumeration value="PROVISIONING_ERROR"/>
+      <xsd:enumeration value="SOD_EXCEPTION_DENIED"/>
+      <xsd:enumeration value="DENIED"/>
+      <xsd:enumeration value="CLEANUP"/>
+    </xsd:restriction>
+  </xsd:simpleType>
+<xsd:element name="RequestStatus" type="tns:RequestStatus"/>
+
+ <xsd:simpleType name="RoleAssignmentActionType">
+    <xsd:restriction base="xsd:string">
+      <xsd:enumeration value="grant"/>
+      <xsd:enumeration value="revoke"/>
+      <xsd:enumeration value="extend"/>
+    </xsd:restriction>
+  </xsd:simpleType>
+<xsd:element name="RoleAssignmentActionType" type="tns:RoleAssignmentActionType"/>
+
+ <xsd:simpleType name="RoleAssignmentType">
+    <xsd:restriction base="xsd:string">
+      <xsd:enumeration value="USER_TO_ROLE"/>
+      <xsd:enumeration value="GROUP_TO_ROLE"/>
+      <xsd:enumeration value="ROLE_TO_ROLE"/>
+      <xsd:enumeration value="CONTAINER_TO_ROLE"/>
+      <xsd:enumeration value="CONTAINER_WITH_SUBTREE_TO_ROLE"/>
+    </xsd:restriction>
+  </xsd:simpleType>
+<xsd:element name="RoleAssignmentType" type="tns:RoleAssignmentType"/>
+
+ <xsd:simpleType name="SodApprovalType">
+    <xsd:restriction base="xsd:string">
+      <xsd:enumeration value="ALWAYS_ALLOW"/>
+      <xsd:enumeration value="ALLOW_WITH_WORKFLOW"/>
+    </xsd:restriction>
+  </xsd:simpleType>
+<xsd:element name="SodApprovalType" type="tns:SodApprovalType"/>
+<element name="string" type="xsd:string"/>
+      <element name="ConfigProperty" type="tns:ConfigProperty"/>
+      <complexType name="ConfigProperty">
+        <sequence>
+          <element name="configPropertyKey" nillable="true" type="xsd:string"/>
+          <element name="configPropertyValue" nillable="true" type="xsd:string"/>
+        </sequence>
+      </complexType>
+      <element name="User" type="tns:User"/>
+      <complexType name="User">
+        <sequence>
+          <element name="associatedRoles" nillable="true" type="tns:DNStringArray"/>
+          <element name="cn" nillable="true" type="xsd:string"/>
+          <element name="containerRoles" nillable="true" type="tns:DNStringArray"/>
+          <element name="email" nillable="true" type="xsd:string"/>
+          <element name="entityKey" nillable="true" type="xsd:string"/>
+          <element name="explicitAssignments" nillable="true" type="tns:RoleAssignmentArray"/>
+          <element name="firstName" nillable="true" type="xsd:string"/>
+          <element name="groupRoles" nillable="true" type="tns:DNStringArray"/>
+          <element name="identityType" nillable="true" type="tns:IdentityType"/>
+          <element name="implicitAssignments" nillable="true" type="tns:RoleAssignmentArray"/>
+          <element name="inheritedAssignments" nillable="true" type="tns:RoleAssignmentArray"/>
+          <element name="inheritedRoles" nillable="true" type="tns:DNStringArray"/>
+          <element name="lastName" nillable="true" type="xsd:string"/>
+          <element name="roleAssignments" nillable="true" type="tns:RoleAssignmentArray"/>
+        </sequence>
+      </complexType>
+      <element name="DNString" type="tns:DNString"/>
+      <complexType name="DNString">
+        <sequence>
+          <element name="dn" nillable="true" type="xsd:string"/>
+        </sequence>
+      </complexType>
+      <element name="DNStringArray" type="tns:DNStringArray"/>
+      <complexType name="DNStringArray">
+        <sequence>
+          <element maxOccurs="unbounded" minOccurs="0" name="dnstring" nillable="true" type="tns:DNString"/>
+        </sequence>
+      </complexType>
+      <element name="RoleAssignment" type="tns:RoleAssignment"/>
+      <complexType name="RoleAssignment">
+        <sequence>
+          <element name="assignmentType" nillable="true" type="tns:RoleAssignmentType"/>
+          <element name="causeIdentities" nillable="true" type="tns:IdentityTypeDnMapArray"/>
+          <element name="effectiveDate" nillable="true" type="xsd:dateTime"/>
+          <element name="expirationDate" nillable="true" type="xsd:dateTime"/>
+          <element name="explicitIdentities" nillable="true" type="tns:DNStringArray"/>
+          <element name="role" nillable="true" type="xsd:string"/>
+        </sequence>
+      </complexType>
+      <element name="IdentityTypeDnMap" type="tns:IdentityTypeDnMap"/>
+      <complexType name="IdentityTypeDnMap">
+        <sequence>
+          <element name="dns" nillable="true" type="tns:DNStringArray"/>
+          <element name="identityType" nillable="true" type="tns:IdentityType"/>
+        </sequence>
+      </complexType>
+      <element name="IdentityTypeDnMapArray" type="tns:IdentityTypeDnMapArray"/>
+      <complexType name="IdentityTypeDnMapArray">
+        <sequence>
+          <element maxOccurs="unbounded" minOccurs="0" name="identitytypednmap" nillable="true" type="tns:IdentityTypeDnMap"/>
+        </sequence>
+      </complexType>
+      <element name="dateTime" type="xsd:dateTime"/>
+      <element name="RoleAssignmentArray" type="tns:RoleAssignmentArray"/>
+      <complexType name="RoleAssignmentArray">
+        <sequence>
+          <element maxOccurs="unbounded" minOccurs="0" name="roleassignment" nillable="true" type="tns:RoleAssignment"/>
+        </sequence>
+      </complexType>
+      <element name="Sod" type="tns:Sod"/>
+      <complexType name="Sod">
+        <sequence>
+          <element name="approvalType" nillable="true" type="tns:SodApprovalType"/>
+          <element name="approvers" nillable="true" type="tns:ApproverArray"/>
+          <element name="description" nillable="true" type="xsd:string"/>
+          <element name="entityKey" nillable="true" type="xsd:string"/>
+          <element name="name" nillable="true" type="xsd:string"/>
+          <element name="quorum" nillable="true" type="xsd:string"/>
+          <element name="requestDef" nillable="true" type="xsd:string"/>
+          <element name="roles" nillable="true" type="tns:DNStringArray"/>
+        </sequence>
+      </complexType>
+      <element name="Approver" type="tns:Approver"/>
+      <complexType name="Approver">
+        <sequence>
+          <element name="approverDN" nillable="true" type="xsd:string"/>
+          <element name="sequence" type="xsd:long"/>
+        </sequence>
+      </complexType>
+      <element name="long" type="xsd:long"/>
+      <element name="ApproverArray" type="tns:ApproverArray"/>
+      <complexType name="ApproverArray">
+        <sequence>
+          <element maxOccurs="unbounded" minOccurs="0" name="approver" nillable="true" type="tns:Approver"/>
+        </sequence>
+      </complexType>
+      <element name="SodArray" type="tns:SodArray"/>
+      <complexType name="SodArray">
+        <sequence>
+          <element maxOccurs="unbounded" minOccurs="0" name="sod" nillable="true" type="tns:Sod"/>
+        </sequence>
+      </complexType>
+      <element name="ResourceAssociation" type="tns:ResourceAssociation"/>
+      <complexType name="ResourceAssociation">
+        <sequence>
+          <element name="approvalOverride" type="xsd:boolean"/>
+          <element name="dynamicParameters" nillable="true" type="tns:DynamicParameterArray"/>
+          <element name="entityKey" nillable="true" type="xsd:string"/>
+          <element name="localizedDescriptions" nillable="true" type="tns:LocalizedValueArray"/>
+          <element name="resource" nillable="true" type="xsd:string"/>
+          <element name="role" nillable="true" type="xsd:string"/>
+          <element name="status" type="xsd:int"/>
+        </sequence>
+      </complexType>
+      <element name="boolean" type="xsd:boolean"/>
+      <element name="DynamicParameter" type="tns:DynamicParameter"/>
+      <complexType name="DynamicParameter">
+        <sequence>
+          <element name="expression" type="xsd:boolean"/>
+          <element name="key" nillable="true" type="xsd:string"/>
+          <element name="value" nillable="true" type="xsd:string"/>
+        </sequence>
+      </complexType>
+      <element name="DynamicParameterArray" type="tns:DynamicParameterArray"/>
+      <complexType name="DynamicParameterArray">
+        <sequence>
+          <element maxOccurs="unbounded" minOccurs="0" name="dynamicparameter" nillable="true" type="tns:DynamicParameter"/>
+        </sequence>
+      </complexType>
+      <element name="LocalizedValue" type="tns:LocalizedValue"/>
+      <complexType name="LocalizedValue">
+        <sequence>
+          <element name="locale" nillable="true" type="xsd:string"/>
+          <element name="value" nillable="true" type="xsd:string"/>
+        </sequence>
+      </complexType>
+      <element name="LocalizedValueArray" type="tns:LocalizedValueArray"/>
+      <complexType name="LocalizedValueArray">
+        <sequence>
+          <element maxOccurs="unbounded" minOccurs="0" name="localizedvalue" nillable="true" type="tns:LocalizedValue"/>
+        </sequence>
+      </complexType>
+      <element name="int" type="xsd:int"/>
+      <element name="Group" type="tns:Group"/>
+      <complexType name="Group">
+        <sequence>
+          <element name="associatedRoles" nillable="true" type="tns:DNStringArray"/>
+          <element name="description" nillable="true" type="xsd:string"/>
+          <element name="entityKey" nillable="true" type="xsd:string"/>
+          <element name="identityType" nillable="true" type="tns:IdentityType"/>
+          <element name="roleAssignments" nillable="true" type="tns:RoleAssignmentArray"/>
+        </sequence>
+      </complexType>
+      <element name="Configuration" type="tns:Configuration"/>
+      <complexType name="Configuration">
+        <sequence>
+          <element name="SODApprovers" nillable="true" type="tns:ApproverArray"/>
+          <element name="SODContainer" nillable="true" type="xsd:string"/>
+          <element name="SODQuorum" nillable="true" type="xsd:string"/>
+          <element name="SODRequestDef" nillable="true" type="xsd:string"/>
+          <element name="defaultRequestDef" nillable="true" type="xsd:string"/>
+          <element name="defaultSODRequestDef" nillable="true" type="xsd:string"/>
+          <element name="removalGracePeriod" type="xsd:int"/>
+          <element name="reportContainer" nillable="true" type="xsd:string"/>
+          <element name="roleLevels" nillable="true" type="tns:RoleLevelArray"/>
+          <element name="roleRequestContainer" nillable="true" type="xsd:string"/>
+          <element name="rolesContainer" nillable="true" type="xsd:string"/>
+        </sequence>
+      </complexType>
+      <element name="RoleLevel" type="tns:RoleLevel"/>
+      <complexType name="RoleLevel">
+        <sequence>
+          <element name="container" nillable="true" type="xsd:string"/>
+          <element name="description" nillable="true" type="xsd:string"/>
+          <element name="level" type="xsd:long"/>
+          <element name="name" nillable="true" type="xsd:string"/>
+        </sequence>
+      </complexType>
+      <element name="RoleLevelArray" type="tns:RoleLevelArray"/>
+      <complexType name="RoleLevelArray">
+        <sequence>
+          <element maxOccurs="unbounded" minOccurs="0" name="rolelevel" nillable="true" type="tns:RoleLevel"/>
+        </sequence>
+      </complexType>
+      <element name="RoleAssignmentRequestStatus" type="tns:RoleAssignmentRequestStatus"/>
+      <complexType name="RoleAssignmentRequestStatus">
+        <sequence>
+          <element name="category" nillable="true" type="tns:RequestCategoryType"/>
+          <element name="correlationId" nillable="true" type="xsd:string"/>
+          <element name="effectiveDate" nillable="true" type="xsd:dateTime"/>
+          <element name="entityKey" nillable="true" type="xsd:string"/>
+          <element name="expirationDate" nillable="true" type="xsd:dateTime"/>
+          <element name="reason" nillable="true" type="xsd:string"/>
+          <element name="requestDate" nillable="true" type="xsd:dateTime"/>
+          <element name="requester" nillable="true" type="xsd:string"/>
+          <element name="source" nillable="true" type="xsd:string"/>
+          <element name="status" nillable="true" type="tns:RequestStatus"/>
+          <element name="target" nillable="true" type="xsd:string"/>
+        </sequence>
+      </complexType>
+      <element name="RoleAssignmentRequestStatusArray" type="tns:RoleAssignmentRequestStatusArray"/>
+      <complexType name="RoleAssignmentRequestStatusArray">
+        <sequence>
+          <element maxOccurs="unbounded" minOccurs="0" name="roleassignmentrequeststatus" nillable="true" type="tns:RoleAssignmentRequestStatus"/>
+        </sequence>
+      </complexType>
+      <element name="Role" type="tns:Role"/>
+      <complexType name="Role">
+        <sequence>
+          <element name="approvers" nillable="true" type="tns:ApproverArray"/>
+          <element name="associatedRoles" nillable="true" type="tns:DNStringArray"/>
+          <element name="childRoles" nillable="true" type="tns:DNStringArray"/>
+          <element name="description" nillable="true" type="xsd:string"/>
+          <element name="entitlementRef" nillable="true" type="tns:EntitlementArray"/>
+          <element name="entityKey" nillable="true" type="xsd:string"/>
+          <element name="implicitContainers" nillable="true" type="tns:DNStringArray"/>
+          <element name="implicitGroups" nillable="true" type="tns:DNStringArray"/>
+          <element name="name" nillable="true" type="xsd:string"/>
+          <element name="owners" nillable="true" type="tns:DNStringArray"/>
+          <element name="parentRoles" nillable="true" type="tns:DNStringArray"/>
+          <element name="quorum" nillable="true" type="xsd:string"/>
+          <element name="requestDef" nillable="true" type="xsd:string"/>
+          <element name="revokeRequestDefinition" nillable="true" type="xsd:string"/>
+          <element name="roleAssignments" nillable="true" type="tns:RoleAssignmentArray"/>
+          <element name="roleCategoryKeys" nillable="true" type="tns:CategoryKeyArray"/>
+          <element name="roleLevel" nillable="true" type="tns:RoleLevel"/>
+          <element name="systemRole" type="xsd:boolean"/>
+        </sequence>
+      </complexType>
+      <element name="Entitlement" type="tns:Entitlement"/>
+      <complexType name="Entitlement">
+        <sequence>
+          <element name="entitlementDn" nillable="true" type="xsd:string"/>
+          <element name="entitlementParameters" nillable="true" type="xsd:string"/>
+        </sequence>
+      </complexType>
+      <element name="EntitlementArray" type="tns:EntitlementArray"/>
+      <complexType name="EntitlementArray">
+        <sequence>
+          <element maxOccurs="unbounded" minOccurs="0" name="entitlement" nillable="true" type="tns:Entitlement"/>
+        </sequence>
+      </complexType>
+      <element name="CategoryKey" type="tns:CategoryKey"/>
+      <complexType name="CategoryKey">
+        <sequence>
+          <element name="categoryKey" nillable="true" type="xsd:string"/>
+        </sequence>
+      </complexType>
+      <element name="CategoryKeyArray" type="tns:CategoryKeyArray"/>
+      <complexType name="CategoryKeyArray">
+        <sequence>
+          <element maxOccurs="unbounded" minOccurs="0" name="categorykey" nillable="true" type="tns:CategoryKey"/>
+        </sequence>
+      </complexType>
+      <element name="Category" type="tns:Category"/>
+      <complexType name="Category">
+        <sequence>
+          <element name="categoryKey" nillable="true" type="xsd:string"/>
+          <element name="categoryLabel" nillable="true" type="xsd:string"/>
+        </sequence>
+      </complexType>
+      <element name="CategoryArray" type="tns:CategoryArray"/>
+      <complexType name="CategoryArray">
+        <sequence>
+          <element maxOccurs="unbounded" minOccurs="0" name="category" nillable="true" type="tns:Category"/>
+        </sequence>
+      </complexType>
+      <element name="RoleRequest" type="tns:RoleRequest"/>
+      <complexType name="RoleRequest">
+        <sequence>
+          <element name="approvers" nillable="true" type="tns:ApproverArray"/>
+          <element name="container" nillable="true" type="xsd:string"/>
+          <element name="description" nillable="true" type="xsd:string"/>
+          <element name="entityKey" nillable="true" type="xsd:string"/>
+          <element name="name" nillable="true" type="xsd:string"/>
+          <element name="owners" nillable="true" type="tns:DNStringArray"/>
+          <element name="quorum" nillable="true" type="xsd:string"/>
+          <element name="requestDef" nillable="true" type="xsd:string"/>
+          <element name="revokeRequestDef" nillable="true" type="xsd:string"/>
+          <element name="roleCategoryKeys" nillable="true" type="tns:CategoryKeyArray"/>
+          <element name="roleLevel" type="xsd:long"/>
+          <element name="systemRole" type="xsd:boolean"/>
+        </sequence>
+      </complexType>
+      <element name="LongArray" type="tns:LongArray"/>
+      <complexType name="LongArray">
+        <sequence>
+          <element maxOccurs="unbounded" minOccurs="0" name="long" type="xsd:long"/>
+        </sequence>
+      </complexType>
+      <element name="RoleInfo" type="tns:RoleInfo"/>
+      <complexType name="RoleInfo">
+        <sequence>
+          <element name="description" nillable="true" type="xsd:string"/>
+          <element name="entityKey" nillable="true" type="xsd:string"/>
+          <element name="name" nillable="true" type="xsd:string"/>
+          <element name="roleCategoryKeys" nillable="true" type="tns:CategoryKeyArray"/>
+          <element name="roleLevel" nillable="true" type="tns:RoleLevel"/>
+        </sequence>
+      </complexType>
+      <element name="RoleInfoArray" type="tns:RoleInfoArray"/>
+      <complexType name="RoleInfoArray">
+        <sequence>
+          <element maxOccurs="unbounded" minOccurs="0" name="roleinfo" nillable="true" type="tns:RoleInfo"/>
+        </sequence>
+      </complexType>
+      <element name="Container" type="tns:Container"/>
+      <complexType name="Container">
+        <sequence>
+          <element name="associatedRoles" nillable="true" type="tns:DNStringArray"/>
+          <element name="entityKey" nillable="true" type="xsd:string"/>
+          <element name="identityType" nillable="true" type="tns:IdentityType"/>
+          <element name="roleAssignments" nillable="true" type="tns:RoleAssignmentArray"/>
+        </sequence>
+      </complexType>
+      <element name="ResourceAssociationArray" type="tns:ResourceAssociationArray"/>
+      <complexType name="ResourceAssociationArray">
+        <sequence>
+          <element maxOccurs="unbounded" minOccurs="0" name="resourceassociation" nillable="true" type="tns:ResourceAssociation"/>
+        </sequence>
+      </complexType>
+      <element name="RoleArray" type="tns:RoleArray"/>
+      <complexType name="RoleArray">
+        <sequence>
+          <element maxOccurs="unbounded" minOccurs="0" name="role" nillable="true" type="tns:Role"/>
+        </sequence>
+      </complexType>
+      <element name="RoleAssignmentTypeInfo" type="tns:RoleAssignmentTypeInfo"/>
+      <complexType name="RoleAssignmentTypeInfo">
+        <sequence>
+          <element name="identityType" nillable="true" type="tns:IdentityType"/>
+          <element name="subtreeIncluded" type="xsd:boolean"/>
+          <element name="supportsApproval" type="xsd:boolean"/>
+          <element name="supportsEffectiveDate" type="xsd:boolean"/>
+          <element name="supportsExpiration" type="xsd:boolean"/>
+          <element name="supportsSODApproval" type="xsd:boolean"/>
+        </sequence>
+      </complexType>
+      <element name="RoleAssignmentRequest" type="tns:RoleAssignmentRequest"/>
+      <complexType name="RoleAssignmentRequest">
+        <sequence>
+          <element name="actionType" nillable="true" type="tns:RoleAssignmentActionType"/>
+          <element name="assignmentType" nillable="true" type="tns:RoleAssignmentType"/>
+          <element name="correlationID" nillable="true" type="xsd:string"/>
+          <element name="effectiveDate" nillable="true" type="xsd:dateTime"/>
+          <element name="expirationDate" nillable="true" type="xsd:dateTime"/>
+          <element name="identity" nillable="true" type="xsd:string"/>
+          <element name="originator" nillable="true" type="xsd:string"/>
+          <element name="reason" nillable="true" type="xsd:string"/>
+          <element name="roles" nillable="true" type="tns:DNStringArray"/>
+          <element name="sodOveridesRequested" nillable="true" type="tns:SodJustificationArray"/>
+        </sequence>
+      </complexType>
+      <element name="SodJustification" type="tns:SodJustification"/>
+      <complexType name="SodJustification">
+        <sequence>
+          <element name="justification" nillable="true" type="xsd:string"/>
+          <element name="sodDN" nillable="true" type="xsd:string"/>
+        </sequence>
+      </complexType>
+      <element name="SodJustificationArray" type="tns:SodJustificationArray"/>
+      <complexType name="SodJustificationArray">
+        <sequence>
+          <element maxOccurs="unbounded" minOccurs="0" name="sodjustification" nillable="true" type="tns:SodJustification"/>
+        </sequence>
+      </complexType>
+      <element name="getConfigPropertyRequest" type="tns:getConfigPropertyRequest"/>
+      <complexType name="getConfigPropertyRequest">
+        <sequence>
+          <element minOccurs="0" name="configPropertyKey" nillable="true" type="xsd:string"/>
+        </sequence>
+      </complexType>
+      <element name="getConfigPropertyResponse" type="tns:getConfigPropertyResponse"/>
+      <complexType name="getConfigPropertyResponse">
+        <sequence>
+          <element minOccurs="0" name="result" nillable="true" type="tns:ConfigProperty"/>
+        </sequence>
+      </complexType>
+      <element name="NrfServiceException" type="tns:NrfServiceException"/>
+      <complexType name="NrfServiceException">
+        <sequence>
+          <element name="reason" nillable="true" type="xsd:string"/>
+        </sequence>
+      </complexType>
+      <element name="getUserRequest" type="tns:getUserRequest"/>
+      <complexType name="getUserRequest">
+        <sequence>
+          <element minOccurs="0" name="userDN" nillable="true" type="xsd:string"/>
+        </sequence>
+      </complexType>
+      <element name="getUserResponse" type="tns:getUserResponse"/>
+      <complexType name="getUserResponse">
+        <sequence>
+          <element minOccurs="0" name="result" nillable="true" type="tns:User"/>
+        </sequence>
+      </complexType>
+      <element name="getTargetSourceConflictsRequest" type="tns:getTargetSourceConflictsRequest"/>
+      <complexType name="getTargetSourceConflictsRequest">
+        <sequence>
+          <element minOccurs="0" name="sourceRoleDN" nillable="true" type="xsd:string"/>
+          <element minOccurs="0" name="targetRoleDN" nillable="true" type="xsd:string"/>
+        </sequence>
+      </complexType>
+      <element name="getTargetSourceConflictsResponse" type="tns:getTargetSourceConflictsResponse"/>
+      <complexType name="getTargetSourceConflictsResponse">
+        <sequence>
+          <element minOccurs="0" name="result" nillable="true" type="tns:SodArray"/>
+        </sequence>
+      </complexType>
+      <element name="getResourceAssociationRequest" type="tns:getResourceAssociationRequest"/>
+      <complexType name="getResourceAssociationRequest">
+        <sequence>
+          <element minOccurs="0" name="resourceAssociationDn" nillable="true" type="tns:DNString"/>
+        </sequence>
+      </complexType>
+      <element name="getResourceAssociationResponse" type="tns:getResourceAssociationResponse"/>
+      <complexType name="getResourceAssociationResponse">
+        <sequence>
+          <element minOccurs="0" name="result" nillable="true" type="tns:ResourceAssociation"/>
+        </sequence>
+      </complexType>
+      <element name="getRoleLocalizedStringsRequest" type="tns:getRoleLocalizedStringsRequest"/>
+      <complexType name="getRoleLocalizedStringsRequest">
+        <sequence>
+          <element minOccurs="0" name="roleDn" nillable="true" type="tns:DNString"/>
+          <element name="type" type="xsd:int"/>
+        </sequence>
+      </complexType>
+      <element name="getRoleLocalizedStringsResponse" type="tns:getRoleLocalizedStringsResponse"/>
+      <complexType name="getRoleLocalizedStringsResponse">
+        <sequence>
+          <element minOccurs="0" name="result" nillable="true" type="tns:LocalizedValueArray"/>
+        </sequence>
+      </complexType>
+      <element name="getGroupRequest" type="tns:getGroupRequest"/>
+      <complexType name="getGroupRequest">
+        <sequence>
+          <element minOccurs="0" name="groupDN" nillable="true" type="xsd:string"/>
+        </sequence>
+      </complexType>
+      <element name="getGroupResponse" type="tns:getGroupResponse"/>
+      <complexType name="getGroupResponse">
+        <sequence>
+          <element minOccurs="0" name="result" nillable="true" type="tns:Group"/>
+        </sequence>
+      </complexType>
+      <element name="getConfigurationRequest" type="tns:getConfigurationRequest"/>
+      <complexType name="getConfigurationRequest">
+        <sequence/>
+      </complexType>
+      <element name="getConfigurationResponse" type="tns:getConfigurationResponse"/>
+      <complexType name="getConfigurationResponse">
+        <sequence>
+          <element minOccurs="0" name="result" nillable="true" type="tns:Configuration"/>
+        </sequence>
+      </complexType>
+      <element name="getRoleAssignmentRequestStatusByDNRequest" type="tns:getRoleAssignmentRequestStatusByDNRequest"/>
+      <complexType name="getRoleAssignmentRequestStatusByDNRequest">
+        <sequence>
+          <element minOccurs="0" name="requestDNs" nillable="true" type="tns:DNStringArray"/>
+        </sequence>
+      </complexType>
+      <element name="getRoleAssignmentRequestStatusByDNResponse" type="tns:getRoleAssignmentRequestStatusByDNResponse"/>
+      <complexType name="getRoleAssignmentRequestStatusByDNResponse">
+        <sequence>
+          <element minOccurs="0" name="result" nillable="true" type="tns:RoleAssignmentRequestStatusArray"/>
+        </sequence>
+      </complexType>
+      <element name="setRoleLocalizedStringsAidRequest" type="tns:setRoleLocalizedStringsAidRequest"/>
+      <complexType name="setRoleLocalizedStringsAidRequest">
+        <sequence>
+          <element minOccurs="0" name="roleDn" nillable="true" type="tns:DNString"/>
+          <element minOccurs="0" name="correlationId" nillable="true" type="xsd:string"/>
+          <element minOccurs="0" name="locStrings" nillable="true" type="tns:LocalizedValueArray"/>
+          <element name="type" type="xsd:int"/>
+        </sequence>
+      </complexType>
+      <element name="setRoleLocalizedStringsAidResponse" type="tns:setRoleLocalizedStringsAidResponse"/>
+      <complexType name="setRoleLocalizedStringsAidResponse">
+        <sequence>
+          <element minOccurs="0" name="result" nillable="true" type="tns:LocalizedValueArray"/>
+        </sequence>
+      </complexType>
+      <element name="getIdentityRoleConflictsRequest" type="tns:getIdentityRoleConflictsRequest"/>
+      <complexType name="getIdentityRoleConflictsRequest">
+        <sequence>
+          <element minOccurs="0" name="identityDN" nillable="true" type="xsd:string"/>
+          <element minOccurs="0" name="identityType" nillable="true" type="tns:IdentityType"/>
+          <element minOccurs="0" name="rolesDN" nillable="true" type="tns:DNStringArray"/>
+        </sequence>
+      </complexType>
+      <element name="getIdentityRoleConflictsResponse" type="tns:getIdentityRoleConflictsResponse"/>
+      <complexType name="getIdentityRoleConflictsResponse">
+        <sequence>
+          <element minOccurs="0" name="result" nillable="true" type="tns:SodArray"/>
+        </sequence>
+      </complexType>
+      <element name="modifyRoleAidRequest" type="tns:modifyRoleAidRequest"/>
+      <complexType name="modifyRoleAidRequest">
+        <sequence>
+          <element minOccurs="0" name="role" nillable="true" type="tns:Role"/>
+          <element minOccurs="0" name="correlationId" nillable="true" type="xsd:string"/>
+        </sequence>
+      </complexType>
+      <element name="modifyRoleAidResponse" type="tns:modifyRoleAidResponse"/>
+      <complexType name="modifyRoleAidResponse">
+        <sequence>
+          <element minOccurs="0" name="result" nillable="true" type="tns:Role"/>
+        </sequence>
+      </complexType>
+      <element name="getRoleCategoriesRequest" type="tns:getRoleCategoriesRequest"/>
+      <complexType name="getRoleCategoriesRequest">
+        <sequence/>
+      </complexType>
+      <element name="getRoleCategoriesResponse" type="tns:getRoleCategoriesResponse"/>
+      <complexType name="getRoleCategoriesResponse">
+        <sequence>
+          <element minOccurs="0" name="result" nillable="true" type="tns:CategoryArray"/>
+        </sequence>
+      </complexType>
+      <element name="isUserInRoleRequest" type="tns:isUserInRoleRequest"/>
+      <complexType name="isUserInRoleRequest">
+        <sequence>
+          <element minOccurs="0" name="userDN" nillable="true" type="xsd:string"/>
+          <element minOccurs="0" name="roleDN" nillable="true" type="xsd:string"/>
+        </sequence>
+      </complexType>
+      <element name="isUserInRoleResponse" type="tns:isUserInRoleResponse"/>
+      <complexType name="isUserInRoleResponse">
+        <sequence>
+          <element name="result" type="xsd:boolean"/>
+        </sequence>
+      </complexType>
+      <element name="findSodByExampleWithOperatorRequest" type="tns:findSodByExampleWithOperatorRequest"/>
+      <complexType name="findSodByExampleWithOperatorRequest">
+        <sequence>
+          <element minOccurs="0" name="sod" nillable="true" type="tns:Sod"/>
+          <element name="operator" type="xsd:boolean"/>
+        </sequence>
+      </complexType>
+      <element name="findSodByExampleWithOperatorResponse" type="tns:findSodByExampleWithOperatorResponse"/>
+      <complexType name="findSodByExampleWithOperatorResponse">
+        <sequence>
+          <element minOccurs="0" name="result" nillable="true" type="tns:SodArray"/>
+        </sequence>
+      </complexType>
+      <element name="createRoleRequest" type="tns:createRoleRequest"/>
+      <complexType name="createRoleRequest">
+        <sequence>
+          <element minOccurs="0" name="role" nillable="true" type="tns:RoleRequest"/>
+        </sequence>
+      </complexType>
+      <element name="createRoleResponse" type="tns:createRoleResponse"/>
+      <complexType name="createRoleResponse">
+        <sequence>
+          <element minOccurs="0" name="result" nillable="true" type="tns:DNString"/>
+        </sequence>
+      </complexType>
+      <element name="getRoleAssignmentRequestStatusByIdentityTypeRequest" type="tns:getRoleAssignmentRequestStatusByIdentityTypeRequest"/>
+      <complexType name="getRoleAssignmentRequestStatusByIdentityTypeRequest">
+        <sequence>
+          <element minOccurs="0" name="identityDN" nillable="true" type="xsd:string"/>
+          <element minOccurs="0" name="identityType" nillable="true" type="tns:IdentityType"/>
+        </sequence>
+      </complexType>
+      <element name="getRoleAssignmentRequestStatusByIdentityTypeResponse" type="tns:getRoleAssignmentRequestStatusByIdentityTypeResponse"/>
+      <complexType name="getRoleAssignmentRequestStatusByIdentityTypeResponse">
+        <sequence>
+          <element minOccurs="0" name="result" nillable="true" type="tns:RoleAssignmentRequestStatusArray"/>
+        </sequence>
+      </complexType>
+      <element name="removeRolesRequest" type="tns:removeRolesRequest"/>
+      <complexType name="removeRolesRequest">
+        <sequence>
+          <element minOccurs="0" name="roleDns" nillable="true" type="tns:DNStringArray"/>
+        </sequence>
+      </complexType>
+      <element name="removeRolesResponse" type="tns:removeRolesResponse"/>
+      <complexType name="removeRolesResponse">
+        <sequence>
+          <element minOccurs="0" name="result" nillable="true" type="tns:DNStringArray"/>
+        </sequence>
+      </complexType>
+      <element name="createResourceAssociationRequest" type="tns:createResourceAssociationRequest"/>
+      <complexType name="createResourceAssociationRequest">
+        <sequence>
+          <element minOccurs="0" name="resourceAssociation" nillable="true" type="tns:ResourceAssociation"/>
+        </sequence>
+      </complexType>
+      <element name="createResourceAssociationResponse" type="tns:createResourceAssociationResponse"/>
+      <complexType name="createResourceAssociationResponse">
+        <sequence>
+          <element minOccurs="0" name="result" nillable="true" type="tns:ResourceAssociation"/>
+        </sequence>
+      </complexType>
+      <element name="getRolesInfoByLevelRequest" type="tns:getRolesInfoByLevelRequest"/>
+      <complexType name="getRolesInfoByLevelRequest">
+        <sequence>
+          <element minOccurs="0" name="roleLevels" nillable="true" type="tns:LongArray"/>
+        </sequence>
+      </complexType>
+      <element name="getRolesInfoByLevelResponse" type="tns:getRolesInfoByLevelResponse"/>
+      <complexType name="getRolesInfoByLevelResponse">
+        <sequence>
+          <element minOccurs="0" name="result" nillable="true" type="tns:RoleInfoArray"/>
+        </sequence>
+      </complexType>
+      <element name="getAssignedIdentitiesRequest" type="tns:getAssignedIdentitiesRequest"/>
+      <complexType name="getAssignedIdentitiesRequest">
+        <sequence>
+          <element minOccurs="0" name="roleDN" nillable="true" type="xsd:string"/>
+          <element minOccurs="0" name="identityType" nillable="true" type="tns:IdentityType"/>
+          <element name="directAssignOnly" type="xsd:boolean"/>
+        </sequence>
+      </complexType>
+      <element name="getAssignedIdentitiesResponse" type="tns:getAssignedIdentitiesResponse"/>
+      <complexType name="getAssignedIdentitiesResponse">
+        <sequence>
+          <element minOccurs="0" name="result" nillable="true" type="tns:RoleAssignmentArray"/>
+        </sequence>
+      </complexType>
+      <element name="getContainerRequest" type="tns:getContainerRequest"/>
+      <complexType name="getContainerRequest">
+        <sequence>
+          <element minOccurs="0" name="containerDN" nillable="true" type="xsd:string"/>
+        </sequence>
+      </complexType>
+      <element name="getContainerResponse" type="tns:getContainerResponse"/>
+      <complexType name="getContainerResponse">
+        <sequence>
+          <element minOccurs="0" name="result" nillable="true" type="tns:Container"/>
+        </sequence>
+      </complexType>
+      <element name="findSodByIdRequest" type="tns:findSodByIdRequest"/>
+      <complexType name="findSodByIdRequest">
+        <sequence>
+          <element minOccurs="0" name="sodDN" nillable="true" type="xsd:string"/>
+        </sequence>
+      </complexType>
+      <element name="findSodByIdResponse" type="tns:findSodByIdResponse"/>
+      <complexType name="findSodByIdResponse">
+        <sequence>
+          <element minOccurs="0" name="result" nillable="true" type="tns:Sod"/>
+        </sequence>
+      </complexType>
+      <element name="getResourceAssociationsRequest" type="tns:getResourceAssociationsRequest"/>
+      <complexType name="getResourceAssociationsRequest">
+        <sequence>
+          <element minOccurs="0" name="roleDn" nillable="true" type="tns:DNString"/>
+          <element minOccurs="0" name="resourceDn" nillable="true" type="tns:DNString"/>
+        </sequence>
+      </complexType>
+      <element name="getResourceAssociationsResponse" type="tns:getResourceAssociationsResponse"/>
+      <complexType name="getResourceAssociationsResponse">
+        <sequence>
+          <element minOccurs="0" name="result" nillable="true" type="tns:ResourceAssociationArray"/>
+        </sequence>
+      </complexType>
+      <element name="getVersionRequest" type="tns:getVersionRequest"/>
+      <complexType name="getVersionRequest">
+        <sequence/>
+      </complexType>
+      <element name="getVersionResponse" type="tns:getVersionResponse"/>
+      <complexType name="getVersionResponse">
+        <sequence>
+          <element ref="tns:VersionVO"/>
+        </sequence>
+      </complexType>
+      <element name="findRoleByExampleWithOperatorRequest" type="tns:findRoleByExampleWithOperatorRequest"/>
+      <complexType name="findRoleByExampleWithOperatorRequest">
+        <sequence>
+          <element minOccurs="0" name="role" nillable="true" type="tns:Role"/>
+          <element name="operator" type="xsd:boolean"/>
+        </sequence>
+      </complexType>
+      <element name="findRoleByExampleWithOperatorResponse" type="tns:findRoleByExampleWithOperatorResponse"/>
+      <complexType name="findRoleByExampleWithOperatorResponse">
+        <sequence>
+          <element minOccurs="0" name="result" nillable="true" type="tns:RoleArray"/>
+        </sequence>
+      </complexType>
+      <element name="getIdentitiesInViolationRequest" type="tns:getIdentitiesInViolationRequest"/>
+      <complexType name="getIdentitiesInViolationRequest">
+        <sequence>
+          <element minOccurs="0" name="sodDN" nillable="true" type="xsd:string"/>
+        </sequence>
+      </complexType>
+      <element name="getIdentitiesInViolationResponse" type="tns:getIdentitiesInViolationResponse"/>
+      <complexType name="getIdentitiesInViolationResponse">
+        <sequence>
+          <element minOccurs="0" name="result" nillable="true" type="tns:IdentityTypeDnMapArray"/>
+        </sequence>
+      </complexType>
+      <element name="getRoleRequest" type="tns:getRoleRequest"/>
+      <complexType name="getRoleRequest">
+        <sequence>
+          <element minOccurs="0" name="roleDN" nillable="true" type="xsd:string"/>
+        </sequence>
+      </complexType>
+      <element name="getRoleResponse" type="tns:getRoleResponse"/>
+      <complexType name="getRoleResponse">
+        <sequence>
+          <element minOccurs="0" name="result" nillable="true" type="tns:Role"/>
+        </sequence>
+      </complexType>
+      <element name="removeRolesAidRequest" type="tns:removeRolesAidRequest"/>
+      <complexType name="removeRolesAidRequest">
+        <sequence>
+          <element minOccurs="0" name="roleDns" nillable="true" type="tns:DNStringArray"/>
+          <element minOccurs="0" name="correlationId" nillable="true" type="xsd:string"/>
+        </sequence>
+      </complexType>
+      <element name="removeRolesAidResponse" type="tns:removeRolesAidResponse"/>
+      <complexType name="removeRolesAidResponse">
+        <sequence>
+          <element minOccurs="0" name="result" nillable="true" type="tns:DNStringArray"/>
+        </sequence>
+      </complexType>
+      <element name="getRoleLevelsRequest" type="tns:getRoleLevelsRequest"/>
+      <complexType name="getRoleLevelsRequest">
+        <sequence/>
+      </complexType>
+      <element name="getRoleLevelsResponse" type="tns:getRoleLevelsResponse"/>
+      <complexType name="getRoleLevelsResponse">
+        <sequence>
+          <element minOccurs="0" name="result" nillable="true" type="tns:RoleLevelArray"/>
+        </sequence>
+      </complexType>
+      <element name="getRolesInfoByCategoryRequest" type="tns:getRolesInfoByCategoryRequest"/>
+      <complexType name="getRolesInfoByCategoryRequest">
+        <sequence>
+          <element minOccurs="0" name="roleCategoryKeys" nillable="true" type="tns:CategoryKeyArray"/>
+        </sequence>
+      </complexType>
+      <element name="getRolesInfoByCategoryResponse" type="tns:getRolesInfoByCategoryResponse"/>
+      <complexType name="getRolesInfoByCategoryResponse">
+        <sequence>
+          <element minOccurs="0" name="result" nillable="true" type="tns:RoleInfoArray"/>
+        </sequence>
+      </complexType>
+      <element name="getRoleAssignmentRequestStatusRequest" type="tns:getRoleAssignmentRequestStatusRequest"/>
+      <complexType name="getRoleAssignmentRequestStatusRequest">
+        <sequence>
+          <element minOccurs="0" name="correlationId" nillable="true" type="xsd:string"/>
+        </sequence>
+      </complexType>
+      <element name="getRoleAssignmentRequestStatusResponse" type="tns:getRoleAssignmentRequestStatusResponse"/>
+      <complexType name="getRoleAssignmentRequestStatusResponse">
+        <sequence>
+          <element minOccurs="0" name="result" nillable="true" type="tns:RoleAssignmentRequestStatusArray"/>
+        </sequence>
+      </complexType>
+      <element name="deleteResourceAssociationRequest" type="tns:deleteResourceAssociationRequest"/>
+      <complexType name="deleteResourceAssociationRequest">
+        <sequence>
+          <element minOccurs="0" name="resourceAssociationDn" nillable="true" type="tns:DNString"/>
+        </sequence>
+      </complexType>
+      <element name="deleteResourceAssociationResponse" type="tns:deleteResourceAssociationResponse"/>
+      <complexType name="deleteResourceAssociationResponse">
+        <sequence/>
+      </complexType>
+      <element name="getRoleAssignmentTypeInfoRequest" type="tns:getRoleAssignmentTypeInfoRequest"/>
+      <complexType name="getRoleAssignmentTypeInfoRequest">
+        <sequence>
+          <element minOccurs="0" name="roleAssignmentType" nillable="true" type="tns:RoleAssignmentType"/>
+        </sequence>
+      </complexType>
+      <element name="getRoleAssignmentTypeInfoResponse" type="tns:getRoleAssignmentTypeInfoResponse"/>
+      <complexType name="getRoleAssignmentTypeInfoResponse">
+        <sequence>
+          <element minOccurs="0" name="result" nillable="true" type="tns:RoleAssignmentTypeInfo"/>
+        </sequence>
+      </complexType>
+      <element name="requestRolesAssignmentRequest" type="tns:requestRolesAssignmentRequest"/>
+      <complexType name="requestRolesAssignmentRequest">
+        <sequence>
+          <element minOccurs="0" name="assignRequest" nillable="true" type="tns:RoleAssignmentRequest"/>
+        </sequence>
+      </complexType>
+      <element name="requestRolesAssignmentResponse" type="tns:requestRolesAssignmentResponse"/>
+      <complexType name="requestRolesAssignmentResponse">
+        <sequence>
+          <element minOccurs="0" name="result" nillable="true" type="tns:DNStringArray"/>
+        </sequence>
+      </complexType>
+      <element name="createRoleAidRequest" type="tns:createRoleAidRequest"/>
+      <complexType name="createRoleAidRequest">
+        <sequence>
+          <element minOccurs="0" name="role" nillable="true" type="tns:RoleRequest"/>
+          <element minOccurs="0" name="correlationId" nillable="true" type="xsd:string"/>
+        </sequence>
+      </complexType>
+      <element name="createRoleAidResponse" type="tns:createRoleAidResponse"/>
+      <complexType name="createRoleAidResponse">
+        <sequence>
+          <element minOccurs="0" name="result" nillable="true" type="tns:DNString"/>
+        </sequence>
+      </complexType>
+      <element name="modifyRoleRequest" type="tns:modifyRoleRequest"/>
+      <complexType name="modifyRoleRequest">
+        <sequence>
+          <element minOccurs="0" name="role" nillable="true" type="tns:Role"/>
+        </sequence>
+      </complexType>
+      <element name="modifyRoleResponse" type="tns:modifyRoleResponse"/>
+      <complexType name="modifyRoleResponse">
+        <sequence>
+          <element minOccurs="0" name="result" nillable="true" type="tns:Role"/>
+        </sequence>
+      </complexType>
+      <element name="getExceptionsListRequest" type="tns:getExceptionsListRequest"/>
+      <complexType name="getExceptionsListRequest">
+        <sequence>
+          <element minOccurs="0" name="identityDN" nillable="true" type="xsd:string"/>
+          <element minOccurs="0" name="identityType" nillable="true" type="tns:IdentityType"/>
+        </sequence>
+      </complexType>
+      <element name="getExceptionsListResponse" type="tns:getExceptionsListResponse"/>
+      <complexType name="getExceptionsListResponse">
+        <sequence>
+          <element minOccurs="0" name="result" nillable="true" type="tns:SodArray"/>
+        </sequence>
+      </complexType>
+      <element name="getRoleConflictsRequest" type="tns:getRoleConflictsRequest"/>
+      <complexType name="getRoleConflictsRequest">
+        <sequence>
+          <element minOccurs="0" name="rolesDN" nillable="true" type="tns:DNStringArray"/>
+        </sequence>
+      </complexType>
+      <element name="getRoleConflictsResponse" type="tns:getRoleConflictsResponse"/>
+      <complexType name="getRoleConflictsResponse">
+        <sequence>
+          <element minOccurs="0" name="result" nillable="true" type="tns:SodArray"/>
+        </sequence>
+      </complexType>
+      <element name="getRolesInfoRequest" type="tns:getRolesInfoRequest"/>
+      <complexType name="getRolesInfoRequest">
+        <sequence>
+          <element minOccurs="0" name="roleDns" nillable="true" type="tns:DNStringArray"/>
+        </sequence>
+      </complexType>
+      <element name="getRolesInfoResponse" type="tns:getRolesInfoResponse"/>
+      <complexType name="getRolesInfoResponse">
+        <sequence>
+          <element minOccurs="0" name="result" nillable="true" type="tns:RoleInfoArray"/>
+        </sequence>
+      </complexType>
+      <element name="findSodByExampleRequest" type="tns:findSodByExampleRequest"/>
+      <complexType name="findSodByExampleRequest">
+        <sequence>
+          <element minOccurs="0" name="sod" nillable="true" type="tns:Sod"/>
+        </sequence>
+      </complexType>
+      <element name="findSodByExampleResponse" type="tns:findSodByExampleResponse"/>
+      <complexType name="findSodByExampleResponse">
+        <sequence>
+          <element minOccurs="0" name="result" nillable="true" type="tns:SodArray"/>
+        </sequence>
+      </complexType>
+      <element name="setRoleLocalizedStringsRequest" type="tns:setRoleLocalizedStringsRequest"/>
+      <complexType name="setRoleLocalizedStringsRequest">
+        <sequence>
+          <element minOccurs="0" name="roleDn" nillable="true" type="tns:DNString"/>
+          <element minOccurs="0" name="locStrings" nillable="true" type="tns:LocalizedValueArray"/>
+          <element name="type" type="xsd:int"/>
+        </sequence>
+      </complexType>
+      <element name="setRoleLocalizedStringsResponse" type="tns:setRoleLocalizedStringsResponse"/>
+      <complexType name="setRoleLocalizedStringsResponse">
+        <sequence>
+          <element minOccurs="0" name="result" nillable="true" type="tns:LocalizedValueArray"/>
+        </sequence>
+      </complexType>
+    </xsd:schema>
+  </types>
+  <message name="getConfigPropertyInput">
+    <part element="tns:getConfigPropertyRequest" name="bodyIn"/>
+  </message>
+  <message name="getConfigPropertyOutput">
+    <part element="tns:getConfigPropertyResponse" name="bodyOut"/>
+  </message>
+  <message name="NrfServiceException">
+    <part element="tns:NrfServiceException" name="NrfServiceFault"/>
+  </message>
+  <message name="getUserInput">
+    <part element="tns:getUserRequest" name="bodyIn"/>
+  </message>
+  <message name="getUserOutput">
+    <part element="tns:getUserResponse" name="bodyOut"/>
+  </message>
+  <message name="getTargetSourceConflictsInput">
+    <part element="tns:getTargetSourceConflictsRequest" name="bodyIn"/>
+  </message>
+  <message name="getTargetSourceConflictsOutput">
+    <part element="tns:getTargetSourceConflictsResponse" name="bodyOut"/>
+  </message>
+  <message name="getResourceAssociationInput">
+    <part element="tns:getResourceAssociationRequest" name="bodyIn"/>
+  </message>
+  <message name="getResourceAssociationOutput">
+    <part element="tns:getResourceAssociationResponse" name="bodyOut"/>
+  </message>
+  <message name="getRoleLocalizedStringsInput">
+    <part element="tns:getRoleLocalizedStringsRequest" name="bodyIn"/>
+  </message>
+  <message name="getRoleLocalizedStringsOutput">
+    <part element="tns:getRoleLocalizedStringsResponse" name="bodyOut"/>
+  </message>
+  <message name="getGroupInput">
+    <part element="tns:getGroupRequest" name="bodyIn"/>
+  </message>
+  <message name="getGroupOutput">
+    <part element="tns:getGroupResponse" name="bodyOut"/>
+  </message>
+  <message name="getConfigurationInput">
+    <part element="tns:getConfigurationRequest" name="bodyIn"/>
+  </message>
+  <message name="getConfigurationOutput">
+    <part element="tns:getConfigurationResponse" name="bodyOut"/>
+  </message>
+  <message name="getRoleAssignmentRequestStatusByDNInput">
+    <part element="tns:getRoleAssignmentRequestStatusByDNRequest" name="bodyIn"/>
+  </message>
+  <message name="getRoleAssignmentRequestStatusByDNOutput">
+    <part element="tns:getRoleAssignmentRequestStatusByDNResponse" name="bodyOut"/>
+  </message>
+  <message name="setRoleLocalizedStringsAidInput">
+    <part element="tns:setRoleLocalizedStringsAidRequest" name="bodyIn"/>
+  </message>
+  <message name="setRoleLocalizedStringsAidOutput">
+    <part element="tns:setRoleLocalizedStringsAidResponse" name="bodyOut"/>
+  </message>
+  <message name="getIdentityRoleConflictsInput">
+    <part element="tns:getIdentityRoleConflictsRequest" name="bodyIn"/>
+  </message>
+  <message name="getIdentityRoleConflictsOutput">
+    <part element="tns:getIdentityRoleConflictsResponse" name="bodyOut"/>
+  </message>
+  <message name="modifyRoleAidInput">
+    <part element="tns:modifyRoleAidRequest" name="bodyIn"/>
+  </message>
+  <message name="modifyRoleAidOutput">
+    <part element="tns:modifyRoleAidResponse" name="bodyOut"/>
+  </message>
+  <message name="getRoleCategoriesInput">
+    <part element="tns:getRoleCategoriesRequest" name="bodyIn"/>
+  </message>
+  <message name="getRoleCategoriesOutput">
+    <part element="tns:getRoleCategoriesResponse" name="bodyOut"/>
+  </message>
+  <message name="isUserInRoleInput">
+    <part element="tns:isUserInRoleRequest" name="bodyIn"/>
+  </message>
+  <message name="isUserInRoleOutput">
+    <part element="tns:isUserInRoleResponse" name="bodyOut"/>
+  </message>
+  <message name="findSodByExampleWithOperatorInput">
+    <part element="tns:findSodByExampleWithOperatorRequest" name="bodyIn"/>
+  </message>
+  <message name="findSodByExampleWithOperatorOutput">
+    <part element="tns:findSodByExampleWithOperatorResponse" name="bodyOut"/>
+  </message>
+  <message name="createRoleInput">
+    <part element="tns:createRoleRequest" name="bodyIn"/>
+  </message>
+  <message name="createRoleOutput">
+    <part element="tns:createRoleResponse" name="bodyOut"/>
+  </message>
+  <message name="getRoleAssignmentRequestStatusByIdentityTypeInput">
+    <part element="tns:getRoleAssignmentRequestStatusByIdentityTypeRequest" name="bodyIn"/>
+  </message>
+  <message name="getRoleAssignmentRequestStatusByIdentityTypeOutput">
+    <part element="tns:getRoleAssignmentRequestStatusByIdentityTypeResponse" name="bodyOut"/>
+  </message>
+  <message name="removeRolesInput">
+    <part element="tns:removeRolesRequest" name="bodyIn"/>
+  </message>
+  <message name="removeRolesOutput">
+    <part element="tns:removeRolesResponse" name="bodyOut"/>
+  </message>
+  <message name="createResourceAssociationInput">
+    <part element="tns:createResourceAssociationRequest" name="bodyIn"/>
+  </message>
+  <message name="createResourceAssociationOutput">
+    <part element="tns:createResourceAssociationResponse" name="bodyOut"/>
+  </message>
+  <message name="getRolesInfoByLevelInput">
+    <part element="tns:getRolesInfoByLevelRequest" name="bodyIn"/>
+  </message>
+  <message name="getRolesInfoByLevelOutput">
+    <part element="tns:getRolesInfoByLevelResponse" name="bodyOut"/>
+  </message>
+  <message name="getAssignedIdentitiesInput">
+    <part element="tns:getAssignedIdentitiesRequest" name="bodyIn"/>
+  </message>
+  <message name="getAssignedIdentitiesOutput">
+    <part element="tns:getAssignedIdentitiesResponse" name="bodyOut"/>
+  </message>
+  <message name="getContainerInput">
+    <part element="tns:getContainerRequest" name="bodyIn"/>
+  </message>
+  <message name="getContainerOutput">
+    <part element="tns:getContainerResponse" name="bodyOut"/>
+  </message>
+  <message name="findSodByIdInput">
+    <part element="tns:findSodByIdRequest" name="bodyIn"/>
+  </message>
+  <message name="findSodByIdOutput">
+    <part element="tns:findSodByIdResponse" name="bodyOut"/>
+  </message>
+  <message name="getResourceAssociationsInput">
+    <part element="tns:getResourceAssociationsRequest" name="bodyIn"/>
+  </message>
+  <message name="getResourceAssociationsOutput">
+    <part element="tns:getResourceAssociationsResponse" name="bodyOut"/>
+  </message>
+  <message name="getVersionInput">
+    <part element="tns:getVersionRequest" name="bodyIn"/>
+  </message>
+  <message name="getVersionOutput">
+    <part element="tns:getVersionResponse" name="bodyOut"/>
+  </message>
+  <message name="findRoleByExampleWithOperatorInput">
+    <part element="tns:findRoleByExampleWithOperatorRequest" name="bodyIn"/>
+  </message>
+  <message name="findRoleByExampleWithOperatorOutput">
+    <part element="tns:findRoleByExampleWithOperatorResponse" name="bodyOut"/>
+  </message>
+  <message name="getIdentitiesInViolationInput">
+    <part element="tns:getIdentitiesInViolationRequest" name="bodyIn"/>
+  </message>
+  <message name="getIdentitiesInViolationOutput">
+    <part element="tns:getIdentitiesInViolationResponse" name="bodyOut"/>
+  </message>
+  <message name="getRoleInput">
+    <part element="tns:getRoleRequest" name="bodyIn"/>
+  </message>
+  <message name="getRoleOutput">
+    <part element="tns:getRoleResponse" name="bodyOut"/>
+  </message>
+  <message name="removeRolesAidInput">
+    <part element="tns:removeRolesAidRequest" name="bodyIn"/>
+  </message>
+  <message name="removeRolesAidOutput">
+    <part element="tns:removeRolesAidResponse" name="bodyOut"/>
+  </message>
+  <message name="getRoleLevelsInput">
+    <part element="tns:getRoleLevelsRequest" name="bodyIn"/>
+  </message>
+  <message name="getRoleLevelsOutput">
+    <part element="tns:getRoleLevelsResponse" name="bodyOut"/>
+  </message>
+  <message name="getRolesInfoByCategoryInput">
+    <part element="tns:getRolesInfoByCategoryRequest" name="bodyIn"/>
+  </message>
+  <message name="getRolesInfoByCategoryOutput">
+    <part element="tns:getRolesInfoByCategoryResponse" name="bodyOut"/>
+  </message>
+  <message name="getRoleAssignmentRequestStatusInput">
+    <part element="tns:getRoleAssignmentRequestStatusRequest" name="bodyIn"/>
+  </message>
+  <message name="getRoleAssignmentRequestStatusOutput">
+    <part element="tns:getRoleAssignmentRequestStatusResponse" name="bodyOut"/>
+  </message>
+  <message name="deleteResourceAssociationInput">
+    <part element="tns:deleteResourceAssociationRequest" name="bodyIn"/>
+  </message>
+  <message name="deleteResourceAssociationOutput">
+    <part element="tns:deleteResourceAssociationResponse" name="bodyOut"/>
+  </message>
+  <message name="getRoleAssignmentTypeInfoInput">
+    <part element="tns:getRoleAssignmentTypeInfoRequest" name="bodyIn"/>
+  </message>
+  <message name="getRoleAssignmentTypeInfoOutput">
+    <part element="tns:getRoleAssignmentTypeInfoResponse" name="bodyOut"/>
+  </message>
+  <message name="requestRolesAssignmentInput">
+    <part element="tns:requestRolesAssignmentRequest" name="bodyIn"/>
+  </message>
+  <message name="requestRolesAssignmentOutput">
+    <part element="tns:requestRolesAssignmentResponse" name="bodyOut"/>
+  </message>
+  <message name="createRoleAidInput">
+    <part element="tns:createRoleAidRequest" name="bodyIn"/>
+  </message>
+  <message name="createRoleAidOutput">
+    <part element="tns:createRoleAidResponse" name="bodyOut"/>
+  </message>
+  <message name="modifyRoleInput">
+    <part element="tns:modifyRoleRequest" name="bodyIn"/>
+  </message>
+  <message name="modifyRoleOutput">
+    <part element="tns:modifyRoleResponse" name="bodyOut"/>
+  </message>
+  <message name="getExceptionsListInput">
+    <part element="tns:getExceptionsListRequest" name="bodyIn"/>
+  </message>
+  <message name="getExceptionsListOutput">
+    <part element="tns:getExceptionsListResponse" name="bodyOut"/>
+  </message>
+  <message name="getRoleConflictsInput">
+    <part element="tns:getRoleConflictsRequest" name="bodyIn"/>
+  </message>
+  <message name="getRoleConflictsOutput">
+    <part element="tns:getRoleConflictsResponse" name="bodyOut"/>
+  </message>
+  <message name="getRolesInfoInput">
+    <part element="tns:getRolesInfoRequest" name="bodyIn"/>
+  </message>
+  <message name="getRolesInfoOutput">
+    <part element="tns:getRolesInfoResponse" name="bodyOut"/>
+  </message>
+  <message name="findSodByExampleInput">
+    <part element="tns:findSodByExampleRequest" name="bodyIn"/>
+  </message>
+  <message name="findSodByExampleOutput">
+    <part element="tns:findSodByExampleResponse" name="bodyOut"/>
+  </message>
+  <message name="setRoleLocalizedStringsInput">
+    <part element="tns:setRoleLocalizedStringsRequest" name="bodyIn"/>
+  </message>
+  <message name="setRoleLocalizedStringsOutput">
+    <part element="tns:setRoleLocalizedStringsResponse" name="bodyOut"/>
+  </message>
+  <portType name="IRemoteRole">
+    <operation name="getConfigProperty">
+      <input message="tns:getConfigPropertyInput"/>
+      <output message="tns:getConfigPropertyOutput"/>
+      <fault message="tns:NrfServiceException" name="NrfServiceFault"/>
+    </operation>
+    <operation name="getUser">
+      <input message="tns:getUserInput"/>
+      <output message="tns:getUserOutput"/>
+      <fault message="tns:NrfServiceException" name="NrfServiceFault"/>
+    </operation>
+    <operation name="getTargetSourceConflicts">
+      <input message="tns:getTargetSourceConflictsInput"/>
+      <output message="tns:getTargetSourceConflictsOutput"/>
+      <fault message="tns:NrfServiceException" name="NrfServiceFault"/>
+    </operation>
+    <operation name="getResourceAssociation">
+      <input message="tns:getResourceAssociationInput"/>
+      <output message="tns:getResourceAssociationOutput"/>
+      <fault message="tns:NrfServiceException" name="NrfServiceFault"/>
+    </operation>
+    <operation name="getRoleLocalizedStrings">
+      <input message="tns:getRoleLocalizedStringsInput"/>
+      <output message="tns:getRoleLocalizedStringsOutput"/>
+      <fault message="tns:NrfServiceException" name="NrfServiceFault"/>
+    </operation>
+    <operation name="getGroup">
+      <input message="tns:getGroupInput"/>
+      <output message="tns:getGroupOutput"/>
+      <fault message="tns:NrfServiceException" name="NrfServiceFault"/>
+    </operation>
+    <operation name="getConfiguration">
+      <input message="tns:getConfigurationInput"/>
+      <output message="tns:getConfigurationOutput"/>
+      <fault message="tns:NrfServiceException" name="NrfServiceFault"/>
+    </operation>
+    <operation name="getRoleAssignmentRequestStatusByDN">
+      <input message="tns:getRoleAssignmentRequestStatusByDNInput"/>
+      <output message="tns:getRoleAssignmentRequestStatusByDNOutput"/>
+      <fault message="tns:NrfServiceException" name="NrfServiceFault"/>
+    </operation>
+    <operation name="setRoleLocalizedStringsAid">
+      <input message="tns:setRoleLocalizedStringsAidInput"/>
+      <output message="tns:setRoleLocalizedStringsAidOutput"/>
+      <fault message="tns:NrfServiceException" name="NrfServiceFault"/>
+    </operation>
+    <operation name="getIdentityRoleConflicts">
+      <input message="tns:getIdentityRoleConflictsInput"/>
+      <output message="tns:getIdentityRoleConflictsOutput"/>
+      <fault message="tns:NrfServiceException" name="NrfServiceFault"/>
+    </operation>
+    <operation name="modifyRoleAid">
+      <input message="tns:modifyRoleAidInput"/>
+      <output message="tns:modifyRoleAidOutput"/>
+      <fault message="tns:NrfServiceException" name="NrfServiceFault"/>
+    </operation>
+    <operation name="getRoleCategories">
+      <input message="tns:getRoleCategoriesInput"/>
+      <output message="tns:getRoleCategoriesOutput"/>
+      <fault message="tns:NrfServiceException" name="NrfServiceFault"/>
+    </operation>
+    <operation name="isUserInRole">
+      <input message="tns:isUserInRoleInput"/>
+      <output message="tns:isUserInRoleOutput"/>
+      <fault message="tns:NrfServiceException" name="NrfServiceFault"/>
+    </operation>
+    <operation name="findSodByExampleWithOperator">
+      <input message="tns:findSodByExampleWithOperatorInput"/>
+      <output message="tns:findSodByExampleWithOperatorOutput"/>
+      <fault message="tns:NrfServiceException" name="NrfServiceFault"/>
+    </operation>
+    <operation name="createRole">
+      <input message="tns:createRoleInput"/>
+      <output message="tns:createRoleOutput"/>
+      <fault message="tns:NrfServiceException" name="NrfServiceFault"/>
+    </operation>
+    <operation name="getRoleAssignmentRequestStatusByIdentityType">
+      <input message="tns:getRoleAssignmentRequestStatusByIdentityTypeInput"/>
+      <output message="tns:getRoleAssignmentRequestStatusByIdentityTypeOutput"/>
+      <fault message="tns:NrfServiceException" name="NrfServiceFault"/>
+    </operation>
+    <operation name="removeRoles">
+      <input message="tns:removeRolesInput"/>
+      <output message="tns:removeRolesOutput"/>
+      <fault message="tns:NrfServiceException" name="NrfServiceFault"/>
+    </operation>
+    <operation name="createResourceAssociation">
+      <input message="tns:createResourceAssociationInput"/>
+      <output message="tns:createResourceAssociationOutput"/>
+      <fault message="tns:NrfServiceException" name="NrfServiceFault"/>
+    </operation>
+    <operation name="getRolesInfoByLevel">
+      <input message="tns:getRolesInfoByLevelInput"/>
+      <output message="tns:getRolesInfoByLevelOutput"/>
+      <fault message="tns:NrfServiceException" name="NrfServiceFault"/>
+    </operation>
+    <operation name="getAssignedIdentities">
+      <input message="tns:getAssignedIdentitiesInput"/>
+      <output message="tns:getAssignedIdentitiesOutput"/>
+      <fault message="tns:NrfServiceException" name="NrfServiceFault"/>
+    </operation>
+    <operation name="getContainer">
+      <input message="tns:getContainerInput"/>
+      <output message="tns:getContainerOutput"/>
+      <fault message="tns:NrfServiceException" name="NrfServiceFault"/>
+    </operation>
+    <operation name="findSodById">
+      <input message="tns:findSodByIdInput"/>
+      <output message="tns:findSodByIdOutput"/>
+      <fault message="tns:NrfServiceException" name="NrfServiceFault"/>
+    </operation>
+    <operation name="getResourceAssociations">
+      <input message="tns:getResourceAssociationsInput"/>
+      <output message="tns:getResourceAssociationsOutput"/>
+      <fault message="tns:NrfServiceException" name="NrfServiceFault"/>
+    </operation>
+    <operation name="getVersion">
+      <input message="tns:getVersionInput"/>
+      <output message="tns:getVersionOutput"/>
+    </operation>
+    <operation name="findRoleByExampleWithOperator">
+      <input message="tns:findRoleByExampleWithOperatorInput"/>
+      <output message="tns:findRoleByExampleWithOperatorOutput"/>
+      <fault message="tns:NrfServiceException" name="NrfServiceFault"/>
+    </operation>
+    <operation name="getIdentitiesInViolation">
+      <input message="tns:getIdentitiesInViolationInput"/>
+      <output message="tns:getIdentitiesInViolationOutput"/>
+      <fault message="tns:NrfServiceException" name="NrfServiceFault"/>
+    </operation>
+    <operation name="getRole">
+      <input message="tns:getRoleInput"/>
+      <output message="tns:getRoleOutput"/>
+      <fault message="tns:NrfServiceException" name="NrfServiceFault"/>
+    </operation>
+    <operation name="removeRolesAid">
+      <input message="tns:removeRolesAidInput"/>
+      <output message="tns:removeRolesAidOutput"/>
+      <fault message="tns:NrfServiceException" name="NrfServiceFault"/>
+    </operation>
+    <operation name="getRoleLevels">
+      <input message="tns:getRoleLevelsInput"/>
+      <output message="tns:getRoleLevelsOutput"/>
+      <fault message="tns:NrfServiceException" name="NrfServiceFault"/>
+    </operation>
+    <operation name="getRolesInfoByCategory">
+      <input message="tns:getRolesInfoByCategoryInput"/>
+      <output message="tns:getRolesInfoByCategoryOutput"/>
+      <fault message="tns:NrfServiceException" name="NrfServiceFault"/>
+    </operation>
+    <operation name="getRoleAssignmentRequestStatus">
+      <input message="tns:getRoleAssignmentRequestStatusInput"/>
+      <output message="tns:getRoleAssignmentRequestStatusOutput"/>
+      <fault message="tns:NrfServiceException" name="NrfServiceFault"/>
+    </operation>
+    <operation name="deleteResourceAssociation">
+      <input message="tns:deleteResourceAssociationInput"/>
+      <output message="tns:deleteResourceAssociationOutput"/>
+      <fault message="tns:NrfServiceException" name="NrfServiceFault"/>
+    </operation>
+    <operation name="getRoleAssignmentTypeInfo">
+      <input message="tns:getRoleAssignmentTypeInfoInput"/>
+      <output message="tns:getRoleAssignmentTypeInfoOutput"/>
+      <fault message="tns:NrfServiceException" name="NrfServiceFault"/>
+    </operation>
+    <operation name="requestRolesAssignment">
+      <input message="tns:requestRolesAssignmentInput"/>
+      <output message="tns:requestRolesAssignmentOutput"/>
+      <fault message="tns:NrfServiceException" name="NrfServiceFault"/>
+    </operation>
+    <operation name="createRoleAid">
+      <input message="tns:createRoleAidInput"/>
+      <output message="tns:createRoleAidOutput"/>
+      <fault message="tns:NrfServiceException" name="NrfServiceFault"/>
+    </operation>
+    <operation name="modifyRole">
+      <input message="tns:modifyRoleInput"/>
+      <output message="tns:modifyRoleOutput"/>
+      <fault message="tns:NrfServiceException" name="NrfServiceFault"/>
+    </operation>
+    <operation name="getExceptionsList">
+      <input message="tns:getExceptionsListInput"/>
+      <output message="tns:getExceptionsListOutput"/>
+      <fault message="tns:NrfServiceException" name="NrfServiceFault"/>
+    </operation>
+    <operation name="getRoleConflicts">
+      <input message="tns:getRoleConflictsInput"/>
+      <output message="tns:getRoleConflictsOutput"/>
+      <fault message="tns:NrfServiceException" name="NrfServiceFault"/>
+    </operation>
+    <operation name="getRolesInfo">
+      <input message="tns:getRolesInfoInput"/>
+      <output message="tns:getRolesInfoOutput"/>
+      <fault message="tns:NrfServiceException" name="NrfServiceFault"/>
+    </operation>
+    <operation name="findSodByExample">
+      <input message="tns:findSodByExampleInput"/>
+      <output message="tns:findSodByExampleOutput"/>
+      <fault message="tns:NrfServiceException" name="NrfServiceFault"/>
+    </operation>
+    <operation name="setRoleLocalizedStrings">
+      <input message="tns:setRoleLocalizedStringsInput"/>
+      <output message="tns:setRoleLocalizedStringsOutput"/>
+      <fault message="tns:NrfServiceException" name="NrfServiceFault"/>
+    </operation>
+  </portType>
+  <binding name="IRemoteRoleBinding" type="tns:IRemoteRole">
+    <soap:binding style="document" transport="http://schemas.xmlsoap.org/soap/http"/>
+    <operation name="getConfigProperty">
+      <soap:operation soapAction="http://www.novell.com/role/service/getConfigProperty"/>
+      <input>
+        <soap:body use="literal"/>
+      </input>
+      <output>
+        <soap:body use="literal"/>
+      </output>
+      <fault name="NrfServiceFault">
+        <soap:fault name="NrfServiceFault" use="literal"/>
+      </fault>
+    </operation>
+    <operation name="getUser">
+      <soap:operation soapAction="http://www.novell.com/role/service/getUser"/>
+      <input>
+        <soap:body use="literal"/>
+      </input>
+      <output>
+        <soap:body use="literal"/>
+      </output>
+      <fault name="NrfServiceFault">
+        <soap:fault name="NrfServiceFault" use="literal"/>
+      </fault>
+    </operation>
+    <operation name="getTargetSourceConflicts">
+      <soap:operation soapAction="http://www.novell.com/role/service/getTargetSourceConflicts"/>
+      <input>
+        <soap:body use="literal"/>
+      </input>
+      <output>
+        <soap:body use="literal"/>
+      </output>
+      <fault name="NrfServiceFault">
+        <soap:fault name="NrfServiceFault" use="literal"/>
+      </fault>
+    </operation>
+    <operation name="getResourceAssociation">
+      <soap:operation soapAction="http://www.novell.com/role/service/getResourceAssociation"/>
+      <input>
+        <soap:body use="literal"/>
+      </input>
+      <output>
+        <soap:body use="literal"/>
+      </output>
+      <fault name="NrfServiceFault">
+        <soap:fault name="NrfServiceFault" use="literal"/>
+      </fault>
+    </operation>
+    <operation name="getRoleLocalizedStrings">
+      <soap:operation soapAction="http://www.novell.com/role/service/getRoleLocalizedStrings"/>
+      <input>
+        <soap:body use="literal"/>
+      </input>
+      <output>
+        <soap:body use="literal"/>
+      </output>
+      <fault name="NrfServiceFault">
+        <soap:fault name="NrfServiceFault" use="literal"/>
+      </fault>
+    </operation>
+    <operation name="getGroup">
+      <soap:operation soapAction="http://www.novell.com/role/service/getGroup"/>
+      <input>
+        <soap:body use="literal"/>
+      </input>
+      <output>
+        <soap:body use="literal"/>
+      </output>
+      <fault name="NrfServiceFault">
+        <soap:fault name="NrfServiceFault" use="literal"/>
+      </fault>
+    </operation>
+    <operation name="getConfiguration">
+      <soap:operation soapAction="http://www.novell.com/role/service/getConfiguration"/>
+      <input>
+        <soap:body use="literal"/>
+      </input>
+      <output>
+        <soap:body use="literal"/>
+      </output>
+      <fault name="NrfServiceFault">
+        <soap:fault name="NrfServiceFault" use="literal"/>
+      </fault>
+    </operation>
+    <operation name="getRoleAssignmentRequestStatusByDN">
+      <soap:operation soapAction="http://www.novell.com/role/service/getRoleAssignmentRequestStatusByDN"/>
+      <input>
+        <soap:body use="literal"/>
+      </input>
+      <output>
+        <soap:body use="literal"/>
+      </output>
+      <fault name="NrfServiceFault">
+        <soap:fault name="NrfServiceFault" use="literal"/>
+      </fault>
+    </operation>
+    <operation name="setRoleLocalizedStringsAid">
+      <soap:operation soapAction="http://www.novell.com/role/service/setRoleLocalizedStringsAid"/>
+      <input>
+        <soap:body use="literal"/>
+      </input>
+      <output>
+        <soap:body use="literal"/>
+      </output>
+      <fault name="NrfServiceFault">
+        <soap:fault name="NrfServiceFault" use="literal"/>
+      </fault>
+    </operation>
+    <operation name="getIdentityRoleConflicts">
+      <soap:operation soapAction="http://www.novell.com/role/service/getIdentityRoleConflicts"/>
+      <input>
+        <soap:body use="literal"/>
+      </input>
+      <output>
+        <soap:body use="literal"/>
+      </output>
+      <fault name="NrfServiceFault">
+        <soap:fault name="NrfServiceFault" use="literal"/>
+      </fault>
+    </operation>
+    <operation name="modifyRoleAid">
+      <soap:operation soapAction="http://www.novell.com/role/service/modifyRoleAid"/>
+      <input>
+        <soap:body use="literal"/>
+      </input>
+      <output>
+        <soap:body use="literal"/>
+      </output>
+      <fault name="NrfServiceFault">
+        <soap:fault name="NrfServiceFault" use="literal"/>
+      </fault>
+    </operation>
+    <operation name="getRoleCategories">
+      <soap:operation soapAction="http://www.novell.com/role/service/getRoleCategories"/>
+      <input>
+        <soap:body use="literal"/>
+      </input>
+      <output>
+        <soap:body use="literal"/>
+      </output>
+      <fault name="NrfServiceFault">
+        <soap:fault name="NrfServiceFault" use="literal"/>
+      </fault>
+    </operation>
+    <operation name="isUserInRole">
+      <soap:operation soapAction="http://www.novell.com/role/service/isUserInRole"/>
+      <input>
+        <soap:body use="literal"/>
+      </input>
+      <output>
+        <soap:body use="literal"/>
+      </output>
+      <fault name="NrfServiceFault">
+        <soap:fault name="NrfServiceFault" use="literal"/>
+      </fault>
+    </operation>
+    <operation name="findSodByExampleWithOperator">
+      <soap:operation soapAction="http://www.novell.com/role/service/findSodByExampleWithOperator"/>
+      <input>
+        <soap:body use="literal"/>
+      </input>
+      <output>
+        <soap:body use="literal"/>
+      </output>
+      <fault name="NrfServiceFault">
+        <soap:fault name="NrfServiceFault" use="literal"/>
+      </fault>
+    </operation>
+    <operation name="createRole">
+      <soap:operation soapAction="http://www.novell.com/role/service/createRole"/>
+      <input>
+        <soap:body use="literal"/>
+      </input>
+      <output>
+        <soap:body use="literal"/>
+      </output>
+      <fault name="NrfServiceFault">
+        <soap:fault name="NrfServiceFault" use="literal"/>
+      </fault>
+    </operation>
+    <operation name="getRoleAssignmentRequestStatusByIdentityType">
+      <soap:operation soapAction="http://www.novell.com/role/service/getRoleAssignmentRequestStatusByIdentityType"/>
+      <input>
+        <soap:body use="literal"/>
+      </input>
+      <output>
+        <soap:body use="literal"/>
+      </output>
+      <fault name="NrfServiceFault">
+        <soap:fault name="NrfServiceFault" use="literal"/>
+      </fault>
+    </operation>
+    <operation name="removeRoles">
+      <soap:operation soapAction="http://www.novell.com/role/service/removeRoles"/>
+      <input>
+        <soap:body use="literal"/>
+      </input>
+      <output>
+        <soap:body use="literal"/>
+      </output>
+      <fault name="NrfServiceFault">
+        <soap:fault name="NrfServiceFault" use="literal"/>
+      </fault>
+    </operation>
+    <operation name="createResourceAssociation">
+      <soap:operation soapAction="http://www.novell.com/role/service/createResourceAssociation"/>
+      <input>
+        <soap:body use="literal"/>
+      </input>
+      <output>
+        <soap:body use="literal"/>
+      </output>
+      <fault name="NrfServiceFault">
+        <soap:fault name="NrfServiceFault" use="literal"/>
+      </fault>
+    </operation>
+    <operation name="getRolesInfoByLevel">
+      <soap:operation soapAction="http://www.novell.com/role/service/getRolesInfoByLevel"/>
+      <input>
+        <soap:body use="literal"/>
+      </input>
+      <output>
+        <soap:body use="literal"/>
+      </output>
+      <fault name="NrfServiceFault">
+        <soap:fault name="NrfServiceFault" use="literal"/>
+      </fault>
+    </operation>
+    <operation name="getAssignedIdentities">
+      <soap:operation soapAction="http://www.novell.com/role/service/getAssignedIdentities"/>
+      <input>
+        <soap:body use="literal"/>
+      </input>
+      <output>
+        <soap:body use="literal"/>
+      </output>
+      <fault name="NrfServiceFault">
+        <soap:fault name="NrfServiceFault" use="literal"/>
+      </fault>
+    </operation>
+    <operation name="getContainer">
+      <soap:operation soapAction="http://www.novell.com/role/service/getContainer"/>
+      <input>
+        <soap:body use="literal"/>
+      </input>
+      <output>
+        <soap:body use="literal"/>
+      </output>
+      <fault name="NrfServiceFault">
+        <soap:fault name="NrfServiceFault" use="literal"/>
+      </fault>
+    </operation>
+    <operation name="findSodById">
+      <soap:operation soapAction="http://www.novell.com/role/service/findSodById"/>
+      <input>
+        <soap:body use="literal"/>
+      </input>
+      <output>
+        <soap:body use="literal"/>
+      </output>
+      <fault name="NrfServiceFault">
+        <soap:fault name="NrfServiceFault" use="literal"/>
+      </fault>
+    </operation>
+    <operation name="getResourceAssociations">
+      <soap:operation soapAction="http://www.novell.com/role/service/getResourceAssociations"/>
+      <input>
+        <soap:body use="literal"/>
+      </input>
+      <output>
+        <soap:body use="literal"/>
+      </output>
+      <fault name="NrfServiceFault">
+        <soap:fault name="NrfServiceFault" use="literal"/>
+      </fault>
+    </operation>
+    <operation name="getVersion">
+      <soap:operation soapAction="http://www.novell.com/role/service/getVersion"/>
+      <input>
+        <soap:body use="literal"/>
+      </input>
+      <output>
+        <soap:body use="literal"/>
+      </output>
+    </operation>
+    <operation name="findRoleByExampleWithOperator">
+      <soap:operation soapAction="http://www.novell.com/role/service/findRoleByExampleWithOperator"/>
+      <input>
+        <soap:body use="literal"/>
+      </input>
+      <output>
+        <soap:body use="literal"/>
+      </output>
+      <fault name="NrfServiceFault">
+        <soap:fault name="NrfServiceFault" use="literal"/>
+      </fault>
+    </operation>
+    <operation name="getIdentitiesInViolation">
+      <soap:operation soapAction="http://www.novell.com/role/service/getIdentitiesInViolation"/>
+      <input>
+        <soap:body use="literal"/>
+      </input>
+      <output>
+        <soap:body use="literal"/>
+      </output>
+      <fault name="NrfServiceFault">
+        <soap:fault name="NrfServiceFault" use="literal"/>
+      </fault>
+    </operation>
+    <operation name="getRole">
+      <soap:operation soapAction="http://www.novell.com/role/service/getRole"/>
+      <input>
+        <soap:body use="literal"/>
+      </input>
+      <output>
+        <soap:body use="literal"/>
+      </output>
+      <fault name="NrfServiceFault">
+        <soap:fault name="NrfServiceFault" use="literal"/>
+      </fault>
+    </operation>
+    <operation name="removeRolesAid">
+      <soap:operation soapAction="http://www.novell.com/role/service/removeRolesAid"/>
+      <input>
+        <soap:body use="literal"/>
+      </input>
+      <output>
+        <soap:body use="literal"/>
+      </output>
+      <fault name="NrfServiceFault">
+        <soap:fault name="NrfServiceFault" use="literal"/>
+      </fault>
+    </operation>
+    <operation name="getRoleLevels">
+      <soap:operation soapAction="http://www.novell.com/role/service/getRoleLevels"/>
+      <input>
+        <soap:body use="literal"/>
+      </input>
+      <output>
+        <soap:body use="literal"/>
+      </output>
+      <fault name="NrfServiceFault">
+        <soap:fault name="NrfServiceFault" use="literal"/>
+      </fault>
+    </operation>
+    <operation name="getRolesInfoByCategory">
+      <soap:operation soapAction="http://www.novell.com/role/service/getRolesInfoByCategory"/>
+      <input>
+        <soap:body use="literal"/>
+      </input>
+      <output>
+        <soap:body use="literal"/>
+      </output>
+      <fault name="NrfServiceFault">
+        <soap:fault name="NrfServiceFault" use="literal"/>
+      </fault>
+    </operation>
+    <operation name="getRoleAssignmentRequestStatus">
+      <soap:operation soapAction="http://www.novell.com/role/service/getRoleAssignmentRequestStatus"/>
+      <input>
+        <soap:body use="literal"/>
+      </input>
+      <output>
+        <soap:body use="literal"/>
+      </output>
+      <fault name="NrfServiceFault">
+        <soap:fault name="NrfServiceFault" use="literal"/>
+      </fault>
+    </operation>
+    <operation name="deleteResourceAssociation">
+      <soap:operation soapAction="http://www.novell.com/role/service/deleteResourceAssociation"/>
+      <input>
+        <soap:body use="literal"/>
+      </input>
+      <output>
+        <soap:body use="literal"/>
+      </output>
+      <fault name="NrfServiceFault">
+        <soap:fault name="NrfServiceFault" use="literal"/>
+      </fault>
+    </operation>
+    <operation name="getRoleAssignmentTypeInfo">
+      <soap:operation soapAction="http://www.novell.com/role/service/getRoleAssignmentTypeInfo"/>
+      <input>
+        <soap:body use="literal"/>
+      </input>
+      <output>
+        <soap:body use="literal"/>
+      </output>
+      <fault name="NrfServiceFault">
+        <soap:fault name="NrfServiceFault" use="literal"/>
+      </fault>
+    </operation>
+    <operation name="requestRolesAssignment">
+      <soap:operation soapAction="http://www.novell.com/role/service/requestRolesAssignment"/>
+      <input>
+        <soap:body use="literal"/>
+      </input>
+      <output>
+        <soap:body use="literal"/>
+      </output>
+      <fault name="NrfServiceFault">
+        <soap:fault name="NrfServiceFault" use="literal"/>
+      </fault>
+    </operation>
+    <operation name="createRoleAid">
+      <soap:operation soapAction="http://www.novell.com/role/service/createRoleAid"/>
+      <input>
+        <soap:body use="literal"/>
+      </input>
+      <output>
+        <soap:body use="literal"/>
+      </output>
+      <fault name="NrfServiceFault">
+        <soap:fault name="NrfServiceFault" use="literal"/>
+      </fault>
+    </operation>
+    <operation name="modifyRole">
+      <soap:operation soapAction="http://www.novell.com/role/service/modifyRole"/>
+      <input>
+        <soap:body use="literal"/>
+      </input>
+      <output>
+        <soap:body use="literal"/>
+      </output>
+      <fault name="NrfServiceFault">
+        <soap:fault name="NrfServiceFault" use="literal"/>
+      </fault>
+    </operation>
+    <operation name="getExceptionsList">
+      <soap:operation soapAction="http://www.novell.com/role/service/getExceptionsList"/>
+      <input>
+        <soap:body use="literal"/>
+      </input>
+      <output>
+        <soap:body use="literal"/>
+      </output>
+      <fault name="NrfServiceFault">
+        <soap:fault name="NrfServiceFault" use="literal"/>
+      </fault>
+    </operation>
+    <operation name="getRoleConflicts">
+      <soap:operation soapAction="http://www.novell.com/role/service/getRoleConflicts"/>
+      <input>
+        <soap:body use="literal"/>
+      </input>
+      <output>
+        <soap:body use="literal"/>
+      </output>
+      <fault name="NrfServiceFault">
+        <soap:fault name="NrfServiceFault" use="literal"/>
+      </fault>
+    </operation>
+    <operation name="getRolesInfo">
+      <soap:operation soapAction="http://www.novell.com/role/service/getRolesInfo"/>
+      <input>
+        <soap:body use="literal"/>
+      </input>
+      <output>
+        <soap:body use="literal"/>
+      </output>
+      <fault name="NrfServiceFault">
+        <soap:fault name="NrfServiceFault" use="literal"/>
+      </fault>
+    </operation>
+    <operation name="findSodByExample">
+      <soap:operation soapAction="http://www.novell.com/role/service/findSodByExample"/>
+      <input>
+        <soap:body use="literal"/>
+      </input>
+      <output>
+        <soap:body use="literal"/>
+      </output>
+      <fault name="NrfServiceFault">
+        <soap:fault name="NrfServiceFault" use="literal"/>
+      </fault>
+    </operation>
+    <operation name="setRoleLocalizedStrings">
+      <soap:operation soapAction="http://www.novell.com/role/service/setRoleLocalizedStrings"/>
+      <input>
+        <soap:body use="literal"/>
+      </input>
+      <output>
+        <soap:body use="literal"/>
+      </output>
+      <fault name="NrfServiceFault">
+        <soap:fault name="NrfServiceFault" use="literal"/>
+      </fault>
+    </operation>
+  </binding>
+  <service name="RoleService">
+    <port binding="tns:IRemoteRoleBinding" name="IRemoteRolePort">
+      <soap:address location="https://mxmcdidm02.mx.att.com:8543/IDMProv/role/service"/>
+    </port>
+  </service>
+</definitions>

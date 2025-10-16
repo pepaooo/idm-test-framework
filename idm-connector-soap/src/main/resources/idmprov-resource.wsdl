@@ -1,0 +1,1406 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://schemas.xmlsoap.org/wsdl/" xmlns:soap="http://schemas.xmlsoap.org/wsdl/soap/" xmlns:tns="http://www.novell.com/resource/service" xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/" xmlns:xsd="http://www.w3.org/2001/XMLSchema" name="IRemoteResourceService" targetNamespace="http://www.novell.com/resource/service">
+  <types>
+    <schema xmlns="http://www.w3.org/2001/XMLSchema" elementFormDefault="qualified" targetNamespace="http://www.novell.com/resource/service" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+      <element name="CategoryKey" type="tns:CategoryKey"/>
+      <complexType name="CategoryKey">
+        <sequence>
+          <element name="categoryKey" nillable="true" type="xsd:string"/>
+        </sequence>
+      </complexType>
+      <element name="string" type="xsd:string"/>
+      <element name="CategoryKeyArray" type="tns:CategoryKeyArray"/>
+      <complexType name="CategoryKeyArray">
+        <sequence>
+          <element maxOccurs="unbounded" minOccurs="0" name="categorykey" nillable="true" type="tns:CategoryKey"/>
+        </sequence>
+      </complexType>
+      <element name="ResourceInfo" type="tns:ResourceInfo"/>
+      <complexType name="ResourceInfo">
+        <sequence>
+          <element name="description" nillable="true" type="xsd:string"/>
+          <element name="entityKey" nillable="true" type="xsd:string"/>
+          <element name="name" nillable="true" type="xsd:string"/>
+          <element name="resourceCategoryKeys" nillable="true" type="tns:CategoryKeyArray"/>
+        </sequence>
+      </complexType>
+      <element name="ResourceInfoArray" type="tns:ResourceInfoArray"/>
+      <complexType name="ResourceInfoArray">
+        <sequence>
+          <element maxOccurs="unbounded" minOccurs="0" name="resourceinfo" nillable="true" type="tns:ResourceInfo"/>
+        </sequence>
+      </complexType>
+      <element name="int" type="xsd:int"/>
+      <element name="PagedCodeMapValues" type="tns:PagedCodeMapValues"/>
+      <complexType name="PagedCodeMapValues">
+        <sequence>
+          <element name="codeMapValues" nillable="true" type="tns:CodeMapValueArray"/>
+          <element name="nextIndex" type="xsd:int"/>
+          <element name="pageSize" type="xsd:int"/>
+        </sequence>
+      </complexType>
+      <element name="CodeMapValue" type="tns:CodeMapValue"/>
+      <complexType name="CodeMapValue">
+        <sequence>
+          <element name="codeMap" nillable="true" type="xsd:string"/>
+          <element name="codeValue" nillable="true" type="xsd:string"/>
+          <element name="description" nillable="true" type="xsd:string"/>
+          <element name="displayName" nillable="true" type="xsd:string"/>
+          <element name="nativeValue" nillable="true" type="xsd:string"/>
+          <element name="paramValue" nillable="true" type="xsd:string"/>
+          <element name="subType" nillable="true" type="xsd:string"/>
+          <element name="valueId" nillable="true" type="xsd:string"/>
+        </sequence>
+      </complexType>
+      <element name="CodeMapValueArray" type="tns:CodeMapValueArray"/>
+      <complexType name="CodeMapValueArray">
+        <sequence>
+          <element maxOccurs="unbounded" minOccurs="0" name="codemapvalue" nillable="true" type="tns:CodeMapValue"/>
+        </sequence>
+      </complexType>
+      <element name="ResourceAssignmentRequestStatus" type="tns:ResourceAssignmentRequestStatus"/>
+      <complexType name="ResourceAssignmentRequestStatus">
+        <sequence>
+          <element name="correlationId" nillable="true" type="xsd:string"/>
+          <element name="entityKey" nillable="true" type="xsd:string"/>
+          <element name="reason" nillable="true" type="xsd:string"/>
+          <element name="requestDate" nillable="true" type="xsd:dateTime"/>
+          <element name="requestParams" nillable="true" type="tns:ResourceRequestParamArray"/>
+          <element name="requester" nillable="true" type="xsd:string"/>
+          <element name="source" nillable="true" type="xsd:string"/>
+          <element name="statusDescription" nillable="true" type="xsd:string"/>
+          <element name="statusValue" type="xsd:int"/>
+          <element name="target" nillable="true" type="xsd:string"/>
+        </sequence>
+      </complexType>
+      <element name="dateTime" type="xsd:dateTime"/>
+      <element name="ResourceRequestParam" type="tns:ResourceRequestParam"/>
+      <complexType name="ResourceRequestParam">
+        <sequence>
+          <element name="name" nillable="true" type="xsd:string"/>
+          <element name="value" nillable="true" type="xsd:string"/>
+        </sequence>
+      </complexType>
+      <element name="ResourceRequestParamArray" type="tns:ResourceRequestParamArray"/>
+      <complexType name="ResourceRequestParamArray">
+        <sequence>
+          <element maxOccurs="unbounded" minOccurs="0" name="resourcerequestparam" nillable="true" type="tns:ResourceRequestParam"/>
+        </sequence>
+      </complexType>
+      <element name="ResourceAssignmentRequestStatusArray" type="tns:ResourceAssignmentRequestStatusArray"/>
+      <complexType name="ResourceAssignmentRequestStatusArray">
+        <sequence>
+          <element maxOccurs="unbounded" minOccurs="0" name="resourceassignmentrequeststatus" nillable="true" type="tns:ResourceAssignmentRequestStatus"/>
+        </sequence>
+      </complexType>
+      <element name="Resource" type="tns:Resource"/>
+      <complexType name="Resource">
+        <sequence>
+          <element name="active" type="xsd:boolean"/>
+          <element name="allowOverride" type="xsd:boolean"/>
+          <element name="allowedMulty" type="xsd:boolean"/>
+          <element name="description" nillable="true" type="xsd:string"/>
+          <element name="entitlementRef" nillable="true" type="tns:NrfEntitlementRefArray"/>
+          <element name="entityKey" nillable="true" type="xsd:string"/>
+          <element name="grantApprovers" nillable="true" type="tns:ApproverArray"/>
+          <element name="grantQuorum" nillable="true" type="xsd:string"/>
+          <element name="grantRequestDef" nillable="true" type="xsd:string"/>
+          <element name="name" nillable="true" type="xsd:string"/>
+          <element name="owners" nillable="true" type="tns:DNStringArray"/>
+          <element name="parameters" nillable="true" type="tns:ResourceParameterArray"/>
+          <element name="provisioningRequestDef" nillable="true" type="xsd:string"/>
+          <element name="resourceCategoryKeys" nillable="true" type="tns:CategoryKeyArray"/>
+          <element name="revokeApprovers" nillable="true" type="tns:ApproverArray"/>
+          <element name="revokeQuorum" nillable="true" type="xsd:string"/>
+          <element name="revokeRequestDef" nillable="true" type="xsd:string"/>
+        </sequence>
+      </complexType>
+      <element name="boolean" type="xsd:boolean"/>
+      <element name="NrfEntitlementRef" type="tns:NrfEntitlementRef"/>
+      <complexType name="NrfEntitlementRef">
+        <sequence>
+          <element name="entitlementCorrelationId" nillable="true" type="xsd:string"/>
+          <element name="entitlementDn" nillable="true" type="xsd:string"/>
+          <element name="entitlementParameters" nillable="true" type="xsd:string"/>
+          <element name="src" nillable="true" type="xsd:string"/>
+        </sequence>
+      </complexType>
+      <element name="NrfEntitlementRefArray" type="tns:NrfEntitlementRefArray"/>
+      <complexType name="NrfEntitlementRefArray">
+        <sequence>
+          <element maxOccurs="unbounded" minOccurs="0" name="nrfentitlementref" nillable="true" type="tns:NrfEntitlementRef"/>
+        </sequence>
+      </complexType>
+      <element name="Approver" type="tns:Approver"/>
+      <complexType name="Approver">
+        <sequence>
+          <element name="approverDN" nillable="true" type="xsd:string"/>
+          <element name="sequence" type="xsd:long"/>
+        </sequence>
+      </complexType>
+      <element name="long" type="xsd:long"/>
+      <element name="ApproverArray" type="tns:ApproverArray"/>
+      <complexType name="ApproverArray">
+        <sequence>
+          <element maxOccurs="unbounded" minOccurs="0" name="approver" nillable="true" type="tns:Approver"/>
+        </sequence>
+      </complexType>
+      <element name="DNString" type="tns:DNString"/>
+      <complexType name="DNString">
+        <sequence>
+          <element name="dn" nillable="true" type="xsd:string"/>
+        </sequence>
+      </complexType>
+      <element name="DNStringArray" type="tns:DNStringArray"/>
+      <complexType name="DNStringArray">
+        <sequence>
+          <element maxOccurs="unbounded" minOccurs="0" name="dnstring" nillable="true" type="tns:DNString"/>
+        </sequence>
+      </complexType>
+      <element name="ResourceParameter" type="tns:ResourceParameter"/>
+      <complexType name="ResourceParameter">
+        <sequence>
+          <element name="codemapKey" nillable="true" type="xsd:string"/>
+          <element name="entitlementDn" nillable="true" type="xsd:string"/>
+          <element name="hiddenFlag" type="xsd:boolean"/>
+          <element name="key" nillable="true" type="xsd:string"/>
+          <element name="paramLabel" nillable="true" type="xsd:string"/>
+          <element name="staticFlag" type="xsd:boolean"/>
+          <element name="type" nillable="true" type="xsd:string"/>
+          <element name="value" nillable="true" type="xsd:string"/>
+          <element name="valueLabel" nillable="true" type="xsd:string"/>
+        </sequence>
+      </complexType>
+      <element name="ResourceParameterArray" type="tns:ResourceParameterArray"/>
+      <complexType name="ResourceParameterArray">
+        <sequence>
+          <element maxOccurs="unbounded" minOccurs="0" name="resourceparameter" nillable="true" type="tns:ResourceParameter"/>
+        </sequence>
+      </complexType>
+      <element name="LocalizedValue" type="tns:LocalizedValue"/>
+      <complexType name="LocalizedValue">
+        <sequence>
+          <element name="locale" nillable="true" type="xsd:string"/>
+          <element name="value" nillable="true" type="xsd:string"/>
+        </sequence>
+      </complexType>
+      <element name="LocalizedValueArray" type="tns:LocalizedValueArray"/>
+      <complexType name="LocalizedValueArray">
+        <sequence>
+          <element maxOccurs="unbounded" minOccurs="0" name="localizedvalue" nillable="true" type="tns:LocalizedValue"/>
+        </sequence>
+      </complexType>
+      <element name="CrudResourceRequestStatus" type="tns:CrudResourceRequestStatus"/>
+      <complexType name="CrudResourceRequestStatus">
+        <sequence>
+          <element name="dn" nillable="true" type="tns:DNString"/>
+          <element name="error" nillable="true" type="xsd:string"/>
+          <element name="errorCode" nillable="true" type="xsd:string"/>
+          <element name="guid" nillable="true" type="xsd:string"/>
+          <element name="status" type="xsd:boolean"/>
+        </sequence>
+      </complexType>
+      <element name="ResourceAssignment" type="tns:ResourceAssignment"/>
+      <complexType name="ResourceAssignment">
+        <sequence>
+          <element name="instanceGuid" nillable="true" type="xsd:string"/>
+          <element name="reason" nillable="true" type="xsd:string"/>
+          <element name="recipientDn" nillable="true" type="xsd:string"/>
+          <element name="requestDate" nillable="true" type="xsd:dateTime"/>
+          <element name="requestParams" nillable="true" type="tns:ResourceRequestParamArray"/>
+          <element name="requesterDn" nillable="true" type="xsd:string"/>
+          <element name="resourceDn" nillable="true" type="xsd:string"/>
+        </sequence>
+      </complexType>
+      <element name="ResourceAssignmentArray" type="tns:ResourceAssignmentArray"/>
+      <complexType name="ResourceAssignmentArray">
+        <sequence>
+          <element maxOccurs="unbounded" minOccurs="0" name="resourceassignment" nillable="true" type="tns:ResourceAssignment"/>
+        </sequence>
+      </complexType>
+      <element name="EntitlementRefreshInfo" type="tns:EntitlementRefreshInfo"/>
+      <complexType name="EntitlementRefreshInfo">
+        <sequence>
+          <element name="detailedStatus" nillable="true" type="tns:CodeMapRefreshStatusArray"/>
+          <element name="entitlementDN" nillable="true" type="xsd:string"/>
+          <element name="guid" nillable="true" type="xsd:string"/>
+          <element name="status" type="xsd:boolean"/>
+        </sequence>
+      </complexType>
+      <element name="CodeMapRefreshStatus" type="tns:CodeMapRefreshStatus"/>
+      <complexType name="CodeMapRefreshStatus">
+        <sequence>
+          <element name="connectionName" nillable="true" type="xsd:string"/>
+          <element name="entitlementDN" nillable="true" type="xsd:string"/>
+          <element name="guid" nillable="true" type="xsd:string"/>
+          <element name="lastRefresh" type="xsd:long"/>
+          <element name="status" nillable="true" type="xsd:string"/>
+        </sequence>
+      </complexType>
+      <element name="CodeMapRefreshStatusArray" type="tns:CodeMapRefreshStatusArray"/>
+      <complexType name="CodeMapRefreshStatusArray">
+        <sequence>
+          <element maxOccurs="unbounded" minOccurs="0" name="codemaprefreshstatus" nillable="true" type="tns:CodeMapRefreshStatus"/>
+        </sequence>
+      </complexType>
+      <element name="ResourceArray" type="tns:ResourceArray"/>
+      <complexType name="ResourceArray">
+        <sequence>
+          <element maxOccurs="unbounded" minOccurs="0" name="resource" nillable="true" type="tns:Resource"/>
+        </sequence>
+      </complexType>
+      <element name="ProvisioningCodeMap" type="tns:ProvisioningCodeMap"/>
+      <complexType name="ProvisioningCodeMap">
+        <sequence>
+          <element name="description" nillable="true" type="xsd:string"/>
+          <element name="driverDisplayName" nillable="true" type="xsd:string"/>
+          <element name="driverDn" nillable="true" type="xsd:string"/>
+          <element name="entitlementDn" nillable="true" type="xsd:string"/>
+          <element name="entityKey" nillable="true" type="xsd:string"/>
+          <element name="entityType" type="xsd:int"/>
+          <element name="labels" nillable="true" type="tns:ProvisioningCodeMapLabelArray"/>
+          <element name="lastRefreshed" type="xsd:long"/>
+          <element name="name" nillable="true" type="xsd:string"/>
+          <element name="queryKey" nillable="true" type="xsd:string"/>
+          <element name="viewId" nillable="true" type="xsd:string"/>
+        </sequence>
+      </complexType>
+      <element name="ProvisioningCodeMapLabel" type="tns:ProvisioningCodeMapLabel"/>
+      <complexType name="ProvisioningCodeMapLabel">
+        <sequence>
+          <element name="description" nillable="true" type="xsd:string"/>
+          <element name="locale" nillable="true" type="xsd:string"/>
+          <element name="name" nillable="true" type="xsd:string"/>
+          <element name="viewId" nillable="true" type="xsd:string"/>
+        </sequence>
+      </complexType>
+      <element name="ProvisioningCodeMapLabelArray" type="tns:ProvisioningCodeMapLabelArray"/>
+      <complexType name="ProvisioningCodeMapLabelArray">
+        <sequence>
+          <element maxOccurs="unbounded" minOccurs="0" name="provisioningcodemaplabel" nillable="true" type="tns:ProvisioningCodeMapLabel"/>
+        </sequence>
+      </complexType>
+      <element name="ProvisioningCodeMapArray" type="tns:ProvisioningCodeMapArray"/>
+      <complexType name="ProvisioningCodeMapArray">
+        <sequence>
+          <element maxOccurs="unbounded" minOccurs="0" name="provisioningcodemap" nillable="true" type="tns:ProvisioningCodeMap"/>
+        </sequence>
+      </complexType>
+      <element name="CodeMapValueStatus" type="tns:CodeMapValueStatus"/>
+      <complexType name="CodeMapValueStatus">
+        <sequence>
+          <element name="refreshStatus" nillable="true" type="tns:CodeMapRefreshStatus"/>
+          <element name="upToDate" type="xsd:boolean"/>
+          <element name="value" nillable="true" type="xsd:string"/>
+        </sequence>
+      </complexType>
+      <element name="getResourcessInfoByCategoryRequest" type="tns:getResourcessInfoByCategoryRequest"/>
+      <complexType name="getResourcessInfoByCategoryRequest">
+        <sequence>
+          <element minOccurs="0" name="resourceCategoryKeys" nillable="true" type="tns:CategoryKeyArray"/>
+        </sequence>
+      </complexType>
+      <element name="getResourcessInfoByCategoryResponse" type="tns:getResourcessInfoByCategoryResponse"/>
+      <complexType name="getResourcessInfoByCategoryResponse">
+        <sequence>
+          <element minOccurs="0" name="result" nillable="true" type="tns:ResourceInfoArray"/>
+        </sequence>
+      </complexType>
+      <element name="NrfServiceException" type="tns:NrfServiceException"/>
+      <complexType name="NrfServiceException">
+        <sequence>
+          <element name="reason" nillable="true" type="xsd:string"/>
+        </sequence>
+      </complexType>
+      <element name="getPagedCodeMapValuesRequest" type="tns:getPagedCodeMapValuesRequest"/>
+      <complexType name="getPagedCodeMapValuesRequest">
+        <sequence>
+          <element minOccurs="0" name="codeMapKey" nillable="true" type="xsd:string"/>
+          <element minOccurs="0" name="locale" nillable="true" type="xsd:string"/>
+          <element minOccurs="0" name="dn" nillable="true" type="xsd:string"/>
+          <element minOccurs="0" name="nativeValue" nillable="true" type="xsd:string"/>
+          <element minOccurs="0" name="logicalSystemId" nillable="true" type="xsd:string"/>
+          <element name="nextIndex" type="xsd:int"/>
+          <element name="pageSize" type="xsd:int"/>
+        </sequence>
+      </complexType>
+      <element name="getPagedCodeMapValuesResponse" type="tns:getPagedCodeMapValuesResponse"/>
+      <complexType name="getPagedCodeMapValuesResponse">
+        <sequence>
+          <element minOccurs="0" name="result" nillable="true" type="tns:PagedCodeMapValues"/>
+        </sequence>
+      </complexType>
+      <element name="getResourceRequestStatusForCurrentUserRequest" type="tns:getResourceRequestStatusForCurrentUserRequest"/>
+      <complexType name="getResourceRequestStatusForCurrentUserRequest">
+        <sequence>
+          <element minOccurs="0" name="locale" nillable="true" type="xsd:string"/>
+        </sequence>
+      </complexType>
+      <element name="getResourceRequestStatusForCurrentUserResponse" type="tns:getResourceRequestStatusForCurrentUserResponse"/>
+      <complexType name="getResourceRequestStatusForCurrentUserResponse">
+        <sequence>
+          <element minOccurs="0" name="result" nillable="true" type="tns:ResourceAssignmentRequestStatusArray"/>
+        </sequence>
+      </complexType>
+      <element name="getResourceRequest" type="tns:getResourceRequest"/>
+      <complexType name="getResourceRequest">
+        <sequence>
+          <element minOccurs="0" name="resourceDn" nillable="true" type="xsd:string"/>
+          <element minOccurs="0" name="locale" nillable="true" type="xsd:string"/>
+        </sequence>
+      </complexType>
+      <element name="getResourceResponse" type="tns:getResourceResponse"/>
+      <complexType name="getResourceResponse">
+        <sequence>
+          <element minOccurs="0" name="result" nillable="true" type="tns:Resource"/>
+        </sequence>
+      </complexType>
+      <element name="setResourceLocalizedStringsRequest" type="tns:setResourceLocalizedStringsRequest"/>
+      <complexType name="setResourceLocalizedStringsRequest">
+        <sequence>
+          <element minOccurs="0" name="resourceDn" nillable="true" type="xsd:string"/>
+          <element minOccurs="0" name="locale" nillable="true" type="tns:LocalizedValueArray"/>
+          <element name="type" type="xsd:int"/>
+        </sequence>
+      </complexType>
+      <element name="setResourceLocalizedStringsResponse" type="tns:setResourceLocalizedStringsResponse"/>
+      <complexType name="setResourceLocalizedStringsResponse">
+        <sequence>
+          <element minOccurs="0" name="result" nillable="true" type="tns:LocalizedValueArray"/>
+        </sequence>
+      </complexType>
+      <element name="setResourceLocalizedStringsAidRequest" type="tns:setResourceLocalizedStringsAidRequest"/>
+      <complexType name="setResourceLocalizedStringsAidRequest">
+        <sequence>
+          <element minOccurs="0" name="arg0" nillable="true" type="xsd:string"/>
+          <element minOccurs="0" name="arg1" nillable="true" type="tns:LocalizedValueArray"/>
+          <element name="arg2" type="xsd:int"/>
+          <element minOccurs="0" name="arg3" nillable="true" type="xsd:string"/>
+        </sequence>
+      </complexType>
+      <element name="setResourceLocalizedStringsAidResponse" type="tns:setResourceLocalizedStringsAidResponse"/>
+      <complexType name="setResourceLocalizedStringsAidResponse">
+        <sequence>
+          <element minOccurs="0" name="result" nillable="true" type="tns:LocalizedValueArray"/>
+        </sequence>
+      </complexType>
+      <element name="flushDriverCacheRequest" type="tns:flushDriverCacheRequest"/>
+      <complexType name="flushDriverCacheRequest">
+        <sequence/>
+      </complexType>
+      <element name="flushDriverCacheResponse" type="tns:flushDriverCacheResponse"/>
+      <complexType name="flushDriverCacheResponse">
+        <sequence>
+          <element minOccurs="0" name="result" nillable="true" type="xsd:string"/>
+        </sequence>
+      </complexType>
+      <element name="setAllResourceLocalizedStringsRequest" type="tns:setAllResourceLocalizedStringsRequest"/>
+      <complexType name="setAllResourceLocalizedStringsRequest">
+        <sequence>
+          <element minOccurs="0" name="resourceDn" nillable="true" type="xsd:string"/>
+          <element minOccurs="0" name="locNameStrings" nillable="true" type="tns:LocalizedValueArray"/>
+          <element minOccurs="0" name="locDescStrings" nillable="true" type="tns:LocalizedValueArray"/>
+        </sequence>
+      </complexType>
+      <element name="setAllResourceLocalizedStringsResponse" type="tns:setAllResourceLocalizedStringsResponse"/>
+      <complexType name="setAllResourceLocalizedStringsResponse">
+        <sequence>
+          <element minOccurs="0" name="result" nillable="true" type="tns:CrudResourceRequestStatus"/>
+        </sequence>
+      </complexType>
+      <element name="getResourcessInfoRequest" type="tns:getResourcessInfoRequest"/>
+      <complexType name="getResourcessInfoRequest">
+        <sequence>
+          <element minOccurs="0" name="resDns" nillable="true" type="tns:DNStringArray"/>
+        </sequence>
+      </complexType>
+      <element name="getResourcessInfoResponse" type="tns:getResourcessInfoResponse"/>
+      <complexType name="getResourcessInfoResponse">
+        <sequence>
+          <element minOccurs="0" name="result" nillable="true" type="tns:ResourceInfoArray"/>
+        </sequence>
+      </complexType>
+      <element name="createResourceAidRequest" type="tns:createResourceAidRequest"/>
+      <complexType name="createResourceAidRequest">
+        <sequence>
+          <element minOccurs="0" name="resource" nillable="true" type="tns:Resource"/>
+          <element minOccurs="0" name="correlationId" nillable="true" type="xsd:string"/>
+        </sequence>
+      </complexType>
+      <element name="createResourceAidResponse" type="tns:createResourceAidResponse"/>
+      <complexType name="createResourceAidResponse">
+        <sequence>
+          <element minOccurs="0" name="result" nillable="true" type="xsd:string"/>
+        </sequence>
+      </complexType>
+      <element name="modifyResourceRequest" type="tns:modifyResourceRequest"/>
+      <complexType name="modifyResourceRequest">
+        <sequence>
+          <element minOccurs="0" name="resource" nillable="true" type="tns:Resource"/>
+        </sequence>
+      </complexType>
+      <element name="modifyResourceResponse" type="tns:modifyResourceResponse"/>
+      <complexType name="modifyResourceResponse">
+        <sequence>
+          <element minOccurs="0" name="result" nillable="true" type="tns:Resource"/>
+        </sequence>
+      </complexType>
+      <element name="requestResourceGrantRequest" type="tns:requestResourceGrantRequest"/>
+      <complexType name="requestResourceGrantRequest">
+        <sequence>
+          <element minOccurs="0" name="resourceTarget" nillable="true" type="xsd:string"/>
+          <element minOccurs="0" name="requester" nillable="true" type="xsd:string"/>
+          <element minOccurs="0" name="userTarget" nillable="true" type="xsd:string"/>
+          <element minOccurs="0" name="reasonForRequest" nillable="true" type="xsd:string"/>
+          <element minOccurs="0" name="requestParams" nillable="true" type="tns:ResourceRequestParamArray"/>
+          <element minOccurs="0" name="correlationId" nillable="true" type="xsd:string"/>
+        </sequence>
+      </complexType>
+      <element name="requestResourceGrantResponse" type="tns:requestResourceGrantResponse"/>
+      <complexType name="requestResourceGrantResponse">
+        <sequence>
+          <element minOccurs="0" name="result" nillable="true" type="xsd:string"/>
+        </sequence>
+      </complexType>
+      <element name="getResourceAssignmentsForUserRequest" type="tns:getResourceAssignmentsForUserRequest"/>
+      <complexType name="getResourceAssignmentsForUserRequest">
+        <sequence>
+          <element minOccurs="0" name="userDn" nillable="true" type="xsd:string"/>
+        </sequence>
+      </complexType>
+      <element name="getResourceAssignmentsForUserResponse" type="tns:getResourceAssignmentsForUserResponse"/>
+      <complexType name="getResourceAssignmentsForUserResponse">
+        <sequence>
+          <element minOccurs="0" name="result" nillable="true" type="tns:ResourceAssignmentArray"/>
+        </sequence>
+      </complexType>
+      <element name="getResourceAssignmentsForCurrentUserRequest" type="tns:getResourceAssignmentsForCurrentUserRequest"/>
+      <complexType name="getResourceAssignmentsForCurrentUserRequest">
+        <sequence/>
+      </complexType>
+      <element name="getResourceAssignmentsForCurrentUserResponse" type="tns:getResourceAssignmentsForCurrentUserResponse"/>
+      <complexType name="getResourceAssignmentsForCurrentUserResponse">
+        <sequence>
+          <element minOccurs="0" name="result" nillable="true" type="tns:ResourceAssignmentArray"/>
+        </sequence>
+      </complexType>
+      <element name="refreshCodeMapRequest" type="tns:refreshCodeMapRequest"/>
+      <complexType name="refreshCodeMapRequest">
+        <sequence>
+          <element minOccurs="0" name="entitlementDN" nillable="true" type="xsd:string"/>
+        </sequence>
+      </complexType>
+      <element name="refreshCodeMapResponse" type="tns:refreshCodeMapResponse"/>
+      <complexType name="refreshCodeMapResponse">
+        <sequence>
+          <element minOccurs="0" name="result" nillable="true" type="tns:EntitlementRefreshInfo"/>
+        </sequence>
+      </complexType>
+      <element name="removeResourceRequest" type="tns:removeResourceRequest"/>
+      <complexType name="removeResourceRequest">
+        <sequence>
+          <element minOccurs="0" name="resourceDn" nillable="true" type="tns:DNString"/>
+        </sequence>
+      </complexType>
+      <element name="removeResourceResponse" type="tns:removeResourceResponse"/>
+      <complexType name="removeResourceResponse">
+        <sequence>
+          <element minOccurs="0" name="result" nillable="true" type="tns:DNString"/>
+        </sequence>
+      </complexType>
+      <element name="createResourceRequest" type="tns:createResourceRequest"/>
+      <complexType name="createResourceRequest">
+        <sequence>
+          <element minOccurs="0" name="resource" nillable="true" type="tns:Resource"/>
+        </sequence>
+      </complexType>
+      <element name="createResourceResponse" type="tns:createResourceResponse"/>
+      <complexType name="createResourceResponse">
+        <sequence>
+          <element minOccurs="0" name="result" nillable="true" type="xsd:string"/>
+        </sequence>
+      </complexType>
+      <element name="findResourceByExampleWithOperatorRequest" type="tns:findResourceByExampleWithOperatorRequest"/>
+      <complexType name="findResourceByExampleWithOperatorRequest">
+        <sequence>
+          <element minOccurs="0" name="resource" nillable="true" type="tns:Resource"/>
+          <element name="operator" type="xsd:boolean"/>
+        </sequence>
+      </complexType>
+      <element name="findResourceByExampleWithOperatorResponse" type="tns:findResourceByExampleWithOperatorResponse"/>
+      <complexType name="findResourceByExampleWithOperatorResponse">
+        <sequence>
+          <element minOccurs="0" name="result" nillable="true" type="tns:ResourceArray"/>
+        </sequence>
+      </complexType>
+      <element name="getEntitlementCodeMapRequest" type="tns:getEntitlementCodeMapRequest"/>
+      <complexType name="getEntitlementCodeMapRequest">
+        <sequence>
+          <element minOccurs="0" name="codeMapKey" nillable="true" type="xsd:string"/>
+          <element name="type" type="xsd:int"/>
+        </sequence>
+      </complexType>
+      <element name="getEntitlementCodeMapResponse" type="tns:getEntitlementCodeMapResponse"/>
+      <complexType name="getEntitlementCodeMapResponse">
+        <sequence>
+          <element minOccurs="0" name="result" nillable="true" type="tns:ProvisioningCodeMapArray"/>
+        </sequence>
+      </complexType>
+      <element name="getRefreshStatusRequest" type="tns:getRefreshStatusRequest"/>
+      <complexType name="getRefreshStatusRequest">
+        <sequence>
+          <element minOccurs="0" name="entitlementDN" nillable="true" type="xsd:string"/>
+        </sequence>
+      </complexType>
+      <element name="getRefreshStatusResponse" type="tns:getRefreshStatusResponse"/>
+      <complexType name="getRefreshStatusResponse">
+        <sequence>
+          <element minOccurs="0" name="result" nillable="true" type="tns:CodeMapRefreshStatusArray"/>
+        </sequence>
+      </complexType>
+      <element name="checkCodeMapValueStatusRequest" type="tns:checkCodeMapValueStatusRequest"/>
+      <complexType name="checkCodeMapValueStatusRequest">
+        <sequence>
+          <element minOccurs="0" name="entitilementDN" nillable="true" type="xsd:string"/>
+          <element minOccurs="0" name="connectionName" nillable="true" type="xsd:string"/>
+          <element minOccurs="0" name="codeMapValue" nillable="true" type="xsd:string"/>
+        </sequence>
+      </complexType>
+      <element name="checkCodeMapValueStatusResponse" type="tns:checkCodeMapValueStatusResponse"/>
+      <complexType name="checkCodeMapValueStatusResponse">
+        <sequence>
+          <element minOccurs="0" name="result" nillable="true" type="tns:CodeMapValueStatus"/>
+        </sequence>
+      </complexType>
+      <element name="getResourceRequestStatusByIdentityRequest" type="tns:getResourceRequestStatusByIdentityRequest"/>
+      <complexType name="getResourceRequestStatusByIdentityRequest">
+        <sequence>
+          <element minOccurs="0" name="identity" nillable="true" type="xsd:string"/>
+          <element minOccurs="0" name="locale" nillable="true" type="xsd:string"/>
+        </sequence>
+      </complexType>
+      <element name="getResourceRequestStatusByIdentityResponse" type="tns:getResourceRequestStatusByIdentityResponse"/>
+      <complexType name="getResourceRequestStatusByIdentityResponse">
+        <sequence>
+          <element minOccurs="0" name="result" nillable="true" type="tns:ResourceAssignmentRequestStatusArray"/>
+        </sequence>
+      </complexType>
+      <element name="getResourceRequestStatusByCorrelationIdRequest" type="tns:getResourceRequestStatusByCorrelationIdRequest"/>
+      <complexType name="getResourceRequestStatusByCorrelationIdRequest">
+        <sequence>
+          <element minOccurs="0" name="correlationId" nillable="true" type="xsd:string"/>
+          <element minOccurs="0" name="locale" nillable="true" type="xsd:string"/>
+        </sequence>
+      </complexType>
+      <element name="getResourceRequestStatusByCorrelationIdResponse" type="tns:getResourceRequestStatusByCorrelationIdResponse"/>
+      <complexType name="getResourceRequestStatusByCorrelationIdResponse">
+        <sequence>
+          <element minOccurs="0" name="result" nillable="true" type="tns:ResourceAssignmentRequestStatusArray"/>
+        </sequence>
+      </complexType>
+      <element name="removeResourceAidRequest" type="tns:removeResourceAidRequest"/>
+      <complexType name="removeResourceAidRequest">
+        <sequence>
+          <element minOccurs="0" name="resourceDn" nillable="true" type="tns:DNString"/>
+          <element minOccurs="0" name="correlationId" nillable="true" type="xsd:string"/>
+        </sequence>
+      </complexType>
+      <element name="removeResourceAidResponse" type="tns:removeResourceAidResponse"/>
+      <complexType name="removeResourceAidResponse">
+        <sequence>
+          <element minOccurs="0" name="result" nillable="true" type="tns:DNString"/>
+        </sequence>
+      </complexType>
+      <element name="modifyResourceAidRequest" type="tns:modifyResourceAidRequest"/>
+      <complexType name="modifyResourceAidRequest">
+        <sequence>
+          <element minOccurs="0" name="resource" nillable="true" type="tns:Resource"/>
+          <element minOccurs="0" name="correlationId" nillable="true" type="xsd:string"/>
+        </sequence>
+      </complexType>
+      <element name="modifyResourceAidResponse" type="tns:modifyResourceAidResponse"/>
+      <complexType name="modifyResourceAidResponse">
+        <sequence>
+          <element minOccurs="0" name="result" nillable="true" type="tns:Resource"/>
+        </sequence>
+      </complexType>
+      <element name="getAssignmentsForResourceRequest" type="tns:getAssignmentsForResourceRequest"/>
+      <complexType name="getAssignmentsForResourceRequest">
+        <sequence>
+          <element minOccurs="0" name="resourceDn" nillable="true" type="xsd:string"/>
+        </sequence>
+      </complexType>
+      <element name="getAssignmentsForResourceResponse" type="tns:getAssignmentsForResourceResponse"/>
+      <complexType name="getAssignmentsForResourceResponse">
+        <sequence>
+          <element minOccurs="0" name="result" nillable="true" type="tns:ResourceAssignmentArray"/>
+        </sequence>
+      </complexType>
+      <element name="getCodeMapValuesRequest" type="tns:getCodeMapValuesRequest"/>
+      <complexType name="getCodeMapValuesRequest">
+        <sequence>
+          <element minOccurs="0" name="codeMapKey" nillable="true" type="xsd:string"/>
+          <element minOccurs="0" name="locale" nillable="true" type="xsd:string"/>
+          <element minOccurs="0" name="dn" nillable="true" type="xsd:string"/>
+          <element minOccurs="0" name="nativeValue" nillable="true" type="xsd:string"/>
+          <element minOccurs="0" name="logicalSystemId" nillable="true" type="xsd:string"/>
+        </sequence>
+      </complexType>
+      <element name="getCodeMapValuesResponse" type="tns:getCodeMapValuesResponse"/>
+      <complexType name="getCodeMapValuesResponse">
+        <sequence>
+          <element minOccurs="0" name="result" nillable="true" type="tns:CodeMapValueArray"/>
+        </sequence>
+      </complexType>
+      <element name="requestResourceRevokeRequest" type="tns:requestResourceRevokeRequest"/>
+      <complexType name="requestResourceRevokeRequest">
+        <sequence>
+          <element minOccurs="0" name="resourceTarget" nillable="true" type="xsd:string"/>
+          <element minOccurs="0" name="requester" nillable="true" type="xsd:string"/>
+          <element minOccurs="0" name="userTarget" nillable="true" type="xsd:string"/>
+          <element minOccurs="0" name="reasonForRequest" nillable="true" type="xsd:string"/>
+          <element minOccurs="0" name="requestParams" nillable="true" type="tns:ResourceRequestParamArray"/>
+          <element minOccurs="0" name="instanceGuid" nillable="true" type="xsd:string"/>
+          <element minOccurs="0" name="correlationId" nillable="true" type="xsd:string"/>
+        </sequence>
+      </complexType>
+      <element name="requestResourceRevokeResponse" type="tns:requestResourceRevokeResponse"/>
+      <complexType name="requestResourceRevokeResponse">
+        <sequence>
+          <element minOccurs="0" name="result" nillable="true" type="xsd:string"/>
+        </sequence>
+      </complexType>
+      <element name="setAllResourceLocalizedStringsWithCorrelationIdRequest" type="tns:setAllResourceLocalizedStringsWithCorrelationIdRequest"/>
+      <complexType name="setAllResourceLocalizedStringsWithCorrelationIdRequest">
+        <sequence>
+          <element minOccurs="0" name="resourceDn" nillable="true" type="xsd:string"/>
+          <element minOccurs="0" name="locNameStrings" nillable="true" type="tns:LocalizedValueArray"/>
+          <element minOccurs="0" name="locDescStrings" nillable="true" type="tns:LocalizedValueArray"/>
+          <element minOccurs="0" name="correlationId" nillable="true" type="xsd:string"/>
+        </sequence>
+      </complexType>
+      <element name="setAllResourceLocalizedStringsWithCorrelationIdResponse" type="tns:setAllResourceLocalizedStringsWithCorrelationIdResponse"/>
+      <complexType name="setAllResourceLocalizedStringsWithCorrelationIdResponse">
+        <sequence>
+          <element minOccurs="0" name="result" nillable="true" type="tns:CrudResourceRequestStatus"/>
+        </sequence>
+      </complexType>
+      <element name="getResourceLocalizedStringsRequest" type="tns:getResourceLocalizedStringsRequest"/>
+      <complexType name="getResourceLocalizedStringsRequest">
+        <sequence>
+          <element minOccurs="0" name="resourceDn" nillable="true" type="xsd:string"/>
+          <element name="type" type="xsd:int"/>
+        </sequence>
+      </complexType>
+      <element name="getResourceLocalizedStringsResponse" type="tns:getResourceLocalizedStringsResponse"/>
+      <complexType name="getResourceLocalizedStringsResponse">
+        <sequence>
+          <element minOccurs="0" name="result" nillable="true" type="tns:LocalizedValueArray"/>
+        </sequence>
+      </complexType>
+    </schema>
+  </types>
+  <message name="getResourcessInfoByCategoryInput">
+    <part element="tns:getResourcessInfoByCategoryRequest" name="bodyIn"/>
+  </message>
+  <message name="getResourcessInfoByCategoryOutput">
+    <part element="tns:getResourcessInfoByCategoryResponse" name="bodyOut"/>
+  </message>
+  <message name="NrfServiceException">
+    <part element="tns:NrfServiceException" name="NrfServiceFault"/>
+  </message>
+  <message name="getPagedCodeMapValuesInput">
+    <part element="tns:getPagedCodeMapValuesRequest" name="bodyIn"/>
+  </message>
+  <message name="getPagedCodeMapValuesOutput">
+    <part element="tns:getPagedCodeMapValuesResponse" name="bodyOut"/>
+  </message>
+  <message name="getResourceRequestStatusForCurrentUserInput">
+    <part element="tns:getResourceRequestStatusForCurrentUserRequest" name="bodyIn"/>
+  </message>
+  <message name="getResourceRequestStatusForCurrentUserOutput">
+    <part element="tns:getResourceRequestStatusForCurrentUserResponse" name="bodyOut"/>
+  </message>
+  <message name="getResourceInput">
+    <part element="tns:getResourceRequest" name="bodyIn"/>
+  </message>
+  <message name="getResourceOutput">
+    <part element="tns:getResourceResponse" name="bodyOut"/>
+  </message>
+  <message name="setResourceLocalizedStringsInput">
+    <part element="tns:setResourceLocalizedStringsRequest" name="bodyIn"/>
+  </message>
+  <message name="setResourceLocalizedStringsOutput">
+    <part element="tns:setResourceLocalizedStringsResponse" name="bodyOut"/>
+  </message>
+  <message name="setResourceLocalizedStringsAidInput">
+    <part element="tns:setResourceLocalizedStringsAidRequest" name="bodyIn"/>
+  </message>
+  <message name="setResourceLocalizedStringsAidOutput">
+    <part element="tns:setResourceLocalizedStringsAidResponse" name="bodyOut"/>
+  </message>
+  <message name="flushDriverCacheInput">
+    <part element="tns:flushDriverCacheRequest" name="bodyIn"/>
+  </message>
+  <message name="flushDriverCacheOutput">
+    <part element="tns:flushDriverCacheResponse" name="bodyOut"/>
+  </message>
+  <message name="setAllResourceLocalizedStringsInput">
+    <part element="tns:setAllResourceLocalizedStringsRequest" name="bodyIn"/>
+  </message>
+  <message name="setAllResourceLocalizedStringsOutput">
+    <part element="tns:setAllResourceLocalizedStringsResponse" name="bodyOut"/>
+  </message>
+  <message name="getResourcessInfoInput">
+    <part element="tns:getResourcessInfoRequest" name="bodyIn"/>
+  </message>
+  <message name="getResourcessInfoOutput">
+    <part element="tns:getResourcessInfoResponse" name="bodyOut"/>
+  </message>
+  <message name="createResourceAidInput">
+    <part element="tns:createResourceAidRequest" name="bodyIn"/>
+  </message>
+  <message name="createResourceAidOutput">
+    <part element="tns:createResourceAidResponse" name="bodyOut"/>
+  </message>
+  <message name="modifyResourceInput">
+    <part element="tns:modifyResourceRequest" name="bodyIn"/>
+  </message>
+  <message name="modifyResourceOutput">
+    <part element="tns:modifyResourceResponse" name="bodyOut"/>
+  </message>
+  <message name="requestResourceGrantInput">
+    <part element="tns:requestResourceGrantRequest" name="bodyIn"/>
+  </message>
+  <message name="requestResourceGrantOutput">
+    <part element="tns:requestResourceGrantResponse" name="bodyOut"/>
+  </message>
+  <message name="getResourceAssignmentsForUserInput">
+    <part element="tns:getResourceAssignmentsForUserRequest" name="bodyIn"/>
+  </message>
+  <message name="getResourceAssignmentsForUserOutput">
+    <part element="tns:getResourceAssignmentsForUserResponse" name="bodyOut"/>
+  </message>
+  <message name="getResourceAssignmentsForCurrentUserInput">
+    <part element="tns:getResourceAssignmentsForCurrentUserRequest" name="bodyIn"/>
+  </message>
+  <message name="getResourceAssignmentsForCurrentUserOutput">
+    <part element="tns:getResourceAssignmentsForCurrentUserResponse" name="bodyOut"/>
+  </message>
+  <message name="refreshCodeMapInput">
+    <part element="tns:refreshCodeMapRequest" name="bodyIn"/>
+  </message>
+  <message name="refreshCodeMapOutput">
+    <part element="tns:refreshCodeMapResponse" name="bodyOut"/>
+  </message>
+  <message name="removeResourceInput">
+    <part element="tns:removeResourceRequest" name="bodyIn"/>
+  </message>
+  <message name="removeResourceOutput">
+    <part element="tns:removeResourceResponse" name="bodyOut"/>
+  </message>
+  <message name="createResourceInput">
+    <part element="tns:createResourceRequest" name="bodyIn"/>
+  </message>
+  <message name="createResourceOutput">
+    <part element="tns:createResourceResponse" name="bodyOut"/>
+  </message>
+  <message name="findResourceByExampleWithOperatorInput">
+    <part element="tns:findResourceByExampleWithOperatorRequest" name="bodyIn"/>
+  </message>
+  <message name="findResourceByExampleWithOperatorOutput">
+    <part element="tns:findResourceByExampleWithOperatorResponse" name="bodyOut"/>
+  </message>
+  <message name="getEntitlementCodeMapInput">
+    <part element="tns:getEntitlementCodeMapRequest" name="bodyIn"/>
+  </message>
+  <message name="getEntitlementCodeMapOutput">
+    <part element="tns:getEntitlementCodeMapResponse" name="bodyOut"/>
+  </message>
+  <message name="getRefreshStatusInput">
+    <part element="tns:getRefreshStatusRequest" name="bodyIn"/>
+  </message>
+  <message name="getRefreshStatusOutput">
+    <part element="tns:getRefreshStatusResponse" name="bodyOut"/>
+  </message>
+  <message name="checkCodeMapValueStatusInput">
+    <part element="tns:checkCodeMapValueStatusRequest" name="bodyIn"/>
+  </message>
+  <message name="checkCodeMapValueStatusOutput">
+    <part element="tns:checkCodeMapValueStatusResponse" name="bodyOut"/>
+  </message>
+  <message name="getResourceRequestStatusByIdentityInput">
+    <part element="tns:getResourceRequestStatusByIdentityRequest" name="bodyIn"/>
+  </message>
+  <message name="getResourceRequestStatusByIdentityOutput">
+    <part element="tns:getResourceRequestStatusByIdentityResponse" name="bodyOut"/>
+  </message>
+  <message name="getResourceRequestStatusByCorrelationIdInput">
+    <part element="tns:getResourceRequestStatusByCorrelationIdRequest" name="bodyIn"/>
+  </message>
+  <message name="getResourceRequestStatusByCorrelationIdOutput">
+    <part element="tns:getResourceRequestStatusByCorrelationIdResponse" name="bodyOut"/>
+  </message>
+  <message name="removeResourceAidInput">
+    <part element="tns:removeResourceAidRequest" name="bodyIn"/>
+  </message>
+  <message name="removeResourceAidOutput">
+    <part element="tns:removeResourceAidResponse" name="bodyOut"/>
+  </message>
+  <message name="modifyResourceAidInput">
+    <part element="tns:modifyResourceAidRequest" name="bodyIn"/>
+  </message>
+  <message name="modifyResourceAidOutput">
+    <part element="tns:modifyResourceAidResponse" name="bodyOut"/>
+  </message>
+  <message name="getAssignmentsForResourceInput">
+    <part element="tns:getAssignmentsForResourceRequest" name="bodyIn"/>
+  </message>
+  <message name="getAssignmentsForResourceOutput">
+    <part element="tns:getAssignmentsForResourceResponse" name="bodyOut"/>
+  </message>
+  <message name="getCodeMapValuesInput">
+    <part element="tns:getCodeMapValuesRequest" name="bodyIn"/>
+  </message>
+  <message name="getCodeMapValuesOutput">
+    <part element="tns:getCodeMapValuesResponse" name="bodyOut"/>
+  </message>
+  <message name="requestResourceRevokeInput">
+    <part element="tns:requestResourceRevokeRequest" name="bodyIn"/>
+  </message>
+  <message name="requestResourceRevokeOutput">
+    <part element="tns:requestResourceRevokeResponse" name="bodyOut"/>
+  </message>
+  <message name="setAllResourceLocalizedStringsWithCorrelationIdInput">
+    <part element="tns:setAllResourceLocalizedStringsWithCorrelationIdRequest" name="bodyIn"/>
+  </message>
+  <message name="setAllResourceLocalizedStringsWithCorrelationIdOutput">
+    <part element="tns:setAllResourceLocalizedStringsWithCorrelationIdResponse" name="bodyOut"/>
+  </message>
+  <message name="getResourceLocalizedStringsInput">
+    <part element="tns:getResourceLocalizedStringsRequest" name="bodyIn"/>
+  </message>
+  <message name="getResourceLocalizedStringsOutput">
+    <part element="tns:getResourceLocalizedStringsResponse" name="bodyOut"/>
+  </message>
+  <portType name="IRemoteResource">
+    <operation name="getResourcessInfoByCategory">
+      <input message="tns:getResourcessInfoByCategoryInput"/>
+      <output message="tns:getResourcessInfoByCategoryOutput"/>
+      <fault message="tns:NrfServiceException" name="NrfServiceFault"/>
+    </operation>
+    <operation name="getPagedCodeMapValues">
+      <input message="tns:getPagedCodeMapValuesInput"/>
+      <output message="tns:getPagedCodeMapValuesOutput"/>
+      <fault message="tns:NrfServiceException" name="NrfServiceFault"/>
+    </operation>
+    <operation name="getResourceRequestStatusForCurrentUser">
+      <input message="tns:getResourceRequestStatusForCurrentUserInput"/>
+      <output message="tns:getResourceRequestStatusForCurrentUserOutput"/>
+      <fault message="tns:NrfServiceException" name="NrfServiceFault"/>
+    </operation>
+    <operation name="getResource">
+      <input message="tns:getResourceInput"/>
+      <output message="tns:getResourceOutput"/>
+      <fault message="tns:NrfServiceException" name="NrfServiceFault"/>
+    </operation>
+    <operation name="setResourceLocalizedStrings">
+      <input message="tns:setResourceLocalizedStringsInput"/>
+      <output message="tns:setResourceLocalizedStringsOutput"/>
+      <fault message="tns:NrfServiceException" name="NrfServiceFault"/>
+    </operation>
+    <operation name="setResourceLocalizedStringsAid">
+      <input message="tns:setResourceLocalizedStringsAidInput"/>
+      <output message="tns:setResourceLocalizedStringsAidOutput"/>
+      <fault message="tns:NrfServiceException" name="NrfServiceFault"/>
+    </operation>
+    <operation name="flushDriverCache">
+      <input message="tns:flushDriverCacheInput"/>
+      <output message="tns:flushDriverCacheOutput"/>
+      <fault message="tns:NrfServiceException" name="NrfServiceFault"/>
+    </operation>
+    <operation name="setAllResourceLocalizedStrings">
+      <input message="tns:setAllResourceLocalizedStringsInput"/>
+      <output message="tns:setAllResourceLocalizedStringsOutput"/>
+      <fault message="tns:NrfServiceException" name="NrfServiceFault"/>
+    </operation>
+    <operation name="getResourcessInfo">
+      <input message="tns:getResourcessInfoInput"/>
+      <output message="tns:getResourcessInfoOutput"/>
+      <fault message="tns:NrfServiceException" name="NrfServiceFault"/>
+    </operation>
+    <operation name="createResourceAid">
+      <input message="tns:createResourceAidInput"/>
+      <output message="tns:createResourceAidOutput"/>
+      <fault message="tns:NrfServiceException" name="NrfServiceFault"/>
+    </operation>
+    <operation name="modifyResource">
+      <input message="tns:modifyResourceInput"/>
+      <output message="tns:modifyResourceOutput"/>
+      <fault message="tns:NrfServiceException" name="NrfServiceFault"/>
+    </operation>
+    <operation name="requestResourceGrant">
+      <input message="tns:requestResourceGrantInput"/>
+      <output message="tns:requestResourceGrantOutput"/>
+      <fault message="tns:NrfServiceException" name="NrfServiceFault"/>
+    </operation>
+    <operation name="getResourceAssignmentsForUser">
+      <input message="tns:getResourceAssignmentsForUserInput"/>
+      <output message="tns:getResourceAssignmentsForUserOutput"/>
+      <fault message="tns:NrfServiceException" name="NrfServiceFault"/>
+    </operation>
+    <operation name="getResourceAssignmentsForCurrentUser">
+      <input message="tns:getResourceAssignmentsForCurrentUserInput"/>
+      <output message="tns:getResourceAssignmentsForCurrentUserOutput"/>
+      <fault message="tns:NrfServiceException" name="NrfServiceFault"/>
+    </operation>
+    <operation name="refreshCodeMap">
+      <input message="tns:refreshCodeMapInput"/>
+      <output message="tns:refreshCodeMapOutput"/>
+      <fault message="tns:NrfServiceException" name="NrfServiceFault"/>
+    </operation>
+    <operation name="removeResource">
+      <input message="tns:removeResourceInput"/>
+      <output message="tns:removeResourceOutput"/>
+      <fault message="tns:NrfServiceException" name="NrfServiceFault"/>
+    </operation>
+    <operation name="createResource">
+      <input message="tns:createResourceInput"/>
+      <output message="tns:createResourceOutput"/>
+      <fault message="tns:NrfServiceException" name="NrfServiceFault"/>
+    </operation>
+    <operation name="findResourceByExampleWithOperator">
+      <input message="tns:findResourceByExampleWithOperatorInput"/>
+      <output message="tns:findResourceByExampleWithOperatorOutput"/>
+      <fault message="tns:NrfServiceException" name="NrfServiceFault"/>
+    </operation>
+    <operation name="getEntitlementCodeMap">
+      <input message="tns:getEntitlementCodeMapInput"/>
+      <output message="tns:getEntitlementCodeMapOutput"/>
+      <fault message="tns:NrfServiceException" name="NrfServiceFault"/>
+    </operation>
+    <operation name="getRefreshStatus">
+      <input message="tns:getRefreshStatusInput"/>
+      <output message="tns:getRefreshStatusOutput"/>
+      <fault message="tns:NrfServiceException" name="NrfServiceFault"/>
+    </operation>
+    <operation name="checkCodeMapValueStatus">
+      <input message="tns:checkCodeMapValueStatusInput"/>
+      <output message="tns:checkCodeMapValueStatusOutput"/>
+      <fault message="tns:NrfServiceException" name="NrfServiceFault"/>
+    </operation>
+    <operation name="getResourceRequestStatusByIdentity">
+      <input message="tns:getResourceRequestStatusByIdentityInput"/>
+      <output message="tns:getResourceRequestStatusByIdentityOutput"/>
+      <fault message="tns:NrfServiceException" name="NrfServiceFault"/>
+    </operation>
+    <operation name="getResourceRequestStatusByCorrelationId">
+      <input message="tns:getResourceRequestStatusByCorrelationIdInput"/>
+      <output message="tns:getResourceRequestStatusByCorrelationIdOutput"/>
+      <fault message="tns:NrfServiceException" name="NrfServiceFault"/>
+    </operation>
+    <operation name="removeResourceAid">
+      <input message="tns:removeResourceAidInput"/>
+      <output message="tns:removeResourceAidOutput"/>
+      <fault message="tns:NrfServiceException" name="NrfServiceFault"/>
+    </operation>
+    <operation name="modifyResourceAid">
+      <input message="tns:modifyResourceAidInput"/>
+      <output message="tns:modifyResourceAidOutput"/>
+      <fault message="tns:NrfServiceException" name="NrfServiceFault"/>
+    </operation>
+    <operation name="getAssignmentsForResource">
+      <input message="tns:getAssignmentsForResourceInput"/>
+      <output message="tns:getAssignmentsForResourceOutput"/>
+      <fault message="tns:NrfServiceException" name="NrfServiceFault"/>
+    </operation>
+    <operation name="getCodeMapValues">
+      <input message="tns:getCodeMapValuesInput"/>
+      <output message="tns:getCodeMapValuesOutput"/>
+      <fault message="tns:NrfServiceException" name="NrfServiceFault"/>
+    </operation>
+    <operation name="requestResourceRevoke">
+      <input message="tns:requestResourceRevokeInput"/>
+      <output message="tns:requestResourceRevokeOutput"/>
+      <fault message="tns:NrfServiceException" name="NrfServiceFault"/>
+    </operation>
+    <operation name="setAllResourceLocalizedStringsWithCorrelationId">
+      <input message="tns:setAllResourceLocalizedStringsWithCorrelationIdInput"/>
+      <output message="tns:setAllResourceLocalizedStringsWithCorrelationIdOutput"/>
+      <fault message="tns:NrfServiceException" name="NrfServiceFault"/>
+    </operation>
+    <operation name="getResourceLocalizedStrings">
+      <input message="tns:getResourceLocalizedStringsInput"/>
+      <output message="tns:getResourceLocalizedStringsOutput"/>
+      <fault message="tns:NrfServiceException" name="NrfServiceFault"/>
+    </operation>
+  </portType>
+  <binding name="IRemoteResourceBinding" type="tns:IRemoteResource">
+    <soap:binding style="document" transport="http://schemas.xmlsoap.org/soap/http"/>
+    <operation name="getResourcessInfoByCategory">
+      <soap:operation soapAction="http://www.novell.com/resource/service/getResourcessInfoByCategory"/>
+      <input>
+        <soap:body use="literal"/>
+      </input>
+      <output>
+        <soap:body use="literal"/>
+      </output>
+      <fault name="NrfServiceFault">
+        <soap:fault name="NrfServiceFault" use="literal"/>
+      </fault>
+    </operation>
+    <operation name="getPagedCodeMapValues">
+      <soap:operation soapAction="http://www.novell.com/resource/service/getPagedCodeMapValues"/>
+      <input>
+        <soap:body use="literal"/>
+      </input>
+      <output>
+        <soap:body use="literal"/>
+      </output>
+      <fault name="NrfServiceFault">
+        <soap:fault name="NrfServiceFault" use="literal"/>
+      </fault>
+    </operation>
+    <operation name="getResourceRequestStatusForCurrentUser">
+      <soap:operation soapAction="http://www.novell.com/resource/service/getResourceRequestStatusForCurrentUser"/>
+      <input>
+        <soap:body use="literal"/>
+      </input>
+      <output>
+        <soap:body use="literal"/>
+      </output>
+      <fault name="NrfServiceFault">
+        <soap:fault name="NrfServiceFault" use="literal"/>
+      </fault>
+    </operation>
+    <operation name="getResource">
+      <soap:operation soapAction="http://www.novell.com/resource/service/getResource"/>
+      <input>
+        <soap:body use="literal"/>
+      </input>
+      <output>
+        <soap:body use="literal"/>
+      </output>
+      <fault name="NrfServiceFault">
+        <soap:fault name="NrfServiceFault" use="literal"/>
+      </fault>
+    </operation>
+    <operation name="setResourceLocalizedStrings">
+      <soap:operation soapAction="http://www.novell.com/resource/service/setResourceLocalizedStrings"/>
+      <input>
+        <soap:body use="literal"/>
+      </input>
+      <output>
+        <soap:body use="literal"/>
+      </output>
+      <fault name="NrfServiceFault">
+        <soap:fault name="NrfServiceFault" use="literal"/>
+      </fault>
+    </operation>
+    <operation name="setResourceLocalizedStringsAid">
+      <soap:operation soapAction="http://www.novell.com/resource/service/setResourceLocalizedStringsAid"/>
+      <input>
+        <soap:body use="literal"/>
+      </input>
+      <output>
+        <soap:body use="literal"/>
+      </output>
+      <fault name="NrfServiceFault">
+        <soap:fault name="NrfServiceFault" use="literal"/>
+      </fault>
+    </operation>
+    <operation name="flushDriverCache">
+      <soap:operation soapAction="http://www.novell.com/resource/service/flushDriverCache"/>
+      <input>
+        <soap:body use="literal"/>
+      </input>
+      <output>
+        <soap:body use="literal"/>
+      </output>
+      <fault name="NrfServiceFault">
+        <soap:fault name="NrfServiceFault" use="literal"/>
+      </fault>
+    </operation>
+    <operation name="setAllResourceLocalizedStrings">
+      <soap:operation soapAction="http://www.novell.com/resource/service/setAllResourceLocalizedStrings"/>
+      <input>
+        <soap:body use="literal"/>
+      </input>
+      <output>
+        <soap:body use="literal"/>
+      </output>
+      <fault name="NrfServiceFault">
+        <soap:fault name="NrfServiceFault" use="literal"/>
+      </fault>
+    </operation>
+    <operation name="getResourcessInfo">
+      <soap:operation soapAction="http://www.novell.com/resource/service/getResourcessInfo"/>
+      <input>
+        <soap:body use="literal"/>
+      </input>
+      <output>
+        <soap:body use="literal"/>
+      </output>
+      <fault name="NrfServiceFault">
+        <soap:fault name="NrfServiceFault" use="literal"/>
+      </fault>
+    </operation>
+    <operation name="createResourceAid">
+      <soap:operation soapAction="http://www.novell.com/resource/service/createResourceAid"/>
+      <input>
+        <soap:body use="literal"/>
+      </input>
+      <output>
+        <soap:body use="literal"/>
+      </output>
+      <fault name="NrfServiceFault">
+        <soap:fault name="NrfServiceFault" use="literal"/>
+      </fault>
+    </operation>
+    <operation name="modifyResource">
+      <soap:operation soapAction="http://www.novell.com/resource/service/modifyResource"/>
+      <input>
+        <soap:body use="literal"/>
+      </input>
+      <output>
+        <soap:body use="literal"/>
+      </output>
+      <fault name="NrfServiceFault">
+        <soap:fault name="NrfServiceFault" use="literal"/>
+      </fault>
+    </operation>
+    <operation name="requestResourceGrant">
+      <soap:operation soapAction="http://www.novell.com/resource/service/requestResourceGrant"/>
+      <input>
+        <soap:body use="literal"/>
+      </input>
+      <output>
+        <soap:body use="literal"/>
+      </output>
+      <fault name="NrfServiceFault">
+        <soap:fault name="NrfServiceFault" use="literal"/>
+      </fault>
+    </operation>
+    <operation name="getResourceAssignmentsForUser">
+      <soap:operation soapAction="http://www.novell.com/resource/service/getResourceAssignmentsForUser"/>
+      <input>
+        <soap:body use="literal"/>
+      </input>
+      <output>
+        <soap:body use="literal"/>
+      </output>
+      <fault name="NrfServiceFault">
+        <soap:fault name="NrfServiceFault" use="literal"/>
+      </fault>
+    </operation>
+    <operation name="getResourceAssignmentsForCurrentUser">
+      <soap:operation soapAction="http://www.novell.com/resource/service/getResourceAssignmentsForCurrentUser"/>
+      <input>
+        <soap:body use="literal"/>
+      </input>
+      <output>
+        <soap:body use="literal"/>
+      </output>
+      <fault name="NrfServiceFault">
+        <soap:fault name="NrfServiceFault" use="literal"/>
+      </fault>
+    </operation>
+    <operation name="refreshCodeMap">
+      <soap:operation soapAction="http://www.novell.com/resource/service/refreshCodeMap"/>
+      <input>
+        <soap:body use="literal"/>
+      </input>
+      <output>
+        <soap:body use="literal"/>
+      </output>
+      <fault name="NrfServiceFault">
+        <soap:fault name="NrfServiceFault" use="literal"/>
+      </fault>
+    </operation>
+    <operation name="removeResource">
+      <soap:operation soapAction="http://www.novell.com/resource/service/removeResource"/>
+      <input>
+        <soap:body use="literal"/>
+      </input>
+      <output>
+        <soap:body use="literal"/>
+      </output>
+      <fault name="NrfServiceFault">
+        <soap:fault name="NrfServiceFault" use="literal"/>
+      </fault>
+    </operation>
+    <operation name="createResource">
+      <soap:operation soapAction="http://www.novell.com/resource/service/createResource"/>
+      <input>
+        <soap:body use="literal"/>
+      </input>
+      <output>
+        <soap:body use="literal"/>
+      </output>
+      <fault name="NrfServiceFault">
+        <soap:fault name="NrfServiceFault" use="literal"/>
+      </fault>
+    </operation>
+    <operation name="findResourceByExampleWithOperator">
+      <soap:operation soapAction="http://www.novell.com/resource/service/findResourceByExampleWithOperator"/>
+      <input>
+        <soap:body use="literal"/>
+      </input>
+      <output>
+        <soap:body use="literal"/>
+      </output>
+      <fault name="NrfServiceFault">
+        <soap:fault name="NrfServiceFault" use="literal"/>
+      </fault>
+    </operation>
+    <operation name="getEntitlementCodeMap">
+      <soap:operation soapAction="http://www.novell.com/resource/service/getEntitlementCodeMap"/>
+      <input>
+        <soap:body use="literal"/>
+      </input>
+      <output>
+        <soap:body use="literal"/>
+      </output>
+      <fault name="NrfServiceFault">
+        <soap:fault name="NrfServiceFault" use="literal"/>
+      </fault>
+    </operation>
+    <operation name="getRefreshStatus">
+      <soap:operation soapAction="http://www.novell.com/resource/service/getRefreshStatus"/>
+      <input>
+        <soap:body use="literal"/>
+      </input>
+      <output>
+        <soap:body use="literal"/>
+      </output>
+      <fault name="NrfServiceFault">
+        <soap:fault name="NrfServiceFault" use="literal"/>
+      </fault>
+    </operation>
+    <operation name="checkCodeMapValueStatus">
+      <soap:operation soapAction="http://www.novell.com/resource/service/checkCodeMapValueStatus"/>
+      <input>
+        <soap:body use="literal"/>
+      </input>
+      <output>
+        <soap:body use="literal"/>
+      </output>
+      <fault name="NrfServiceFault">
+        <soap:fault name="NrfServiceFault" use="literal"/>
+      </fault>
+    </operation>
+    <operation name="getResourceRequestStatusByIdentity">
+      <soap:operation soapAction="http://www.novell.com/resource/service/getResourceRequestStatusByIdentity"/>
+      <input>
+        <soap:body use="literal"/>
+      </input>
+      <output>
+        <soap:body use="literal"/>
+      </output>
+      <fault name="NrfServiceFault">
+        <soap:fault name="NrfServiceFault" use="literal"/>
+      </fault>
+    </operation>
+    <operation name="getResourceRequestStatusByCorrelationId">
+      <soap:operation soapAction="http://www.novell.com/resource/service/getResourceRequestStatusByCorrelationId"/>
+      <input>
+        <soap:body use="literal"/>
+      </input>
+      <output>
+        <soap:body use="literal"/>
+      </output>
+      <fault name="NrfServiceFault">
+        <soap:fault name="NrfServiceFault" use="literal"/>
+      </fault>
+    </operation>
+    <operation name="removeResourceAid">
+      <soap:operation soapAction="http://www.novell.com/resource/service/removeResourceAid"/>
+      <input>
+        <soap:body use="literal"/>
+      </input>
+      <output>
+        <soap:body use="literal"/>
+      </output>
+      <fault name="NrfServiceFault">
+        <soap:fault name="NrfServiceFault" use="literal"/>
+      </fault>
+    </operation>
+    <operation name="modifyResourceAid">
+      <soap:operation soapAction="http://www.novell.com/resource/service/modifyResourceAid"/>
+      <input>
+        <soap:body use="literal"/>
+      </input>
+      <output>
+        <soap:body use="literal"/>
+      </output>
+      <fault name="NrfServiceFault">
+        <soap:fault name="NrfServiceFault" use="literal"/>
+      </fault>
+    </operation>
+    <operation name="getAssignmentsForResource">
+      <soap:operation soapAction="http://www.novell.com/resource/service/getAssignmentsForResource"/>
+      <input>
+        <soap:body use="literal"/>
+      </input>
+      <output>
+        <soap:body use="literal"/>
+      </output>
+      <fault name="NrfServiceFault">
+        <soap:fault name="NrfServiceFault" use="literal"/>
+      </fault>
+    </operation>
+    <operation name="getCodeMapValues">
+      <soap:operation soapAction="http://www.novell.com/resource/service/getCodeMapValues"/>
+      <input>
+        <soap:body use="literal"/>
+      </input>
+      <output>
+        <soap:body use="literal"/>
+      </output>
+      <fault name="NrfServiceFault">
+        <soap:fault name="NrfServiceFault" use="literal"/>
+      </fault>
+    </operation>
+    <operation name="requestResourceRevoke">
+      <soap:operation soapAction="http://www.novell.com/resource/service/requestResourceRevoke"/>
+      <input>
+        <soap:body use="literal"/>
+      </input>
+      <output>
+        <soap:body use="literal"/>
+      </output>
+      <fault name="NrfServiceFault">
+        <soap:fault name="NrfServiceFault" use="literal"/>
+      </fault>
+    </operation>
+    <operation name="setAllResourceLocalizedStringsWithCorrelationId">
+      <soap:operation soapAction="http://www.novell.com/resource/service/setAllResourceLocalizedStringsWithCorrelationId"/>
+      <input>
+        <soap:body use="literal"/>
+      </input>
+      <output>
+        <soap:body use="literal"/>
+      </output>
+      <fault name="NrfServiceFault">
+        <soap:fault name="NrfServiceFault" use="literal"/>
+      </fault>
+    </operation>
+    <operation name="getResourceLocalizedStrings">
+      <soap:operation soapAction="http://www.novell.com/resource/service/getResourceLocalizedStrings"/>
+      <input>
+        <soap:body use="literal"/>
+      </input>
+      <output>
+        <soap:body use="literal"/>
+      </output>
+      <fault name="NrfServiceFault">
+        <soap:fault name="NrfServiceFault" use="literal"/>
+      </fault>
+    </operation>
+  </binding>
+  <service name="ResourceService">
+    <port binding="tns:IRemoteResourceBinding" name="IRemoteResourcePort">
+      <soap:address location="https://mxmcdidm02.mx.att.com:8543/IDMProv/resource/service"/>
+    </port>
+  </service>
+</definitions>

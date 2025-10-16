@@ -1,0 +1,18 @@
+spring:
+  application:
+    name: idm-connector-soap-test
+
+idm:
+  test:
+    soap:
+      url: http://localhost:8090/role/service
+      username: admin
+      password: admin
+      connection-timeout: 5000
+      read-timeout: 10000
+      message-logging: true
+
+logging:
+  level:
+    com.idm.test: DEBUG
+    org.springframework.ws: DEBUG

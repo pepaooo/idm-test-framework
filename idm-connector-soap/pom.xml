@@ -2,7 +2,7 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
-         https://maven.apache.org/xsd/maven-4.0.0.xsd">
+         http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
     <parent>
@@ -12,43 +12,41 @@
     </parent>
 
     <artifactId>idm-connector-soap</artifactId>
-    <name>IdM Connector - SOAP</name>
-    <description>SOAP connector for Role Service and other SOAP services</description>
+    <name>IdM Test Framework - SOAP Connector</name>
+    <description>SOAP connector for NetIQ Identity Manager Role Service</description>
 
     <dependencies>
-        <!-- Core Module -->
+        <!-- Core module -->
         <dependency>
             <groupId>com.idm.test</groupId>
             <artifactId>idm-test-core</artifactId>
+            <version>${project.version}</version>
         </dependency>
 
-        <!-- Spring Boot Web Services -->
+        <!-- JAX-WS Runtime (required by generated WSDL classes) -->
         <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-web-services</artifactId>
+            <groupId>com.sun.xml.ws</groupId>
+            <artifactId>jaxws-rt</artifactId>
+            <version>4.0.2</version>
         </dependency>
 
-        <!-- JAXB for XML marshalling -->
-        <dependency>
-            <groupId>jakarta.xml.bind</groupId>
-            <artifactId>jakarta.xml.bind-api</artifactId>
-        </dependency>
-
+        <!-- JAXB Runtime (required for XML marshalling) -->
         <dependency>
             <groupId>org.glassfish.jaxb</groupId>
             <artifactId>jaxb-runtime</artifactId>
+        </dependency>
+
+        <!-- Configuration -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-configuration-processor</artifactId>
+            <optional>true</optional>
         </dependency>
 
         <!-- Testing -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
-            <scope>test</scope>
-        </dependency>
-
-        <dependency>
-            <groupId>org.assertj</groupId>
-            <artifactId>assertj-core</artifactId>
             <scope>test</scope>
         </dependency>
 
@@ -59,4 +57,70 @@
             <scope>test</scope>
         </dependency>
     </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+            </plugin>
+
+            <!-- JAX-WS Maven Plugin for WSDL to Java code generation -->
+            <plugin>
+                <groupId>com.sun.xml.ws</groupId>
+                <artifactId>jaxws-maven-plugin</artifactId>
+                <version>4.0.2</version>
+                <executions>
+                    <!-- Generate classes from Role Service WSDL -->
+                    <execution>
+                        <id>generate-role-service</id>
+                        <goals>
+                            <goal>wsimport</goal>
+                        </goals>
+                        <configuration>
+                            <wsdlFiles>
+                                <wsdlFile>idmprov-role.wsdl</wsdlFile>
+                            </wsdlFiles>
+                            <wsdlDirectory>${project.basedir}/src/main/resources</wsdlDirectory>
+                            <packageName>com.idm.test.connector.soap.generated.role</packageName>
+                            <sourceDestDir>${project.build.directory}/generated-sources/jaxws</sourceDestDir>
+                            <keep>true</keep>
+                            <verbose>false</verbose>
+                            <xnocompile>true</xnocompile>
+                        </configuration>
+                    </execution>
+
+                    <!-- Generate classes from Resource Service WSDL -->
+                    <execution>
+                        <id>generate-resource-service</id>
+                        <goals>
+                            <goal>wsimport</goal>
+                        </goals>
+                        <configuration>
+                            <wsdlFiles>
+                                <wsdlFile>idmprov-resource.wsdl</wsdlFile>
+                            </wsdlFiles>
+                            <wsdlDirectory>${project.basedir}/src/main/resources</wsdlDirectory>
+                            <packageName>com.idm.test.connector.soap.generated.resource</packageName>
+                            <sourceDestDir>${project.build.directory}/generated-sources/jaxws</sourceDestDir>
+                            <keep>true</keep>
+                            <verbose>false</verbose>
+                            <xnocompile>true</xnocompile>
+                        </configuration>
+                    </execution>
+                </executions>
+                <dependencies>
+                    <dependency>
+                        <groupId>com.sun.xml.ws</groupId>
+                        <artifactId>jaxws-rt</artifactId>
+                        <version>4.0.2</version>
+                    </dependency>
+                </dependencies>
+            </plugin>
+        </plugins>
+    </build>
 </project>

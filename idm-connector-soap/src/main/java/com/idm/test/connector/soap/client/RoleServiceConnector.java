@@ -7,6 +7,7 @@ import com.idm.test.core.model.OperationResult;
 import jakarta.xml.ws.BindingProvider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 /**
@@ -19,8 +20,12 @@ import org.springframework.stereotype.Component;
  * - Get assigned roles for users
  * - Error handling with OperationResult pattern
  * - Type-safe WSDL-generated classes
+ * <p>
+ * This connector is only created if idm.test.soap.url is configured,
+ * allowing tests to run without SOAP infrastructure.
  */
 @Component
+@ConditionalOnProperty(prefix = "idm.test.soap", name = "url")
 public class RoleServiceConnector {
 
     private static final Logger log = LoggerFactory.getLogger(RoleServiceConnector.class);

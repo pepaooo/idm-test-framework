@@ -266,6 +266,13 @@ spring:
     activate:
       on-profile: test
 
+  # Initialize H2 databases with schema
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:schema.sql
+      continue-on-error: false
+
 idm:
   test:
     # Use Testcontainers or embedded services
@@ -281,16 +288,19 @@ idm:
         driver-class-name: org.h2.Driver
         username: sa
         password:
+        max-pool-size: 5
       oracle-hr:
         jdbc-url: jdbc:h2:mem:hr_test;MODE=Oracle
         driver-class-name: org.h2.Driver
         username: sa
         password:
+        max-pool-size: 5
       workday:
         jdbc-url: jdbc:h2:mem:workday_test
         driver-class-name: org.h2.Driver
         username: sa
         password:
+        max-pool-size: 3
 
     soap:
       url: http://localhost:8090/IDMProv/role/service  # WireMock

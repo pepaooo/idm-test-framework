@@ -95,8 +95,8 @@ class UserDeprovisioningWorkflowTest extends BaseIntegrationTest {
                 testUser.getUserId()
         );
 
-        assertThat(updateResult.isSuccess()).isTrue();
-        assertThat(updateResult.getData().get()).isEqualTo(1);
+        Integer rowsUpdated = assertDataPresent(updateResult, "User disable update");
+        assertThat(rowsUpdated).isEqualTo(1);
 
         log.info("User disabled in database");
 
@@ -110,10 +110,10 @@ class UserDeprovisioningWorkflowTest extends BaseIntegrationTest {
                 testUser.getUserId()
         );
 
-        assertThat(queryResult.isSuccess()).isTrue();
-        assertThat(queryResult.getData().get()).hasSize(1);
+        List<Map<String, Object>> userRows = assertDataPresent(queryResult, "User query after disable");
+        assertThat(userRows).hasSize(1);
 
-        Map<String, Object> userRow = queryResult.getData().get().get(0);
+        Map<String, Object> userRow = userRows.get(0);
 
         assertThat(userRow.get("active"))
                 .as("User should be inactive")
@@ -181,8 +181,8 @@ class UserDeprovisioningWorkflowTest extends BaseIntegrationTest {
                 testUser.getUserId()
         );
 
-        assertThat(dbDeleteResult.isSuccess()).isTrue();
-        assertThat(dbDeleteResult.getData().get())
+        Integer deletedRows = assertDataPresent(dbDeleteResult, "User database deletion");
+        assertThat(deletedRows)
                 .as("One row should be deleted")
                 .isEqualTo(1);
 
@@ -204,7 +204,8 @@ class UserDeprovisioningWorkflowTest extends BaseIntegrationTest {
                 testUser.getUserId()
         );
 
-        assertThat(dbQueryResult.getData().get())
+        List<Map<String, Object>> remainingUsers = assertDataPresent(dbQueryResult, "User verification query");
+        assertThat(remainingUsers)
                 .as("User should not exist in database")
                 .isEmpty();
 
@@ -271,11 +272,12 @@ class UserDeprovisioningWorkflowTest extends BaseIntegrationTest {
                 testUser.getUserId()
         );
 
-        assertThat(accessQuery.getData().get())
+        List<Map<String, Object>> accessGrants = assertDataPresent(accessQuery, "Initial access query");
+        assertThat(accessGrants)
                 .as("User should have 3 access grants")
                 .hasSize(3);
 
-        log.info("Access grants verified: {}", accessQuery.getData().get().size());
+        log.info("Access grants verified: {}", accessGrants.size());
 
         // STEP 3: Revoke all access
         log.info("\n[STEP 3] Revoking all access...");
@@ -288,8 +290,8 @@ class UserDeprovisioningWorkflowTest extends BaseIntegrationTest {
                 testUser.getUserId()
         );
 
-        assertThat(revokeResult.isSuccess()).isTrue();
-        assertThat(revokeResult.getData().get())
+        Integer revokedCount = assertDataPresent(revokeResult, "Access revocation");
+        assertThat(revokedCount)
                 .as("All 3 access grants should be revoked")
                 .isEqualTo(3);
 
@@ -304,7 +306,8 @@ class UserDeprovisioningWorkflowTest extends BaseIntegrationTest {
                 testUser.getUserId()
         );
 
-        assertThat(verifyQuery.getData().get())
+        List<Map<String, Object>> remainingAccess = assertDataPresent(verifyQuery, "Access verification query");
+        assertThat(remainingAccess)
                 .as("User should have no access grants")
                 .isEmpty();
 
@@ -370,9 +373,10 @@ class UserDeprovisioningWorkflowTest extends BaseIntegrationTest {
                 testUser.getUserId()
         );
 
-        assertThat(queryResult.getData().get()).hasSize(1);
+        List<Map<String, Object>> users = assertDataPresent(queryResult, "Grace period query");
+        assertThat(users).hasSize(1);
 
-        Map<String, Object> userRow = queryResult.getData().get().get(0);
+        Map<String, Object> userRow = users.get(0);
         assertThat(userRow.get("active")).isEqualTo(false);
 
         log.info("User in grace period (exists but inactive)");
@@ -388,7 +392,8 @@ class UserDeprovisioningWorkflowTest extends BaseIntegrationTest {
                 testUser.getUserId()
         );
 
-        assertThat(deleteResult.getData().get()).isEqualTo(1);
+        Integer deletedCount = assertDataPresent(deleteResult, "Grace period final deletion");
+        assertThat(deletedCount).isEqualTo(1);
 
         log.info("User permanently deleted after grace period");
         log.info("\n[TEST COMPLETE] Grace period deprovisioning successful!");
@@ -443,7 +448,8 @@ class UserDeprovisioningWorkflowTest extends BaseIntegrationTest {
                 testUser.getUserId()
         );
 
-        assertThat(deleteAccess.getData().get()).isEqualTo(2);
+        Integer deletedAccess = assertDataPresent(deleteAccess, "Related access data deletion");
+        assertThat(deletedAccess).isEqualTo(2);
 
         // Delete user
         log.info("\n[CLEANUP] Deleting user...");
@@ -455,7 +461,8 @@ class UserDeprovisioningWorkflowTest extends BaseIntegrationTest {
                 testUser.getUserId()
         );
 
-        assertThat(deleteUser.getData().get()).isEqualTo(1);
+        Integer deletedUsers = assertDataPresent(deleteUser, "User deletion");
+        assertThat(deletedUsers).isEqualTo(1);
 
         log.info("User and related data deleted successfully");
         log.info("\n[TEST COMPLETE] Related data cleanup successful!");

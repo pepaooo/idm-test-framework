@@ -1,0 +1,23 @@
+{
+  "request": {
+    "method": "POST",
+    "urlPath": "/IDMProv/role/service",
+    "headers": {
+      "Content-Type": {
+        "contains": "text/xml"
+      }
+    },
+    "bodyPatterns": [
+      {
+        "contains": "getUser"
+      }
+    ]
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "text/xml; charset=UTF-8"
+    },
+    "body": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\">\n  <soap:Body>\n    <ns2:getUserResponse xmlns:ns2=\"urn:idmprov\">\n      <result>\n        <associatedRoles>\n          <dnstring>\n            <dn>cn=TestRole,ou=roles,dc=test,dc=com</dn>\n          </dnstring>\n        </associatedRoles>\n      </result>\n    </ns2:getUserResponse>\n  </soap:Body>\n</soap:Envelope>"
+  }
+}

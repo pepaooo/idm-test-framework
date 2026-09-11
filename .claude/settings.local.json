@@ -8,7 +8,9 @@
       "Bash(findstr:*)",
       "Bash(mvn clean test:*)",
       "Bash(mvn clean:*)",
-      "Bash(./mvnw compile:*)"
+      "Bash(./mvnw compile:*)",
+      "Bash(docker ps:*)",
+      "Bash(docker version:*)"
     ],
     "deny": [],
     "ask": []

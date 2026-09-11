@@ -180,8 +180,8 @@ class UserModificationWorkflowTest extends BaseIntegrationTest {
                 testUser.getUserId()
         );
 
-        assertThat(updateResult.isSuccess()).isTrue();
-        assertThat(updateResult.getData().get())
+        Integer updatedRows = assertDataPresent(updateResult, "Database update");
+        assertThat(updatedRows)
                 .as("One row should be updated")
                 .isEqualTo(1);
 
@@ -219,9 +219,9 @@ class UserModificationWorkflowTest extends BaseIntegrationTest {
                 testUser.getUserId()
         );
 
-        assertThat(queryResult.isSuccess()).isTrue();
+        List<Map<String, Object>> userRows = assertDataPresent(queryResult, "Final verification query");
 
-        Map<String, Object> userRow = queryResult.getData().get().get(0);
+        Map<String, Object> userRow = userRows.get(0);
 
         assertThat(userRow.get("department"))
                 .as("Department should be updated")
@@ -302,7 +302,8 @@ class UserModificationWorkflowTest extends BaseIntegrationTest {
 
         // Verify LDAP
         OperationResult<LdapUser> ldapResult = edirectoryConnector.read(userDn);
-        assertThat(ldapResult.getData().get().getMail())
+        LdapUser ldapUser = assertDataPresent(ldapResult, "LDAP email verification");
+        assertThat(ldapUser.getMail())
                 .as("Email should be updated in LDAP")
                 .isEqualTo(newEmail);
 
@@ -313,7 +314,8 @@ class UserModificationWorkflowTest extends BaseIntegrationTest {
                 testUser.getUserId()
         );
 
-        assertThat(dbResult.getData().get().get(0).get("email"))
+        List<Map<String, Object>> dbRecords = assertDataPresent(dbResult, "Database email verification");
+        assertThat(dbRecords.get(0).get("email"))
                 .as("Email should be updated in database")
                 .isEqualTo(newEmail);
 

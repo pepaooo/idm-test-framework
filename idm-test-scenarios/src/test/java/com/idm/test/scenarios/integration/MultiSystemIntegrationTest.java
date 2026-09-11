@@ -132,8 +132,8 @@ class MultiSystemIntegrationTest extends BaseIntegrationTest {
                 true
         );
 
-        assertThat(hrInsertResult.isSuccess()).isTrue();
-        assertThat(hrInsertResult.getData().get()).isEqualTo(1);
+        Integer insertedRows = assertDataPresent(hrInsertResult, "HR database insert");
+        assertThat(insertedRows).isEqualTo(1);
 
         trackDatabaseRecord("test-db", "users", "user_id = '" + newHire.getUserId() + "'");
 
@@ -216,8 +216,9 @@ class MultiSystemIntegrationTest extends BaseIntegrationTest {
                 newHire.getUserId()
         );
 
-        assertThat(hrVerify.getData().get()).hasSize(1);
-        Map<String, Object> hrRecord = hrVerify.getData().get().get(0);
+        List<Map<String, Object>> hrRecords = assertDataPresent(hrVerify, "HR database verification");
+        assertThat(hrRecords).hasSize(1);
+        Map<String, Object> hrRecord = hrRecords.get(0);
         assertThat(hrRecord.get("email")).isEqualTo(newHire.getEmail());
         assertThat(hrRecord.get("department")).isEqualTo(newHire.getDepartment());
         assertThat(hrRecord.get("active")).isEqualTo(true);
@@ -231,7 +232,7 @@ class MultiSystemIntegrationTest extends BaseIntegrationTest {
                 newHire.getUserId()
         );
 
-        List<Map<String, Object>> accessRecords = accessVerify.getData().get();
+        List<Map<String, Object>> accessRecords = assertDataPresent(accessVerify, "Application access verification");
         assertThat(accessRecords).hasSize(4);
 
         log.info("✓ Application access verification passed");
@@ -324,7 +325,8 @@ class MultiSystemIntegrationTest extends BaseIntegrationTest {
                 employee.getUserId()
         );
 
-        assertThat(revokeResult.getData().get())
+        Integer revokedCount = assertDataPresent(revokeResult, "Access revocation");
+        assertThat(revokedCount)
                 .as("All access grants should be revoked")
                 .isEqualTo(systems.length);
 
@@ -352,7 +354,8 @@ class MultiSystemIntegrationTest extends BaseIntegrationTest {
                 employee.getUserId()
         );
 
-        assertThat(deactivateResult.getData().get()).isEqualTo(1);
+        Integer updatedRows = assertDataPresent(deactivateResult, "User deactivation");
+        assertThat(updatedRows).isEqualTo(1);
         log.info("✓ User marked as inactive");
 
         // ========== STEP 4: Verify termination ==========
@@ -365,7 +368,8 @@ class MultiSystemIntegrationTest extends BaseIntegrationTest {
                 employee.getUserId()
         );
 
-        assertThat(accessCheck.getData().get())
+        List<Map<String, Object>> accessRecords = assertDataPresent(accessCheck, "Access verification");
+        assertThat(accessRecords)
                 .as("User should have no access grants")
                 .isEmpty();
 
@@ -378,7 +382,8 @@ class MultiSystemIntegrationTest extends BaseIntegrationTest {
                 employee.getUserId()
         );
 
-        assertThat(userCheck.getData().get().get(0).get("active"))
+        List<Map<String, Object>> userRecords = assertDataPresent(userCheck, "User status verification");
+        assertThat(userRecords.get(0).get("active"))
                 .as("User should be inactive")
                 .isEqualTo(false);
 
@@ -479,7 +484,8 @@ class MultiSystemIntegrationTest extends BaseIntegrationTest {
                 employee.getUserId()
         );
 
-        Map<String, Object> record = dbVerify.getData().get().get(0);
+        List<Map<String, Object>> records = assertDataPresent(dbVerify, "Department transfer verification");
+        Map<String, Object> record = records.get(0);
         assertThat(record.get("department")).isEqualTo(newDept);
         assertThat(record.get("job_title")).isEqualTo(newTitle);
 

@@ -1,0 +1,144 @@
+# ===================================================================
+# Docker Compose for IdM Test Framework
+# ===================================================================
+# Provides test infrastructure for local development and integration tests:
+# - OpenLDAP: LDAP server for identity data
+# - WireMock: Mock SOAP/REST services
+# - PostgreSQL: Database for application data (optional)
+#
+# Usage:
+#   Start services:     docker-compose up -d
+#   Stop services:      docker-compose down
+#   View logs:          docker-compose logs -f
+#   Restart service:    docker-compose restart <service-name>
+# ===================================================================
+
+version: '3.8'
+
+services:
+  # ===================================================================
+  # OpenLDAP - LDAP Directory Server
+  # ===================================================================
+  ldap:
+    image: osixia/openldap:1.5.0
+    container_name: idm-test-ldap
+    hostname: ldap.test.local
+    ports:
+      - "10389:389"      # LDAP
+      - "10636:636"      # LDAPS (SSL)
+    environment:
+      # Organization and domain
+      LDAP_ORGANISATION: "Test Organization"
+      LDAP_DOMAIN: "test.com"
+
+      # Admin credentials
+      LDAP_ADMIN_PASSWORD: "test"
+      LDAP_CONFIG_PASSWORD: "config"
+
+      # Read-only user
+      LDAP_READONLY_USER: "true"
+      LDAP_READONLY_USER_USERNAME: "readonly"
+      LDAP_READONLY_USER_PASSWORD: "readonly"
+
+      # TLS/SSL settings
+      LDAP_TLS: "false"
+      LDAP_TLS_VERIFY_CLIENT: "never"
+
+      # Logging
+      LDAP_LOG_LEVEL: "256"  # Stats + connections
+    volumes:
+      - ldap-data:/var/lib/ldap
+      - ldap-config:/etc/ldap/slapd.d
+    networks:
+      - idm-test-network
+    healthcheck:
+      test: ["CMD", "ldapsearch", "-x", "-H", "ldap://localhost", "-b", "dc=test,dc=com", "-D", "cn=admin,dc=test,dc=com", "-w", "test"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+    restart: unless-stopped
+
+  # ===================================================================
+  # phpLDAPadmin - Web UI for LDAP (optional)
+  # ===================================================================
+  ldap-admin:
+    image: osixia/phpldapadmin:0.9.0
+    container_name: idm-test-ldap-admin
+    ports:
+      - "8080:80"
+    environment:
+      PHPLDAPADMIN_LDAP_HOSTS: "ldap"
+      PHPLDAPADMIN_HTTPS: "false"
+    depends_on:
+      - ldap
+    networks:
+      - idm-test-network
+    restart: unless-stopped
+
+  # ===================================================================
+  # WireMock - Mock SOAP/REST Services
+  # ===================================================================
+  wiremock:
+    image: wiremock/wiremock:3.10.0
+    container_name: idm-test-wiremock
+    ports:
+      - "8090:8080"      # WireMock server
+    command:
+      - --global-response-templating
+      - --verbose
+      - --port=8080
+    volumes:
+      - ./idm-test-scenarios/src/test/resources/wiremock:/home/wiremock
+    networks:
+      - idm-test-network
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/__admin/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  # ===================================================================
+  # PostgreSQL - Application Database (optional)
+  # ===================================================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: idm-test-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: idmtest
+      POSTGRES_PASSWORD: idmtest
+      POSTGRES_DB: idmtest
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - idm-test-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U idmtest"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+# ===================================================================
+# Networks
+# ===================================================================
+networks:
+  idm-test-network:
+    driver: bridge
+    name: idm-test-network
+
+# ===================================================================
+# Volumes
+# ===================================================================
+volumes:
+  ldap-data:
+    name: idm-test-ldap-data
+  ldap-config:
+    name: idm-test-ldap-config
+  postgres-data:
+    name: idm-test-postgres-data

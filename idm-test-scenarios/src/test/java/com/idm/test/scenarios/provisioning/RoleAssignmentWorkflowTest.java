@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 
 import com.idm.test.connector.ldap.model.LdapUser;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 
@@ -185,8 +186,8 @@ class RoleAssignmentWorkflowTest extends BaseIntegrationTest {
                     );
                     return result.isSuccess() && !result.getData().get().isEmpty();
                 },
-                executorProperties.getDatabaseProvisionTimeout(),
-                executorProperties.getDefaultPollInterval()
+                executorProperties != null ? executorProperties.getDatabaseProvisionTimeout() : Duration.ofMinutes(3),
+                executorProperties != null ? executorProperties.getDefaultPollInterval() : Duration.ofSeconds(1)
         );
 
         assertThat(accessProvisioned)

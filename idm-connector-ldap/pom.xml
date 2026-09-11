@@ -60,10 +60,10 @@
             <scope>test</scope>
         </dependency>
 
-        <!-- Embedded Apache Directory Server for tests -->
+        <!-- Shared embedded LDAP server for tests -->
         <dependency>
-            <groupId>org.apache.directory.server</groupId>
-            <artifactId>apacheds-all</artifactId>
+            <groupId>com.idm.test</groupId>
+            <artifactId>idm-test-utils</artifactId>
             <scope>test</scope>
         </dependency>
     </dependencies>

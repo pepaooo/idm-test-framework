@@ -289,16 +289,18 @@ Documentation is organised by how much you should trust it.
 | Phase 7 | SOAP connector | ✅ Complete |
 | Phase 8 | Configuration infrastructure | ✅ Complete |
 | Phase 9 | Integration test scenarios (20+ tests) | ✅ Complete |
-| Phase 10 | Docker & CI/CD automation | ✅ Complete |
+| Phase 10 | Docker & CI/CD automation | ⚠️ Superseded — see [green baseline spec](docs/specs/2026-09-11-suite-green-baseline-design.md) |
 
 ### Build Status
-- ✅ All 9 modules compile successfully
-- ✅ ConfigurationTest: 7/7 tests pass
-- ✅ Integration tests: 20+ scenarios ready
-- ✅ Testcontainers integration working
-- ✅ WireMock SOAP mocking operational
-- ✅ Docker Compose environment ready
-- ✅ GitHub Actions CI/CD configured
+
+Last verified: 2026-09-11 via `sh ./mvnw clean test`
+
+- All 9 modules compile and test successfully
+- Total: 167 tests, 0 failures, 0 errors, 0 skipped
+- No Docker required — the suite runs on an embedded UnboundID LDAP server
+- WireMock provides SOAP stubs on a dynamically allocated port
+- Docker Compose and the CI workflow remain available for phase (b),
+  when the framework is pointed at a real IdM environment
 
 ---
 

@@ -238,12 +238,24 @@ mvn test -Dtest=ConfigurationTest -X
 
 ## 📚 Documentation
 
-- **[SPECIFICATION.md](SPECIFICATION.md)** - Complete architecture specification
+Documentation is organised by how much you should trust it.
+
+**Reference** — maintained, describes the framework as it is:
+
+- **[Specification](docs/reference/specification.md)** - Complete architecture specification
+- **[Configuration](docs/reference/configuration.md)** - How to configure connectors and databases
+- **[Running tests](docs/reference/running-tests.md)** - Comprehensive test execution guide
 - **[CLAUDE.md](CLAUDE.md)** - Development guidelines for Claude Code
-- **[PHASE9_COMPLETE.md](PHASE9_COMPLETE.md)** - Phase 9: Integration test scenarios
-- **[PHASE10_COMPLETE.md](PHASE10_COMPLETE.md)** - Phase 10: Docker & CI/CD automation
-- **[RUNNING_TESTS.md](RUNNING_TESTS.md)** - Comprehensive test execution guide
-- **[TESTS_FIXED.md](TESTS_FIXED.md)** - API fixes applied in Phase 9
+
+**Specs and plans** — design documents for in-flight work:
+
+- **[Green test baseline](docs/specs/2026-09-11-suite-green-baseline-design.md)** - Design for the current state of the suite
+- **[Implementation plan](docs/plans/2026-09-11-green-test-baseline.md)** - Task breakdown for that design
+
+**History** — frozen session reports, kept for the record only:
+
+- **[docs/history/](docs/history/README.md)** - Phase 9 and 10 reports. Several are
+  inaccurate; the banner in that folder says which. Do not use them to judge current state.
 
 ---
 
@@ -277,16 +289,18 @@ mvn test -Dtest=ConfigurationTest -X
 | Phase 7 | SOAP connector | ✅ Complete |
 | Phase 8 | Configuration infrastructure | ✅ Complete |
 | Phase 9 | Integration test scenarios (20+ tests) | ✅ Complete |
-| Phase 10 | Docker & CI/CD automation | ✅ Complete |
+| Phase 10 | Docker & CI/CD automation | ⚠️ Superseded — see [green baseline spec](docs/specs/2026-09-11-suite-green-baseline-design.md) |
 
 ### Build Status
-- ✅ All 9 modules compile successfully
-- ✅ ConfigurationTest: 7/7 tests pass
-- ✅ Integration tests: 20+ scenarios ready
-- ✅ Testcontainers integration working
-- ✅ WireMock SOAP mocking operational
-- ✅ Docker Compose environment ready
-- ✅ GitHub Actions CI/CD configured
+
+Last verified: 2026-09-11 via `sh ./mvnw clean test`
+
+- All 9 modules compile and test successfully
+- Total: 167 tests, 0 failures, 0 errors, 0 skipped
+- No Docker required — the suite runs on an embedded UnboundID LDAP server
+- WireMock provides SOAP stubs on a dynamically allocated port
+- Docker Compose and the CI workflow remain available for phase (b),
+  when the framework is pointed at a real IdM environment
 
 ---
 

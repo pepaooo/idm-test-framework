@@ -35,8 +35,6 @@ class UserProvisioningWorkflowTest extends BaseIntegrationTest {
     @DisplayName("Should create user and verify LDAP provisioning")
     void testUserProvisioningToLdap() {
         // Require LDAP connector for this test
-        requireConnector(edirectoryConnector, "EdirectoryConnector");
-        requireConnector(testDataGenerator, "TestDataGenerator");
 
         // STEP 1: Generate test user data
         log.info("\n[STEP 1] Generating test user data...");
@@ -52,7 +50,7 @@ class UserProvisioningWorkflowTest extends BaseIntegrationTest {
 
         // STEP 2: Create user in LDAP (simulating IdM provisioning)
         log.info("\n[STEP 2] Creating user in LDAP...");
-        String userDn = testUser.buildLdapDn("ou=users,dc=test,dc=com");
+        String userDn = testUser.buildLdapDn("ou=users");
         log.info("User DN: {}", userDn);
 
         OperationResult<LdapUser> createResult = edirectoryConnector.create(
@@ -113,8 +111,6 @@ class UserProvisioningWorkflowTest extends BaseIntegrationTest {
     @DisplayName("Should create user and verify database provisioning")
     void testUserProvisioningToDatabase() {
         // Require database connector for this test
-        requireConnector(databaseConnector, "MultiDatabaseConnector");
-        requireConnector(testDataGenerator, "TestDataGenerator");
 
         // STEP 1: Generate test user data
         log.info("\n[STEP 1] Generating test user data...");
@@ -223,7 +219,6 @@ class UserProvisioningWorkflowTest extends BaseIntegrationTest {
     @DisplayName("Should handle provisioning timeout gracefully")
     void testProvisioningTimeout() {
         // Require LDAP connector for this test
-        requireConnector(edirectoryConnector, "EdirectoryConnector");
 
         log.info("\n[TEST] Testing provisioning timeout handling...");
 
@@ -248,8 +243,6 @@ class UserProvisioningWorkflowTest extends BaseIntegrationTest {
     @DisplayName("Should provision user with minimal required attributes")
     void testMinimalUserProvisioning() {
         // Require LDAP connector for this test
-        requireConnector(edirectoryConnector, "EdirectoryConnector");
-        requireConnector(testDataGenerator, "TestDataGenerator");
 
         log.info("\n[TEST] Creating user with minimal attributes...");
 
@@ -258,7 +251,7 @@ class UserProvisioningWorkflowTest extends BaseIntegrationTest {
 
         log.info("Minimal user: {}", minimalUser);
 
-        String userDn = minimalUser.buildLdapDn("ou=users,dc=test,dc=com");
+        String userDn = minimalUser.buildLdapDn("ou=users");
 
         OperationResult<LdapUser> createResult = edirectoryConnector.create(
                 minimalUser.toLdapUser(userDn)

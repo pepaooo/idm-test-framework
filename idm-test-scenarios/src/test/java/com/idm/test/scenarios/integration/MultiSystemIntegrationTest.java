@@ -33,10 +33,6 @@ class MultiSystemIntegrationTest extends BaseIntegrationTest {
     @DisplayName("Complete new hire onboarding workflow across all systems")
     void testNewHireOnboardingWorkflow() {
         // Require all connectors for complete workflow
-        requireConnector(edirectoryConnector, "EdirectoryConnector");
-        requireConnector(databaseConnector, "MultiDatabaseConnector");
-        requireConnector(roleServiceConnector, "RoleServiceConnector");
-        requireConnector(testDataGenerator, "TestDataGenerator");
 
         log.info("\n" + "=".repeat(80));
         log.info("COMPLETE NEW HIRE ONBOARDING WORKFLOW");
@@ -60,7 +56,7 @@ class MultiSystemIntegrationTest extends BaseIntegrationTest {
         // ========== STEP 2: Create user in eDirectory (LDAP) ==========
         log.info("\n[STEP 2] Creating user in eDirectory...");
 
-        String userDn = newHire.buildLdapDn("ou=users,dc=test,dc=com");
+        String userDn = newHire.buildLdapDn("ou=users");
         log.info("User DN: {}", userDn);
 
         OperationResult<LdapUser> ldapCreateResult = edirectoryConnector.create(
@@ -260,9 +256,6 @@ class MultiSystemIntegrationTest extends BaseIntegrationTest {
     @DisplayName("Complete employee termination workflow across all systems")
     void testEmployeeTerminationWorkflow() {
         // Require all connectors
-        requireConnector(edirectoryConnector, "EdirectoryConnector");
-        requireConnector(databaseConnector, "MultiDatabaseConnector");
-        requireConnector(testDataGenerator, "TestDataGenerator");
 
         log.info("\n" + "=".repeat(80));
         log.info("COMPLETE EMPLOYEE TERMINATION WORKFLOW");
@@ -275,7 +268,7 @@ class MultiSystemIntegrationTest extends BaseIntegrationTest {
                 .withDepartment("Sales")
                 .withActive(true);
 
-        String userDn = employee.buildLdapDn("ou=users,dc=test,dc=com");
+        String userDn = employee.buildLdapDn("ou=users");
 
         // Create in LDAP
         edirectoryConnector.create(employee.toLdapUser(userDn));
@@ -419,9 +412,6 @@ class MultiSystemIntegrationTest extends BaseIntegrationTest {
     @DisplayName("Department transfer workflow with cross-system sync")
     void testDepartmentTransferWorkflow() {
         // Require connectors
-        requireConnector(edirectoryConnector, "EdirectoryConnector");
-        requireConnector(databaseConnector, "MultiDatabaseConnector");
-        requireConnector(testDataGenerator, "TestDataGenerator");
 
         log.info("\n[TEST] Department Transfer Workflow");
 
@@ -430,7 +420,7 @@ class MultiSystemIntegrationTest extends BaseIntegrationTest {
                 .withDepartment("Engineering")
                 .withJobTitle("Software Engineer");
 
-        String userDn = employee.buildLdapDn("ou=users,dc=test,dc=com");
+        String userDn = employee.buildLdapDn("ou=users");
 
         // Create in both systems
         edirectoryConnector.create(employee.toLdapUser(userDn));

@@ -40,6 +40,12 @@
             <artifactId>commons-lang3</artifactId>
         </dependency>
 
+        <!-- UnboundID LDAP SDK - powers the shared embedded test directory -->
+        <dependency>
+            <groupId>com.unboundid</groupId>
+            <artifactId>unboundid-ldapsdk</artifactId>
+        </dependency>
+
         <!-- Testing -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

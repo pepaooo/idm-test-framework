@@ -34,16 +34,13 @@ class UserDeprovisioningWorkflowTest extends BaseIntegrationTest {
     @DisplayName("Should disable user (soft delete) across all systems")
     void testUserDisableWorkflow() {
         // Require connectors
-        requireConnector(edirectoryConnector, "EdirectoryConnector");
-        requireConnector(databaseConnector, "MultiDatabaseConnector");
-        requireConnector(testDataGenerator, "TestDataGenerator");
 
         // STEP 1: Create active user in both systems
         log.info("\n[STEP 1] Creating active user...");
         UserTestData testUser = UserTestData.randomUser(testDataGenerator)
                 .withActive(true);
 
-        String userDn = testUser.buildLdapDn("ou=users,dc=test,dc=com");
+        String userDn = testUser.buildLdapDn("ou=users");
 
         // Create in LDAP
         edirectoryConnector.create(testUser.toLdapUser(userDn));
@@ -127,15 +124,12 @@ class UserDeprovisioningWorkflowTest extends BaseIntegrationTest {
     @DisplayName("Should delete user (hard delete) from all systems")
     void testUserDeleteWorkflow() {
         // Require connectors
-        requireConnector(edirectoryConnector, "EdirectoryConnector");
-        requireConnector(databaseConnector, "MultiDatabaseConnector");
-        requireConnector(testDataGenerator, "TestDataGenerator");
 
         // STEP 1: Create user
         log.info("\n[STEP 1] Creating user for deletion...");
         UserTestData testUser = UserTestData.randomUser(testDataGenerator);
 
-        String userDn = testUser.buildLdapDn("ou=users,dc=test,dc=com");
+        String userDn = testUser.buildLdapDn("ou=users");
 
         // Create in LDAP
         edirectoryConnector.create(testUser.toLdapUser(userDn));
@@ -217,8 +211,6 @@ class UserDeprovisioningWorkflowTest extends BaseIntegrationTest {
     @DisplayName("Should revoke all access during deprovisioning")
     void testAccessRevocationWorkflow() {
         // Require connectors
-        requireConnector(databaseConnector, "MultiDatabaseConnector");
-        requireConnector(testDataGenerator, "TestDataGenerator");
 
         // STEP 1: Create user with multiple access grants
         log.info("\n[STEP 1] Creating user with multiple access grants...");
@@ -319,8 +311,6 @@ class UserDeprovisioningWorkflowTest extends BaseIntegrationTest {
     @DisplayName("Should handle deprovisioning with grace period")
     void testGracePeriodDeprovisioning() {
         // Require connector
-        requireConnector(databaseConnector, "MultiDatabaseConnector");
-        requireConnector(testDataGenerator, "TestDataGenerator");
 
         log.info("\n[TEST] Testing deprovisioning with grace period...");
 
@@ -403,8 +393,6 @@ class UserDeprovisioningWorkflowTest extends BaseIntegrationTest {
     @DisplayName("Should cleanup related data during deprovisioning")
     void testRelatedDataCleanup() {
         // Require connector
-        requireConnector(databaseConnector, "MultiDatabaseConnector");
-        requireConnector(testDataGenerator, "TestDataGenerator");
 
         log.info("\n[TEST] Testing related data cleanup...");
 

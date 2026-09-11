@@ -9,6 +9,8 @@ import com.idm.test.core.config.TestExecutorProperties;
 import com.idm.test.core.engine.TestExecutor;
 import com.idm.test.core.model.OperationResult;
 import com.idm.test.utils.data.TestDataGenerator;
+import com.idm.test.scenarios.config.IdmTestSchema;
+import com.idm.test.utils.ldap.EmbeddedLdapServer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.slf4j.Logger;
@@ -20,15 +22,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
-import org.testcontainers.containers.GenericContainer;
-import org.testcontainers.containers.output.Slf4jLogConsumer;
-import org.testcontainers.containers.wait.strategy.Wait;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
-import org.testcontainers.utility.MountableFile;
 
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -54,118 +48,87 @@ import static org.assertj.core.api.Assertions.assertThat;
 @SpringBootTest
 @ActiveProfiles("test")
 @EnableAutoConfiguration(exclude = {LdapAutoConfiguration.class})
-@Testcontainers
 public abstract class BaseIntegrationTest {
 
     protected final Logger log = LoggerFactory.getLogger(getClass());
 
     // ===================================================================
-    // Testcontainers - Shared across all tests
+    // Test infrastructure - started once for the whole JVM
     // ===================================================================
 
-    /**
-     * OpenLDAP container for LDAP integration tests.
-     * Shared across all test classes, started once and reused.
-     * <p>
-     * After container starts, organizational units are created via LDIF import:
-     * - ou=users (for user accounts)
-     * - ou=roles (for role definitions)
-     * - ou=groups (for security groups)
-     */
-    @Container
-    protected static final GenericContainer<?> LDAP_CONTAINER = new GenericContainer<>(
-            DockerImageName.parse("osixia/openldap:1.5.0"))
-            .withExposedPorts(389, 636)
-            .withEnv("LDAP_ORGANISATION", "Test Organization")
-            .withEnv("LDAP_DOMAIN", "test.com")
-            .withEnv("LDAP_ADMIN_PASSWORD", "test")
-            .withEnv("LDAP_CONFIG_PASSWORD", "config")
-            .withEnv("LDAP_TLS", "false")
-            .withEnv("LDAP_LOG_LEVEL", "256")  // Increase logging for debugging
-            .withCopyFileToContainer(
-                    MountableFile.forClasspathResource("ldap-init.ldif"),
-                    "/tmp/ldap-init.ldif")
-            .withLogConsumer(new Slf4jLogConsumer(LoggerFactory.getLogger("LDAP")))
-            // Wait for LDAP to be fully started and accepting connections
-            .waitingFor(Wait.forListeningPort()
-                    .withStartupTimeout(Duration.ofMinutes(3)))
-            .withStartupTimeout(Duration.ofMinutes(3))
-            .withReuse(true);
+    private static final String LDAP_BASE_DN = "dc=test,dc=com";
+    private static final String LDAP_BIND_DN = "cn=admin,dc=test,dc=com";
+    private static final String LDAP_BIND_PASSWORD = "test";
 
     /**
-     * WireMock server for SOAP service mocking.
-     * Started once and reused across all test classes.
+     * In-memory LDAP directory. Binds an ephemeral port so parallel module builds
+     * cannot collide, and imports ldap-init.ldif to create ou=users, ou=roles, ou=groups.
      */
-    protected static final WireMockServer WIREMOCK_SERVER = new WireMockServer(
+    private static final EmbeddedLdapServer LDAP_SERVER = startLdapServer();
+
+    /**
+     * WireMock server for SOAP mocking, on a dynamically allocated port.
+     */
+    private static final WireMockServer WIREMOCK_SERVER = new WireMockServer(
             WireMockConfiguration.options()
-                    .port(8090)
+                    .dynamicPort()
                     .usingFilesUnderClasspath("wiremock")
                     .globalTemplating(true));
 
-    /**
-     * Flag to track if LDAP structure has been initialized.
-     * Volatile to ensure visibility across threads.
-     */
-    private static volatile boolean ldapInitialized = false;
-
-    /**
-     * Lock object for synchronizing LDAP initialization.
-     */
-    private static final Object LDAP_INIT_LOCK = new Object();
-
     static {
-        // Start WireMock server
         WIREMOCK_SERVER.start();
         LoggerFactory.getLogger(BaseIntegrationTest.class)
-                .info("WireMock server started on port 8090");
+                .info("WireMock server started on port {}", WIREMOCK_SERVER.port());
+    }
+
+    private static EmbeddedLdapServer startLdapServer() {
+        try {
+            return EmbeddedLdapServer.start(
+                    LDAP_BASE_DN, LDAP_BIND_DN, LDAP_BIND_PASSWORD, 0, "ldap-init.ldif",
+                    IdmTestSchema.edirectoryLikeSchema());
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to start embedded LDAP server", e);
+        }
     }
 
     /**
-     * Configure Spring properties dynamically based on container ports.
+     * Point the connectors at the embedded infrastructure.
+     * Everything else comes from src/test/resources/application.yml, so switching to a
+     * real directory in phase (b) is a profile change rather than a code change.
      */
     @DynamicPropertySource
     static void configureProperties(DynamicPropertyRegistry registry) {
-        // LDAP properties
-        if (LDAP_CONTAINER.isRunning()) {
-            String ldapUrl = String.format("ldap://%s:%d",
-                    LDAP_CONTAINER.getHost(),
-                    LDAP_CONTAINER.getMappedPort(389));
-
-            registry.add("idm.test.ldap.url", () -> ldapUrl);
-            registry.add("idm.test.ldap.base-dn", () -> "dc=test,dc=com");
-            registry.add("idm.test.ldap.user-dn", () -> "cn=admin,dc=test,dc=com");
-            registry.add("idm.test.ldap.password", () -> "test");
-
-            LoggerFactory.getLogger(BaseIntegrationTest.class)
-                    .info("Configured LDAP properties: {}", ldapUrl);
-        }
-
-        // WireMock/SOAP properties
-        registry.add("idm.test.soap.url", () -> "http://localhost:8090/IDMProv/role/service");
+        registry.add("idm.test.ldap.url", LDAP_SERVER::getUrl);
+        registry.add("idm.test.ldap.base-dn", () -> LDAP_BASE_DN);
+        registry.add("idm.test.ldap.user-dn", () -> LDAP_BIND_DN);
+        registry.add("idm.test.ldap.password", () -> LDAP_BIND_PASSWORD);
+        registry.add("idm.test.soap.url",
+                () -> "http://localhost:" + WIREMOCK_SERVER.port() + "/IDMProv/role/service");
     }
 
     // ===================================================================
-    // Connectors - Injected by Spring
+    // Connectors - injected by Spring, required
     // ===================================================================
 
-    // Connectors - may be null if not configured
-    @Autowired(required = false)
+    // These are deliberately NOT optional. A missing bean must fail context
+    // startup loudly rather than silently skipping the tests that need it.
+
+    @Autowired
     protected EdirectoryConnector edirectoryConnector;
 
-    @Autowired(required = false)
+    @Autowired
     protected MultiDatabaseConnector databaseConnector;
 
-    @Autowired(required = false)
+    @Autowired
     protected RoleServiceConnector roleServiceConnector;
 
-    // Test infrastructure
-    @Autowired(required = false)
+    @Autowired
     protected TestExecutor testExecutor;
 
-    @Autowired(required = false)
+    @Autowired
     protected TestExecutorProperties executorProperties;
 
-    @Autowired(required = false)
+    @Autowired
     protected TestDataGenerator testDataGenerator;
 
     // Track created resources for cleanup
@@ -179,127 +142,8 @@ public abstract class BaseIntegrationTest {
         log.info("Starting test: {}", getTestName());
         log.info("=".repeat(80));
 
-        // Verify LDAP connectivity before initializing
-        verifyLdapConnectivity();
-
-        // Initialize LDAP structure on first test run
-        initializeLdapStructure();
-
-        logConnectorAvailability();
-
         // Subclasses can override setupTest() for custom setup
         setupTest();
-    }
-
-    /**
-     * Verify LDAP container is connectable before proceeding with tests.
-     * This method adds an additional wait after container startup to ensure
-     * the LDAP server is fully ready to accept connections.
-     */
-    private void verifyLdapConnectivity() {
-        if (!LDAP_CONTAINER.isRunning()) {
-            log.warn("LDAP container is not running, skipping connectivity check");
-            return;
-        }
-
-        log.info("Verifying LDAP connectivity...");
-        int maxAttempts = 10;
-        int attempt = 0;
-        boolean connected = false;
-
-        while (attempt < maxAttempts && !connected) {
-            attempt++;
-            try {
-                // Try to execute a simple LDAP search to verify connectivity
-                org.testcontainers.containers.Container.ExecResult result = LDAP_CONTAINER.execInContainer(
-                        "ldapsearch",
-                        "-x",
-                        "-H", "ldap://localhost:389",
-                        "-b", "dc=test,dc=com",
-                        "-D", "cn=admin,dc=test,dc=com",
-                        "-w", "test",
-                        "(objectClass=*)",
-                        "-LLL"
-                );
-
-                if (result.getExitCode() == 0) {
-                    log.info("LDAP connectivity verified successfully on attempt {}", attempt);
-                    connected = true;
-                } else {
-                    log.warn("LDAP connectivity check failed on attempt {} (exit code: {})",
-                            attempt, result.getExitCode());
-                    if (attempt < maxAttempts) {
-                        Thread.sleep(2000); // Wait 2 seconds before retry
-                    }
-                }
-            } catch (Exception e) {
-                log.warn("LDAP connectivity check failed on attempt {}: {}", attempt, e.getMessage());
-                if (attempt < maxAttempts) {
-                    try {
-                        Thread.sleep(2000); // Wait 2 seconds before retry
-                    } catch (InterruptedException ie) {
-                        Thread.currentThread().interrupt();
-                        break;
-                    }
-                }
-            }
-        }
-
-        if (!connected) {
-            log.error("Failed to verify LDAP connectivity after {} attempts", maxAttempts);
-            log.error("Tests may fail due to LDAP connection issues");
-        } else {
-            // Additional wait to ensure connection pool is ready
-            try {
-                Thread.sleep(1000);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-        }
-    }
-
-    /**
-     * Initialize LDAP organizational structure.
-     * This method is called before the first test and creates the required OUs.
-     * Uses double-checked locking to ensure initialization happens only once.
-     */
-    private void initializeLdapStructure() {
-        if (!ldapInitialized) {
-            synchronized (LDAP_INIT_LOCK) {
-                if (!ldapInitialized) {
-                    try {
-                        log.info("Initializing LDAP organizational structure...");
-
-                        // Import LDIF file to create organizational units
-                        org.testcontainers.containers.Container.ExecResult result = LDAP_CONTAINER.execInContainer(
-                                "ldapadd",
-                                "-x",
-                                "-D", "cn=admin,dc=test,dc=com",
-                                "-w", "test",
-                                "-f", "/tmp/ldap-init.ldif"
-                        );
-
-                        if (result.getExitCode() == 0) {
-                            log.info("LDAP organizational units created successfully");
-                            log.info("  - ou=users,dc=test,dc=com");
-                            log.info("  - ou=roles,dc=test,dc=com");
-                            log.info("  - ou=groups,dc=test,dc=com");
-                            ldapInitialized = true;
-                        } else {
-                            log.warn("LDAP initialization exit code: {}", result.getExitCode());
-                            log.warn("LDAP initialization stderr: {}", result.getStderr());
-                            log.warn("LDAP initialization stdout: {}", result.getStdout());
-                            // Mark as initialized even if it fails (might be already initialized)
-                            ldapInitialized = true;
-                        }
-                    } catch (Exception e) {
-                        log.error("Failed to initialize LDAP structure", e);
-                        // Mark as initialized to avoid retry on every test
-                        ldapInitialized = true;
-                    }
-                }
-            }
-        }
     }
 
     @AfterEach
@@ -426,18 +270,6 @@ public abstract class BaseIntegrationTest {
     }
 
     /**
-     * Log connector availability for debugging.
-     */
-    private void logConnectorAvailability() {
-        log.info("Connector Availability:");
-        log.info("  EdirectoryConnector: {}", edirectoryConnector != null ? "AVAILABLE" : "NOT AVAILABLE");
-        log.info("  MultiDatabaseConnector: {}", databaseConnector != null ? "AVAILABLE" : "NOT AVAILABLE");
-        log.info("  RoleServiceConnector: {}", roleServiceConnector != null ? "AVAILABLE" : "NOT AVAILABLE");
-        log.info("  TestExecutor: {}", testExecutor != null ? "AVAILABLE" : "NOT AVAILABLE");
-        log.info("  TestDataGenerator: {}", testDataGenerator != null ? "AVAILABLE" : "NOT AVAILABLE");
-    }
-
-    /**
      * Get the current test name for logging.
      */
     private String getTestName() {
@@ -448,24 +280,6 @@ public abstract class BaseIntegrationTest {
             }
         }
         return "Unknown Test";
-    }
-
-    /**
-     * Helper to check if a connector is available.
-     */
-    protected boolean isConnectorAvailable(Object connector) {
-        return connector != null;
-    }
-
-    /**
-     * Helper to require a connector or skip test.
-     */
-    protected void requireConnector(Object connector, String connectorName) {
-        if (connector == null) {
-            log.warn("Skipping test - {} not available", connectorName);
-            org.junit.jupiter.api.Assumptions.assumeTrue(false,
-                connectorName + " not available in test environment");
-        }
     }
 
     /**

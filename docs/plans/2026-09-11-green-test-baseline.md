@@ -12,6 +12,10 @@
 
 ## Global Constraints
 
+- Build sibling modules with `-am`: they are not installed in the local Maven repo, so
+  `-pl <module>` alone fails to resolve `com.idm.test:*` dependencies. When combining
+  `-am` with `-Dtest=`, add `-Dsurefire.failIfNoSpecifiedTests=false`, or the upstream
+  modules fail with "No tests matching pattern".
 - Java 21. Use records over Lombok; Lombok is not a dependency and must not be added.
 - Maven wrapper is not executable: run it as `sh ./mvnw ...`, never `./mvnw ...`.
 - No JPA/Hibernate. Database validation is raw SQL via `JdbcTemplate`.
@@ -197,7 +201,7 @@ ou: roles
 - [ ] **Step 4: Run the test to verify it fails**
 
 ```bash
-sh ./mvnw -pl idm-test-utils -am test -Dtest=EmbeddedLdapServerTest
+sh ./mvnw -pl idm-test-utils -am test -Dtest=EmbeddedLdapServerTest -Dsurefire.failIfNoSpecifiedTests=false
 ```
 
 Expected: compilation failure — `cannot find symbol: class EmbeddedLdapServer`.
@@ -348,7 +352,7 @@ public final class EmbeddedLdapServer implements AutoCloseable {
 - [ ] **Step 6: Run the test to verify it passes**
 
 ```bash
-sh ./mvnw -pl idm-test-utils -am test -Dtest=EmbeddedLdapServerTest
+sh ./mvnw -pl idm-test-utils -am test -Dtest=EmbeddedLdapServerTest -Dsurefire.failIfNoSpecifiedTests=false
 ```
 
 Expected: `Tests run: 4, Failures: 0, Errors: 0, Skipped: 0`
@@ -507,7 +511,7 @@ This is the task that removes the build blocker. `BaseIntegrationTest` stops usi
 - [ ] **Step 1: Confirm the failure you are fixing**
 
 ```bash
-sh ./mvnw -pl idm-test-scenarios test -Dtest=UserProvisioningWorkflowTest 2>&1 | grep -E "client version|Tests run:"
+sh ./mvnw -pl idm-test-scenarios -am test -Dtest=UserProvisioningWorkflowTest 2>&1 | grep -E "client version|Tests run:"
 ```
 
 Expected: an error mentioning `client version 1.32 is too old`.
@@ -654,7 +658,7 @@ Expected: `BUILD SUCCESS`. Any `cannot find symbol: LDAP_CONTAINER` means a refe
 - [ ] **Step 7: Verify the scenario context now starts without Docker**
 
 ```bash
-sh ./mvnw -pl idm-test-scenarios test -Dtest=UserProvisioningWorkflowTest 2>&1 | grep -E "Embedded LDAP server started|client version|Tests run:"
+sh ./mvnw -pl idm-test-scenarios -am test -Dtest=UserProvisioningWorkflowTest 2>&1 | grep -E "Embedded LDAP server started|client version|Tests run:"
 ```
 
 Expected: a line containing `Embedded LDAP server started on ldap://localhost:`, and **no** `client version` error. Individual test assertions may still fail — that is Task 5's job. The gate here is that the context starts and tests execute.
@@ -662,7 +666,7 @@ Expected: a line containing `Embedded LDAP server started on ldap://localhost:`,
 - [ ] **Step 8: Verify Testcontainers is gone from the module**
 
 ```bash
-sh ./mvnw -pl idm-test-scenarios dependency:tree | grep -c testcontainers
+sh ./mvnw -pl idm-test-scenarios -am dependency:tree | grep -c testcontainers
 ```
 
 Expected: `0`
@@ -773,7 +777,7 @@ Expected: `BUILD SUCCESS`
 - [ ] **Step 5: Verify zero skips in the scenarios module**
 
 ```bash
-sh ./mvnw -pl idm-test-scenarios test 2>&1 | grep -E "^\[(INFO|ERROR)\] Tests run:.*Skipped"
+sh ./mvnw -pl idm-test-scenarios -am test 2>&1 | grep -E "^\[(INFO|ERROR)\] Tests run:.*Skipped"
 ```
 
 Expected: every line ends with `Skipped: 0`. Failures and errors are still acceptable at this point — Task 5 resolves those. A non-zero `Skipped` count means a call site survived.
@@ -900,7 +904,7 @@ Per the spec's triage principle, **stop and get a decision on the second bucket 
 After each fix:
 
 ```bash
-sh ./mvnw -pl idm-test-scenarios test -Dtest=<TestClassName>
+sh ./mvnw -pl idm-test-scenarios -am test -Dtest=<TestClassName> -Dsurefire.failIfNoSpecifiedTests=false
 ```
 
 Expected: the target class reports `Failures: 0, Errors: 0, Skipped: 0`.
@@ -1135,7 +1139,7 @@ All criteria from spec section 8, each independently checkable:
 
 - [ ] `sh ./mvnw clean test` returns `BUILD SUCCESS`
 - [ ] Every `Tests run:` line reports `Failures: 0, Errors: 0, Skipped: 0`
-- [ ] `sh ./mvnw -pl idm-test-scenarios dependency:tree | grep -c testcontainers` returns `0`
+- [ ] `sh ./mvnw -pl idm-test-scenarios -am dependency:tree | grep -c testcontainers` returns `0`
 - [ ] The full suite passes with the Docker daemon stopped
 - [ ] `ls *.md` returns exactly `CLAUDE.md` and `README.md`
 - [ ] No broken relative markdown links from `README.md` or `CLAUDE.md`

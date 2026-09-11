@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is an **integration testing framework** for Identity Management (IdM) systems, designed to test provisioning workflows across LDAP, databases, REST APIs, and SOAP services. Think of it as similar to OpenText Identity Validator but built on modern Spring Boot and JUnit 5.
 
-**Critical Context**: See `SPECIFICATION.md` for the complete architectural specification and design decisions. This file focuses on day-to-day development commands and architectural principles.
+**Critical Context**: See `docs/reference/specification.md` for the complete architectural specification and design decisions. This file focuses on day-to-day development commands and architectural principles.
 
 ## Core Architectural Principles
 
@@ -62,7 +62,7 @@ This is an **integration testing framework** for Identity Management (IdM) syste
 ```
 idm-test-framework/
 ├── pom.xml                          # Maven parent POM (currently single module)
-├── SPECIFICATION.md                 # Complete architecture spec (READ THIS!)
+├── docs/reference/specification.md  # Complete architecture spec (READ THIS!)
 ├── CLAUDE.md                        # This file
 │
 ├── src/main/java/com/idm/test/
@@ -244,7 +244,7 @@ boolean provisioned = testExecutor.waitUntil(
 
 ## Development Workflow
 
-1. **Start with SPECIFICATION.md**: Understand the full architecture
+1. **Start with docs/reference/specification.md**: Understand the full architecture
 2. **Implement core utilities first**: TestExecutor, OperationResult
 3. **Build connectors one at a time**: Start with LDAP, then database, then REST
 4. **Write integration tests alongside connectors**: Validate each connector works
@@ -271,7 +271,7 @@ When ready to modularize:
 
 ## Reference
 
-- Full specification: `SPECIFICATION.md`
+- Full specification: `docs/reference/specification.md`
 - Spring Boot docs: https://docs.spring.io/spring-boot/3.5.6/reference/
 - Spring Framework docs: https://docs.spring.io/spring-framework/6.2.x/reference/
 - JUnit 5 docs: https://junit.org/junit5/docs/current/user-guide/

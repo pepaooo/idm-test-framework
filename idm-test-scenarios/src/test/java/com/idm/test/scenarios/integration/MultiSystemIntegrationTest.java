@@ -33,10 +33,6 @@ class MultiSystemIntegrationTest extends BaseIntegrationTest {
     @DisplayName("Complete new hire onboarding workflow across all systems")
     void testNewHireOnboardingWorkflow() {
         // Require all connectors for complete workflow
-        requireConnector(edirectoryConnector, "EdirectoryConnector");
-        requireConnector(databaseConnector, "MultiDatabaseConnector");
-        requireConnector(roleServiceConnector, "RoleServiceConnector");
-        requireConnector(testDataGenerator, "TestDataGenerator");
 
         log.info("\n" + "=".repeat(80));
         log.info("COMPLETE NEW HIRE ONBOARDING WORKFLOW");
@@ -260,9 +256,6 @@ class MultiSystemIntegrationTest extends BaseIntegrationTest {
     @DisplayName("Complete employee termination workflow across all systems")
     void testEmployeeTerminationWorkflow() {
         // Require all connectors
-        requireConnector(edirectoryConnector, "EdirectoryConnector");
-        requireConnector(databaseConnector, "MultiDatabaseConnector");
-        requireConnector(testDataGenerator, "TestDataGenerator");
 
         log.info("\n" + "=".repeat(80));
         log.info("COMPLETE EMPLOYEE TERMINATION WORKFLOW");
@@ -419,9 +412,6 @@ class MultiSystemIntegrationTest extends BaseIntegrationTest {
     @DisplayName("Department transfer workflow with cross-system sync")
     void testDepartmentTransferWorkflow() {
         // Require connectors
-        requireConnector(edirectoryConnector, "EdirectoryConnector");
-        requireConnector(databaseConnector, "MultiDatabaseConnector");
-        requireConnector(testDataGenerator, "TestDataGenerator");
 
         log.info("\n[TEST] Department Transfer Workflow");
 

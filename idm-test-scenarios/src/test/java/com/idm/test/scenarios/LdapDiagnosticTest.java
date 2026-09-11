@@ -32,7 +32,6 @@ class LdapDiagnosticTest extends BaseIntegrationTest {
     @Test
     @DisplayName("Should create a simple user in LDAP")
     void testCreateSimpleUser() {
-        requireConnector(edirectoryConnector, "EdirectoryConnector");
 
         log.info("Creating a simple test user...");
 

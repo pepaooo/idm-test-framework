@@ -37,9 +37,6 @@ class RoleAssignmentWorkflowTest extends BaseIntegrationTest {
     @DisplayName("Should assign role and verify LDAP group membership")
     void testRoleAssignmentToLdapGroup() {
         // Require connectors for this test
-        requireConnector(edirectoryConnector, "EdirectoryConnector");
-        requireConnector(roleServiceConnector, "RoleServiceConnector");
-        requireConnector(testDataGenerator, "TestDataGenerator");
 
         // STEP 1: Create test user
         log.info("\n[STEP 1] Creating test user...");
@@ -106,10 +103,6 @@ class RoleAssignmentWorkflowTest extends BaseIntegrationTest {
     @DisplayName("Should assign role and verify database access provisioning")
     void testRoleAssignmentWithDatabaseAccess() {
         // Require connectors for this test
-        requireConnector(edirectoryConnector, "EdirectoryConnector");
-        requireConnector(databaseConnector, "MultiDatabaseConnector");
-        requireConnector(roleServiceConnector, "RoleServiceConnector");
-        requireConnector(testDataGenerator, "TestDataGenerator");
 
         // STEP 1: Create test user
         log.info("\n[STEP 1] Creating test user...");
@@ -221,9 +214,6 @@ class RoleAssignmentWorkflowTest extends BaseIntegrationTest {
     @DisplayName("Should assign multiple roles to single user")
     void testMultipleRoleAssignment() {
         // Require connectors
-        requireConnector(edirectoryConnector, "EdirectoryConnector");
-        requireConnector(roleServiceConnector, "RoleServiceConnector");
-        requireConnector(testDataGenerator, "TestDataGenerator");
 
         // STEP 1: Create test user
         log.info("\n[STEP 1] Creating test user...");
@@ -277,7 +267,6 @@ class RoleAssignmentWorkflowTest extends BaseIntegrationTest {
     @DisplayName("Should handle role assignment failures gracefully")
     void testRoleAssignmentFailureHandling() {
         // Require connector
-        requireConnector(roleServiceConnector, "RoleServiceConnector");
 
         log.info("\n[TEST] Testing role assignment failure handling...");
 

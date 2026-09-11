@@ -36,8 +36,6 @@ class UserModificationWorkflowTest extends BaseIntegrationTest {
     @DisplayName("Should modify user attributes in LDAP and sync")
     void testUserModificationInLdap() {
         // Require connectors
-        requireConnector(edirectoryConnector, "EdirectoryConnector");
-        requireConnector(testDataGenerator, "TestDataGenerator");
 
         // STEP 1: Create test user
         log.info("\n[STEP 1] Creating test user...");
@@ -128,8 +126,6 @@ class UserModificationWorkflowTest extends BaseIntegrationTest {
     @DisplayName("Should modify user in database and verify sync")
     void testUserModificationInDatabase() {
         // Require connectors
-        requireConnector(databaseConnector, "MultiDatabaseConnector");
-        requireConnector(testDataGenerator, "TestDataGenerator");
 
         // STEP 1: Create test user in database
         log.info("\n[STEP 1] Creating test user in database...");
@@ -239,9 +235,6 @@ class UserModificationWorkflowTest extends BaseIntegrationTest {
     @DisplayName("Should handle email change and update across systems")
     void testEmailChangeWorkflow() {
         // Require connectors
-        requireConnector(edirectoryConnector, "EdirectoryConnector");
-        requireConnector(databaseConnector, "MultiDatabaseConnector");
-        requireConnector(testDataGenerator, "TestDataGenerator");
 
         // STEP 1: Create user in both systems
         log.info("\n[STEP 1] Creating user in LDAP and database...");
@@ -327,8 +320,6 @@ class UserModificationWorkflowTest extends BaseIntegrationTest {
     @DisplayName("Should handle attribute removal")
     void testAttributeRemoval() {
         // Require connector
-        requireConnector(edirectoryConnector, "EdirectoryConnector");
-        requireConnector(testDataGenerator, "TestDataGenerator");
 
         log.info("\n[TEST] Testing attribute removal...");
 

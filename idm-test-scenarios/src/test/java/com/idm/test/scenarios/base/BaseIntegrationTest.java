@@ -105,27 +105,28 @@ public abstract class BaseIntegrationTest {
     }
 
     // ===================================================================
-    // Connectors - Injected by Spring
+    // Connectors - injected by Spring, required
     // ===================================================================
 
-    // Connectors - may be null if not configured
-    @Autowired(required = false)
+    // These are deliberately NOT optional. A missing bean must fail context
+    // startup loudly rather than silently skipping the tests that need it.
+
+    @Autowired
     protected EdirectoryConnector edirectoryConnector;
 
-    @Autowired(required = false)
+    @Autowired
     protected MultiDatabaseConnector databaseConnector;
 
-    @Autowired(required = false)
+    @Autowired
     protected RoleServiceConnector roleServiceConnector;
 
-    // Test infrastructure
-    @Autowired(required = false)
+    @Autowired
     protected TestExecutor testExecutor;
 
-    @Autowired(required = false)
+    @Autowired
     protected TestExecutorProperties executorProperties;
 
-    @Autowired(required = false)
+    @Autowired
     protected TestDataGenerator testDataGenerator;
 
     // Track created resources for cleanup
@@ -267,18 +268,6 @@ public abstract class BaseIntegrationTest {
     }
 
     /**
-     * Log connector availability for debugging.
-     */
-    private void logConnectorAvailability() {
-        log.info("Connector Availability:");
-        log.info("  EdirectoryConnector: {}", edirectoryConnector != null ? "AVAILABLE" : "NOT AVAILABLE");
-        log.info("  MultiDatabaseConnector: {}", databaseConnector != null ? "AVAILABLE" : "NOT AVAILABLE");
-        log.info("  RoleServiceConnector: {}", roleServiceConnector != null ? "AVAILABLE" : "NOT AVAILABLE");
-        log.info("  TestExecutor: {}", testExecutor != null ? "AVAILABLE" : "NOT AVAILABLE");
-        log.info("  TestDataGenerator: {}", testDataGenerator != null ? "AVAILABLE" : "NOT AVAILABLE");
-    }
-
-    /**
      * Get the current test name for logging.
      */
     private String getTestName() {
@@ -289,24 +278,6 @@ public abstract class BaseIntegrationTest {
             }
         }
         return "Unknown Test";
-    }
-
-    /**
-     * Helper to check if a connector is available.
-     */
-    protected boolean isConnectorAvailable(Object connector) {
-        return connector != null;
-    }
-
-    /**
-     * Helper to require a connector or skip test.
-     */
-    protected void requireConnector(Object connector, String connectorName) {
-        if (connector == null) {
-            log.warn("Skipping test - {} not available", connectorName);
-            org.junit.jupiter.api.Assumptions.assumeTrue(false,
-                connectorName + " not available in test environment");
-        }
     }
 
     /**

@@ -43,7 +43,7 @@ class UserModificationWorkflowTest extends BaseIntegrationTest {
                 .withDepartment("Engineering")
                 .withJobTitle("Software Engineer");
 
-        String userDn = testUser.buildLdapDn("ou=users,dc=test,dc=com");
+        String userDn = testUser.buildLdapDn("ou=users");
 
         edirectoryConnector.create(testUser.toLdapUser(userDn));
         trackLdapDn(userDn);
@@ -240,7 +240,7 @@ class UserModificationWorkflowTest extends BaseIntegrationTest {
         log.info("\n[STEP 1] Creating user in LDAP and database...");
         UserTestData testUser = UserTestData.randomUser(testDataGenerator);
 
-        String userDn = testUser.buildLdapDn("ou=users,dc=test,dc=com");
+        String userDn = testUser.buildLdapDn("ou=users");
         String originalEmail = testUser.getEmail();
 
         // Create in LDAP
@@ -325,7 +325,7 @@ class UserModificationWorkflowTest extends BaseIntegrationTest {
 
         // Create user with phone number
         UserTestData testUser = UserTestData.randomUser(testDataGenerator);
-        String userDn = testUser.buildLdapDn("ou=users,dc=test,dc=com");
+        String userDn = testUser.buildLdapDn("ou=users");
 
         edirectoryConnector.create(testUser.toLdapUser(userDn));
         trackLdapDn(userDn);

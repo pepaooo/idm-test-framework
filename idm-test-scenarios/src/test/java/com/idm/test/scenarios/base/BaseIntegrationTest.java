@@ -9,6 +9,7 @@ import com.idm.test.core.config.TestExecutorProperties;
 import com.idm.test.core.engine.TestExecutor;
 import com.idm.test.core.model.OperationResult;
 import com.idm.test.utils.data.TestDataGenerator;
+import com.idm.test.scenarios.config.IdmTestSchema;
 import com.idm.test.utils.ldap.EmbeddedLdapServer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -83,7 +84,8 @@ public abstract class BaseIntegrationTest {
     private static EmbeddedLdapServer startLdapServer() {
         try {
             return EmbeddedLdapServer.start(
-                    LDAP_BASE_DN, LDAP_BIND_DN, LDAP_BIND_PASSWORD, 0, "ldap-init.ldif");
+                    LDAP_BASE_DN, LDAP_BIND_DN, LDAP_BIND_PASSWORD, 0, "ldap-init.ldif",
+                    IdmTestSchema.edirectoryLikeSchema());
         } catch (Exception e) {
             throw new IllegalStateException("Failed to start embedded LDAP server", e);
         }

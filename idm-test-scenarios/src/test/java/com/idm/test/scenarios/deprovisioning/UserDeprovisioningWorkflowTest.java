@@ -40,7 +40,7 @@ class UserDeprovisioningWorkflowTest extends BaseIntegrationTest {
         UserTestData testUser = UserTestData.randomUser(testDataGenerator)
                 .withActive(true);
 
-        String userDn = testUser.buildLdapDn("ou=users,dc=test,dc=com");
+        String userDn = testUser.buildLdapDn("ou=users");
 
         // Create in LDAP
         edirectoryConnector.create(testUser.toLdapUser(userDn));
@@ -129,7 +129,7 @@ class UserDeprovisioningWorkflowTest extends BaseIntegrationTest {
         log.info("\n[STEP 1] Creating user for deletion...");
         UserTestData testUser = UserTestData.randomUser(testDataGenerator);
 
-        String userDn = testUser.buildLdapDn("ou=users,dc=test,dc=com");
+        String userDn = testUser.buildLdapDn("ou=users");
 
         // Create in LDAP
         edirectoryConnector.create(testUser.toLdapUser(userDn));

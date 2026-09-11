@@ -43,7 +43,7 @@ class RoleAssignmentWorkflowTest extends BaseIntegrationTest {
         UserTestData testUser = UserTestData.randomUser(testDataGenerator)
                 .withDepartment("Engineering");
 
-        String userDn = testUser.buildLdapDn("ou=users,dc=test,dc=com");
+        String userDn = testUser.buildLdapDn("ou=users");
 
         OperationResult<LdapUser> createResult = edirectoryConnector.create(
                 testUser.toLdapUser(userDn)
@@ -108,7 +108,7 @@ class RoleAssignmentWorkflowTest extends BaseIntegrationTest {
         log.info("\n[STEP 1] Creating test user...");
         UserTestData testUser = UserTestData.randomUser(testDataGenerator);
 
-        String userDn = testUser.buildLdapDn("ou=users,dc=test,dc=com");
+        String userDn = testUser.buildLdapDn("ou=users");
 
         edirectoryConnector.create(testUser.toLdapUser(userDn));
         trackLdapDn(userDn);
@@ -219,7 +219,7 @@ class RoleAssignmentWorkflowTest extends BaseIntegrationTest {
         log.info("\n[STEP 1] Creating test user...");
         UserTestData testUser = UserTestData.randomUser(testDataGenerator);
 
-        String userDn = testUser.buildLdapDn("ou=users,dc=test,dc=com");
+        String userDn = testUser.buildLdapDn("ou=users");
 
         edirectoryConnector.create(testUser.toLdapUser(userDn));
         trackLdapDn(userDn);

@@ -5,6 +5,7 @@ import com.unboundid.ldap.listener.InMemoryDirectoryServerConfig;
 import com.unboundid.ldap.listener.InMemoryListenerConfig;
 import com.unboundid.ldap.sdk.Entry;
 import com.unboundid.ldap.sdk.LDAPException;
+import com.unboundid.ldap.sdk.schema.Schema;
 import com.unboundid.ldif.LDIFException;
 import com.unboundid.ldif.LDIFReader;
 import org.slf4j.Logger;
@@ -50,7 +51,30 @@ public final class EmbeddedLdapServer implements AutoCloseable {
             int port,
             String ldifClasspathResource) throws LDAPException, LDIFException, IOException {
 
+        return start(baseDn, bindDn, bindPassword, port, ldifClasspathResource, null);
+    }
+
+    /**
+     * Starts an in-memory directory using a specific schema.
+     *
+     * @param schema schema to enforce, or {@code null} for the standard schema. Pass a
+     *               custom schema to model attributes a real directory defines but the
+     *               LDAP standard does not; passing {@code null} keeps validation on,
+     *               and validation should never be disabled outright.
+     * @see #start(String, String, String, int, String)
+     */
+    public static EmbeddedLdapServer start(
+            String baseDn,
+            String bindDn,
+            String bindPassword,
+            int port,
+            String ldifClasspathResource,
+            Schema schema) throws LDAPException, LDIFException, IOException {
+
         InMemoryDirectoryServerConfig config = new InMemoryDirectoryServerConfig(baseDn);
+        if (schema != null) {
+            config.setSchema(schema);
+        }
         config.setListenerConfigs(InMemoryListenerConfig.createLDAPConfig("default", port));
         config.addAdditionalBindCredentials(bindDn, bindPassword);
 

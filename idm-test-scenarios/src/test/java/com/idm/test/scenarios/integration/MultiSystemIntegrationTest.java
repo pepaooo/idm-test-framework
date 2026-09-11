@@ -56,7 +56,7 @@ class MultiSystemIntegrationTest extends BaseIntegrationTest {
         // ========== STEP 2: Create user in eDirectory (LDAP) ==========
         log.info("\n[STEP 2] Creating user in eDirectory...");
 
-        String userDn = newHire.buildLdapDn("ou=users,dc=test,dc=com");
+        String userDn = newHire.buildLdapDn("ou=users");
         log.info("User DN: {}", userDn);
 
         OperationResult<LdapUser> ldapCreateResult = edirectoryConnector.create(
@@ -268,7 +268,7 @@ class MultiSystemIntegrationTest extends BaseIntegrationTest {
                 .withDepartment("Sales")
                 .withActive(true);
 
-        String userDn = employee.buildLdapDn("ou=users,dc=test,dc=com");
+        String userDn = employee.buildLdapDn("ou=users");
 
         // Create in LDAP
         edirectoryConnector.create(employee.toLdapUser(userDn));
@@ -420,7 +420,7 @@ class MultiSystemIntegrationTest extends BaseIntegrationTest {
                 .withDepartment("Engineering")
                 .withJobTitle("Software Engineer");
 
-        String userDn = employee.buildLdapDn("ou=users,dc=test,dc=com");
+        String userDn = employee.buildLdapDn("ou=users");
 
         // Create in both systems
         edirectoryConnector.create(employee.toLdapUser(userDn));

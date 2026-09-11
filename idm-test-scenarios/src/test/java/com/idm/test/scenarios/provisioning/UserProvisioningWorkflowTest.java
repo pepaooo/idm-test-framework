@@ -50,7 +50,7 @@ class UserProvisioningWorkflowTest extends BaseIntegrationTest {
 
         // STEP 2: Create user in LDAP (simulating IdM provisioning)
         log.info("\n[STEP 2] Creating user in LDAP...");
-        String userDn = testUser.buildLdapDn("ou=users,dc=test,dc=com");
+        String userDn = testUser.buildLdapDn("ou=users");
         log.info("User DN: {}", userDn);
 
         OperationResult<LdapUser> createResult = edirectoryConnector.create(
@@ -251,7 +251,7 @@ class UserProvisioningWorkflowTest extends BaseIntegrationTest {
 
         log.info("Minimal user: {}", minimalUser);
 
-        String userDn = minimalUser.buildLdapDn("ou=users,dc=test,dc=com");
+        String userDn = minimalUser.buildLdapDn("ou=users");
 
         OperationResult<LdapUser> createResult = edirectoryConnector.create(
                 minimalUser.toLdapUser(userDn)

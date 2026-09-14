@@ -18,6 +18,7 @@ import java.util.Deque;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeSet;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -59,13 +60,28 @@ public final class ScenarioEngine {
         Deque<Runnable> undos = new ArrayDeque<>();
         boolean success = true;
 
-        for (int i = 0; i < scenario.steps().size() && success; i++) {
-            StepResult result = runStep(scenario.steps().get(i), i, scope, undos);
-            results.add(result);
-            success = result.success();
+        try {
+            for (int i = 0; i < scenario.steps().size() && success; i++) {
+                StepSpec step = scenario.steps().get(i);
+                long stepStarted = System.currentTimeMillis();
+                StepResult result;
+                try {
+                    result = runStep(step, i, scope, undos);
+                } catch (RuntimeException e) {
+                    result = new StepResult(i, step.type(), Map.of(), false,
+                            System.currentTimeMillis() - stepStarted,
+                            "step '" + step.type() + "' threw " + e.getClass().getSimpleName()
+                                    + ": " + e.getMessage(),
+                            null, null);
+                }
+                results.add(result);
+                success = result.success();
+            }
+        } finally {
+            // Whatever earlier steps created must be torn down even when a step throws
+            // instead of returning a failed outcome, so this always runs.
+            unwind(undos);
         }
-
-        unwind(undos);
 
         return new ScenarioResult(scenario.name(), sourceName, success,
                 System.currentTimeMillis() - started, results);
@@ -78,10 +94,26 @@ public final class ScenarioEngine {
         long started = System.currentTimeMillis();
         StepType type = registry.get(step.type());
 
+        if (type == null) {
+            return new StepResult(index, step.type(), Map.of(), false,
+                    System.currentTimeMillis() - started,
+                    "unknown step type '" + step.type() + "'. Available: "
+                            + new TreeSet<>(registry.keySet()),
+                    null, null);
+        }
+
         Map<String, Object> resolved = (Map<String, Object>) Interpolator.resolve(
                 step.params(), scope);
 
         WaitSpec wait = WaitSpec.parse(resolved.remove("wait"), defaultTimeout, defaultPoll);
+
+        if (wait != null && !type.retryable()) {
+            return new StepResult(index, step.type(), resolved, false,
+                    System.currentTimeMillis() - started,
+                    "'wait' is only valid on assertions, and step '" + step.type()
+                            + "' is not retryable",
+                    null, null);
+        }
 
         if (wait == null) {
             StepOutcome outcome = type.execute(resolved);
@@ -93,21 +125,35 @@ public final class ScenarioEngine {
         AtomicInteger attempts = new AtomicInteger();
         AtomicReference<StepOutcome> last = new AtomicReference<>();
 
+        long waitStarted = System.currentTimeMillis();
         boolean passed = executor.waitUntil(() -> {
             attempts.incrementAndGet();
-            StepOutcome outcome = type.execute(resolved);
+            StepOutcome outcome;
+            try {
+                outcome = type.execute(resolved);
+            } catch (RuntimeException e) {
+                // Record the failure and keep polling — TestExecutor.waitUntil already
+                // swallows exceptions from this supplier, but without this the "last"
+                // outcome it reports on would be stale or absent rather than reflecting
+                // what actually happened on this attempt.
+                outcome = StepOutcome.failure(e.getMessage());
+            }
             last.set(outcome);
+            // Register as each attempt happens, not just the final one, so an undo
+            // returned by an earlier attempt (that later attempts don't repeat) isn't lost.
+            register(undos, outcome);
             return outcome.success();
         }, wait.timeout(), wait.poll());
+        long waitedMillis = System.currentTimeMillis() - waitStarted;
 
         StepOutcome outcome = last.get();
-        register(undos, outcome);
 
         long elapsed = System.currentTimeMillis() - started;
         String message;
         if (outcome == null) {
-            // waitUntil never evaluated the condition, which happens when the timeout is
-            // already spent. Report that rather than failing with a NullPointerException.
+            // The supplier above always sets `last` before returning, so this only happens
+            // when waitUntil's loop condition never even entered — the timeout was already
+            // spent. A null outcome here really does mean the condition never ran.
             message = "wait timed out before the assertion ran once";
         } else if (passed) {
             message = outcome.message();
@@ -116,7 +162,7 @@ public final class ScenarioEngine {
         }
 
         return new StepResult(index, step.type(), resolved, passed, elapsed, message,
-                attempts.get(), elapsed);
+                attempts.get(), waitedMillis);
     }
 
     private static void register(Deque<Runnable> undos, StepOutcome outcome) {

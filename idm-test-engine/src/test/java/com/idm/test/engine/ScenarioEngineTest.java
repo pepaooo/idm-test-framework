@@ -172,4 +172,94 @@ class ScenarioEngineTest {
         assertThat(result.success()).isFalse();
         assertThat(result.failureSummary()).contains("b went wrong");
     }
+
+    @Test
+    @DisplayName("Should fail the step and still run cleanup when a param reference can't resolve")
+    void testUnresolvableReferenceFailsStepAndStillCleansUp() {
+        ScenarioEngine engine = engineWith(recordingAction("a"), recordingAction("b"));
+
+        ScenarioResult result = engine.run(scenario(
+                new StepSpec("a", Map.of("dn", "x")),
+                new StepSpec("b", Map.of("dn", "${user.bogus}"))), "t.yaml");
+
+        assertThat(result.success()).isFalse();
+        assertThat(result.steps()).hasSize(2);
+        assertThat(result.steps().get(1).success()).isFalse();
+        assertThat(result.steps().get(1).message()).contains("b").contains("bogus");
+        // "a" ran and must still be cleaned up even though "b" blew up with an exception.
+        assertThat(events).containsExactly("run:a:x", "undo:a");
+    }
+
+    @Test
+    @DisplayName("Should fail the step (not abort the run) when execute() throws")
+    void testThrowingStepFailsButDoesNotAbort() {
+        StepType throwing = new StepType() {
+            public String name() { return "boom"; }
+            public StepOutcome execute(Map<String, Object> params) {
+                throw new IllegalStateException("kaboom");
+            }
+        };
+        ScenarioEngine engine = engineWith(recordingAction("a"), throwing);
+
+        ScenarioResult result = engine.run(scenario(
+                new StepSpec("a", Map.of("dn", "x")),
+                new StepSpec("boom", Map.of("dn", "y"))), "t.yaml");
+
+        assertThat(result.success()).isFalse();
+        assertThat(result.steps()).hasSize(2);
+        assertThat(result.steps().get(1).success()).isFalse();
+        assertThat(result.steps().get(1).message()).contains("boom").contains("kaboom");
+        assertThat(events).containsExactly("run:a:x", "undo:a");
+    }
+
+    @Test
+    @DisplayName("Should report the exception message when a retried assertion throws every attempt")
+    void testRetriedAssertionThrowingEveryAttemptReportsMessage() {
+        StepType alwaysThrows = new StepType() {
+            public String name() { return "check"; }
+            public boolean retryable() { return true; }
+            public StepOutcome execute(Map<String, Object> params) {
+                throw new IllegalStateException("connector unavailable");
+            }
+        };
+        ScenarioEngine engine = engineWith(alwaysThrows);
+
+        ScenarioResult result = engine.run(scenario(
+                new StepSpec("check", Map.of("dn", "x", "wait",
+                        Map.of("timeout", "1s", "poll", "1s")))),
+                "t.yaml");
+
+        assertThat(result.success()).isFalse();
+        assertThat(result.steps().get(0).attempts()).isGreaterThan(0);
+        assertThat(result.failureSummary())
+                .contains("connector unavailable")
+                .doesNotContain("before the assertion ran once");
+    }
+
+    @Test
+    @DisplayName("Should fail with a naming message for an unknown step type")
+    void testUnknownStepTypeFails() {
+        ScenarioEngine engine = engineWith(recordingAction("a"));
+
+        ScenarioResult result = engine.run(scenario(
+                new StepSpec("does.not.exist", Map.of("dn", "x"))), "t.yaml");
+
+        assertThat(result.success()).isFalse();
+        assertThat(result.steps().get(0).message())
+                .contains("does.not.exist")
+                .contains("[a]");
+    }
+
+    @Test
+    @DisplayName("Should fail when 'wait' is declared on a step type that isn't retryable")
+    void testWaitOnNonRetryableStepFails() {
+        ScenarioEngine engine = engineWith(recordingAction("a"));
+
+        ScenarioResult result = engine.run(scenario(
+                new StepSpec("a", Map.of("dn", "x", "wait", Boolean.TRUE))), "t.yaml");
+
+        assertThat(result.success()).isFalse();
+        assertThat(result.steps().get(0).message()).contains("wait").contains("a");
+        assertThat(events).isEmpty();
+    }
 }

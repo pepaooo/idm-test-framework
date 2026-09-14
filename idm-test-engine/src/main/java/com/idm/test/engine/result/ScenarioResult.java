@@ -5,6 +5,10 @@ import java.util.List;
 /**
  * The outcome of one scenario. The engine produces this and renders nothing; every output
  * format — JUnit failures, the JSON file, a future HTML report — is an adapter over it.
+ *
+ * @param durationMillis wall-clock time for the whole scenario, including fixture building
+ *                        and cleanup as well as the steps — the step durations will not sum
+ *                        to this value
  */
 public record ScenarioResult(
         String name,
@@ -21,7 +25,13 @@ public record ScenarioResult(
             return null;
         }
 
-        StepResult failed = steps.isEmpty() ? null : steps.get(steps.size() - 1);
+        StepResult failed = null;
+        for (int i = steps.size() - 1; i >= 0; i--) {
+            if (!steps.get(i).success()) {
+                failed = steps.get(i);
+                break;
+            }
+        }
         if (failed == null) {
             return sourceName + ": scenario failed before any step ran";
         }

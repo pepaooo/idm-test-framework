@@ -2323,7 +2323,7 @@ Add the import `java.io.UncheckedIOException` to that file.
 sh ./mvnw -pl idm-test-engine -am test
 ```
 
-Expected: `Tests run: 35, Failures: 0, Errors: 0, Skipped: 0` for the engine module — 8 loader, 7 interpolator, 5 fixture, 6 steps, 6 validator, 6 engine, 2 writer, 1 independence. If the total differs, count the tests actually present before assuming a failure.
+Expected: `Tests run: 41, Failures: 0, Errors: 0, Skipped: 0` for the engine module — 8 loader, 7 interpolator, 5 fixture, 6 steps, 6 validator, 6 engine, 2 writer, 1 independence. If the total differs, count the tests actually present before assuming a failure.
 
 - [ ] **Step 5: Wire the engine into the scenarios module**
 
@@ -2505,7 +2505,7 @@ Expected: JSON containing `"name" : "User provisioning to eDirectory"`, both ste
 sh ./mvnw clean test 2>&1 | grep -E "^\[INFO\] Tests run:|BUILD"
 ```
 
-Expected: `BUILD SUCCESS`, every line reporting `Failures: 0, Errors: 0, Skipped: 0`. The total rises from 172 to 208 — 35 engine tests plus the one dynamic scenario.
+Expected: `BUILD SUCCESS`, every line reporting `Failures: 0, Errors: 0, Skipped: 0`. The total rises from 172 to 214 — 41 engine tests plus the one dynamic scenario.
 
 - [ ] **Step 9: Commit**
 

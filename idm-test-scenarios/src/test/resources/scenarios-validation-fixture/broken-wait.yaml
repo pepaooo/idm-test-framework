@@ -1,0 +1,20 @@
+name: Broken wait scenario
+description: Deliberately invalid — 'wait' is a bare string where a map or true belongs.
+  Used only by YamlScenarioValidationTest, never by the real scenarios/ suite.
+
+fixtures:
+  user:
+    generate: random-user
+
+steps:
+  - ldap.create:
+      dn: "cn=${user.userId},ou=users"
+      attributes:
+        cn: ${user.userId}
+        sn: ${user.lastName}
+
+  - ldap.verify:
+      dn: "cn=${user.userId},ou=users"
+      expect:
+        sn: ${user.lastName}
+      wait: "30s"

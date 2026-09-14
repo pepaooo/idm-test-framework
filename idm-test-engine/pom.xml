@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+         https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.idm.test</groupId>
+        <artifactId>idm-test-framework</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>idm-test-engine</artifactId>
+    <name>IdM Test Engine</name>
+    <description>Executes declarative YAML scenarios against the connectors</description>
+
+    <!--
+      This module deliberately has NO Spring dependency. The engine must not create
+      application contexts or read configuration files, so that a CLI can wrap it later
+      without rework. See the design spec, section 6.2.
+    -->
+    <dependencies>
+        <dependency>
+            <groupId>com.idm.test</groupId>
+            <artifactId>idm-test-core</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>com.idm.test</groupId>
+            <artifactId>idm-test-utils</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>com.idm.test</groupId>
+            <artifactId>idm-connector-ldap</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>com.fasterxml.jackson.dataformat</groupId>
+            <artifactId>jackson-dataformat-yaml</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.assertj</groupId>
+            <artifactId>assertj-core</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

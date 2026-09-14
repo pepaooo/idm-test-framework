@@ -1,0 +1,24 @@
+name: Minimal scenario
+description: One fixture and two steps
+
+fixtures:
+  user:
+    generate: random-user
+    values:
+      department: Engineering
+
+steps:
+  - ldap.create:
+      dn: "cn=${user.userId},ou=users"
+      attributes:
+        cn: ${user.userId}
+        sn: ${user.lastName}
+        givenName: ${user.firstName}
+
+  - ldap.verify:
+      dn: "cn=${user.userId},ou=users"
+      expect:
+        givenName: ${user.firstName}
+      wait:
+        timeout: 30s
+        poll: 2s

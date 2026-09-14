@@ -42,14 +42,28 @@ public final class ScenarioValidator {
                         "unknown step type. Available: " + new TreeSet<>(registry.keySet()));
             }
 
-            if (!step.params().containsKey("dn") && !step.params().containsKey("database")) {
-                throw new ValidationException(sourceName, i, step.type(),
-                        "missing required parameter 'dn'");
+            for (String required : new TreeSet<>(type.requiredParams())) {
+                if (!step.params().containsKey(required)) {
+                    throw new ValidationException(sourceName, i, step.type(),
+                            "missing required parameter '" + required + "'");
+                }
             }
 
+            // Checked before the generic accepted-parameter scan below so this step type's
+            // own explanation wins: 'wait' on a non-retryable step is never in that step's
+            // accepted set either, and the two checks must not both fire for the same cause.
             if (step.params().containsKey("wait") && !type.retryable()) {
                 throw new ValidationException(sourceName, i, step.type(),
                         "'wait' is only valid on assertions, and this step is an action");
+            }
+
+            Set<String> accepted = type.acceptedParams();
+            for (String supplied : step.params().keySet()) {
+                if (!accepted.contains(supplied)) {
+                    throw new ValidationException(sourceName, i, step.type(),
+                            "unknown parameter '" + supplied + "'. " + step.type()
+                                    + " accepts: " + new TreeSet<>(accepted));
+                }
             }
 
             for (String reference : Interpolator.references(step.params())) {

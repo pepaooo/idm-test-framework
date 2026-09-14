@@ -158,4 +158,26 @@ class LdapStepsTest {
         assertThat(new LdapCreateStep(connector).name()).isEqualTo("ldap.create");
         assertThat(new LdapVerifyStep(connector).name()).isEqualTo("ldap.verify");
     }
+
+    @Test
+    @DisplayName("ldap.verify should declare 'expect' as required, closing the "
+            + "vacuous-assertion path by construction")
+    void testVerifyDeclaresExpectRequired() {
+        LdapVerifyStep verify = new LdapVerifyStep(connector);
+
+        // A typo like "expct" must fail ScenarioValidator instead of falling through to
+        // params.getOrDefault("expect", Map.of()), which would compare against nothing and
+        // report success. Declaring 'expect' (and 'dn') as required is what closes that gap.
+        assertThat(verify.requiredParams()).containsExactlyInAnyOrder("dn", "expect");
+        assertThat(verify.acceptedParams()).containsExactlyInAnyOrder("dn", "expect", "wait");
+    }
+
+    @Test
+    @DisplayName("ldap.create should require 'dn' and also accept 'attributes'")
+    void testCreateRequiredAndAcceptedParams() {
+        LdapCreateStep create = new LdapCreateStep(connector);
+
+        assertThat(create.requiredParams()).containsExactly("dn");
+        assertThat(create.acceptedParams()).containsExactlyInAnyOrder("dn", "attributes");
+    }
 }

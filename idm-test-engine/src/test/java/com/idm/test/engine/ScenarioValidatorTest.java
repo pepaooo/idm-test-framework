@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -17,14 +18,20 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @DisplayName("ScenarioValidator")
 class ScenarioValidatorTest {
 
+    // Mirrors LdapCreateStep's real contract: requires 'dn', also accepts 'attributes'.
     private static final StepType ACTION = new StepType() {
         public String name() { return "ldap.create"; }
+        public Set<String> requiredParams() { return Set.of("dn"); }
+        public Set<String> acceptedParams() { return Set.of("dn", "attributes"); }
         public StepOutcome execute(Map<String, Object> params) { return StepOutcome.success("ok"); }
     };
 
+    // Mirrors LdapVerifyStep's real contract: requires 'dn' and 'expect'; acceptedParams()
+    // is left to the interface default, which adds 'wait' because retryable() is true.
     private static final StepType ASSERTION = new StepType() {
         public String name() { return "ldap.verify"; }
         public boolean retryable() { return true; }
+        public Set<String> requiredParams() { return Set.of("dn", "expect"); }
         public StepOutcome execute(Map<String, Object> params) { return StepOutcome.success("ok"); }
     };
 
@@ -43,6 +50,22 @@ class ScenarioValidatorTest {
         Scenario valid = scenario(
                 new StepSpec("ldap.create", Map.of("dn", "cn=${user.userId},ou=users")),
                 new StepSpec("ldap.verify", Map.of("dn", "cn=${user.userId},ou=users",
+                        "expect", Map.of("givenName", "${user.firstName}"),
+                        "wait", Boolean.TRUE)));
+
+        assertThatCode(() -> validator.validate(valid, "ok.yaml")).doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("Should accept a step supplying exactly its accepted parameters")
+    void testAcceptsStepWithExactlyAcceptedParameters() {
+        Scenario valid = scenario(
+                new StepSpec("ldap.create", Map.of(
+                        "dn", "cn=${user.userId},ou=users",
+                        "attributes", Map.of("sn", "Lovelace"))),
+                new StepSpec("ldap.verify", Map.of(
+                        "dn", "cn=${user.userId},ou=users",
+                        "expect", Map.of("sn", "Lovelace"),
                         "wait", Boolean.TRUE)));
 
         assertThatCode(() -> validator.validate(valid, "ok.yaml")).doesNotThrowAnyException();
@@ -71,12 +94,39 @@ class ScenarioValidatorTest {
     }
 
     @Test
-    @DisplayName("Should accept a step with database parameter instead of dn")
-    void testAcceptsStepWithDatabaseParameter() {
-        Scenario valid = scenario(
-                new StepSpec("ldap.create", Map.of("database", "sap")));
+    @DisplayName("Should reject a step missing a required parameter other than 'dn', naming it")
+    void testRejectsMissingRequiredParameter() {
+        // This is the direct fix for the vacuous-assertion bug: a consultant who omits
+        // (or mistypes) 'expect' must be rejected before the step ever runs, rather than
+        // silently comparing against an empty map and reporting success.
+        Scenario invalid = scenario(
+                new StepSpec("ldap.verify", Map.of("dn", "cn=${user.userId},ou=users")));
 
-        assertThatCode(() -> validator.validate(valid, "ok.yaml")).doesNotThrowAnyException();
+        assertThatThrownBy(() -> validator.validate(invalid, "bad.yaml"))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("bad.yaml")
+                .hasMessageContaining("ldap.verify")
+                .hasMessageContaining("expect");
+    }
+
+    @Test
+    @DisplayName("Should reject an unknown parameter, naming it and listing what's accepted")
+    void testRejectsUnknownParameter() {
+        Scenario invalid = scenario(
+                new StepSpec("ldap.verify", Map.of(
+                        "dn", "cn=${user.userId},ou=users",
+                        "expect", Map.of("givenName", "Ada"),
+                        // the typo from the bug report: 'expct' instead of 'expect'
+                        "expct", Map.of("givenName", "Ada"))));
+
+        assertThatThrownBy(() -> validator.validate(invalid, "bad.yaml"))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("bad.yaml")
+                .hasMessageContaining("ldap.verify")
+                .hasMessageContaining("expct")
+                .hasMessageContaining("dn")
+                .hasMessageContaining("expect")
+                .hasMessageContaining("wait");
     }
 
     @Test

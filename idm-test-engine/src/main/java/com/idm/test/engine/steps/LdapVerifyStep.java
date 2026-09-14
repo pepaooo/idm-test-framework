@@ -6,6 +6,7 @@ import com.idm.test.engine.spi.StepOutcome;
 import com.idm.test.engine.spi.StepType;
 
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Asserts that an LDAP entry carries the expected attribute values.
@@ -29,6 +30,14 @@ public final class LdapVerifyStep implements StepType {
     @Override
     public boolean retryable() {
         return true;
+    }
+
+    @Override
+    public Set<String> requiredParams() {
+        // 'expect' is required, not defaulted to empty: an empty map would make every
+        // comparison in EdirectoryConnector.verifyAttributes vacuously true, so a typo'd
+        // key (e.g. "expct") must fail validation instead of silently verifying nothing.
+        return Set.of("dn", "expect");
     }
 
     @Override

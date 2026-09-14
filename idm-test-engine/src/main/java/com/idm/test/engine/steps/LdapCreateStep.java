@@ -8,6 +8,7 @@ import com.idm.test.engine.spi.StepType;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Creates an LDAP entry.
@@ -25,6 +26,16 @@ public final class LdapCreateStep implements StepType {
     @Override
     public String name() {
         return "ldap.create";
+    }
+
+    @Override
+    public Set<String> requiredParams() {
+        return Set.of("dn");
+    }
+
+    @Override
+    public Set<String> acceptedParams() {
+        return Set.of("dn", "attributes");
     }
 
     @Override

@@ -10,7 +10,10 @@ fixtures:
 steps:
   - ldap.create:
       dn: "cn=${user.userId},ou=users"
-      from: user
+      attributes:
+        cn: ${user.userId}
+        sn: ${user.lastName}
+        givenName: ${user.firstName}
 
   - ldap.verify:
       dn: "cn=${user.userId},ou=users"

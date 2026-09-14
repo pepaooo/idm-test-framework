@@ -43,7 +43,7 @@ class ScenarioLoaderTest {
         assertThat(scenario.steps().get(0).type()).isEqualTo("ldap.create");
         assertThat(scenario.steps().get(0).params())
                 .containsEntry("dn", "cn=${user.userId},ou=users")
-                .containsEntry("from", "user");
+                .containsKey("attributes");
         assertThat(scenario.steps().get(1).type()).isEqualTo("ldap.verify");
     }
 

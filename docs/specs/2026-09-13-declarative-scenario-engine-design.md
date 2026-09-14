@@ -282,8 +282,16 @@ Two tiers.
 - set:
     idUser: "${created.body.id}"
     upperLast: "js:{ user.lastName.toUpperCase() }"
-    reviewDate: "js:{ dates.plusDays(user.startDate, 30) }"
+    reviewDate: "js:{ var d = new Date(user.startDate); d.setDate(d.getDate() + 30); d.toISOString().slice(0, 10) }"
 ```
+
+Expressions are plain sandboxed ES6 with no helper object. Standard JavaScript already covers
+the cases that motivated one — date arithmetic, capitalisation, zero-padding, conditionals,
+JSON — verified against Rhino 1.8.0 before this was decided. A curated `dates`/`strings` API
+would be surface to design, document and keep stable with nothing yet requiring it. The
+conversion of the 27 existing scenarios (§8.3) is the evidence that should decide which
+helpers, if any, earn their place. The accepted cost is that the native date idiom reads
+clunkily for someone who is not a JavaScript programmer.
 
 ### 7.5 Where variables come from
 

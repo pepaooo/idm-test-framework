@@ -73,9 +73,19 @@ public final class ScenarioLoader {
                         "fixture '" + fixtureName + "' must be a map");
             }
             Object values = body.get("values");
+            Map<String, Object> valuesMap;
+            if (values == null) {
+                valuesMap = Map.of();
+            } else if (values instanceof Map<?, ?>) {
+                valuesMap = (Map<String, Object>) values;
+            } else {
+                throw new ValidationException(sourceName,
+                        "fixture '" + fixtureName + "' 'values' must be a map, "
+                                + "not a " + values.getClass().getSimpleName());
+            }
             result.put(fixtureName, new FixtureSpec(
                     asString(body.get("generate")),
-                    values == null ? Map.of() : (Map<String, Object>) values));
+                    valuesMap));
         }
         return result;
     }
@@ -99,10 +109,18 @@ public final class ScenarioLoader {
             }
 
             Map.Entry<?, ?> only = step.entrySet().iterator().next();
+            String stepType = only.getKey().toString();
             Object params = only.getValue();
-            result.add(new StepSpec(
-                    only.getKey().toString(),
-                    params == null ? Map.of() : (Map<String, Object>) params));
+            Map<String, Object> paramsMap;
+            if (params == null) {
+                paramsMap = Map.of();
+            } else if (params instanceof Map<?, ?>) {
+                paramsMap = (Map<String, Object>) params;
+            } else {
+                throw new ValidationException(sourceName, i, stepType,
+                        "parameters must be a map, not a " + params.getClass().getSimpleName());
+            }
+            result.add(new StepSpec(stepType, paramsMap));
         }
         return result;
     }

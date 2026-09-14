@@ -66,6 +66,38 @@ class ScenarioLoaderTest {
     }
 
     @Test
+    @DisplayName("Should reject a fixture with scalar 'values' instead of a map")
+    void testRejectsFixtureWithScalarValues() {
+        String yaml = """
+                name: BadFixture
+                fixtures:
+                  user:
+                    generate: random-user
+                    values: department
+                """;
+
+        assertThatThrownBy(() -> ScenarioLoader.load(stream(yaml), "bad-fixture.yaml"))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("bad-fixture.yaml")
+                .hasMessageContaining("'values' must be a map");
+    }
+
+    @Test
+    @DisplayName("Should reject a step with scalar parameters instead of a map")
+    void testRejectsStepWithScalarParams() {
+        String yaml = """
+                name: BadStep
+                steps:
+                  - ldap.noop: "just a string"
+                """;
+
+        assertThatThrownBy(() -> ScenarioLoader.load(stream(yaml), "bad-step.yaml"))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("bad-step.yaml")
+                .hasMessageContaining("parameters must be a map");
+    }
+
+    @Test
     @DisplayName("Should report the source file when the YAML itself is malformed")
     void testRejectsMalformedYaml() {
         assertThatThrownBy(() -> ScenarioLoader.load(stream("name: [unclosed"), "bad.yaml"))

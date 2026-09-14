@@ -1,0 +1,4 @@
+dn: ou=users,dc=test,dc=com
+objectClass: top
+objectClass: organizationalUnit
+ou: users

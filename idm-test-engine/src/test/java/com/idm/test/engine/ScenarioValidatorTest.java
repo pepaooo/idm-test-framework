@@ -71,6 +71,15 @@ class ScenarioValidatorTest {
     }
 
     @Test
+    @DisplayName("Should accept a step with database parameter instead of dn")
+    void testAcceptsStepWithDatabaseParameter() {
+        Scenario valid = scenario(
+                new StepSpec("ldap.create", Map.of("database", "sap")));
+
+        assertThatCode(() -> validator.validate(valid, "ok.yaml")).doesNotThrowAnyException();
+    }
+
+    @Test
     @DisplayName("Should reject a reference to a fixture that does not exist")
     void testRejectsUnknownReference() {
         Scenario invalid = scenario(

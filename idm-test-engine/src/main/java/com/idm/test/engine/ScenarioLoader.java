@@ -1,0 +1,113 @@
+package com.idm.test.engine;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
+import com.idm.test.engine.model.FixtureSpec;
+import com.idm.test.engine.model.Scenario;
+import com.idm.test.engine.model.StepSpec;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * Reads a scenario file into the model. Parsing only — see ScenarioValidator for checks.
+ */
+public final class ScenarioLoader {
+
+    private static final ObjectMapper YAML = new ObjectMapper(new YAMLFactory());
+
+    private ScenarioLoader() {
+    }
+
+    /**
+     * @param yaml       the scenario file's contents; closed by this method
+     * @param sourceName the file name, used in error messages
+     */
+    @SuppressWarnings("unchecked")
+    public static Scenario load(InputStream yaml, String sourceName) {
+        if (yaml == null) {
+            throw new ValidationException(sourceName, "scenario file not found");
+        }
+
+        Map<String, Object> root;
+        try (InputStream in = yaml) {
+            root = YAML.readValue(in, Map.class);
+        } catch (IOException e) {
+            throw new ValidationException(sourceName, "could not parse YAML: " + e.getMessage(), e);
+        }
+
+        if (root == null) {
+            throw new ValidationException(sourceName, "file is empty");
+        }
+
+        String name = asString(root.get("name"));
+        if (name == null || name.isBlank()) {
+            throw new ValidationException(sourceName, "'name' is required");
+        }
+
+        return new Scenario(
+                name,
+                asString(root.get("description")),
+                readFixtures(root.get("fixtures"), sourceName),
+                readSteps(root.get("steps"), sourceName));
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, FixtureSpec> readFixtures(Object raw, String sourceName) {
+        if (raw == null) {
+            return Map.of();
+        }
+        if (!(raw instanceof Map<?, ?> fixtures)) {
+            throw new ValidationException(sourceName, "'fixtures' must be a map of name to fixture");
+        }
+
+        Map<String, FixtureSpec> result = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> entry : fixtures.entrySet()) {
+            String fixtureName = entry.getKey().toString();
+            if (!(entry.getValue() instanceof Map<?, ?> body)) {
+                throw new ValidationException(sourceName,
+                        "fixture '" + fixtureName + "' must be a map");
+            }
+            Object values = body.get("values");
+            result.put(fixtureName, new FixtureSpec(
+                    asString(body.get("generate")),
+                    values == null ? Map.of() : (Map<String, Object>) values));
+        }
+        return result;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<StepSpec> readSteps(Object raw, String sourceName) {
+        if (raw == null) {
+            return List.of();
+        }
+        if (!(raw instanceof List<?> steps)) {
+            throw new ValidationException(sourceName, "'steps' must be a list");
+        }
+
+        List<StepSpec> result = new ArrayList<>();
+        for (int i = 0; i < steps.size(); i++) {
+            Object element = steps.get(i);
+            if (!(element instanceof Map<?, ?> step) || step.size() != 1) {
+                throw new ValidationException(sourceName,
+                        "step " + (i + 1) + " must be a map with exactly one step type, "
+                                + "for example '- ldap.create:'");
+            }
+
+            Map.Entry<?, ?> only = step.entrySet().iterator().next();
+            Object params = only.getValue();
+            result.add(new StepSpec(
+                    only.getKey().toString(),
+                    params == null ? Map.of() : (Map<String, Object>) params));
+        }
+        return result;
+    }
+
+    private static String asString(Object value) {
+        return value == null ? null : value.toString();
+    }
+}

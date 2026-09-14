@@ -43,6 +43,7 @@
     <modules>
         <module>idm-test-core</module>
         <module>idm-test-utils</module>
+        <module>idm-test-engine</module>
         <module>idm-connector-ldap</module>
         <module>idm-connector-database</module>
         <module>idm-connector-rest</module>
@@ -63,6 +64,12 @@
             <dependency>
                 <groupId>com.idm.test</groupId>
                 <artifactId>idm-test-utils</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.idm.test</groupId>
+                <artifactId>idm-test-engine</artifactId>
                 <version>${project.version}</version>
             </dependency>
 

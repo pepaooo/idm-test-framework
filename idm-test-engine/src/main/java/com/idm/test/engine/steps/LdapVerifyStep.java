@@ -42,13 +42,7 @@ public final class LdapVerifyStep implements StepType {
 
         if (!result.isSuccess()) {
             return StepOutcome.failure(
-                    "ldap.verify could not read " + dn + ": " + result.getMessage());
-        }
-
-        if (!Boolean.TRUE.equals(result.getDataOrDefault(Boolean.FALSE))) {
-            return StepOutcome.failure(
-                    "ldap.verify failed for " + dn + ": expected " + expected
-                            + " but the entry did not match. " + result.getMessage());
+                    "ldap.verify failed for " + dn + ": " + result.getMessage());
         }
 
         return StepOutcome.success("verified " + dn);

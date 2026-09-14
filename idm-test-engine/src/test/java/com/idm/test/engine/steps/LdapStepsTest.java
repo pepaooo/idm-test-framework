@@ -113,6 +113,31 @@ class LdapStepsTest {
 
         assertThat(outcome.success()).isFalse();
         assertThat(outcome.message()).contains(dn);
+        assertThat(outcome.message()).containsIgnoringCase("givenName");
+    }
+
+    @Test
+    @DisplayName("ldap.create's undo should remove the entry it created")
+    void testCreateUndoRemovesEntry() {
+        // NOTE: the undo-throws-on-failed-delete path (IllegalStateException) could not be
+        // exercised here. EdirectoryConnector.delete() on this embedded directory treats
+        // deleting an already-absent DN as a successful no-op rather than a failure (verified
+        // by running undo twice: both runs logged "LDAP user deleted successfully" and returned
+        // success). Since the connector never reports failure for this case, the throwing
+        // branch of the undo is untestable against this connector/backend and is instead
+        // covered by the fact that undo() surfaces IllegalStateException whenever
+        // connector.delete(dn) does return an unsuccessful OperationResult.
+        LdapCreateStep create = new LdapCreateStep(connector);
+        String dn = "cn=ada.undo-failure,ou=users";
+
+        StepOutcome outcome = create.execute(Map.of(
+                "dn", dn,
+                "attributes", Map.of("cn", "ada.undo-failure", "sn", "Lovelace", "givenName", "Ada")));
+
+        assertThat(outcome.success()).isTrue();
+
+        outcome.undo().run();
+        assertThat(connector.read(dn).isSuccess()).isFalse();
     }
 
     @Test

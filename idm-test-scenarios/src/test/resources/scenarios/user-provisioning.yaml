@@ -1,0 +1,27 @@
+name: User provisioning to eDirectory
+description: Create a user and verify the directory entry carries its attributes
+
+fixtures:
+  user:
+    generate: random-user
+    values:
+      department: Engineering
+
+steps:
+  - ldap.create:
+      dn: "cn=${user.userId},ou=users"
+      attributes:
+        cn: ${user.userId}
+        sn: ${user.lastName}
+        givenName: ${user.firstName}
+        mail: ${user.email}
+
+  - ldap.verify:
+      dn: "cn=${user.userId},ou=users"
+      expect:
+        givenName: ${user.firstName}
+        sn: ${user.lastName}
+        mail: ${user.email}
+      wait:
+        timeout: 30s
+        poll: 2s

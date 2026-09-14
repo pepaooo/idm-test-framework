@@ -29,6 +29,11 @@
 
         <dependency>
             <groupId>com.idm.test</groupId>
+            <artifactId>idm-test-engine</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>com.idm.test</groupId>
             <artifactId>idm-connector-ldap</artifactId>
         </dependency>
 

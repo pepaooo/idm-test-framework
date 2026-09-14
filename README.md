@@ -1,345 +1,295 @@
 # IdM Test Framework
 
-> **Modern Integration Testing Framework for Identity Management Systems**
+> **Integration testing for Identity Management systems — write scenarios as YAML or as Java**
 
 [![Java](https://img.shields.io/badge/Java-21-orange.svg)](https://openjdk.org/)
 [![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.5.6-brightgreen.svg)](https://spring.io/projects/spring-boot)
-[![Testcontainers](https://img.shields.io/badge/Testcontainers-1.20.4-blue.svg)](https://www.testcontainers.org/)
-[![Tests](https://img.shields.io/badge/tests-27%20passing-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-235%20passing-brightgreen.svg)]()
+[![Docker](https://img.shields.io/badge/Docker-not%20required-lightgrey.svg)]()
 
-A comprehensive integration testing framework for Identity Management (IdM) systems built on Spring Boot, JUnit 5, and Testcontainers. Test provisioning workflows across LDAP, databases, REST APIs, and SOAP services with **zero manual setup**.
-
----
-
-## ✨ Features
-
-- 🐳 **Zero Setup Testing** - Testcontainers automatically manages LDAP and SOAP services
-- 🔌 **Multi-System Integration** - Test workflows across LDAP, databases, REST, and SOAP
-- 🎯 **20+ Test Scenarios** - Provisioning, modification, deprovisioning, and role assignment
-- 🚀 **Spring Boot 3.5.6** - Modern Spring Framework with Java 21
-- 🧪 **JUnit 5 & AssertJ** - Modern testing framework with fluent assertions
-- 📊 **Automatic Cleanup** - Test data tracked and cleaned up after each test
-- 🎭 **WireMock SOAP Mocking** - Mock SOAP services without real IdM infrastructure
-- 🐘 **Docker Compose** - Local development environment with one command
-- ⚙️ **GitHub Actions CI/CD** - Automated testing on every commit
+Tests provisioning workflows across LDAP, databases, REST APIs and SOAP services. Built on
+Spring Boot, JUnit 5 and an embedded directory — the suite runs with no Docker, no external
+services and no manual setup.
 
 ---
 
-## 🚀 Quick Start
+## Two ways to write a test
 
-### Prerequisites
+The framework has two authoring tiers. Neither replaces the other.
 
-- **Java 21** or later
-- **Maven 3.9+**
-- **Docker Desktop** (for Testcontainers and Docker Compose)
+**Declarative (YAML).** A scenario is a data file. No Java, no compilation — add a file and it
+runs. Intended for IdM consultants who do not write Java.
 
-### Run Tests (Automatic Infrastructure)
+```yaml
+name: User provisioning to eDirectory
 
-```bash
-# Build the project
-mvn clean install -DskipTests
+fixtures:
+  user:
+    generate: random-user
+    values: { department: Engineering }
 
-# Run all tests (Testcontainers starts LDAP & SOAP automatically)
-cd idm-test-scenarios
-mvn test
+steps:
+  - ldap.create:
+      dn: "cn=${user.userId},ou=users"
+      attributes:
+        cn: ${user.userId}
+        sn: ${user.lastName}
+        givenName: ${user.firstName}
 
-# Run configuration tests only (no Docker needed)
-mvn test -Dtest=ConfigurationTest
+  - ldap.verify:
+      dn: "cn=${user.userId},ou=users"
+      expect:
+        givenName: ${user.firstName}
+      wait: { timeout: 30s, poll: 2s }
 ```
 
-**Result**: ✅ Tests run with automatic LDAP and SOAP service management!
+**Programmatic (Java).** A JUnit test that calls the connectors directly. Use it when a scenario
+needs real logic — branching, computation, or an operation the step vocabulary does not cover.
 
-### Using Docker Compose (Manual Development)
+```java
+OperationResult<LdapUser> result = edirectoryConnector.create(user);
+assertThat(result.isSuccess()).isTrue();
+
+boolean provisioned = testExecutor.waitUntil(
+        () -> databaseConnector.executeQuery("test-db", sql, userId).isSuccess(),
+        Duration.ofMinutes(5), Duration.ofSeconds(5));
+```
+
+Both tiers use the same connectors underneath, so a fix in a connector reaches both.
+
+---
+
+## Quick start
+
+**Prerequisites:** Java 21 and Maven 3.9+. That is all — Docker is not required.
 
 ```bash
-# Start all services (LDAP, phpLDAPadmin, WireMock, PostgreSQL)
-docker-compose up -d
+./mvnw clean test
+```
 
-# Access phpLDAPadmin Web UI
-open http://localhost:8080
+The suite starts an embedded UnboundID LDAP directory and a WireMock SOAP server on ephemeral
+ports, creates an H2 schema, runs 235 tests, and tears everything down.
 
-# Run tests against running services
-mvn test
+```bash
+# One module
+./mvnw -pl idm-test-engine -am test
 
-# Stop services
+# One test class (-am needs this flag, since sibling modules have no matching test)
+./mvnw -pl idm-test-scenarios -am test -Dtest=YamlScenarioTest -Dsurefire.failIfNoSpecifiedTests=false
+
+# Debug logging
+./mvnw test -Dlogging.level.com.idm.test=DEBUG
+```
+
+Sibling modules are not installed to the local repository, so `-pl <module>` needs `-am`
+alongside it.
+
+---
+
+## Writing a YAML scenario
+
+Drop a `.yaml` file into `idm-test-scenarios/src/test/resources/scenarios/`. A `@TestFactory`
+discovers it and runs it as its own test.
+
+### File anatomy
+
+| Key | Meaning |
+|---|---|
+| `name` | Required. Shown in test output and results |
+| `description` | Optional |
+| `fixtures` | Named test data. `generate: random-user` plus optional literal `values` that override it |
+| `steps` | An ordered list. Each entry is a single-key map: the step type, then its parameters |
+
+### Step vocabulary
+
+Actions change state; assertions check it and may retry.
+
+| Step | Kind | Required | Also accepts |
+|---|---|---|---|
+| `ldap.create` | action | `dn` | `attributes` |
+| `ldap.verify` | assertion | `dn`, `expect` | `wait` |
+
+Ten more step types — `ldap.update`, `ldap.delete`, `db.execute`, `db.verify`, `roles.grant`,
+`roles.revoke`, `resources.grant`, `resources.revoke`, `rest.request`, `rest.verify` — are
+tracked as ITF-8 and ITF-9.
+
+### Waiting
+
+Waiting is a property of assertions, not a step of its own: you never wait for its own sake, you
+wait for something you were going to assert anyway. Any assertion accepts `wait`.
+
+```yaml
+wait: { timeout: 30s, poll: 2s }   # explicit — durations take s, m or h
+wait: true                          # use the configured defaults
+```
+
+### Interpolation
+
+`${path}` resolves against fixtures. Property paths only — no arithmetic, conditionals or
+function calls. That limit is deliberate: it keeps every value representable in a form, which
+matters if a UI is ever built. When a scenario needs computation, that is the signal it belongs
+in the Java tier.
+
+`random-user` produces `userId`, `firstName`, `lastName`, `email`, `department`, `jobTitle`,
+`phoneNumber` and `employeeId`.
+
+### Validation happens before anything runs
+
+Every scenario file is parsed and validated before the first step executes, because a scenario
+can spend minutes waiting for provisioning and discovering a typo afterwards is expensive. A
+scenario is rejected at load for an unknown step type, a missing required parameter, an unknown
+parameter, a reference to an undeclared fixture, an unknown `generate:` value, or a malformed
+`wait:`. Every message names the file and the step.
+
+That last point matters more than it sounds. Because steps declare their parameter names, a
+misspelled `expct:` fails at load rather than producing a green test that verified nothing.
+
+### Results
+
+Each run writes `idm-test-scenarios/target/scenario-results.json` — every scenario, every step,
+the parameters after interpolation, and for a step that waited, how many attempts it made and
+what it last observed. The engine itself renders nothing; this file is the shape an HTML report
+or a UI would read.
+
+---
+
+## Project structure
+
+```
+idm-test-framework/
+├── idm-test-core/           TestExecutor, OperationResult, ErrorType
+├── idm-test-utils/          Test data generators, custom assertions, EmbeddedLdapServer
+├── idm-test-engine/         YAML scenario engine — loader, validator, executor, step SPI
+├── idm-connector-ldap/      eDirectory/LDAP connector
+├── idm-connector-database/  Multi-database JDBC connector (raw SQL)
+├── idm-connector-rest/      REST client configuration
+├── idm-connector-soap/      Role and Resource service connectors (NetIQ SOAP)
+├── idm-connector-idm/       Placeholder — no sources yet
+├── idm-test-scenarios/      Java scenario tests, YAML scenarios, the JUnit adapter
+├── docker-compose.yml       Optional local services; the test suite does not use them
+└── docs/                    See Documentation below
+```
+
+---
+
+## Architecture
+
+### Principles
+
+- **Spring's built-in clients** — RestClient, JdbcTemplate, WebServiceTemplate. No custom wrappers.
+- **Raw SQL for database validation** — no JPA or Hibernate entities.
+- **Integration-first** — tests exercise real protocol implementations, not mocks of our own code.
+- **Two tiers, one set of connectors** — the engine is a consumer of the connectors, exactly as a
+  Java test is.
+
+### The engine
+
+Three properties are enforced rather than merely intended:
+
+**It takes no Spring dependency.** `idm-test-engine` never creates an application context or
+reads configuration; it receives its dependencies by constructor. A test walks the module's
+sources and fails on any `org.springframework` import. That is what keeps a future CLI a wrapper
+rather than a rewrite.
+
+**It interpolates before calling a step, and owns the retry loop.** Step implementations receive
+fully resolved parameters and never think about waiting, which keeps each new step type to
+roughly forty lines around one connector call.
+
+**It renders nothing.** `run()` returns a `ScenarioResult`; the JSON writer and the JUnit adapter
+are both adapters over that one shape.
+
+`run()` always returns a result rather than throwing, and always unwinds cleanup in reverse — a
+cleanup failure is logged and never replaces the scenario's own error.
+
+### Test infrastructure
+
+| Concern | Provided by |
+|---|---|
+| LDAP directory | Embedded UnboundID, ephemeral port, standard schema extended with eDirectory's `startDate`, `loginDisabled` and `c` |
+| Databases | H2 in-memory, schema created at context startup |
+| SOAP services | WireMock on a dynamic port, stubs under `src/test/resources/wiremock/` |
+
+---
+
+## What exists today
+
+| Module | Tests |
+|---|---|
+| idm-test-core | 34 |
+| idm-test-utils | 51 |
+| idm-test-engine | 61 |
+| idm-connector-ldap | 14 |
+| idm-connector-database | 21 |
+| idm-connector-rest | 12 |
+| idm-connector-soap | 13 |
+| idm-test-scenarios | 29 |
+| **Total** | **235** |
+
+The scenarios module holds 27 Java workflow tests covering provisioning, role assignment,
+modification, deprovisioning and multi-system flows, plus the YAML scenario and its validation
+test.
+
+**Worth being explicit about:** those Java scenarios *simulate* IdM. They write directly to the
+embedded LDAP and H2 and assert the result, so they exercise the framework end to end but
+validate no real Identity Manager. Pointing the framework at a real environment is separate
+work, and the connection details are already externalised so it is a configuration change rather
+than a code change.
+
+### Next
+
+| Ticket | Work |
+|---|---|
+| ITF-7 | Expressions — a sandboxed `js:{ }` escape hatch, the `set:` step, `as:` capture |
+| ITF-8 | `ldap.update`, `ldap.delete`, `db.execute`, `db.verify` |
+| ITF-9 | `roles.grant`/`revoke`, `resources.grant`/`revoke`, `rest.request`, `rest.verify` |
+| ITF-5 | Convert the Java scenarios to YAML; amend the specification |
+
+---
+
+## Optional local services
+
+`docker-compose.yml` starts OpenLDAP, phpLDAPadmin, WireMock and PostgreSQL for manual
+exploration. **The test suite does not use them** — it runs against embedded services. These are
+here for poking at a directory by hand, and for the eventual move to real infrastructure.
+
+```bash
+docker-compose up -d       # phpLDAPadmin at http://localhost:8080
 docker-compose down
 ```
 
 ---
 
-## 📁 Project Structure
+## Documentation
 
-```
-idm-test-framework/
-├── idm-test-core/              # Test execution engine (TestExecutor, OperationResult)
-├── idm-test-utils/             # Test data generators and utilities
-├── idm-connector-ldap/         # eDirectory/LDAP connector
-├── idm-connector-database/     # Multi-database JDBC connector
-├── idm-connector-rest/         # REST API connectors
-├── idm-connector-soap/         # SOAP/Role Service connector
-├── idm-connector-idm/          # NetIQ IdM connector
-├── idm-test-scenarios/         # Integration test scenarios
-│   └── src/test/
-│       ├── java/
-│       │   ├── base/           # BaseIntegrationTest with Testcontainers
-│       │   ├── config/         # ConfigurationTest
-│       │   ├── provisioning/   # User provisioning tests
-│       │   ├── modification/   # User modification tests
-│       │   ├── deprovisioning/ # User deprovisioning tests
-│       │   └── integration/    # Multi-system integration tests
-│       └── resources/
-│           ├── wiremock/       # SOAP stubs for WireMock
-│           ├── schema.sql      # H2 database schema
-│           └── application.yml # Test configuration
-├── docker-compose.yml          # Local development environment
-├── .github/workflows/ci.yml    # GitHub Actions CI/CD pipeline
-└── README.md                   # This file
-```
+Organised by how much you should trust it.
 
----
-
-## 🧪 Test Scenarios
-
-### Provisioning (4 tests)
-- Create user in LDAP and verify provisioning
-- Create user in database and verify
-- Handle provisioning timeouts
-- Provision with minimal attributes
-
-### Role Assignment (4 tests)
-- Assign role and verify LDAP group membership
-- Assign role with database access
-- Assign multiple roles
-- Handle assignment failures
-
-### Modification (4 tests)
-- Modify LDAP attributes and sync
-- Modify database and sync
-- Email change across all systems
-- Attribute removal
-
-### Deprovisioning (5 tests)
-- Soft delete (disable user account)
-- Hard delete (remove from all systems)
-- Access revocation workflow
-- Grace period handling
-- Related data cleanup
-
-### Multi-System Integration (3 tests)
-- New hire onboarding (9-step workflow)
-- Employee termination workflow
-- Department transfer workflow
-
-### Configuration (7 tests)
-- LDAP configuration validation
-- Database configuration validation (4 DBs)
-- REST API configuration validation (4 APIs)
-- SOAP configuration validation
-- TestExecutor configuration validation
-
----
-
-## 🏗️ Architecture
-
-### Core Principles
-
-✅ **Spring's Built-in Clients** - RestClient, RestTemplate, WebClient (no custom wrappers)
-✅ **Raw SQL with JdbcTemplate** - For database validation (no JPA/Hibernate)
-✅ **Testcontainers** - Automatic service management (LDAP, databases, mocks)
-✅ **WireMock** - SOAP service mocking (no real IdM server needed)
-✅ **Integration-First** - 90% integration tests, 10% unit tests
-
-### Key Components
-
-#### TestExecutor
-Provides async operation support:
-```java
-boolean success = testExecutor.waitUntil(
-    () -> connector.exists(userId),
-    Duration.ofMinutes(5),
-    Duration.ofSeconds(5)
-);
-```
-
-#### Connectors
-Simple, focused connectors for each system:
-- **EdirectoryConnector** - LDAP CRUD operations
-- **MultiDatabaseConnector** - Execute SQL on any configured database
-- **RoleServiceConnector** - SOAP client for NetIQ Role Service
-- **RestConnectors** - Thin wrappers around Spring's RestClient
-
-#### BaseIntegrationTest
-Provides automatic infrastructure and cleanup:
-```java
-@SpringBootTest
-@Testcontainers
-public abstract class BaseIntegrationTest {
-
-    @Container
-    protected static final GenericContainer<?> LDAP_CONTAINER = ...;
-
-    protected static final WireMockServer WIREMOCK_SERVER = ...;
-
-    @AfterEach
-    void tearDown() {
-        cleanupLdap();      // Automatic cleanup
-        cleanupDatabase();  // Automatic cleanup
-        cleanupRoles();     // Automatic cleanup
-    }
-}
-```
-
----
-
-## 🧰 Maven Commands
-
-```bash
-# Build without tests
-mvn clean install -DskipTests
-
-# Run all tests
-mvn test
-
-# Run specific test class
-mvn test -Dtest=UserProvisioningWorkflowTest
-
-# Run specific test method
-mvn test -Dtest=UserDeprovisioningWorkflowTest#testUserDisableWorkflow
-
-# Run with debug logging
-mvn test -Dtest=ConfigurationTest -X
-```
-
----
-
-## 🐳 Docker Services
-
-### OpenLDAP (port 10389)
-- Base DN: `dc=test,dc=com`
-- Admin DN: `cn=admin,dc=test,dc=com`
-- Password: `test`
-
-### phpLDAPadmin (port 8080)
-- Web UI for LDAP management
-- Login: `cn=admin,dc=test,dc=com` / `test`
-- URL: http://localhost:8080
-
-### WireMock (port 8090)
-- SOAP service mocking
-- Stubs in `src/test/resources/wiremock/mappings/`
-- Admin UI: http://localhost:8090/__admin/
-
-### PostgreSQL (port 5432) - Optional
-- Database: `idmtest`
-- User: `idmtest`
-- Password: `idmtest`
-
----
-
-## 📚 Documentation
-
-Documentation is organised by how much you should trust it.
-
-**Reference** — maintained, describes the framework as it is:
-
-- **[Specification](docs/reference/specification.md)** - Complete architecture specification
-- **[Configuration](docs/reference/configuration.md)** - How to configure connectors and databases
-- **[Running tests](docs/reference/running-tests.md)** - Comprehensive test execution guide
-- **[CLAUDE.md](CLAUDE.md)** - Development guidelines for Claude Code
+**Reference** — maintained:
+- [Specification](docs/reference/specification.md) — architecture and design decisions
+- [Configuration](docs/reference/configuration.md) — connectors, databases, endpoints
+- [Running tests](docs/reference/running-tests.md) — test execution guide
+- [CLAUDE.md](CLAUDE.md) — development guidelines
 
 **Specs and plans** — design documents for in-flight work:
+- [Declarative scenario engine](docs/specs/2026-09-13-declarative-scenario-engine-design.md)
+- [Green test baseline](docs/specs/2026-09-11-suite-green-baseline-design.md)
+- [docs/plans/](docs/plans/) — task breakdowns
 
-- **[Green test baseline](docs/specs/2026-09-11-suite-green-baseline-design.md)** - Design for the current state of the suite
-- **[Implementation plan](docs/plans/2026-09-11-green-test-baseline.md)** - Task breakdown for that design
-
-**History** — frozen session reports, kept for the record only:
-
-- **[docs/history/](docs/history/README.md)** - Phase 9 and 10 reports. Several are
-  inaccurate; the banner in that folder says which. Do not use them to judge current state.
+**History** — frozen, partly inaccurate, kept for the record:
+- [docs/history/](docs/history/README.md) — the banner there says which reports are wrong
 
 ---
 
-## 🛠️ Technology Stack
+## Technology stack
 
-| Component | Technology | Version |
-|-----------|-----------|---------|
-| Java | OpenJDK | 21 (LTS) |
+| Concern | Choice | Version |
+|---|---|---|
+| Language | Java | 21 |
 | Framework | Spring Boot | 3.5.6 |
-| Build Tool | Maven | 3.9.x |
-| Testing | JUnit 5 | 5.11.x |
-| Assertions | AssertJ | 3.26.x |
-| LDAP | Spring LDAP | 3.2.9 |
-| Containers | Testcontainers | 1.20.4 |
+| Testing | JUnit 5, AssertJ | 5.11.x, 3.26.3 |
+| LDAP | Spring LDAP, UnboundID SDK | 3.2.9, 7.0.1 |
+| Database | Spring JDBC, H2 | 2.3.232 |
+| SOAP | JAX-WS, JAXB | — |
+| YAML/JSON | Jackson | 2.19.2 |
 | Mocking | WireMock | 3.10.0 |
 
----
-
-## 📝 Project Status
-
-### ✅ Phase 1-10: COMPLETED
-
-| Phase | Description | Status |
-|-------|-------------|--------|
-| Phase 1 | Project structure and Maven setup | ✅ Complete |
-| Phase 2 | Core module (OperationResult, TestExecutor) | ✅ Complete |
-| Phase 3 | Utils module (TestDataGenerator, Assertions) | ✅ Complete |
-| Phase 4 | Multi-database connector | ✅ Complete |
-| Phase 5 | LDAP connector | ✅ Complete |
-| Phase 6 | REST connector | ✅ Complete |
-| Phase 7 | SOAP connector | ✅ Complete |
-| Phase 8 | Configuration infrastructure | ✅ Complete |
-| Phase 9 | Integration test scenarios (20+ tests) | ✅ Complete |
-| Phase 10 | Docker & CI/CD automation | ⚠️ Superseded — see [green baseline spec](docs/specs/2026-09-11-suite-green-baseline-design.md) |
-
-### Build Status
-
-Last verified: 2026-09-11 via `sh ./mvnw clean test`
-
-- All 9 modules compile and test successfully
-- Total: 167 tests, 0 failures, 0 errors, 0 skipped
-- No Docker required — the suite runs on an embedded UnboundID LDAP server
-- WireMock provides SOAP stubs on a dynamically allocated port
-- Docker Compose and the CI workflow remain available for phase (b),
-  when the framework is pointed at a real IdM environment
-
----
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
----
-
-## 🎯 Roadmap (Future Enhancements)
-
-### Phase 11: Enhanced Observability
-- [ ] Test coverage reporting (JaCoCo)
-- [ ] Performance metrics
-- [ ] Test execution dashboards
-- [ ] Allure test reports
-
-### Phase 12: Extended Test Scenarios
-- [ ] REST API integration tests
-- [ ] Multi-tenant test scenarios
-- [ ] Load/performance tests
-- [ ] Security/penetration tests
-
----
-
-## 🙏 Acknowledgments
-
-- **Spring Boot** - Application framework
-- **Testcontainers** - Docker-based integration testing
-- **WireMock** - HTTP/SOAP service mocking
-- **AssertJ** - Fluent assertions
-- **OpenLDAP** - LDAP directory server
-
----
-
-**Built with ❤️ for Identity Management Testing**
-
-*Version: 1.0.0-SNAPSHOT | Last Updated: 2025-10-17*
+No Lombok — Java records instead.

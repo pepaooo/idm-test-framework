@@ -6,6 +6,8 @@ import com.idm.test.connector.soap.generated.resource.NrfServiceException_Except
 import com.idm.test.connector.soap.generated.resource.ObjectFactory;
 import com.idm.test.connector.soap.generated.resource.RequestResourceGrantRequest;
 import com.idm.test.connector.soap.generated.resource.RequestResourceGrantResponse;
+import com.idm.test.connector.soap.generated.resource.RequestResourceRevokeRequest;
+import com.idm.test.connector.soap.generated.resource.RequestResourceRevokeResponse;
 import com.idm.test.connector.soap.generated.resource.ResourceService;
 import com.idm.test.core.model.ErrorType;
 import com.idm.test.core.model.OperationResult;
@@ -99,6 +101,60 @@ public class ResourceServiceConnector {
             return OperationResult.<RequestResourceGrantResponse>builder()
                     .success(false)
                     .message("Resource grant failed: " + e.getMessage())
+                    .errorType(SoapErrorTypes.classify(e))
+                    .throwable(e)
+                    .build();
+        }
+    }
+
+    /**
+     * Revokes a resource from a user.
+     *
+     * @param userDn     the user's DN
+     * @param resourceDn the resource's DN
+     * @param reason     reason for the request, or {@code null}
+     * @return the revoke response, or a failure result; never throws
+     */
+    public OperationResult<RequestResourceRevokeResponse> revokeResource(
+            String userDn, String resourceDn, String reason) {
+
+        log.debug("Revoking resource {} from user {}", resourceDn, userDn);
+
+        try {
+            RequestResourceRevokeRequest request = new RequestResourceRevokeRequest();
+            request.setUserTarget(
+                    objectFactory.createRequestResourceRevokeRequestUserTarget(userDn));
+            request.setResourceTarget(
+                    objectFactory.createRequestResourceRevokeRequestResourceTarget(resourceDn));
+            if (reason != null) {
+                request.setReasonForRequest(
+                        objectFactory.createRequestResourceRevokeRequestReasonForRequest(reason));
+            }
+
+            RequestResourceRevokeResponse response = resourcePort.requestResourceRevoke(request);
+
+            log.debug("Resource revoke accepted: {}", valueOf(response.getResult()));
+
+            return OperationResult.<RequestResourceRevokeResponse>builder()
+                    .success(true)
+                    .data(response)
+                    .message("Resource revoked: " + valueOf(response.getResult()))
+                    .build();
+
+        } catch (NrfServiceException_Exception e) {
+            log.error("Resource revoke rejected by the service: {}", e.getFaultInfo().getReason());
+            return OperationResult.<RequestResourceRevokeResponse>builder()
+                    .success(false)
+                    .message("Resource revoke failed: " + e.getFaultInfo().getReason())
+                    .errorType(ErrorType.SERVER_ERROR)
+                    .throwable(e)
+                    .build();
+
+        } catch (Exception e) {
+            log.error("Resource revoke call failed: {}", e.getMessage());
+            return OperationResult.<RequestResourceRevokeResponse>builder()
+                    .success(false)
+                    .message("Resource revoke failed: " + e.getMessage())
                     .errorType(SoapErrorTypes.classify(e))
                     .throwable(e)
                     .build();

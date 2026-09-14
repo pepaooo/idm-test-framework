@@ -5,6 +5,7 @@ import com.github.tomakehurst.wiremock.client.WireMock;
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
 import com.idm.test.connector.soap.config.SoapProperties;
 import com.idm.test.connector.soap.generated.resource.RequestResourceGrantResponse;
+import com.idm.test.connector.soap.generated.resource.RequestResourceRevokeResponse;
 import com.idm.test.core.model.OperationResult;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -121,6 +122,41 @@ class ResourceServiceConnectorTest {
         assertThat(result.getMessage()).contains("Resource grant failed");
     }
 
+    @Test
+    @DisplayName("Should revoke a resource and return the request id")
+    void testRevokeResourceSuccess() {
+        stubFor(post(urlPathEqualTo(RESOURCE_PATH))
+                .withRequestBody(containing("requestResourceRevoke"))
+                .withRequestBody(containing(USER_DN))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "text/xml; charset=utf-8")
+                        .withBody(revokeResponse("REQ-9001"))));
+
+        OperationResult<RequestResourceRevokeResponse> result =
+                connector.revokeResource(USER_DN, RESOURCE_DN, "Termination");
+
+        assertThat(result.isSuccess()).isTrue();
+        assertThat(result.getData()).isPresent();
+        assertThat(result.getData().get().getResult().getValue()).isEqualTo("REQ-9001");
+
+        verify(postRequestedFor(urlPathEqualTo(RESOURCE_PATH))
+                .withRequestBody(containing(RESOURCE_DN)));
+    }
+
+    @Test
+    @DisplayName("Should report failure instead of throwing when revoke errors")
+    void testRevokeResourceServerError() {
+        stubFor(post(urlPathEqualTo(RESOURCE_PATH))
+                .willReturn(aResponse().withStatus(500)));
+
+        OperationResult<RequestResourceRevokeResponse> result =
+                connector.revokeResource(USER_DN, RESOURCE_DN, "Termination");
+
+        assertThat(result.isFailure()).isTrue();
+        assertThat(result.getMessage()).contains("Resource revoke failed");
+    }
+
     /**
      * SOAP envelope matching idmprov-resource.wsdl's target namespace.
      */
@@ -132,6 +168,18 @@ class ResourceServiceConnectorTest {
                 + "<tns:requestResourceGrantResponse>"
                 + "<tns:result>" + requestId + "</tns:result>"
                 + "</tns:requestResourceGrantResponse>"
+                + "</soap:Body>"
+                + "</soap:Envelope>";
+    }
+
+    private static String revokeResponse(String requestId) {
+        return "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
+                + "<soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\" "
+                + "xmlns:tns=\"http://www.novell.com/resource/service\">"
+                + "<soap:Body>"
+                + "<tns:requestResourceRevokeResponse>"
+                + "<tns:result>" + requestId + "</tns:result>"
+                + "</tns:requestResourceRevokeResponse>"
                 + "</soap:Body>"
                 + "</soap:Envelope>";
     }

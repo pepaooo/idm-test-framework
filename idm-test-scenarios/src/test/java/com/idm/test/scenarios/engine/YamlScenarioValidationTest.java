@@ -9,6 +9,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.opentest4j.AssertionFailedError;
 
 import java.nio.file.Path;
 import java.util.List;
@@ -64,6 +65,7 @@ class YamlScenarioValidationTest extends BaseIntegrationTest {
         // The invalid file fails immediately, naming itself and the bad value — it never
         // gets as far as running a single step.
         assertThatThrownBy(() -> brokenTest.getExecutable().execute())
+                .isInstanceOf(AssertionFailedError.class)
                 .hasMessageContaining("broken-wait.yaml")
                 .hasMessageContaining("30s");
 
@@ -72,7 +74,14 @@ class YamlScenarioValidationTest extends BaseIntegrationTest {
 
         // Both outcomes — including the one that never ran a step — are recorded, so a
         // report built from this file shows every scenario, not just the ones that ran.
+        // Checking the name alone would pass even if the broken scenario were recorded as a
+        // false success, so this also pins down that its "success" field is false.
         String json = java.nio.file.Files.readString(results);
         assertThat(json).contains("\"broken-wait.yaml\"").contains("\"valid-user.yaml\"");
+
+        int brokenIndex = json.indexOf("\"broken-wait.yaml\"");
+        assertThat(json.indexOf("\"success\" : false", brokenIndex))
+                .as("broken-wait.yaml's recorded result should have success: false in %s", json)
+                .isNotEqualTo(-1);
     }
 }

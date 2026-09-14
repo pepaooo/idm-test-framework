@@ -62,10 +62,12 @@ public final class ScenarioEngine {
         String failureDetail = null;
 
         try {
-            // Fixture generators aren't validated by ScenarioValidator (it only checks the
-            // fixture names steps reference), so a bad generator name surfaces here. It must
-            // stay inside this protected region so run() still returns a ScenarioResult —
-            // with zero steps, since none can run without fixtures — instead of throwing.
+            // ScenarioValidator does validate fixture generator names on the path that calls
+            // it before run() — see ScenarioValidator.validate(). This guard is defence for
+            // callers that reach run() without validating first (a future CLI, say), so a
+            // bad generator name still surfaces here rather than throwing. It must stay
+            // inside this protected region so run() still returns a ScenarioResult — with
+            // zero steps, since none can run without fixtures — instead of throwing.
             try {
                 scope.putAll(fixtures.build(scenario.fixtures()));
             } catch (RuntimeException e) {

@@ -131,6 +131,58 @@ class ScenarioValidatorTest {
     }
 
     @Test
+    @DisplayName("Should reject a typo'd parameter written instead of the required one, "
+            + "naming the missing parameter and hinting at the stray one")
+    void testRejectsTypoInsteadOfRequiredParameter() {
+        // Unlike testRejectsUnknownParameter above, this supplies ONLY the typo ('expct') and
+        // never the real 'expect' — the actual real-world shape of the bug report, where a
+        // consultant writes the wrong key rather than an extra one. The required-parameter
+        // check fires first (deliberately — see the comment above it in ScenarioValidator),
+        // so this must not fall through to the unknown-parameter scan and must not have both
+        // checks report the same mistake. The message still gets a hint at 'expct' from
+        // unrecognizedHint(), without moving or duplicating the check that produces it.
+        Scenario invalid = scenario(
+                new StepSpec("ldap.verify", Map.of(
+                        "dn", "cn=${user.userId},ou=users",
+                        "expct", Map.of("givenName", "Ada"))));
+
+        assertThatThrownBy(() -> validator.validate(invalid, "bad.yaml"))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("bad.yaml")
+                .hasMessageContaining("ldap.verify")
+                .hasMessageContaining("missing required parameter 'expect'")
+                .hasMessageContaining("expct");
+    }
+
+    @Test
+    @DisplayName("Should accept 'wait' and a required parameter even when a retryable step's "
+            + "acceptedParams() override omits them")
+    void testAcceptsWaitAndRequiredParamDespiteNarrowAcceptedParamsOverride() {
+        // Guards the fix for the coupling bug: LdapCreateStep's hardcoded Set.of(...)
+        // override is the template later step types will copy. A retryable step following
+        // that template (e.g. a "db.verify" with optional 'database'/'query') could override
+        // acceptedParams() and forget 'wait' entirely, or even forget its own required
+        // parameter — this must not make ScenarioValidator reject either as unknown.
+        StepType retryableWithNarrowOverride = new StepType() {
+            public String name() { return "db.verify"; }
+            public boolean retryable() { return true; }
+            public Set<String> requiredParams() { return Set.of("dn"); }
+            // Deliberately omits both 'wait' and the step's own required 'dn'.
+            public Set<String> acceptedParams() { return Set.of("database", "query"); }
+            public StepOutcome execute(Map<String, Object> params) { return StepOutcome.success("ok"); }
+        };
+        ScenarioValidator localValidator = new ScenarioValidator(
+                Map.of("db.verify", retryableWithNarrowOverride), Set.of("random-user"));
+
+        Scenario valid = scenario(new StepSpec("db.verify", Map.of(
+                "dn", "cn=${user.userId},ou=users",
+                "database", "sap",
+                "wait", Boolean.TRUE)));
+
+        assertThatCode(() -> localValidator.validate(valid, "ok.yaml")).doesNotThrowAnyException();
+    }
+
+    @Test
     @DisplayName("Should reject a reference to a fixture that does not exist")
     void testRejectsUnknownReference() {
         Scenario invalid = scenario(

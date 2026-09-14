@@ -7,6 +7,7 @@ import com.idm.test.engine.model.WaitSpec;
 import com.idm.test.engine.spi.StepType;
 
 import java.time.Duration;
+import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
@@ -71,10 +72,24 @@ public final class ScenarioValidator {
                         "unknown step type. Available: " + new TreeSet<>(registry.keySet()));
             }
 
+            // Don't trust acceptedParams() alone: an override (as LdapCreateStep's hardcoded
+            // Set.of(...) demonstrates, and every later step type will copy that template)
+            // could drop a required parameter or 'wait' without anyone noticing, and this
+            // validator would then reject a perfectly valid scenario as if the parameter
+            // were unknown. The effective accepted set always includes requiredParams() and,
+            // for a retryable step, 'wait' — regardless of what acceptedParams() returns. See
+            // StepType.acceptedParams() javadoc.
+            Set<String> accepted = new LinkedHashSet<>(type.acceptedParams());
+            accepted.addAll(type.requiredParams());
+            if (type.retryable()) {
+                accepted.add("wait");
+            }
+
             for (String required : new TreeSet<>(type.requiredParams())) {
                 if (!step.params().containsKey(required)) {
                     throw new ValidationException(sourceName, i, step.type(),
-                            "missing required parameter '" + required + "'");
+                            "missing required parameter '" + required + "'"
+                                    + unrecognizedHint(step, accepted));
                 }
             }
 
@@ -91,6 +106,13 @@ public final class ScenarioValidator {
                 // is exactly the late failure this validator exists to prevent: a bad shape
                 // (e.g. a string where a map or `true` belongs) or a bad duration string
                 // (e.g. '30x') would only surface after every earlier step had executed.
+                //
+                // NOTE: this parses 'wait' before interpolation, while ScenarioEngine parses
+                // it after resolving ${...} references (see runStep). A future config-style
+                // fixture producing something like `wait: {timeout: ${cfg.timeout}}` would
+                // therefore be falsely rejected here even though the engine would resolve it
+                // fine at runtime. Not reachable today: every current fixture generator only
+                // ever produces user data, never a value a 'wait' would reference.
                 try {
                     WaitSpec.parse(step.params().get("wait"), PLACEHOLDER_DURATION, PLACEHOLDER_DURATION);
                 } catch (IllegalArgumentException e) {
@@ -99,7 +121,6 @@ public final class ScenarioValidator {
                 }
             }
 
-            Set<String> accepted = type.acceptedParams();
             for (String supplied : step.params().keySet()) {
                 if (!accepted.contains(supplied)) {
                     throw new ValidationException(sourceName, i, step.type(),
@@ -116,5 +137,25 @@ public final class ScenarioValidator {
                 }
             }
         }
+    }
+
+    /**
+     * Flags supplied parameter names that {@code accepted} does not recognize, so a missing
+     * required parameter caused by a typo (e.g. {@code expct} instead of {@code expect})
+     * names the stray key instead of only the parameter that never showed up. Returns "" when
+     * every supplied name is recognized, so the plain "missing required parameter" message is
+     * unchanged in the common case.
+     * <p>
+     * This only enriches the message the required-parameter check already throws; it does not
+     * move or duplicate that check, so it cannot double-report alongside the 'wait' or
+     * accepted-parameter checks below.
+     */
+    private static String unrecognizedHint(StepSpec step, Set<String> accepted) {
+        Set<String> unrecognized = new TreeSet<>(step.params().keySet());
+        unrecognized.removeAll(accepted);
+        if (unrecognized.isEmpty()) {
+            return "";
+        }
+        return " (also supplied but not recognized, possibly a typo: " + unrecognized + ")";
     }
 }

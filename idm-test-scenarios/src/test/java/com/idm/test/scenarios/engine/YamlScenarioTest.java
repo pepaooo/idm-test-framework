@@ -5,7 +5,6 @@ import com.idm.test.engine.FixtureFactory;
 import com.idm.test.engine.ScenarioEngine;
 import com.idm.test.engine.ScenarioLoader;
 import com.idm.test.engine.ScenarioValidator;
-import com.idm.test.engine.ValidationException;
 import com.idm.test.engine.model.Scenario;
 import com.idm.test.engine.result.JsonResultWriter;
 import com.idm.test.engine.result.ScenarioResult;
@@ -69,6 +68,12 @@ class YamlScenarioTest extends BaseIntegrationTest {
      * A file that fails to load or validate still becomes a dynamic test — one that fails
      * immediately with that error — so a typo in one file never hides the scenarios that are
      * fine, and every file still ends up with a {@link ScenarioResult} in the JSON output.
+     * <p>
+     * Catches {@link RuntimeException} broadly, not just {@code ValidationException}:
+     * {@code ScenarioLoader} and {@code ScenarioValidator} only ever throw the latter today,
+     * but trusting that here would mean any other failure during load or validation escapes
+     * this factory method entirely — aborting the whole {@code @TestFactory} with zero
+     * dynamic tests and no results file, the exact failure shape this method exists to avoid.
      */
     static List<DynamicTest> buildTests(
             String scenarioDir, ScenarioValidator validator, ScenarioEngine engine, Path resultsPath)
@@ -92,7 +97,7 @@ class YamlScenarioTest extends BaseIntegrationTest {
                             .as(result.failureSummary())
                             .isTrue();
                 });
-            } catch (ValidationException e) {
+            } catch (RuntimeException e) {
                 String message = e.getMessage();
                 test = DynamicTest.dynamicTest(file, () -> {
                     ScenarioResult result = new ScenarioResult(file, file, false, 0L, List.of(), message);

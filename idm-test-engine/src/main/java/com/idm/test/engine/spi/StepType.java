@@ -42,6 +42,15 @@ public interface StepType {
      * true — {@code wait} is only ever meaningful on a retryable step, and never on a
      * non-retryable one, so the default keeps that rule in one place. Override when the step
      * also has optional parameters beyond what it requires.
+     * <p>
+     * <b>An override need not (and should not try to) repeat {@link #requiredParams()} or
+     * {@code wait}.</b> {@code ScenarioValidator} never trusts this method alone: it always
+     * treats every name in {@link #requiredParams()}, and {@code wait} when
+     * {@link #retryable()} is true, as accepted regardless of what an override returns here.
+     * That means an override that lists only its own extra optional parameters (as
+     * {@code LdapCreateStep} does with a hardcoded {@code Set.of(...)}) cannot accidentally
+     * cause a required parameter, or {@code wait} on a retryable step, to be rejected as
+     * unknown.
      */
     default Set<String> acceptedParams() {
         Set<String> accepted = new LinkedHashSet<>(requiredParams());

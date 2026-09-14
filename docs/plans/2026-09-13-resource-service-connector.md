@@ -73,7 +73,7 @@ Establishes the connector, its configuration property, and the grant operation.
 sh ./mvnw -q -pl idm-connector-soap -am generate-sources 2>/dev/null; ls idm-connector-soap/target/generated-sources/jaxws/com/idm/test/connector/soap/generated/resource | grep -cE "RequestResourceGrant|IRemoteResource|ResourceService"
 ```
 
-Expected: `5` — `IRemoteResource.java`, `ResourceService.java`, `RequestResourceGrantRequest.java`, `RequestResourceGrantResponse.java`, and `RequestResourceGrantResponse` is matched once. If this prints `0`, the WSDL generation is broken and nothing below will compile.
+Expected: `4` — `IRemoteResource.java`, `ResourceService.java`, `RequestResourceGrantRequest.java`, `RequestResourceGrantResponse.java`. If this prints `0`, the WSDL generation is broken and nothing below will compile.
 
 - [ ] **Step 2: Add the resourceUrl property**
 

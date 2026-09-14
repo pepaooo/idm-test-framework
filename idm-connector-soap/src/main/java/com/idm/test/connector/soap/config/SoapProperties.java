@@ -15,6 +15,13 @@ public class SoapProperties {
     private String url;
 
     /**
+     * Endpoint for the Identity Applications resource service, e.g.
+     * https://idm.company.com:8543/IDMProv/resource/service
+     * Separate from {@code url}, which addresses the role service.
+     */
+    private String resourceUrl;
+
+    /**
      * Username for SOAP authentication
      */
     private String username;
@@ -48,6 +55,14 @@ public class SoapProperties {
 
     public void setUrl(String url) {
         this.url = url;
+    }
+
+    public String getResourceUrl() {
+        return resourceUrl;
+    }
+
+    public void setResourceUrl(String resourceUrl) {
+        this.resourceUrl = resourceUrl;
     }
 
     public String getUsername() {

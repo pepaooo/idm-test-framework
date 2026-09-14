@@ -268,18 +268,6 @@ public class RoleServiceConnector {
      * @return the error type
      */
     private ErrorType determineErrorType(Exception e) {
-        String message = e.getMessage();
-
-        if (message != null) {
-            if (message.contains("timeout") || message.contains("timed out")) {
-                return ErrorType.TIMEOUT;
-            } else if (message.contains("Connection") || message.contains("Network")) {
-                return ErrorType.NETWORK_ERROR;
-            } else if (message.contains("Authentication") || message.contains("Unauthorized")) {
-                return ErrorType.AUTHENTICATION_ERROR;
-            }
-        }
-
-        return ErrorType.UNKNOWN_ERROR;
+        return SoapErrorTypes.classify(e);
     }
 }

@@ -36,7 +36,8 @@ class ScenarioValidatorTest {
     };
 
     private final ScenarioValidator validator = new ScenarioValidator(
-            Map.of("ldap.create", ACTION, "ldap.verify", ASSERTION));
+            Map.of("ldap.create", ACTION, "ldap.verify", ASSERTION),
+            Set.of("random-user"));
 
     private static Scenario scenario(StepSpec... steps) {
         return new Scenario("Test", null,
@@ -158,5 +159,56 @@ class ScenarioValidatorTest {
         assertThatThrownBy(() -> validator.validate(scenario(), "empty.yaml"))
                 .isInstanceOf(ValidationException.class)
                 .hasMessageContaining("at least one step");
+    }
+
+    @Test
+    @DisplayName("Should reject a wait with a malformed duration string, naming the file and value")
+    void testRejectsWaitWithBadDurationString() {
+        // The exact late failure ScenarioValidator exists to prevent: without this check,
+        // '30x' would only be discovered once WaitSpec.parse runs inside the engine, after
+        // every earlier step (and this scenario's own earlier steps) has already executed.
+        Scenario invalid = scenario(
+                new StepSpec("ldap.verify", Map.of(
+                        "dn", "cn=${user.userId},ou=users",
+                        "expect", Map.of("givenName", "Ada"),
+                        "wait", Map.of("timeout", "30x"))));
+
+        assertThatThrownBy(() -> validator.validate(invalid, "bad.yaml"))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("bad.yaml")
+                .hasMessageContaining("ldap.verify")
+                .hasMessageContaining("30x");
+    }
+
+    @Test
+    @DisplayName("Should reject a wait of the wrong shape, naming the file and value")
+    void testRejectsWaitOfWrongType() {
+        // 'wait' must be true or a map with timeout/poll; a bare string is the wrong shape
+        // entirely, distinct from the bad-duration-string case above.
+        Scenario invalid = scenario(
+                new StepSpec("ldap.verify", Map.of(
+                        "dn", "cn=${user.userId},ou=users",
+                        "expect", Map.of("givenName", "Ada"),
+                        "wait", "30s")));
+
+        assertThatThrownBy(() -> validator.validate(invalid, "bad.yaml"))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("bad.yaml")
+                .hasMessageContaining("ldap.verify")
+                .hasMessageContaining("30s");
+    }
+
+    @Test
+    @DisplayName("Should reject a fixture with an unknown generator, naming it and listing what's available")
+    void testRejectsUnknownGenerator() {
+        Scenario invalid = new Scenario("Test", null,
+                Map.of("user", new FixtureSpec("randmo-user", Map.of())),
+                List.of(new StepSpec("ldap.create", Map.of("dn", "cn=${user.userId},ou=users"))));
+
+        assertThatThrownBy(() -> validator.validate(invalid, "bad.yaml"))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("bad.yaml")
+                .hasMessageContaining("randmo-user")
+                .hasMessageContaining("random-user");
     }
 }

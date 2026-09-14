@@ -1,0 +1,26 @@
+name: Valid fixture scenario
+description: A minimal, well-formed scenario used to prove the factory still runs good files
+  alongside a deliberately broken one.
+
+fixtures:
+  user:
+    generate: random-user
+
+steps:
+  - ldap.create:
+      dn: "cn=${user.userId},ou=users"
+      attributes:
+        cn: ${user.userId}
+        sn: ${user.lastName}
+        givenName: ${user.firstName}
+        mail: ${user.email}
+
+  - ldap.verify:
+      dn: "cn=${user.userId},ou=users"
+      expect:
+        givenName: ${user.firstName}
+        sn: ${user.lastName}
+        mail: ${user.email}
+      wait:
+        timeout: 30s
+        poll: 2s

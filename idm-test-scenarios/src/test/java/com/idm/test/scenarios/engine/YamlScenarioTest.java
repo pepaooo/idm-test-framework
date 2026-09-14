@@ -1,9 +1,11 @@
 package com.idm.test.scenarios.engine;
 
+import com.idm.test.connector.ldap.client.EdirectoryConnector;
 import com.idm.test.engine.FixtureFactory;
 import com.idm.test.engine.ScenarioEngine;
 import com.idm.test.engine.ScenarioLoader;
 import com.idm.test.engine.ScenarioValidator;
+import com.idm.test.engine.ValidationException;
 import com.idm.test.engine.model.Scenario;
 import com.idm.test.engine.result.JsonResultWriter;
 import com.idm.test.engine.result.ScenarioResult;
@@ -29,6 +31,7 @@ import java.util.Map;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.fail;
 
 /**
  * Runs every YAML scenario under src/test/resources/scenarios as its own test.
@@ -45,8 +48,8 @@ class YamlScenarioTest extends BaseIntegrationTest {
     @TestFactory
     @DisplayName("Each scenario file runs as its own test")
     Stream<DynamicTest> scenarios() throws Exception {
-        Map<String, StepType> registry = registry();
-        ScenarioValidator validator = new ScenarioValidator(registry);
+        Map<String, StepType> registry = registry(edirectoryConnector);
+        ScenarioValidator validator = new ScenarioValidator(registry, FixtureFactory.SUPPORTED_GENERATORS);
         ScenarioEngine engine = new ScenarioEngine(
                 registry,
                 new FixtureFactory(testDataGenerator),
@@ -54,23 +57,56 @@ class YamlScenarioTest extends BaseIntegrationTest {
                 executorProperties.getDefaultTimeout(),
                 executorProperties.getDefaultPollInterval());
 
-        List<ScenarioResult> collected = Collections.synchronizedList(new ArrayList<>());
-
-        return scenarioFiles().stream().map(file -> DynamicTest.dynamicTest(file, () -> {
-            Scenario scenario = ScenarioLoader.load(resource(file), file);
-            validator.validate(scenario, file);
-
-            ScenarioResult result = engine.run(scenario, file);
-            collected.add(result);
-            JsonResultWriter.write(List.copyOf(collected), RESULTS);
-
-            assertThat(result.success())
-                    .as(result.failureSummary())
-                    .isTrue();
-        }));
+        return buildTests(SCENARIO_DIR, validator, engine, RESULTS).stream();
     }
 
-    private Map<String, StepType> registry() {
+    /**
+     * Loads and validates every scenario file in {@code scenarioDir} up front, before any
+     * dynamic test runs, so a malformed twentieth file is reported immediately rather than
+     * after its predecessors have already spent minutes waiting on provisioning.
+     * <p>
+     * A file that loads and validates cleanly becomes a dynamic test that runs the engine.
+     * A file that fails to load or validate still becomes a dynamic test — one that fails
+     * immediately with that error — so a typo in one file never hides the scenarios that are
+     * fine, and every file still ends up with a {@link ScenarioResult} in the JSON output.
+     */
+    static List<DynamicTest> buildTests(
+            String scenarioDir, ScenarioValidator validator, ScenarioEngine engine, Path resultsPath)
+            throws URISyntaxException {
+
+        List<ScenarioResult> collected = Collections.synchronizedList(new ArrayList<>());
+        List<DynamicTest> tests = new ArrayList<>();
+
+        for (String file : scenarioFiles(scenarioDir)) {
+            DynamicTest test;
+            try {
+                Scenario scenario = ScenarioLoader.load(resource(scenarioDir, file), file);
+                validator.validate(scenario, file);
+
+                test = DynamicTest.dynamicTest(file, () -> {
+                    ScenarioResult result = engine.run(scenario, file);
+                    collected.add(result);
+                    JsonResultWriter.write(List.copyOf(collected), resultsPath);
+
+                    assertThat(result.success())
+                            .as(result.failureSummary())
+                            .isTrue();
+                });
+            } catch (ValidationException e) {
+                String message = e.getMessage();
+                test = DynamicTest.dynamicTest(file, () -> {
+                    ScenarioResult result = new ScenarioResult(file, file, false, 0L, List.of(), message);
+                    collected.add(result);
+                    JsonResultWriter.write(List.copyOf(collected), resultsPath);
+                    fail(message);
+                });
+            }
+            tests.add(test);
+        }
+        return tests;
+    }
+
+    static Map<String, StepType> registry(EdirectoryConnector edirectoryConnector) {
         Map<String, StepType> registry = new LinkedHashMap<>();
         for (StepType type : List.of(
                 new LdapCreateStep(edirectoryConnector),
@@ -80,16 +116,16 @@ class YamlScenarioTest extends BaseIntegrationTest {
         return registry;
     }
 
-    private static InputStream resource(String file) {
+    private static InputStream resource(String scenarioDir, String file) {
         return YamlScenarioTest.class.getClassLoader()
-                .getResourceAsStream(SCENARIO_DIR + "/" + file);
+                .getResourceAsStream(scenarioDir + "/" + file);
     }
 
     /**
-     * Lists the scenario file names on the classpath.
+     * Lists the scenario file names on the classpath, under {@code scenarioDir}.
      */
-    private static List<String> scenarioFiles() throws URISyntaxException {
-        var url = YamlScenarioTest.class.getClassLoader().getResource(SCENARIO_DIR);
+    static List<String> scenarioFiles(String scenarioDir) throws URISyntaxException {
+        var url = YamlScenarioTest.class.getClassLoader().getResource(scenarioDir);
         if (url == null) {
             return List.of();
         }

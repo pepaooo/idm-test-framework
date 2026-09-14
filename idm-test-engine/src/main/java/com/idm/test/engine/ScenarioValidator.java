@@ -1,9 +1,12 @@
 package com.idm.test.engine;
 
+import com.idm.test.engine.model.FixtureSpec;
 import com.idm.test.engine.model.Scenario;
 import com.idm.test.engine.model.StepSpec;
+import com.idm.test.engine.model.WaitSpec;
 import com.idm.test.engine.spi.StepType;
 
+import java.time.Duration;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
@@ -17,10 +20,27 @@ import java.util.TreeSet;
  */
 public final class ScenarioValidator {
 
-    private final Map<String, StepType> registry;
+    /**
+     * Stand-ins for whatever timeout/poll defaults the engine will actually run with. Only
+     * used to probe {@link WaitSpec#parse} for a shape or duration-string error; when a
+     * {@code wait} value is well-formed, the real defaults never come into play here.
+     */
+    private static final Duration PLACEHOLDER_DURATION = Duration.ofSeconds(1);
 
-    public ScenarioValidator(Map<String, StepType> registry) {
+    private final Map<String, StepType> registry;
+    private final Set<String> generatorNames;
+
+    /**
+     * @param registry       known step types, by name
+     * @param generatorNames fixture generator names {@code FixtureFactory} understands —
+     *                       taken as a parameter, rather than read off {@code FixtureFactory}
+     *                       directly, so this module has no hidden coupling to it; callers
+     *                       wire the two together explicitly (see {@code FixtureFactory
+     *                       .SUPPORTED_GENERATORS})
+     */
+    public ScenarioValidator(Map<String, StepType> registry, Set<String> generatorNames) {
         this.registry = registry;
+        this.generatorNames = generatorNames;
     }
 
     /**
@@ -29,6 +49,15 @@ public final class ScenarioValidator {
     public void validate(Scenario scenario, String sourceName) {
         if (scenario.steps().isEmpty()) {
             throw new ValidationException(sourceName, "a scenario needs at least one step");
+        }
+
+        for (Map.Entry<String, FixtureSpec> fixture : scenario.fixtures().entrySet()) {
+            String generator = fixture.getValue().generate();
+            if (generator != null && !generatorNames.contains(generator)) {
+                throw new ValidationException(sourceName,
+                        "fixture '" + fixture.getKey() + "' uses unknown generator '"
+                                + generator + "'. Available: " + new TreeSet<>(generatorNames));
+            }
         }
 
         Set<String> known = scenario.fixtures().keySet();
@@ -52,9 +81,22 @@ public final class ScenarioValidator {
             // Checked before the generic accepted-parameter scan below so this step type's
             // own explanation wins: 'wait' on a non-retryable step is never in that step's
             // accepted set either, and the two checks must not both fire for the same cause.
-            if (step.params().containsKey("wait") && !type.retryable()) {
-                throw new ValidationException(sourceName, i, step.type(),
-                        "'wait' is only valid on assertions, and this step is an action");
+            if (step.params().containsKey("wait")) {
+                if (!type.retryable()) {
+                    throw new ValidationException(sourceName, i, step.type(),
+                            "'wait' is only valid on assertions, and this step is an action");
+                }
+
+                // WaitSpec.parse is otherwise only called once the step actually runs, which
+                // is exactly the late failure this validator exists to prevent: a bad shape
+                // (e.g. a string where a map or `true` belongs) or a bad duration string
+                // (e.g. '30x') would only surface after every earlier step had executed.
+                try {
+                    WaitSpec.parse(step.params().get("wait"), PLACEHOLDER_DURATION, PLACEHOLDER_DURATION);
+                } catch (IllegalArgumentException e) {
+                    throw new ValidationException(sourceName, i, step.type(),
+                            "invalid 'wait': " + e.getMessage());
+                }
             }
 
             Set<String> accepted = type.acceptedParams();

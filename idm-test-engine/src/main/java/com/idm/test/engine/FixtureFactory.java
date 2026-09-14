@@ -16,7 +16,13 @@ import java.util.Set;
 public final class FixtureFactory {
 
     private static final String RANDOM_USER = "random-user";
-    private static final Set<String> GENERATORS = Set.of(RANDOM_USER);
+
+    /**
+     * Generator names this factory understands. Exposed so {@code ScenarioValidator} can
+     * reject an unknown {@code generate:} value at load time instead of letting it reach
+     * {@link #build}, where it would only surface once a scenario is already running.
+     */
+    public static final Set<String> SUPPORTED_GENERATORS = Set.of(RANDOM_USER);
 
     private final TestDataGenerator generator;
 
@@ -38,9 +44,10 @@ public final class FixtureFactory {
         Map<String, Object> values = new LinkedHashMap<>();
 
         if (spec.generate() != null) {
-            if (!GENERATORS.contains(spec.generate())) {
+            if (!SUPPORTED_GENERATORS.contains(spec.generate())) {
                 throw new IllegalArgumentException(
-                        "unknown generator '" + spec.generate() + "'. Available: " + GENERATORS);
+                        "unknown generator '" + spec.generate() + "'. Available: "
+                                + SUPPORTED_GENERATORS);
             }
             values.putAll(randomUser());
         }

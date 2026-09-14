@@ -9,13 +9,16 @@ import java.util.List;
  * @param durationMillis wall-clock time for the whole scenario, including fixture building
  *                        and cleanup as well as the steps — the step durations will not sum
  *                        to this value
+ * @param failureDetail  what went wrong before any step could run (e.g. fixture setup),
+ *                        or null when the scenario got at least as far as its first step
  */
 public record ScenarioResult(
         String name,
         String sourceName,
         boolean success,
         long durationMillis,
-        List<StepResult> steps) {
+        List<StepResult> steps,
+        String failureDetail) {
 
     /**
      * @return a message naming the file, the step and what went wrong, or null when successful
@@ -33,7 +36,9 @@ public record ScenarioResult(
             }
         }
         if (failed == null) {
-            return sourceName + ": scenario failed before any step ran";
+            return failureDetail != null
+                    ? sourceName + ": " + failureDetail
+                    : sourceName + ": scenario failed before any step ran";
         }
 
         StringBuilder summary = new StringBuilder()

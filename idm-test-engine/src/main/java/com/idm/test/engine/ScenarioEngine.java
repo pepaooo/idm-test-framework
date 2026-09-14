@@ -54,13 +54,25 @@ public final class ScenarioEngine {
 
     public ScenarioResult run(Scenario scenario, String sourceName) {
         long started = System.currentTimeMillis();
-        Map<String, Object> scope = new LinkedHashMap<>(fixtures.build(scenario.fixtures()));
+        Map<String, Object> scope = new LinkedHashMap<>();
 
         List<StepResult> results = new ArrayList<>();
         Deque<Runnable> undos = new ArrayDeque<>();
         boolean success = true;
+        String failureDetail = null;
 
         try {
+            // Fixture generators aren't validated by ScenarioValidator (it only checks the
+            // fixture names steps reference), so a bad generator name surfaces here. It must
+            // stay inside this protected region so run() still returns a ScenarioResult —
+            // with zero steps, since none can run without fixtures — instead of throwing.
+            try {
+                scope.putAll(fixtures.build(scenario.fixtures()));
+            } catch (RuntimeException e) {
+                success = false;
+                failureDetail = "fixture setup failed: " + e.getMessage();
+            }
+
             for (int i = 0; i < scenario.steps().size() && success; i++) {
                 StepSpec step = scenario.steps().get(i);
                 long stepStarted = System.currentTimeMillis();
@@ -79,12 +91,14 @@ public final class ScenarioEngine {
             }
         } finally {
             // Whatever earlier steps created must be torn down even when a step throws
-            // instead of returning a failed outcome, so this always runs.
+            // instead of returning a failed outcome, so this always runs. On the fixture
+            // failure path there is nothing to undo yet, but the structure doesn't special
+            // case that — unwind() is a no-op on an empty deque.
             unwind(undos);
         }
 
         return new ScenarioResult(scenario.name(), sourceName, success,
-                System.currentTimeMillis() - started, results);
+                System.currentTimeMillis() - started, results, failureDetail);
     }
 
     @SuppressWarnings("unchecked")
@@ -135,8 +149,11 @@ public final class ScenarioEngine {
                 // Record the failure and keep polling — TestExecutor.waitUntil already
                 // swallows exceptions from this supplier, but without this the "last"
                 // outcome it reports on would be stale or absent rather than reflecting
-                // what actually happened on this attempt.
-                outcome = StepOutcome.failure(e.getMessage());
+                // what actually happened on this attempt. Mirror the outer catch's format
+                // so the exception's class name is always present — otherwise a null
+                // message surfaces as the bare literal "null".
+                outcome = StepOutcome.failure(
+                        "threw " + e.getClass().getSimpleName() + ": " + e.getMessage());
             }
             last.set(outcome);
             // Register as each attempt happens, not just the final one, so an undo

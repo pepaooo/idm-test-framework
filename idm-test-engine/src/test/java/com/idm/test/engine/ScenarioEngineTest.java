@@ -262,4 +262,45 @@ class ScenarioEngineTest {
         assertThat(result.steps().get(0).message()).contains("wait").contains("a");
         assertThat(events).isEmpty();
     }
+
+    @Test
+    @DisplayName("Should fail with a ScenarioResult, not a thrown exception, when a fixture "
+            + "names an unknown generator")
+    void testUnknownFixtureGeneratorFailsWithoutThrowing() {
+        ScenarioEngine engine = engineWith(recordingAction("a"));
+
+        Scenario scenario = new Scenario("Test", null,
+                Map.of("user", new FixtureSpec("randmo-user", Map.of())),
+                List.of(new StepSpec("a", Map.of("dn", "x"))));
+
+        ScenarioResult result = engine.run(scenario, "t.yaml");
+
+        assertThat(result.success()).isFalse();
+        assertThat(result.steps()).isEmpty();
+        assertThat(result.failureSummary()).isNotNull().contains("randmo-user");
+        assertThat(events).isEmpty();
+    }
+
+    @Test
+    @DisplayName("Should report the exception's class name, not the literal \"null\", when a "
+            + "retried assertion throws with no message")
+    void testRetriedAssertionThrowingWithNullMessageReportsClassName() {
+        StepType throwsWithNullMessage = new StepType() {
+            public String name() { return "check"; }
+            public boolean retryable() { return true; }
+            public StepOutcome execute(Map<String, Object> params) {
+                throw new IllegalStateException();
+            }
+        };
+        ScenarioEngine engine = engineWith(throwsWithNullMessage);
+
+        ScenarioResult result = engine.run(scenario(
+                new StepSpec("check", Map.of("dn", "x", "wait",
+                        Map.of("timeout", "1s", "poll", "1s")))),
+                "t.yaml");
+
+        assertThat(result.success()).isFalse();
+        assertThat(result.steps().get(0).attempts()).isGreaterThan(0);
+        assertThat(result.failureSummary()).contains("IllegalStateException");
+    }
 }

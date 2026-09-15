@@ -157,4 +157,53 @@ class InterpolatorTest {
         assertThat(Interpolator.resolve("javascript is fine here", jsScope(), evaluator))
                 .isEqualTo("javascript is fine here");
     }
+
+    @Test
+    @DisplayName("Should not be fooled by a brace inside a double-quoted string")
+    void testBraceInsideDoubleQuotedString() {
+        assertThat(Interpolator.resolve("js:{ \"}\" }", jsScope(), evaluator))
+                .isEqualTo("}");
+    }
+
+    @Test
+    @DisplayName("Should not be fooled by a brace inside a single-quoted string")
+    void testBraceInsideSingleQuotedString() {
+        assertThat(Interpolator.resolve("js:{ '}' }", jsScope(), evaluator))
+                .isEqualTo("}");
+    }
+
+    @Test
+    @DisplayName("Should not be fooled by a brace inside a template literal")
+    void testBraceInsideTemplateLiteral() {
+        assertThat(Interpolator.resolve("js:{ `a}b` }", jsScope(), evaluator))
+                .isEqualTo("a}b");
+    }
+
+    @Test
+    @DisplayName("Should not be fooled by a brace inside a line comment")
+    void testBraceInsideLineComment() {
+        assertThat(Interpolator.resolve("js:{ 1 // }\n }", jsScope(), evaluator))
+                .isEqualTo(1.0);
+    }
+
+    @Test
+    @DisplayName("Should not be fooled by a brace inside a block comment")
+    void testBraceInsideBlockComment() {
+        assertThat(Interpolator.resolve("js:{ /* } */ 1 }", jsScope(), evaluator))
+                .isEqualTo(1.0);
+    }
+
+    @Test
+    @DisplayName("Should honour a backslash-escaped quote inside a string")
+    void testEscapedQuoteInsideString() {
+        assertThat(Interpolator.resolve("js:{ \"\\\"}\\\"\" }", jsScope(), evaluator))
+                .isEqualTo("\"}\"");
+    }
+
+    @Test
+    @DisplayName("Should track nested braces inside a template literal substitution")
+    void testTemplateLiteralSubstitutionWithBraces() {
+        assertThat(Interpolator.resolve("js:{ `a${ {b: 1}.b }c` }", jsScope(), evaluator))
+                .isEqualTo("a1c");
+    }
 }

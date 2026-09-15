@@ -30,8 +30,12 @@ public final class Interpolator {
     }
 
     /**
-     * Replaces every reference in {@code value}, walking maps and lists, using a default
+     * Replaces every reference in {@code value}, walking maps and lists, using a shared default
      * expression evaluator.
+     * <p>
+     * Retained for existing callers. New code should prefer
+     * {@link #resolve(Object, Map, ExpressionEvaluator)} and pass a configured evaluator
+     * explicitly, rather than picking up this shared default out of habit.
      */
     public static Object resolve(Object value, Map<String, Object> scope) {
         return resolve(value, scope, DEFAULT_EVALUATOR);
@@ -70,11 +74,41 @@ public final class Interpolator {
     }
 
     /**
+     * A region a brace can appear in without being structural, or the normal code region where
+     * it is.
+     */
+    private enum Region {
+        /** Ordinary JS code (and the body of a {@code ${ ... }} template substitution). */
+        CODE,
+        SINGLE_QUOTED,
+        DOUBLE_QUOTED,
+        /** A backtick string. A brace here is inert unless it starts a {@code ${ ... }}. */
+        TEMPLATE,
+        LINE_COMMENT,
+        BLOCK_COMMENT
+    }
+
+    /**
      * Extracts the body of a {@code js:{ ... }} value.
      * <p>
      * Brace matching rather than a regex, because expressions legitimately contain braces —
      * {@code js:{ JSON.stringify({a: 1}) }} is valid, and a pattern terminating at the first
-     * closing brace would silently truncate it.
+     * closing brace would silently truncate it. The matcher is brace-depth counting, not a full
+     * JS lexer, but it does track the regions where a brace is not structural: single- and
+     * double-quoted strings (backslash escapes honoured), backtick template literals — including
+     * a {@code ${ ... }} substitution's own nested braces and strings — and both comment forms.
+     * <p>
+     * <b>Known limitation:</b> a regular-expression literal containing a brace, such as
+     * {@code js:{ /}/.test('}') }}, still confuses the counter — telling a regex literal from a
+     * division apart requires real JavaScript lexing, which this deliberately is not. Such an
+     * expression is rejected (usually as "not closed"), which is confusing but safe: it never
+     * silently truncates what the author wrote.
+     * <p>
+     * <b>Also note:</b> {@code js:{ {a: 1} }} is parsed by JavaScript as a labelled block
+     * containing the expression statement {@code 1}, not an object literal — so it evaluates to
+     * {@code 1}, not an object. That is JavaScript's own grammar rule, not a limitation of this
+     * matcher. An author who wants an object literal should write {@code js:{ ({a: 1}) }} or
+     * build the value with {@code JSON.stringify(...)}.
      *
      * @return the expression body, or {@code null} when this value is not an expression
      * @throws IllegalArgumentException when the value only looks like one
@@ -85,26 +119,101 @@ public final class Interpolator {
             return null;
         }
 
-        int depth = 0;
-        for (int i = EXPRESSION_PREFIX.length() - 1; i < trimmed.length(); i++) {
+        int length = trimmed.length();
+        // One entry per currently-open region, innermost last. The outermost entry is the CODE
+        // region opened by the '{' in "js:{"; the expression is fully matched when it pops.
+        List<Region> regions = new ArrayList<>();
+        regions.add(Region.CODE);
+
+        int i = EXPRESSION_PREFIX.length();
+        while (i < length && !regions.isEmpty()) {
             char c = trimmed.charAt(i);
-            if (c == '{') {
-                depth++;
-            } else if (c == '}') {
-                depth--;
-                if (depth == 0) {
-                    if (i != trimmed.length() - 1) {
-                        throw new IllegalArgumentException(
-                                "an expression must be the whole value, but '" + text
-                                        + "' has text after the closing brace");
+            Region region = regions.get(regions.size() - 1);
+
+            switch (region) {
+                case CODE -> {
+                    if (c == '{') {
+                        regions.add(Region.CODE);
+                        i++;
+                    } else if (c == '}') {
+                        regions.remove(regions.size() - 1);
+                        i++;
+                        if (regions.isEmpty()) {
+                            if (i != length) {
+                                throw new IllegalArgumentException(
+                                        "an expression must be the whole value, but '" + text
+                                                + "' has text after the closing brace");
+                            }
+                            return trimmed.substring(EXPRESSION_PREFIX.length(), i - 1);
+                        }
+                    } else if (c == '\'') {
+                        regions.add(Region.SINGLE_QUOTED);
+                        i++;
+                    } else if (c == '"') {
+                        regions.add(Region.DOUBLE_QUOTED);
+                        i++;
+                    } else if (c == '`') {
+                        regions.add(Region.TEMPLATE);
+                        i++;
+                    } else if (c == '/' && startsWith(trimmed, i, "//")) {
+                        regions.add(Region.LINE_COMMENT);
+                        i += 2;
+                    } else if (c == '/' && startsWith(trimmed, i, "/*")) {
+                        regions.add(Region.BLOCK_COMMENT);
+                        i += 2;
+                    } else {
+                        i++;
                     }
-                    return trimmed.substring(EXPRESSION_PREFIX.length(), i);
+                }
+                case SINGLE_QUOTED, DOUBLE_QUOTED -> {
+                    char quote = region == Region.SINGLE_QUOTED ? '\'' : '"';
+                    if (c == '\\' && i + 1 < length) {
+                        i += 2;
+                    } else if (c == quote) {
+                        regions.remove(regions.size() - 1);
+                        i++;
+                    } else {
+                        i++;
+                    }
+                }
+                case TEMPLATE -> {
+                    if (c == '\\' && i + 1 < length) {
+                        i += 2;
+                    } else if (c == '`') {
+                        regions.remove(regions.size() - 1);
+                        i++;
+                    } else if (c == '$' && startsWith(trimmed, i, "${")) {
+                        // The substitution's own '}' is handled by the CODE case above, which
+                        // pops back to this TEMPLATE region — not the outer expression's.
+                        regions.add(Region.CODE);
+                        i += 2;
+                    } else {
+                        i++;
+                    }
+                }
+                case LINE_COMMENT -> {
+                    if (c == '\n') {
+                        regions.remove(regions.size() - 1);
+                    }
+                    i++;
+                }
+                case BLOCK_COMMENT -> {
+                    if (c == '*' && startsWith(trimmed, i, "*/")) {
+                        regions.remove(regions.size() - 1);
+                        i += 2;
+                    } else {
+                        i++;
+                    }
                 }
             }
         }
 
         throw new IllegalArgumentException(
                 "the expression in '" + text + "' is not closed — a '}' is missing");
+    }
+
+    private static boolean startsWith(String text, int index, String prefix) {
+        return text.regionMatches(index, prefix, 0, prefix.length());
     }
 
     /**

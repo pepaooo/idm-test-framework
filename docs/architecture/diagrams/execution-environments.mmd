@@ -1,0 +1,18 @@
+flowchart TB
+  subgraph Local["Current embedded suite — one local test JVM"]
+    R["JUnit + Spring test context"]
+    L["UnboundID LDAP<br/>Dynamic local port"]
+    D["H2 databases<br/>test-db schema initialized explicitly"]
+    W["WireMock role SOAP endpoint<br/>Dynamic local port"]
+    R -->|LDAP| L
+    R -->|JDBC| D
+    R -->|HTTP| W
+  end
+  subgraph Target["Real IdM environment — target wiring, not validated"]
+    N["Separate test wiring<br/>Endpoints, auth and cleanup required"]
+    I["Identity Manager"]
+    A["Directory / application targets"]
+    N -.->|"REST / SOAP"| I
+    I -.->|"Actual provisioning"| A
+    N -.->|"Observe via LDAP / JDBC / HTTP"| A
+  end

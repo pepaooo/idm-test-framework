@@ -1,0 +1,16 @@
+flowchart LR
+  S["Scenario files<br/>[Input artifact]<br/>YAML and compiled Java tests"]
+  subgraph Framework["IdM Test Framework — runtime boundary"]
+    R["JUnit test runtime<br/>[Container: JVM]<br/>Spring test context, engine and connectors"]
+  end
+  L["LDAP server<br/>[External system]"]
+  D["Database engines<br/>[External systems]"]
+  A["REST / SOAP endpoints<br/>[External systems]"]
+  O["JSON and Surefire reports<br/>[Output artifacts]"]
+  S -->|"discover / execute"| R
+  R -->|LDAP| L
+  R -->|JDBC| D
+  R -->|HTTP| A
+  R -->|"write results"| O
+  classDef main fill:#123b5d,color:#fff,stroke:#123b5d
+  class R main

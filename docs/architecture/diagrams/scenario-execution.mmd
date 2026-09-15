@@ -1,0 +1,25 @@
+sequenceDiagram
+  participant J as JUnit adapter
+  participant V as Loader / Validator
+  participant E as ScenarioEngine
+  participant S as Step / Connector
+  participant T as Target system
+  J->>V: Load and validate all files
+  Note over J,V: Invalid files become failing dynamic tests
+  J->>E: run(valid scenario)
+  E->>E: Build fixtures and fresh scope
+  loop Ordered steps until first failure
+    E->>E: Resolve values once, handle set directly
+    loop Once, or assertion polling with wait
+      E->>S: execute(resolved params, capture requested)
+      S->>T: Protocol operation
+      T-->>S: Observed response
+      S-->>E: Outcome, optional undo and value
+      E->>E: Register undo, record last outcome
+    end
+    E->>E: Bind successful capture, record result
+  end
+  E->>S: Run registered undo actions in reverse
+  Note over E,S: Best effort, cleanup exceptions logged
+  E-->>J: ScenarioResult
+  J->>J: Write accumulated JSON, assert success

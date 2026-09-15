@@ -1,0 +1,16 @@
+flowchart LR
+  U["Consultants and developers<br/>[Person]<br/>Author and run scenarios"]
+  F["IdM Test Framework<br/>[Software system]<br/>Execute actions and verify state"]
+  I["Identity Manager<br/>[External system]<br/>Real environment target"]
+  L["Directory<br/>[External system]<br/>LDAP entries and attributes"]
+  D["Application databases<br/>[External systems]<br/>Accounts and access records"]
+  A["Application APIs<br/>[External systems]<br/>HTTP endpoints"]
+  U -->|"YAML or Java / JUnit"| F
+  F -.->|"REST / SOAP: target integration"| I
+  F -->|"LDAP: create and verify"| L
+  F -->|"JDBC: Java operations"| D
+  F -->|"HTTP: Java operations"| A
+  classDef main fill:#123b5d,color:#fff,stroke:#123b5d
+  classDef external fill:#edf2f6,color:#183047,stroke:#8196a8
+  class F main
+  class U,I,L,D,A external

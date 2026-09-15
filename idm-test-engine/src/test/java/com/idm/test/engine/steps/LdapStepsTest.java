@@ -180,4 +180,45 @@ class LdapStepsTest {
         assertThat(create.requiredParams()).containsExactly("dn");
         assertThat(create.acceptedParams()).containsExactlyInAnyOrder("dn", "attributes");
     }
+
+    @Test
+    @DisplayName("ldap.create should return the DN it created, for as: to capture")
+    void testCreateReturnsDn() {
+        String dn = "cn=ada.value,ou=users";
+
+        StepOutcome outcome = new LdapCreateStep(connector).execute(Map.of(
+                "dn", dn,
+                "attributes", Map.of("cn", "ada.value", "sn", "Lovelace")));
+
+        assertThat(outcome.value()).isEqualTo(dn);
+    }
+
+    @Test
+    @DisplayName("ldap.verify should return the entry's attributes, for as: to capture")
+    void testVerifyReturnsAttributes() {
+        String dn = "cn=grace.value,ou=users";
+        new LdapCreateStep(connector).execute(Map.of(
+                "dn", dn,
+                "attributes", Map.of("cn", "grace.value", "sn", "Hopper", "givenName", "Grace")));
+
+        StepOutcome outcome = new LdapVerifyStep(connector).execute(Map.of(
+                "dn", dn,
+                "expect", Map.of("givenName", "Grace")));
+
+        assertThat(outcome.value()).isInstanceOf(Map.class);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> attributes = (Map<String, Object>) outcome.value();
+        assertThat(attributes).containsEntry("sn", "Hopper").containsEntry("givenName", "Grace");
+    }
+
+    @Test
+    @DisplayName("A failed step should carry no captured value")
+    void testFailureHasNoValue() {
+        StepOutcome outcome = new LdapVerifyStep(connector).execute(Map.of(
+                "dn", "cn=absent.value,ou=users",
+                "expect", Map.of("givenName", "Ada")));
+
+        assertThat(outcome.success()).isFalse();
+        assertThat(outcome.value()).isNull();
+    }
 }

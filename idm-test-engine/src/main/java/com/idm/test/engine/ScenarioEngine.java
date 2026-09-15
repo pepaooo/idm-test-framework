@@ -122,6 +122,7 @@ public final class ScenarioEngine {
                 step.params(), scope);
 
         WaitSpec wait = WaitSpec.parse(resolved.remove("wait"), defaultTimeout, defaultPoll);
+        Object asName = resolved.remove("as");
 
         if (wait != null && !type.retryable()) {
             return new StepResult(index, step.type(), resolved, false,
@@ -134,6 +135,7 @@ public final class ScenarioEngine {
         if (wait == null) {
             StepOutcome outcome = type.execute(resolved);
             register(undos, outcome);
+            bind(scope, asName, outcome);
             return new StepResult(index, step.type(), resolved, outcome.success(),
                     System.currentTimeMillis() - started, outcome.message(), null, null);
         }
@@ -166,6 +168,7 @@ public final class ScenarioEngine {
         long waitedMillis = System.currentTimeMillis() - waitStarted;
 
         StepOutcome outcome = last.get();
+        bind(scope, asName, outcome);
 
         long elapsed = System.currentTimeMillis() - started;
         String message;
@@ -182,6 +185,15 @@ public final class ScenarioEngine {
 
         return new StepResult(index, step.type(), resolved, passed, elapsed, message,
                 attempts.get(), waitedMillis);
+    }
+
+    /**
+     * Binds a successful step's value under its {@code as:} name, so later steps can read it.
+     */
+    private static void bind(Map<String, Object> scope, Object asName, StepOutcome outcome) {
+        if (asName != null && outcome != null && outcome.success()) {
+            scope.put(String.valueOf(asName), outcome.value());
+        }
     }
 
     private static void register(Deque<Runnable> undos, StepOutcome outcome) {

@@ -81,6 +81,7 @@ public final class ScenarioValidator {
             // StepType.acceptedParams() javadoc.
             Set<String> accepted = new LinkedHashSet<>(type.acceptedParams());
             accepted.addAll(type.requiredParams());
+            accepted.add("as");                 // any step's result may be captured
             if (type.retryable()) {
                 accepted.add("wait");
             }

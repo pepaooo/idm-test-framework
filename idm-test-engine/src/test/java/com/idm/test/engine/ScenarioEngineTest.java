@@ -303,4 +303,82 @@ class ScenarioEngineTest {
         assertThat(result.steps().get(0).attempts()).isGreaterThan(0);
         assertThat(result.failureSummary()).contains("IllegalStateException");
     }
+
+    /** Returns a fixed value so `as:` has something to bind. */
+    private StepType valueProducing(String name, Object value) {
+        return new StepType() {
+            public String name() { return name; }
+            public java.util.Set<String> requiredParams() { return java.util.Set.of("dn"); }
+            public java.util.Set<String> acceptedParams() { return java.util.Set.of("dn"); }
+            public StepOutcome execute(Map<String, Object> params) {
+                return StepOutcome.success("ok", null, value);
+            }
+        };
+    }
+
+    @Test
+    @DisplayName("Should bind a step's value under its as: name and let later steps read it")
+    void testAsCaptureIsVisibleToLaterSteps() {
+        List<String> seen = new ArrayList<>();
+        StepType reader = new StepType() {
+            public String name() { return "reader"; }
+            public java.util.Set<String> requiredParams() { return java.util.Set.of("dn"); }
+            public java.util.Set<String> acceptedParams() { return java.util.Set.of("dn"); }
+            public StepOutcome execute(Map<String, Object> params) {
+                seen.add(String.valueOf(params.get("dn")));
+                return StepOutcome.success("ok");
+            }
+        };
+        ScenarioEngine engine = engineWith(valueProducing("maker", "cn=made,ou=users"), reader);
+
+        ScenarioResult result = engine.run(scenario(
+                new StepSpec("maker", Map.of("dn", "x", "as", "created")),
+                new StepSpec("reader", Map.of("dn", "${created}"))), "t.yaml");
+
+        assertThat(result.success()).isTrue();
+        assertThat(seen).containsExactly("cn=made,ou=users");
+    }
+
+    @Test
+    @DisplayName("Should not pass the as: key through to the step")
+    void testAsIsStrippedBeforeTheStepRuns() {
+        List<Map<String, Object>> received = new ArrayList<>();
+        StepType recorder = new StepType() {
+            public String name() { return "recorder"; }
+            public java.util.Set<String> requiredParams() { return java.util.Set.of("dn"); }
+            public java.util.Set<String> acceptedParams() { return java.util.Set.of("dn"); }
+            public StepOutcome execute(Map<String, Object> params) {
+                received.add(params);
+                return StepOutcome.success("ok");
+            }
+        };
+        engineWith(recorder).run(scenario(
+                new StepSpec("recorder", Map.of("dn", "x", "as", "bound"))), "t.yaml");
+
+        assertThat(received).hasSize(1);
+        assertThat(received.get(0)).doesNotContainKey("as");
+    }
+
+    @Test
+    @DisplayName("Should bind a captured map so its fields are reachable by path")
+    void testCapturedMapFieldsAreReachable() {
+        List<String> seen = new ArrayList<>();
+        StepType reader = new StepType() {
+            public String name() { return "reader"; }
+            public java.util.Set<String> requiredParams() { return java.util.Set.of("dn"); }
+            public java.util.Set<String> acceptedParams() { return java.util.Set.of("dn"); }
+            public StepOutcome execute(Map<String, Object> params) {
+                seen.add(String.valueOf(params.get("dn")));
+                return StepOutcome.success("ok");
+            }
+        };
+        ScenarioEngine engine = engineWith(
+                valueProducing("maker", Map.of("id", "42")), reader);
+
+        engine.run(scenario(
+                new StepSpec("maker", Map.of("dn", "x", "as", "created")),
+                new StepSpec("reader", Map.of("dn", "${created.id}"))), "t.yaml");
+
+        assertThat(seen).containsExactly("42");
+    }
 }

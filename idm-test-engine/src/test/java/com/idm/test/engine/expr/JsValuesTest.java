@@ -12,6 +12,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Deque;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
@@ -230,32 +231,45 @@ class JsValuesTest {
         inContext((cx, scope) -> {
             Map<String, Object> user = new HashMap<>();
             user.put("firstName", "ada");
+            user.put("lastName", "lovelace");
             user.put("roles", List.of("admin", "user"));
             Map<String, Object> variables = Map.of("user", user, "count", 3, "active", true);
 
             variables.forEach((name, value) -> scope.put(name, scope, JsValues.toJs(cx, scope, value)));
 
-            assertThat(containsNativeJavaObject(scope)).isFalse();
+            ScopeWalk walk = walkForNativeJavaObject(scope);
+            // Anchors the negative assertion below to a walk known to have actually reached the
+            // injected values - without this, a traversal that silently stopped early would
+            // trivially pass the same way a correct one does.
+            assertThat(walk.visitedLeaves()).contains("lovelace", "admin");
+            assertThat(walk.foundNativeJavaObject()).isFalse();
             return null;
         });
+    }
+
+    private record ScopeWalk(boolean foundNativeJavaObject, Set<Object> visitedLeaves) {
     }
 
     /**
      * Walks a converted value graph looking for a {@code NativeJavaObject} - the wrapper Rhino
      * produces for a raw Java object, which the sandbox's {@code ClassShutter} cannot see through.
      * If {@link JsValues#toJs} ever started wrapping instead of converting, this would catch it.
+     * Also records every leaf value the walk actually reached, so a caller can confirm the walk
+     * covered what it was meant to cover rather than stopping early.
      */
-    private static boolean containsNativeJavaObject(Object value) {
+    private static ScopeWalk walkForNativeJavaObject(Object value) {
         Deque<Object> queue = new ArrayDeque<>();
         queue.add(value);
         Set<Object> seen = Collections.newSetFromMap(new IdentityHashMap<>());
+        Set<Object> leaves = new HashSet<>();
+        boolean foundNativeJavaObject = false;
         while (!queue.isEmpty()) {
             Object current = queue.poll();
             if (current == null || !seen.add(current)) {
                 continue;
             }
             if (current.getClass().getName().contains("NativeJavaObject")) {
-                return true;
+                foundNativeJavaObject = true;
             }
             if (current instanceof NativeArray array) {
                 for (int i = 0; i < array.getLength(); i++) {
@@ -265,8 +279,10 @@ class JsValuesTest {
                 for (Object id : scriptable.getIds()) {
                     queue.add(scriptable.get(String.valueOf(id), scriptable));
                 }
+            } else {
+                leaves.add(current);
             }
         }
-        return false;
+        return new ScopeWalk(foundNativeJavaObject, leaves);
     }
 }

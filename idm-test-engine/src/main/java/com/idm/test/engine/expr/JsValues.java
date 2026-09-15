@@ -49,6 +49,17 @@ final class JsValues {
      */
     private static final int MAX_ARRAY_LENGTH = 1_000_000;
 
+    /**
+     * Total nodes visited across one whole {@link #toJs} or {@link #fromJs} walk, independent of
+     * depth or array length. Depth alone cannot bound a value built by repeatedly duplicating
+     * both branches of a tree — {@code var a = {}; for (i = 0; i < 40; i++) a = {x: a, y: a};} is
+     * acyclic and only 40 levels deep, and only ~40 distinct JS objects, yet walking it as a tree
+     * (which is what the cycle-detecting recursion below does) visits 2^40 nodes and exhausts
+     * memory well within the instruction budget. A million nodes is already far more than any
+     * legitimate scenario value would contain, so it fails fast long before that happens.
+     */
+    private static final int MAX_NODES = 1_000_000;
+
     private JsValues() {
     }
 
@@ -56,13 +67,16 @@ final class JsValues {
      * Converts a Java value into a native JS value. Maps become JS objects, lists become JS
      * arrays, and everything else is passed through.
      *
-     * @throws JsConversionException if the value nests too deeply or contains a cycle
+     * @throws JsConversionException if the value nests too deeply, contains a cycle, or has too
+     *                                many total nodes
      */
     static Object toJs(Context cx, Scriptable scope, Object value) {
-        return toJs(cx, scope, value, Collections.newSetFromMap(new IdentityHashMap<>()), 0);
+        return toJs(cx, scope, value, Collections.newSetFromMap(new IdentityHashMap<>()), 0, new NodeBudget());
     }
 
-    private static Object toJs(Context cx, Scriptable scope, Object value, Set<Object> ancestors, int depth) {
+    private static Object toJs(
+            Context cx, Scriptable scope, Object value, Set<Object> ancestors, int depth, NodeBudget budget) {
+        budget.visit();
         if (depth > MAX_DEPTH) {
             throw new JsConversionException(
                     "value is nested more than " + MAX_DEPTH + " levels deep; is it self-referencing?");
@@ -74,7 +88,7 @@ final class JsValues {
             try {
                 Scriptable object = cx.newObject(scope);
                 map.forEach((key, entry) -> ScriptableObject.putProperty(
-                        object, String.valueOf(key), toJs(cx, scope, entry, ancestors, depth + 1)));
+                        object, String.valueOf(key), toJs(cx, scope, entry, ancestors, depth + 1, budget)));
                 return object;
             } finally {
                 ancestors.remove(map);
@@ -87,7 +101,7 @@ final class JsValues {
             try {
                 Object[] items = new Object[list.size()];
                 for (int i = 0; i < list.size(); i++) {
-                    items[i] = toJs(cx, scope, list.get(i), ancestors, depth + 1);
+                    items[i] = toJs(cx, scope, list.get(i), ancestors, depth + 1, budget);
                 }
                 return cx.newArray(scope, items);
             } finally {
@@ -104,18 +118,20 @@ final class JsValues {
      * reports as a {@link Number} but which cannot be narrowed to a double without silently
      * losing precision; those are rejected instead of being hidden here.
      *
-     * @throws JsConversionException if the result nests too deeply, contains a cycle, is an
-     *                                array beyond the size cap, is a BigInt, or is a JS value
-     *                                (such as a Date or RegExp) with no plain Java equivalent
+     * @throws JsConversionException if the result nests too deeply, contains a cycle, has too
+     *                                many total nodes, is an array beyond the size cap, is a
+     *                                BigInt, or is a JS value (such as a Date or RegExp) with no
+     *                                plain Java equivalent
      */
     static Object fromJs(Object value) {
-        return fromJs(value, Collections.newSetFromMap(new IdentityHashMap<>()), 0);
+        return fromJs(value, Collections.newSetFromMap(new IdentityHashMap<>()), 0, new NodeBudget());
     }
 
-    private static Object fromJs(Object value, Set<Object> ancestors, int depth) {
+    private static Object fromJs(Object value, Set<Object> ancestors, int depth, NodeBudget budget) {
         if (value == null || value instanceof Undefined || value == Scriptable.NOT_FOUND) {
             return null;
         }
+        budget.visit();
         if (depth > MAX_DEPTH) {
             throw new JsConversionException(
                     "result is nested more than " + MAX_DEPTH + " levels deep; is it self-referencing?");
@@ -144,7 +160,7 @@ final class JsValues {
                 }
                 List<Object> list = new ArrayList<>((int) length);
                 for (int i = 0; i < length; i++) {
-                    list.add(fromJs(array.get(i, array), ancestors, depth + 1));
+                    list.add(fromJs(array.get(i, array), ancestors, depth + 1, budget));
                 }
                 return list;
             } finally {
@@ -164,7 +180,7 @@ final class JsValues {
                 Map<String, Object> map = new LinkedHashMap<>();
                 for (Object id : object.getIds()) {
                     String key = String.valueOf(id);
-                    map.put(key, fromJs(object.get(key, object), ancestors, depth + 1));
+                    map.put(key, fromJs(object.get(key, object), ancestors, depth + 1, budget));
                 }
                 return map;
             } finally {
@@ -192,6 +208,25 @@ final class JsValues {
     static final class JsConversionException extends RuntimeException {
         JsConversionException(String message) {
             super(message);
+        }
+    }
+
+    /**
+     * Counts nodes visited across one entire {@link #toJs} or {@link #fromJs} walk. Must be
+     * created once per top-level call and threaded through every recursive call by reference -
+     * a counter allocated fresh per branch (e.g. one per map entry or array element) would reset
+     * to zero on every branch and never notice that the branches together add up to an explosion.
+     */
+    private static final class NodeBudget {
+        private int visited = 0;
+
+        void visit() {
+            if (++visited > MAX_NODES) {
+                throw new JsConversionException(
+                        "value has more than " + MAX_NODES + " total nodes; is it exponentially "
+                                + "duplicated (e.g. an object built from repeatedly nesting the "
+                                + "same sub-value on both branches of a tree)?");
+            }
         }
     }
 }

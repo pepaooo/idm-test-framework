@@ -6,7 +6,6 @@ import org.mozilla.javascript.Scriptable;
 import org.mozilla.javascript.ScriptableObject;
 
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Evaluates one JavaScript expression against a set of scenario variables.
@@ -25,14 +24,6 @@ public final class ExpressionEvaluator {
     /** Enough for any reasonable expression; a runaway loop exceeds it in milliseconds. */
     private static final int DEFAULT_INSTRUCTION_BUDGET = 100_000;
 
-    /**
-     * How long the calling thread waits for {@link #evaluateIsolated} to finish. The worker
-     * thread is itself bounded by the instruction budget, so it should return in milliseconds;
-     * this is only a last-resort safety net against an unforeseen Rhino behaviour, so it is set
-     * generously rather than tuned tightly.
-     */
-    private static final long ISOLATION_TIMEOUT_MILLIS = 30_000L;
-
     private final ContextFactory contextFactory;
     private final int instructionBudget;
 
@@ -50,8 +41,9 @@ public final class ExpressionEvaluator {
      * @param variables  scenario variables, made available by name
      * @return a plain Java value — String, Double, Boolean, Map, List or null
      * @throws ExpressionException on a syntax error, a sandbox violation, an unknown variable,
-     *                             an expression that exceeds its instruction budget, or a result
-     *                             that cannot be converted back to a plain Java value
+     *                             an expression that exceeds its instruction budget, a result
+     *                             that cannot be converted back to a plain Java value, or a
+     *                             foreign Rhino Context already open on this thread
      */
     public Object evaluate(String expression, Map<String, Object> variables) {
         Context current = Context.getCurrentContext();
@@ -61,11 +53,17 @@ public final class ExpressionEvaluator {
             // Context's instruction-budget callback to whichever ContextFactory created it
             // (Context#getFactory is a final field, set once at construction), so entering our
             // own factory here would just reuse that foreign Context and inherit ITS callback -
-            // which does nothing. The budget would silently never fire and a runaway expression
-            // would hang this thread forever. Evaluating on a fresh thread, where nothing is
-            // bound yet, guarantees our factory creates its own Context and the budget genuinely
-            // applies.
-            return evaluateIsolated(expression, variables);
+            // which does nothing, and the budget would silently never fire. Rather than trying to
+            // dodge that on a separate thread (which was tried, and turned out to trade one hole
+            // for two: Rhino honours no interrupt, so a stuck worker cannot be stopped on timeout,
+            // and a worker that catches only RuntimeException lets an Error escape it silently as
+            // a fabricated null result), fail fast instead: refuse to evaluate at all so the
+            // caller finds out immediately, deterministically, and via the same exception type as
+            // every other failure mode.
+            throw new ExpressionException(
+                    "cannot evaluate js:{ " + expression + " }: another Rhino Context is already "
+                            + "open on this thread, so the instruction budget would not apply to it",
+                    null);
         }
         return doEvaluate(expression, variables);
     }
@@ -101,45 +99,6 @@ public final class ExpressionEvaluator {
         } finally {
             Context.exit();
         }
-    }
-
-    /**
-     * Runs {@link #doEvaluate} on a dedicated, throwaway thread so it starts with no Context
-     * bound at all, regardless of what the calling thread is doing with Rhino. See the comment
-     * in {@link #evaluate} for why that is necessary.
-     */
-    private Object evaluateIsolated(String expression, Map<String, Object> variables) {
-        AtomicReference<Object> result = new AtomicReference<>();
-        AtomicReference<RuntimeException> failure = new AtomicReference<>();
-
-        Thread worker = new Thread(() -> {
-            try {
-                result.set(doEvaluate(expression, variables));
-            } catch (RuntimeException e) {
-                failure.set(e);
-            }
-        }, "expression-evaluator-isolated");
-        worker.setDaemon(true);
-        worker.start();
-
-        try {
-            worker.join(ISOLATION_TIMEOUT_MILLIS);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new ExpressionException(
-                    "interrupted while evaluating js:{ " + expression + " }", e);
-        }
-        if (worker.isAlive()) {
-            // Should not happen - doEvaluate's own instruction budget bounds it - but this is
-            // the contract's last line of defence: never hang the caller.
-            throw new ExpressionException(
-                    "expression did not finish within " + ISOLATION_TIMEOUT_MILLIS
-                            + "ms on an isolated thread: js:{ " + expression + " }", null);
-        }
-        if (failure.get() != null) {
-            throw failure.get();
-        }
-        return result.get();
     }
 
     /**

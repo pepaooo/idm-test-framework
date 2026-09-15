@@ -160,21 +160,39 @@ class ExpressionEvaluatorTest {
     }
 
     @Test
-    @Timeout(15)
-    @DisplayName("Should still enforce the instruction budget when a Context is already entered on this thread")
+    @Timeout(5)
+    @DisplayName("Should fail fast, not hang, when a foreign Context is already open on this thread")
     void testBudgetAppliesWithPreEnteredContext() {
         // Simulates an embedded/nested use (Task 2: wiring this evaluator into the scenario
         // engine) where some other code has already entered an unrelated Rhino Context on this
-        // thread. The @Timeout is a backstop only: this test must never be able to hang the suite.
+        // thread. evaluate() cannot let that expression run at all, because the instruction
+        // budget is permanently tied to whichever ContextFactory created the Context that is
+        // already bound (Context#getFactory is set once, at construction), so it refuses up
+        // front instead. The @Timeout is a backstop only: this test must never be able to hang
+        // the suite.
         Context unrelated = new ContextFactory().enterContext();
         try {
+            assertThat(Context.getCurrentContext()).isSameAs(unrelated);
+
             ExpressionEvaluator budgeted = new ExpressionEvaluator(10_000);
 
-            assertThatThrownBy(() ->
-                    budgeted.evaluate("var i = 0; while (true) { i++; } i", Map.of()))
-                    .isInstanceOf(ExpressionException.class);
+            assertThatThrownBy(() -> budgeted.evaluate("1 + 1", Map.of()))
+                    .isInstanceOf(ExpressionException.class)
+                    .hasMessageContaining("another Rhino Context is already open on this thread");
         } finally {
             Context.exit();
         }
+    }
+
+    @Test
+    @Timeout(10)
+    @DisplayName("Should report a wide, exponentially-duplicated structure as an ExpressionException, not exhaust memory")
+    void testWideDuplicatedStructureDoesNotExhaustMemory() {
+        // Acyclic and only 40 levels deep - it defeats the cycle check and the depth cap - but
+        // fromJs walks it as a tree, so it visits 2^40 nodes unless a total-node cap catches it.
+        String expression = "var a = {}; for (var i = 0; i < 40; i++) { a = {x: a, y: a}; } a";
+
+        assertThatThrownBy(() -> evaluator.evaluate(expression, Map.of()))
+                .isInstanceOf(ExpressionException.class);
     }
 }

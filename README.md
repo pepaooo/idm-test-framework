@@ -263,6 +263,16 @@ docker-compose down
 
 Organised by how much you should trust it.
 
+**Project introduction and architecture**:
+
+- [Documentation index](docs/README.md) — reading paths for coworkers, test authors, and maintainers
+- [Project overview](docs/overview.md) — purpose, users, and a simple scenario
+- [Architecture guide](docs/architecture/README.md) — system context, modules, and execution diagrams
+- [Capability baseline](docs/architecture/capabilities.md) — implemented capabilities, planned work, and verification evidence
+- [Scenario authoring](docs/guides/scenario-authoring.md) — YAML and Java examples
+- [Architecture decisions](docs/architecture/decisions/README.md) — design choices and their rationale
+- Team presentation — [PowerPoint](docs/presentations/project-introduction.pptx), [PDF](docs/presentations/project-introduction.pdf), and [speaker notes](docs/presentations/project-introduction.md)
+
 **Reference** — maintained:
 - [Specification](docs/reference/specification.md) — architecture and design decisions
 - [Configuration](docs/reference/configuration.md) — connectors, databases, endpoints

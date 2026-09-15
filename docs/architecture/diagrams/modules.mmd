@@ -1,0 +1,34 @@
+flowchart TB
+  subgraph S["idm-test-scenarios"]
+    J["Java workflow tests"]
+    Y["YAML JUnit adapter<br/>constructs engine and registry"]
+  end
+  subgraph E["idm-test-engine"]
+    V["Loader and validator"]
+    R["ScenarioEngine"]
+    X["FixtureFactory / Interpolator<br/>ExpressionEvaluator"]
+    T["StepType implementations<br/>ldap.create / ldap.verify"]
+    O["ScenarioResult / StepResult<br/>JsonResultWriter"]
+  end
+  L["idm-connector-ldap"]
+  D["idm-connector-database"]
+  H["idm-connector-rest"]
+  W["idm-connector-soap"]
+  C["idm-test-core / idm-test-utils"]
+  Y --> V
+  Y --> R
+  Y --> O
+  R --> X
+  R --> T
+  R --> O
+  T --> L
+  J --> L
+  J --> D
+  J --> W
+  J -.->|"available Java API"| H
+  R --> C
+  X --> C
+  L --> C
+  D --> C
+  H --> C
+  W --> C

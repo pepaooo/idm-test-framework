@@ -1,6 +1,8 @@
 package com.idm.test.engine.steps;
 
 import com.idm.test.connector.ldap.client.EdirectoryConnector;
+import com.idm.test.connector.ldap.model.LdapUser;
+import com.idm.test.core.model.OperationResult;
 import com.idm.test.engine.spi.StepOutcome;
 import com.idm.test.utils.ldap.EmbeddedLdapServer;
 import org.junit.jupiter.api.AfterAll;
@@ -13,6 +15,11 @@ import org.springframework.ldap.core.support.LdapContextSource;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 /**
  * Drives the LDAP step types against an embedded directory.
@@ -60,7 +67,7 @@ class LdapStepsTest {
 
         StepOutcome outcome = create.execute(Map.of(
                 "dn", dn,
-                "attributes", Map.of("cn", "ada.create", "sn", "Lovelace", "givenName", "Ada")));
+                "attributes", Map.of("cn", "ada.create", "sn", "Lovelace", "givenName", "Ada")), false);
 
         assertThat(outcome.success()).isTrue();
         assertThat(connector.read(dn).isSuccess()).isTrue();
@@ -77,7 +84,7 @@ class LdapStepsTest {
         // inetOrgPerson requires sn; omitting it must fail
         StepOutcome outcome = create.execute(Map.of(
                 "dn", "cn=broken,ou=users",
-                "attributes", Map.of("cn", "broken")));
+                "attributes", Map.of("cn", "broken")), false);
 
         assertThat(outcome.success()).isFalse();
         assertThat(outcome.message()).containsIgnoringCase("failed");
@@ -89,11 +96,11 @@ class LdapStepsTest {
         String dn = "cn=ada.verify,ou=users";
         new LdapCreateStep(connector).execute(Map.of(
                 "dn", dn,
-                "attributes", Map.of("cn", "ada.verify", "sn", "Lovelace", "givenName", "Ada")));
+                "attributes", Map.of("cn", "ada.verify", "sn", "Lovelace", "givenName", "Ada")), false);
 
         StepOutcome outcome = new LdapVerifyStep(connector).execute(Map.of(
                 "dn", dn,
-                "expect", Map.of("givenName", "Ada", "sn", "Lovelace")));
+                "expect", Map.of("givenName", "Ada", "sn", "Lovelace")), false);
 
         assertThat(outcome.success()).isTrue();
         assertThat(outcome.undo()).isNull();
@@ -105,11 +112,11 @@ class LdapStepsTest {
         String dn = "cn=grace.verify,ou=users";
         new LdapCreateStep(connector).execute(Map.of(
                 "dn", dn,
-                "attributes", Map.of("cn", "grace.verify", "sn", "Hopper", "givenName", "Grace")));
+                "attributes", Map.of("cn", "grace.verify", "sn", "Hopper", "givenName", "Grace")), false);
 
         StepOutcome outcome = new LdapVerifyStep(connector).execute(Map.of(
                 "dn", dn,
-                "expect", Map.of("givenName", "Ada")));
+                "expect", Map.of("givenName", "Ada")), false);
 
         assertThat(outcome.success()).isFalse();
         assertThat(outcome.message()).contains(dn);
@@ -132,7 +139,7 @@ class LdapStepsTest {
 
         StepOutcome outcome = create.execute(Map.of(
                 "dn", dn,
-                "attributes", Map.of("cn", "ada.undo-failure", "sn", "Lovelace", "givenName", "Ada")));
+                "attributes", Map.of("cn", "ada.undo-failure", "sn", "Lovelace", "givenName", "Ada")), false);
 
         assertThat(outcome.success()).isTrue();
 
@@ -145,7 +152,7 @@ class LdapStepsTest {
     void testVerifyMissingEntry() {
         StepOutcome outcome = new LdapVerifyStep(connector).execute(Map.of(
                 "dn", "cn=absent,ou=users",
-                "expect", Map.of("givenName", "Ada")));
+                "expect", Map.of("givenName", "Ada")), false);
 
         assertThat(outcome.success()).isFalse();
     }
@@ -179,5 +186,83 @@ class LdapStepsTest {
 
         assertThat(create.requiredParams()).containsExactly("dn");
         assertThat(create.acceptedParams()).containsExactlyInAnyOrder("dn", "attributes");
+    }
+
+    @Test
+    @DisplayName("ldap.create should return the DN it created, for as: to capture")
+    void testCreateReturnsDn() {
+        String dn = "cn=ada.value,ou=users";
+
+        StepOutcome outcome = new LdapCreateStep(connector).execute(Map.of(
+                "dn", dn,
+                "attributes", Map.of("cn", "ada.value", "sn", "Lovelace")), false);
+
+        assertThat(outcome.value()).isEqualTo(dn);
+    }
+
+    @Test
+    @DisplayName("ldap.verify should return the entry's attributes when a capture is "
+            + "requested, for as: to capture")
+    void testVerifyReturnsAttributes() {
+        String dn = "cn=grace.value,ou=users";
+        new LdapCreateStep(connector).execute(Map.of(
+                "dn", dn,
+                "attributes", Map.of("cn", "grace.value", "sn", "Hopper", "givenName", "Grace")), false);
+
+        StepOutcome outcome = new LdapVerifyStep(connector).execute(Map.of(
+                "dn", dn,
+                "expect", Map.of("givenName", "Grace")), true);
+
+        assertThat(outcome.value()).isInstanceOf(Map.class);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> attributes = (Map<String, Object>) outcome.value();
+        assertThat(attributes).containsEntry("sn", "Hopper").containsEntry("givenName", "Grace");
+    }
+
+    @Test
+    @DisplayName("ldap.verify should skip the follow-up read when no capture is requested")
+    void testVerifySkipsReadWhenNoCaptureRequested() {
+        // A mocked connector, unlike the rest of this file's embedded directory: the point of
+        // this test is to prove read() is never called, which an embedded directory can't
+        // observe directly.
+        EdirectoryConnector mockConnector = mock(EdirectoryConnector.class);
+        when(mockConnector.verifyAttributes(any(), any()))
+                .thenReturn(OperationResult.success(true));
+
+        StepOutcome outcome = new LdapVerifyStep(mockConnector).execute(Map.of(
+                "dn", "cn=x,ou=users", "expect", Map.of("givenName", "Ada")), false);
+
+        assertThat(outcome.success()).isTrue();
+        assertThat(outcome.value()).isNull();
+        verify(mockConnector, never()).read(any());
+    }
+
+    @Test
+    @DisplayName("ldap.verify should fail, not fabricate an empty capture, when verification "
+            + "passes but the follow-up read for a requested capture fails")
+    void testVerifyFailsWhenCaptureReadFailsAfterSuccessfulVerify() {
+        EdirectoryConnector mockConnector = mock(EdirectoryConnector.class);
+        when(mockConnector.verifyAttributes(any(), any()))
+                .thenReturn(OperationResult.success(true));
+        when(mockConnector.read(any()))
+                .thenReturn(OperationResult.<LdapUser>failure("connection dropped"));
+
+        StepOutcome outcome = new LdapVerifyStep(mockConnector).execute(Map.of(
+                "dn", "cn=x,ou=users", "expect", Map.of("givenName", "Ada")), true);
+
+        assertThat(outcome.success()).isFalse();
+        assertThat(outcome.value()).isNull();
+        assertThat(outcome.message()).contains("cn=x,ou=users").contains("connection dropped");
+    }
+
+    @Test
+    @DisplayName("A failed step should carry no captured value")
+    void testFailureHasNoValue() {
+        StepOutcome outcome = new LdapVerifyStep(connector).execute(Map.of(
+                "dn", "cn=absent.value,ou=users",
+                "expect", Map.of("givenName", "Ada")), false);
+
+        assertThat(outcome.success()).isFalse();
+        assertThat(outcome.value()).isNull();
     }
 }

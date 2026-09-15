@@ -1,5 +1,7 @@
 package com.idm.test.engine;
 
+import com.idm.test.engine.expr.ExpressionEvaluator;
+import com.idm.test.engine.expr.ExpressionEvaluator.ExpressionException;
 import com.idm.test.engine.model.FixtureSpec;
 import com.idm.test.engine.model.Scenario;
 import com.idm.test.engine.model.StepSpec;
@@ -8,9 +10,11 @@ import com.idm.test.engine.spi.StepType;
 
 import java.time.Duration;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.regex.Pattern;
 
 /**
  * Checks a scenario before anything executes.
@@ -28,8 +32,20 @@ public final class ScenarioValidator {
      */
     private static final Duration PLACEHOLDER_DURATION = Duration.ofSeconds(1);
 
+    /** Reserved: handled by the engine itself rather than by a registered step type. */
+    private static final String SET_STEP = "set";
+
+    /**
+     * The rule for a literal {@code as:}/{@code set:} name: a letter or underscore, followed by
+     * letters, digits or underscores. Deliberately excludes {@code $}, {@code {} and {@code }} —
+     * the characters that would let {@code ${...}} or {@code js:{ }} sneak a computed or
+     * referenced name past validation (see the "as: is read raw by the validator" finding).
+     */
+    private static final Pattern IDENTIFIER = Pattern.compile("[A-Za-z_][A-Za-z0-9_]*");
+
     private final Map<String, StepType> registry;
     private final Set<String> generatorNames;
+    private final ExpressionEvaluator evaluator;
 
     /**
      * @param registry       known step types, by name
@@ -40,8 +56,26 @@ public final class ScenarioValidator {
      *                       .SUPPORTED_GENERATORS})
      */
     public ScenarioValidator(Map<String, StepType> registry, Set<String> generatorNames) {
+        this(registry, generatorNames, new ExpressionEvaluator());
+    }
+
+    /**
+     * @param registry       known step types, by name
+     * @param generatorNames fixture generator names {@code FixtureFactory} understands
+     * @param evaluator      used only to check a {@code js:{ }} expression compiles — see
+     *                       {@link ExpressionEvaluator#validate(String)}. Never used to evaluate
+     *                       an expression: validation must not run scenario logic.
+     */
+    public ScenarioValidator(
+            Map<String, StepType> registry, Set<String> generatorNames,
+            ExpressionEvaluator evaluator) {
+        if (registry.containsKey(SET_STEP)) {
+            throw new IllegalArgumentException(
+                    "'" + SET_STEP + "' is a reserved step type and cannot be registered");
+        }
         this.registry = registry;
         this.generatorNames = generatorNames;
+        this.evaluator = evaluator;
     }
 
     /**
@@ -61,10 +95,25 @@ public final class ScenarioValidator {
             }
         }
 
-        Set<String> known = scenario.fixtures().keySet();
+        Set<String> known = new LinkedHashSet<>(scenario.fixtures().keySet());
 
         for (int i = 0; i < scenario.steps().size(); i++) {
             StepSpec step = scenario.steps().get(i);
+
+            if (SET_STEP.equals(step.type())) {
+                if (step.params().isEmpty()) {
+                    throw new ValidationException(sourceName, i, step.type(),
+                            "a set: step needs at least one name to bind");
+                }
+                for (Map.Entry<String, Object> entry : step.params().entrySet()) {
+                    requireWellFormedExpressions(entry.getValue(), sourceName, i, step.type());
+                    requireKnownReferences(entry.getValue(), known, sourceName, i, step.type());
+                    requireFreshBinding(entry.getKey(), known, sourceName, i, step.type(), "set:");
+                    known.add(entry.getKey());   // later entries may read earlier ones
+                }
+                continue;
+            }
+
             StepType type = registry.get(step.type());
 
             if (type == null) {
@@ -81,6 +130,7 @@ public final class ScenarioValidator {
             // StepType.acceptedParams() javadoc.
             Set<String> accepted = new LinkedHashSet<>(type.acceptedParams());
             accepted.addAll(type.requiredParams());
+            accepted.add("as");                 // any step's result may be captured
             if (type.retryable()) {
                 accepted.add("wait");
             }
@@ -129,12 +179,91 @@ public final class ScenarioValidator {
                 }
             }
 
-            for (String reference : Interpolator.references(step.params())) {
-                if (!known.contains(reference)) {
+            requireWellFormedExpressions(step.params(), sourceName, i, step.type());
+            requireKnownReferences(step.params(), known, sourceName, i, step.type());
+
+            Object asRaw = step.params().get("as");
+            if (asRaw != null) {
+                String asName = String.valueOf(asRaw);
+                if (!IDENTIFIER.matcher(asName).matches()) {
                     throw new ValidationException(sourceName, i, step.type(),
-                            "references '${" + reference + "...}' but no fixture named '"
-                                    + reference + "' is declared");
+                            "'as: " + asName + "' is not a valid name — as: must be a literal "
+                                    + "identifier (a letter or underscore, followed by letters, "
+                                    + "digits or underscores), not an expression or a reference");
                 }
+                requireFreshBinding(asName, known, sourceName, i, step.type(), "as:");
+                known.add(asName);
+            }
+        }
+    }
+
+    /**
+     * Rejects an {@code as:} or {@code set:} name that is already bound — by a fixture, an
+     * earlier {@code as:}, or an earlier {@code set:} entry. Without this, {@code as: user}
+     * silently overwrites the {@code user} fixture: the validator would see {@code known}
+     * already contains {@code user} and pass, and {@code ${user.userId}} would then fail at run
+     * time pointing at the wrong step.
+     */
+    private static void requireFreshBinding(
+            String name, Set<String> known, String sourceName, int index, String stepType,
+            String keyword) {
+        if (known.contains(name)) {
+            throw new ValidationException(sourceName, index, stepType,
+                    keyword + " '" + name + "' shadows an existing name — '" + name
+                            + "' is already bound by a fixture, an earlier as:, or an earlier "
+                            + "set: entry");
+        }
+    }
+
+    /**
+     * Checks every {@code js:{ ... }} expression in {@code value} is well-formed, before
+     * anything runs: not embedded in a larger string, properly closed, non-empty, and
+     * syntactically valid JavaScript. {@code Interpolator.references} deliberately swallows a
+     * malformed expression (it is a query and must not throw), so nothing else in this
+     * validator would otherwise catch one — it would only surface once the scenario actually
+     * ran, possibly after a multi-minute wait on an earlier step.
+     * <p>
+     * Compiles but never evaluates: see {@link ExpressionEvaluator#validate(String)}. Expressions
+     * compute values, they never perform actions, and validating one must not be an action
+     * either.
+     */
+    private void requireWellFormedExpressions(
+            Object value, String sourceName, int index, String stepType) {
+        if (value instanceof String text) {
+            String expression;
+            try {
+                expression = Interpolator.expressionBody(text);
+            } catch (IllegalArgumentException malformed) {
+                throw new ValidationException(sourceName, index, stepType, malformed.getMessage());
+            }
+            if (expression != null) {
+                try {
+                    evaluator.validate(expression);
+                } catch (ExpressionException syntaxError) {
+                    throw new ValidationException(
+                            sourceName, index, stepType, syntaxError.getMessage());
+                }
+            }
+        } else if (value instanceof Map<?, ?> map) {
+            map.values().forEach(v -> requireWellFormedExpressions(v, sourceName, index, stepType));
+        } else if (value instanceof List<?> list) {
+            list.forEach(v -> requireWellFormedExpressions(v, sourceName, index, stepType));
+        }
+    }
+
+    /**
+     * Every {@code ${...}} reference must name something that exists at this point in the
+     * scenario. Checking order matters: a reference to a name bound by a *later* step is a
+     * mistake worth catching at load, not three minutes into a provisioning wait.
+     */
+    private static void requireKnownReferences(
+            Object value, Set<String> known, String sourceName, int index, String stepType) {
+
+        for (String reference : Interpolator.references(value)) {
+            if (!known.contains(reference)) {
+                throw new ValidationException(sourceName, index, stepType,
+                        "references '${" + reference + "...}' but nothing named '" + reference
+                                + "' has been declared or bound at this point");
             }
         }
     }

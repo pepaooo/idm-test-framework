@@ -23,7 +23,7 @@ class ScenarioValidatorTest {
         public String name() { return "ldap.create"; }
         public Set<String> requiredParams() { return Set.of("dn"); }
         public Set<String> acceptedParams() { return Set.of("dn", "attributes"); }
-        public StepOutcome execute(Map<String, Object> params) { return StepOutcome.success("ok"); }
+        public StepOutcome execute(Map<String, Object> params, boolean captureRequested) { return StepOutcome.success("ok"); }
     };
 
     // Mirrors LdapVerifyStep's real contract: requires 'dn' and 'expect'; acceptedParams()
@@ -32,7 +32,7 @@ class ScenarioValidatorTest {
         public String name() { return "ldap.verify"; }
         public boolean retryable() { return true; }
         public Set<String> requiredParams() { return Set.of("dn", "expect"); }
-        public StepOutcome execute(Map<String, Object> params) { return StepOutcome.success("ok"); }
+        public StepOutcome execute(Map<String, Object> params, boolean captureRequested) { return StepOutcome.success("ok"); }
     };
 
     private final ScenarioValidator validator = new ScenarioValidator(
@@ -169,7 +169,7 @@ class ScenarioValidatorTest {
             public Set<String> requiredParams() { return Set.of("dn"); }
             // Deliberately omits both 'wait' and the step's own required 'dn'.
             public Set<String> acceptedParams() { return Set.of("database", "query"); }
-            public StepOutcome execute(Map<String, Object> params) { return StepOutcome.success("ok"); }
+            public StepOutcome execute(Map<String, Object> params, boolean captureRequested) { return StepOutcome.success("ok"); }
         };
         ScenarioValidator localValidator = new ScenarioValidator(
                 Map.of("db.verify", retryableWithNarrowOverride), Set.of("random-user"));
@@ -262,5 +262,210 @@ class ScenarioValidatorTest {
                 .hasMessageContaining("bad.yaml")
                 .hasMessageContaining("randmo-user")
                 .hasMessageContaining("random-user");
+    }
+
+    @Test
+    @DisplayName("Should accept a reference to a name bound by an earlier as:")
+    void testAcceptsReferenceToEarlierCapture() {
+        Scenario valid = scenario(
+                new StepSpec("ldap.create", Map.of("dn", "cn=x,ou=users", "as", "created")),
+                new StepSpec("ldap.verify", Map.of("dn", "${created}", "expect", Map.of())));
+
+        assertThatCode(() -> validator.validate(valid, "ok.yaml")).doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("Should reject a reference to a name bound only by a later step")
+    void testRejectsForwardReference() {
+        Scenario invalid = scenario(
+                new StepSpec("ldap.verify", Map.of("dn", "${created}", "expect", Map.of())),
+                new StepSpec("ldap.create", Map.of("dn", "cn=x,ou=users", "as", "created")));
+
+        assertThatThrownBy(() -> validator.validate(invalid, "bad.yaml"))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("created")
+                .hasMessageContaining("bad.yaml");
+    }
+
+    @Test
+    @DisplayName("Should accept a set: step and the names it binds")
+    void testAcceptsSetStep() {
+        Scenario valid = scenario(
+                new StepSpec("set", Map.of("upper", "js:{ user.userId.toUpperCase() }")),
+                new StepSpec("ldap.create", Map.of("dn", "cn=${upper},ou=users")));
+
+        assertThatCode(() -> validator.validate(valid, "ok.yaml")).doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("Should reject a set: step with no entries")
+    void testRejectsEmptySet() {
+        Scenario invalid = scenario(new StepSpec("set", Map.of()));
+
+        assertThatThrownBy(() -> validator.validate(invalid, "bad.yaml"))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("at least one");
+    }
+
+    @Test
+    @DisplayName("Should reject an expression embedded in a larger string, at load time")
+    void testRejectsEmbeddedExpressionAtValidation() {
+        Scenario invalid = scenario(new StepSpec("ldap.create",
+                Map.of("dn", "cn=js:{ user.firstName },ou=users")));
+
+        assertThatThrownBy(() -> validator.validate(invalid, "bad.yaml"))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("bad.yaml")
+                .hasMessageContaining("ldap.create")
+                .hasMessageContaining("whole value");
+    }
+
+    @Test
+    @DisplayName("Should reject an unclosed expression, at load time")
+    void testRejectsUnclosedExpressionAtValidation() {
+        Scenario invalid = scenario(new StepSpec("ldap.create",
+                Map.of("dn", "js:{ user.firstName")));
+
+        assertThatThrownBy(() -> validator.validate(invalid, "bad.yaml"))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("bad.yaml")
+                .hasMessageContaining("ldap.create")
+                .hasMessageContaining("not closed");
+    }
+
+    @Test
+    @DisplayName("Should reject an expression with a JavaScript syntax error, at load time")
+    void testRejectsSyntaxErrorExpressionAtValidation() {
+        // Structurally well-formed (the braces balance), but not valid JavaScript inside.
+        // Interpolator's structural check alone would let this through; only compiling it
+        // catches the syntax error, and it must be caught here, not three minutes into a wait.
+        Scenario invalid = scenario(new StepSpec("ldap.create",
+                Map.of("dn", "js:{ user.firstName.( }")));
+
+        assertThatThrownBy(() -> validator.validate(invalid, "bad.yaml"))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("bad.yaml")
+                .hasMessageContaining("ldap.create");
+    }
+
+    @Test
+    @DisplayName("Should reject an empty expression, at load time")
+    void testRejectsEmptyExpressionAtValidation() {
+        Scenario invalid = scenario(new StepSpec("ldap.create",
+                Map.of("dn", "js:{}")));
+
+        assertThatThrownBy(() -> validator.validate(invalid, "bad.yaml"))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("bad.yaml")
+                .hasMessageContaining("ldap.create")
+                .hasMessageContaining("empty");
+    }
+
+    @Test
+    @DisplayName("Should reject a malformed expression inside a set: step's value too")
+    void testRejectsMalformedExpressionInSetStep() {
+        Scenario invalid = scenario(new StepSpec("set", Map.of("bad", "js:{}")));
+
+        assertThatThrownBy(() -> validator.validate(invalid, "bad.yaml"))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("bad.yaml")
+                .hasMessageContaining("set")
+                .hasMessageContaining("empty");
+    }
+
+    @Test
+    @DisplayName("Should reject an as: that shadows an existing fixture name")
+    void testRejectsAsShadowingFixture() {
+        Scenario invalid = scenario(
+                new StepSpec("ldap.create", Map.of("dn", "cn=x,ou=users", "as", "user")));
+
+        assertThatThrownBy(() -> validator.validate(invalid, "bad.yaml"))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("bad.yaml")
+                .hasMessageContaining("ldap.create")
+                .hasMessageContaining("user")
+                .hasMessageContaining("shadow");
+    }
+
+    @Test
+    @DisplayName("Should reject an as: that shadows an earlier as:")
+    void testRejectsAsShadowingEarlierAs() {
+        Scenario invalid = scenario(
+                new StepSpec("ldap.create", Map.of("dn", "cn=x,ou=users", "as", "created")),
+                new StepSpec("ldap.create", Map.of("dn", "cn=y,ou=users", "as", "created")));
+
+        assertThatThrownBy(() -> validator.validate(invalid, "bad.yaml"))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("created")
+                .hasMessageContaining("shadow");
+    }
+
+    @Test
+    @DisplayName("Should reject a set: entry that shadows an existing fixture name")
+    void testRejectsSetShadowingFixture() {
+        Scenario invalid = scenario(new StepSpec("set", Map.of("user", "1")));
+
+        assertThatThrownBy(() -> validator.validate(invalid, "bad.yaml"))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("bad.yaml")
+                .hasMessageContaining("user")
+                .hasMessageContaining("shadow");
+    }
+
+    @Test
+    @DisplayName("Should reject a set: entry that shadows an earlier set: entry")
+    void testRejectsSetShadowingEarlierSet() {
+        Scenario invalid = scenario(
+                new StepSpec("set", Map.of("greeting", "1")),
+                new StepSpec("set", Map.of("greeting", "2")));
+
+        assertThatThrownBy(() -> validator.validate(invalid, "bad.yaml"))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("greeting")
+                .hasMessageContaining("shadow");
+    }
+
+    @Test
+    @DisplayName("Should reject an as: written as a ${...} reference instead of a literal name")
+    void testRejectsAsWrittenAsReference() {
+        Scenario invalid = scenario(new StepSpec("ldap.create",
+                Map.of("dn", "cn=x,ou=users", "as", "${user.userId}")));
+
+        assertThatThrownBy(() -> validator.validate(invalid, "bad.yaml"))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("bad.yaml")
+                .hasMessageContaining("ldap.create")
+                .hasMessageContaining("as:")
+                .hasMessageContaining("literal");
+    }
+
+    @Test
+    @DisplayName("Should reject an as: written as a js:{ } expression instead of a literal name")
+    void testRejectsAsWrittenAsExpression() {
+        Scenario invalid = scenario(new StepSpec("ldap.create",
+                Map.of("dn", "cn=x,ou=users", "as", "js:{ 'created' }")));
+
+        assertThatThrownBy(() -> validator.validate(invalid, "bad.yaml"))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("bad.yaml")
+                .hasMessageContaining("ldap.create")
+                .hasMessageContaining("literal");
+    }
+
+    @Test
+    @DisplayName("Should reject a step type registry containing 'set', since set is reserved for the engine")
+    void testRejectsSetStepTypeInRegistry() {
+        StepType reservedSet = new StepType() {
+            public String name() { return "set"; }
+            public Set<String> requiredParams() { return Set.of(); }
+            public StepOutcome execute(Map<String, Object> params, boolean captureRequested) { return StepOutcome.success("ok"); }
+        };
+
+        assertThatThrownBy(() -> new ScenarioValidator(
+                Map.of("set", reservedSet),
+                Set.of("random-user")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("set")
+                .hasMessageContaining("reserved");
     }
 }

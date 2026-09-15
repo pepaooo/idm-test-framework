@@ -1,6 +1,7 @@
 package com.idm.test.engine;
 
 import com.idm.test.core.engine.TestExecutor;
+import com.idm.test.engine.expr.ExpressionEvaluator;
 import com.idm.test.engine.model.Scenario;
 import com.idm.test.engine.model.StepSpec;
 import com.idm.test.engine.model.WaitSpec;
@@ -33,23 +34,29 @@ public final class ScenarioEngine {
 
     private static final Logger log = LoggerFactory.getLogger(ScenarioEngine.class);
 
+    /** Reserved: handled here rather than by a registered step type. */
+    private static final String SET_STEP = "set";
+
     private final Map<String, StepType> registry;
     private final FixtureFactory fixtures;
     private final TestExecutor executor;
     private final Duration defaultTimeout;
     private final Duration defaultPoll;
+    private final ExpressionEvaluator evaluator;
 
     public ScenarioEngine(
             Map<String, StepType> registry,
             FixtureFactory fixtures,
             TestExecutor executor,
             Duration defaultTimeout,
-            Duration defaultPoll) {
+            Duration defaultPoll,
+            ExpressionEvaluator evaluator) {
         this.registry = registry;
         this.fixtures = fixtures;
         this.executor = executor;
         this.defaultTimeout = defaultTimeout;
         this.defaultPoll = defaultPoll;
+        this.evaluator = evaluator;
     }
 
     public ScenarioResult run(Scenario scenario, String sourceName) {
@@ -108,6 +115,11 @@ public final class ScenarioEngine {
             StepSpec step, int index, Map<String, Object> scope, Deque<Runnable> undos) {
 
         long started = System.currentTimeMillis();
+
+        if (SET_STEP.equals(step.type())) {
+            return runSet(step, index, scope, started);
+        }
+
         StepType type = registry.get(step.type());
 
         if (type == null) {
@@ -119,9 +131,10 @@ public final class ScenarioEngine {
         }
 
         Map<String, Object> resolved = (Map<String, Object>) Interpolator.resolve(
-                step.params(), scope);
+                step.params(), scope, evaluator);
 
         WaitSpec wait = WaitSpec.parse(resolved.remove("wait"), defaultTimeout, defaultPoll);
+        Object asName = resolved.remove("as");
 
         if (wait != null && !type.retryable()) {
             return new StepResult(index, step.type(), resolved, false,
@@ -131,9 +144,12 @@ public final class ScenarioEngine {
                     null, null);
         }
 
+        boolean captureRequested = asName != null;
+
         if (wait == null) {
-            StepOutcome outcome = type.execute(resolved);
+            StepOutcome outcome = type.execute(resolved, captureRequested);
             register(undos, outcome);
+            outcome = bind(scope, asName, outcome, step.type());
             return new StepResult(index, step.type(), resolved, outcome.success(),
                     System.currentTimeMillis() - started, outcome.message(), null, null);
         }
@@ -146,7 +162,7 @@ public final class ScenarioEngine {
             attempts.incrementAndGet();
             StepOutcome outcome;
             try {
-                outcome = type.execute(resolved);
+                outcome = type.execute(resolved, captureRequested);
             } catch (RuntimeException e) {
                 // Record the failure and keep polling — TestExecutor.waitUntil already
                 // swallows exceptions from this supplier, but without this the "last"
@@ -165,7 +181,8 @@ public final class ScenarioEngine {
         }, wait.timeout(), wait.poll());
         long waitedMillis = System.currentTimeMillis() - waitStarted;
 
-        StepOutcome outcome = last.get();
+        StepOutcome outcome = bind(scope, asName, last.get(), step.type());
+        boolean success = outcome != null && outcome.success();
 
         long elapsed = System.currentTimeMillis() - started;
         String message;
@@ -175,13 +192,65 @@ public final class ScenarioEngine {
             // spent. A null outcome here really does mean the condition never ran.
             message = "wait timed out before the assertion ran once";
         } else if (passed) {
+            // Covers both the ordinary passing case and the one bind() just downgraded: the
+            // assertion itself passed on this attempt, so its own message (success or, on a
+            // missing capture, bind()'s failure message) is what belongs here — never the
+            // "last observed value after retrying" suffix, which only makes sense when the
+            // assertion itself never passed.
             message = outcome.message();
         } else {
             message = outcome.message() + " (last observed value after retrying)";
         }
 
-        return new StepResult(index, step.type(), resolved, passed, elapsed, message,
+        return new StepResult(index, step.type(), resolved, success, elapsed, message,
                 attempts.get(), waitedMillis);
+    }
+
+    /**
+     * Binds each entry into the scenario's variables, in declaration order so a later entry may
+     * read one bound earlier in the same step.
+     */
+    private StepResult runSet(StepSpec step, int index, Map<String, Object> scope, long started) {
+        Map<String, Object> bound = new LinkedHashMap<>();
+
+        for (Map.Entry<String, Object> entry : step.params().entrySet()) {
+            Object value = Interpolator.resolve(entry.getValue(), scope, evaluator);
+            scope.put(entry.getKey(), value);
+            bound.put(entry.getKey(), value);
+        }
+
+        return new StepResult(index, SET_STEP, bound, true,
+                System.currentTimeMillis() - started, "bound " + bound.keySet(), null, null);
+    }
+
+    /**
+     * Binds a successful step's value under its {@code as:} name, so later steps can read it.
+     * <p>
+     * A scenario must never report success on a fabricated value. {@link StepOutcome#value()}
+     * defaults to {@code null} — that is the shape {@code StepOutcome.success(msg)} and
+     * {@code success(msg, undo)} produce, and every future step type gets it for free unless it
+     * opts into capturing something. Binding a null value anyway would let {@code containsKey}
+     * report the name as known while {@code String.valueOf(null)} renders the literal text
+     * {@code "null"} into scope, which the interpolator would then hand to a later step as if it
+     * were real data. So a null value where a capture was requested is treated as the step's own
+     * bug: this downgrades the outcome to a failure instead, naming the step type and the as:
+     * name, and the scenario goes red rather than green.
+     *
+     * @return {@code outcome} unchanged when there is nothing to bind or it was already a
+     * failure; a failure outcome when {@code as:} was declared but {@code outcome.value()} was
+     * null; otherwise {@code outcome} unchanged, after binding its value into {@code scope}
+     */
+    private static StepOutcome bind(
+            Map<String, Object> scope, Object asName, StepOutcome outcome, String stepType) {
+        if (asName == null || outcome == null || !outcome.success()) {
+            return outcome;
+        }
+        if (outcome.value() == null) {
+            return StepOutcome.failure("step '" + stepType + "' declares as: '" + asName
+                    + "' but produced no value to capture");
+        }
+        scope.put(String.valueOf(asName), outcome.value());
+        return outcome;
     }
 
     private static void register(Deque<Runnable> undos, StepOutcome outcome) {

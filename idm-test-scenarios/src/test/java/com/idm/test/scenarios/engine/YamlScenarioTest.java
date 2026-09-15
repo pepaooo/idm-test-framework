@@ -5,6 +5,7 @@ import com.idm.test.engine.FixtureFactory;
 import com.idm.test.engine.ScenarioEngine;
 import com.idm.test.engine.ScenarioLoader;
 import com.idm.test.engine.ScenarioValidator;
+import com.idm.test.engine.expr.ExpressionEvaluator;
 import com.idm.test.engine.model.Scenario;
 import com.idm.test.engine.result.JsonResultWriter;
 import com.idm.test.engine.result.ScenarioResult;
@@ -54,7 +55,8 @@ class YamlScenarioTest extends BaseIntegrationTest {
                 new FixtureFactory(testDataGenerator),
                 testExecutor,
                 executorProperties.getDefaultTimeout(),
-                executorProperties.getDefaultPollInterval());
+                executorProperties.getDefaultPollInterval(),
+                new ExpressionEvaluator());
 
         return buildTests(SCENARIO_DIR, validator, engine, RESULTS).stream();
     }

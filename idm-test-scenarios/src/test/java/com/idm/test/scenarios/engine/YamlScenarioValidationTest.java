@@ -3,6 +3,7 @@ package com.idm.test.scenarios.engine;
 import com.idm.test.engine.FixtureFactory;
 import com.idm.test.engine.ScenarioEngine;
 import com.idm.test.engine.ScenarioValidator;
+import com.idm.test.engine.expr.ExpressionEvaluator;
 import com.idm.test.engine.spi.StepType;
 import com.idm.test.scenarios.base.BaseIntegrationTest;
 import org.junit.jupiter.api.DisplayName;
@@ -46,7 +47,8 @@ class YamlScenarioValidationTest extends BaseIntegrationTest {
                 new FixtureFactory(testDataGenerator),
                 testExecutor,
                 executorProperties.getDefaultTimeout(),
-                executorProperties.getDefaultPollInterval());
+                executorProperties.getDefaultPollInterval(),
+                new ExpressionEvaluator());
         Path results = tempDir.resolve("scenario-results.json");
 
         List<DynamicTest> tests = YamlScenarioTest.buildTests(FIXTURE_DIR, validator, engine, results);

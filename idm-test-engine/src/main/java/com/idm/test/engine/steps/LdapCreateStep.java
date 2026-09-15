@@ -40,7 +40,9 @@ public final class LdapCreateStep implements StepType {
 
     @Override
     @SuppressWarnings("unchecked")
-    public StepOutcome execute(Map<String, Object> params) {
+    public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
+        // captureRequested is ignored: the created DN is always cheap to return, so there is
+        // no extra work to skip when nobody asked to capture it.
         String dn = String.valueOf(params.get("dn"));
         Map<String, Object> attributes =
                 (Map<String, Object>) params.getOrDefault("attributes", Map.of());
@@ -53,12 +55,12 @@ public final class LdapCreateStep implements StepType {
         }
 
         return StepOutcome.success("created " + dn, () -> {
-            OperationResult<Void> deleteResult = connector.delete(dn);
-            if (!deleteResult.isSuccess()) {
+            OperationResult<Void> deleted = connector.delete(dn);
+            if (!deleted.isSuccess()) {
                 throw new IllegalStateException(
-                        "Failed to clean up LDAP entry " + dn + ": " + deleteResult.getMessage());
+                        "cleanup failed to delete " + dn + ": " + deleted.getMessage());
             }
-        });
+        }, dn);
     }
 
     /**

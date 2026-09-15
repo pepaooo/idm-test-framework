@@ -1,10 +1,12 @@
 package com.idm.test.engine.steps;
 
 import com.idm.test.connector.ldap.client.EdirectoryConnector;
+import com.idm.test.connector.ldap.model.LdapUser;
 import com.idm.test.core.model.OperationResult;
 import com.idm.test.engine.spi.StepOutcome;
 import com.idm.test.engine.spi.StepType;
 
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 
@@ -42,7 +44,7 @@ public final class LdapVerifyStep implements StepType {
 
     @Override
     @SuppressWarnings("unchecked")
-    public StepOutcome execute(Map<String, Object> params) {
+    public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
         String dn = String.valueOf(params.get("dn"));
         Map<String, Object> expected =
                 (Map<String, Object>) params.getOrDefault("expect", Map.of());
@@ -54,6 +56,50 @@ public final class LdapVerifyStep implements StepType {
                     "ldap.verify failed for " + dn + ": " + result.getMessage());
         }
 
-        return StepOutcome.success("verified " + dn);
+        if (!captureRequested) {
+            // Nobody declared as: for this step, so there is nothing to capture — skip the
+            // follow-up read entirely rather than paying for it on every retry attempt of an
+            // assertion nobody is going to read the value of.
+            return StepOutcome.success("verified " + dn);
+        }
+
+        // Read once, only after verification passes and only because a capture was actually
+        // requested, so a polling assertion does not double its read load on every attempt.
+        OperationResult<LdapUser> entry = connector.read(dn);
+        if (!entry.isSuccess() || entry.getData().isEmpty()) {
+            // Verification passed but the entry could not be re-read for its as: capture.
+            // Reporting success with an empty map would let `${v.cn}` miss silently later, so
+            // this fails the step instead of fabricating a value.
+            return StepOutcome.failure("ldap.verify passed for " + dn
+                    + " but the follow-up read for its as: capture failed: " + entry.getMessage());
+        }
+
+        return StepOutcome.success("verified " + dn, null, attributesOf(entry.getData().get()));
+    }
+
+    /**
+     * The attribute view a scenario sees through {@code as:}. Null-valued attributes are
+     * omitted rather than bound as null, so a path reference to one fails loudly.
+     */
+    private static Map<String, Object> attributesOf(LdapUser user) {
+        Map<String, Object> attributes = new LinkedHashMap<>();
+        putIfPresent(attributes, "dn", user.getDn());
+        putIfPresent(attributes, "cn", user.getCn());
+        putIfPresent(attributes, "sn", user.getSn());
+        putIfPresent(attributes, "givenName", user.getGivenName());
+        putIfPresent(attributes, "mail", user.getMail());
+        putIfPresent(attributes, "uid", user.getUid());
+        putIfPresent(attributes, "telephoneNumber", user.getTelephoneNumber());
+        putIfPresent(attributes, "title", user.getTitle());
+        putIfPresent(attributes, "ou", user.getOu());
+        putIfPresent(attributes, "description", user.getDescription());
+        attributes.putAll(user.getCustomAttributes());
+        return attributes;
+    }
+
+    private static void putIfPresent(Map<String, Object> attributes, String key, Object value) {
+        if (value != null) {
+            attributes.put(key, value);
+        }
     }
 }

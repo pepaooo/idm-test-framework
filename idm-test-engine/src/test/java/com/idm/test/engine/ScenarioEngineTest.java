@@ -1,6 +1,7 @@
 package com.idm.test.engine;
 
 import com.idm.test.core.engine.TestExecutor;
+import com.idm.test.engine.expr.ExpressionEvaluator;
 import com.idm.test.engine.model.FixtureSpec;
 import com.idm.test.engine.model.Scenario;
 import com.idm.test.engine.model.StepSpec;
@@ -28,7 +29,7 @@ class ScenarioEngineTest {
     private StepType recordingAction(String name) {
         return new StepType() {
             public String name() { return name; }
-            public StepOutcome execute(Map<String, Object> params) {
+            public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
                 events.add("run:" + name + ":" + params.get("dn"));
                 return StepOutcome.success("ok", () -> events.add("undo:" + name));
             }
@@ -38,7 +39,7 @@ class ScenarioEngineTest {
     private StepType failingAction(String name) {
         return new StepType() {
             public String name() { return name; }
-            public StepOutcome execute(Map<String, Object> params) {
+            public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
                 events.add("run:" + name);
                 return StepOutcome.failure(name + " went wrong");
             }
@@ -51,7 +52,7 @@ class ScenarioEngineTest {
         return new StepType() {
             public String name() { return name; }
             public boolean retryable() { return true; }
-            public StepOutcome execute(Map<String, Object> params) {
+            public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
                 return calls.getAndIncrement() < failures
                         ? StepOutcome.failure("not yet")
                         : StepOutcome.success("arrived");
@@ -69,7 +70,8 @@ class ScenarioEngineTest {
                 new FixtureFactory(new TestDataGenerator()),
                 new TestExecutor(),
                 Duration.ofSeconds(2),
-                Duration.ofMillis(50));
+                Duration.ofMillis(50),
+                new ExpressionEvaluator());
     }
 
     private static Scenario scenario(StepSpec... steps) {
@@ -157,7 +159,7 @@ class ScenarioEngineTest {
     void testCleanupFailureDoesNotMaskOriginal() {
         StepType breaksOnUndo = new StepType() {
             public String name() { return "a"; }
-            public StepOutcome execute(Map<String, Object> params) {
+            public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
                 return StepOutcome.success("ok", () -> {
                     throw new IllegalStateException("undo exploded");
                 });
@@ -195,7 +197,7 @@ class ScenarioEngineTest {
     void testThrowingStepFailsButDoesNotAbort() {
         StepType throwing = new StepType() {
             public String name() { return "boom"; }
-            public StepOutcome execute(Map<String, Object> params) {
+            public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
                 throw new IllegalStateException("kaboom");
             }
         };
@@ -218,7 +220,7 @@ class ScenarioEngineTest {
         StepType alwaysThrows = new StepType() {
             public String name() { return "check"; }
             public boolean retryable() { return true; }
-            public StepOutcome execute(Map<String, Object> params) {
+            public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
                 throw new IllegalStateException("connector unavailable");
             }
         };
@@ -288,7 +290,7 @@ class ScenarioEngineTest {
         StepType throwsWithNullMessage = new StepType() {
             public String name() { return "check"; }
             public boolean retryable() { return true; }
-            public StepOutcome execute(Map<String, Object> params) {
+            public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
                 throw new IllegalStateException();
             }
         };
@@ -302,5 +304,233 @@ class ScenarioEngineTest {
         assertThat(result.success()).isFalse();
         assertThat(result.steps().get(0).attempts()).isGreaterThan(0);
         assertThat(result.failureSummary()).contains("IllegalStateException");
+    }
+
+    /** Returns a fixed value so `as:` has something to bind. */
+    private StepType valueProducing(String name, Object value) {
+        return new StepType() {
+            public String name() { return name; }
+            public java.util.Set<String> requiredParams() { return java.util.Set.of("dn"); }
+            public java.util.Set<String> acceptedParams() { return java.util.Set.of("dn"); }
+            public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
+                return StepOutcome.success("ok", null, value);
+            }
+        };
+    }
+
+    @Test
+    @DisplayName("Should bind a step's value under its as: name and let later steps read it")
+    void testAsCaptureIsVisibleToLaterSteps() {
+        List<String> seen = new ArrayList<>();
+        StepType reader = new StepType() {
+            public String name() { return "reader"; }
+            public java.util.Set<String> requiredParams() { return java.util.Set.of("dn"); }
+            public java.util.Set<String> acceptedParams() { return java.util.Set.of("dn"); }
+            public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
+                seen.add(String.valueOf(params.get("dn")));
+                return StepOutcome.success("ok");
+            }
+        };
+        ScenarioEngine engine = engineWith(valueProducing("maker", "cn=made,ou=users"), reader);
+
+        ScenarioResult result = engine.run(scenario(
+                new StepSpec("maker", Map.of("dn", "x", "as", "created")),
+                new StepSpec("reader", Map.of("dn", "${created}"))), "t.yaml");
+
+        assertThat(result.success()).isTrue();
+        assertThat(seen).containsExactly("cn=made,ou=users");
+    }
+
+    @Test
+    @DisplayName("Should not pass the as: key through to the step")
+    void testAsIsStrippedBeforeTheStepRuns() {
+        List<Map<String, Object>> received = new ArrayList<>();
+        StepType recorder = new StepType() {
+            public String name() { return "recorder"; }
+            public java.util.Set<String> requiredParams() { return java.util.Set.of("dn"); }
+            public java.util.Set<String> acceptedParams() { return java.util.Set.of("dn"); }
+            public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
+                received.add(params);
+                return StepOutcome.success("ok");
+            }
+        };
+        engineWith(recorder).run(scenario(
+                new StepSpec("recorder", Map.of("dn", "x", "as", "bound"))), "t.yaml");
+
+        assertThat(received).hasSize(1);
+        assertThat(received.get(0)).doesNotContainKey("as");
+    }
+
+    @Test
+    @DisplayName("Should bind a captured map so its fields are reachable by path")
+    void testCapturedMapFieldsAreReachable() {
+        List<String> seen = new ArrayList<>();
+        StepType reader = new StepType() {
+            public String name() { return "reader"; }
+            public java.util.Set<String> requiredParams() { return java.util.Set.of("dn"); }
+            public java.util.Set<String> acceptedParams() { return java.util.Set.of("dn"); }
+            public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
+                seen.add(String.valueOf(params.get("dn")));
+                return StepOutcome.success("ok");
+            }
+        };
+        ScenarioEngine engine = engineWith(
+                valueProducing("maker", Map.of("id", "42")), reader);
+
+        engine.run(scenario(
+                new StepSpec("maker", Map.of("dn", "x", "as", "created")),
+                new StepSpec("reader", Map.of("dn", "${created.id}"))), "t.yaml");
+
+        assertThat(seen).containsExactly("42");
+    }
+
+    @Test
+    @DisplayName("Should bind set: entries and make them readable by later steps")
+    void testSetBindsVariables() {
+        List<String> seen = new ArrayList<>();
+        StepType reader = new StepType() {
+            public String name() { return "reader"; }
+            public java.util.Set<String> requiredParams() { return java.util.Set.of("dn"); }
+            public java.util.Set<String> acceptedParams() { return java.util.Set.of("dn"); }
+            public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
+                seen.add(String.valueOf(params.get("dn")));
+                return StepOutcome.success("ok");
+            }
+        };
+        ScenarioEngine engine = engineWith(reader);
+
+        ScenarioResult result = engine.run(scenario(
+                new StepSpec("set", Map.of("greeting", "js:{ 'hello ' + user.firstName }")),
+                new StepSpec("reader", Map.of("dn", "${greeting}"))), "t.yaml");
+
+        assertThat(result.success()).isTrue();
+        assertThat(seen).hasSize(1);
+        assertThat(seen.get(0)).startsWith("hello ");
+    }
+
+    @Test
+    @DisplayName("Should let a set: entry read one bound earlier in the same step")
+    void testSetEntriesBindInOrder() {
+        List<String> seen = new ArrayList<>();
+        StepType reader = new StepType() {
+            public String name() { return "reader"; }
+            public java.util.Set<String> requiredParams() { return java.util.Set.of("dn"); }
+            public java.util.Set<String> acceptedParams() { return java.util.Set.of("dn"); }
+            public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
+                seen.add(String.valueOf(params.get("dn")));
+                return StepOutcome.success("ok");
+            }
+        };
+        Map<String, Object> ordered = new java.util.LinkedHashMap<>();
+        ordered.put("first", "ada");
+        ordered.put("second", "js:{ first.toUpperCase() }");
+
+        engineWith(reader).run(scenario(
+                new StepSpec("set", ordered),
+                new StepSpec("reader", Map.of("dn", "${second}"))), "t.yaml");
+
+        assertThat(seen).containsExactly("ADA");
+    }
+
+    @Test
+    @DisplayName("Should record a set: step in the results like any other step")
+    void testSetAppearsInResults() {
+        ScenarioResult result = engineWith().run(scenario(
+                new StepSpec("set", Map.of("a", "1"))), "t.yaml");
+
+        assertThat(result.success()).isTrue();
+        assertThat(result.steps()).hasSize(1);
+        assertThat(result.steps().get(0).type()).isEqualTo("set");
+    }
+
+    @Test
+    @DisplayName("Should fail the scenario when a set: expression cannot be evaluated")
+    void testSetExpressionFailureIsReported() {
+        ScenarioResult result = engineWith().run(scenario(
+                new StepSpec("set", Map.of("bad", "js:{ absent.field }"))), "t.yaml");
+
+        assertThat(result.success()).isFalse();
+        assertThat(result.failureSummary()).contains("absent");
+    }
+
+    @Test
+    @DisplayName("Should fail the scenario, naming the step and the as: name, when a step "
+            + "declares as: but its outcome carries no value")
+    void testNullCaptureFailsTheScenario() {
+        // The default shape every step type gets for free: StepOutcome.success(msg) carries a
+        // null value(). Binding that under as: would let a later ${created...} reference
+        // resolve to the literal text "null" instead of failing loudly.
+        StepType noValue = new StepType() {
+            public String name() { return "silent"; }
+            public java.util.Set<String> requiredParams() { return java.util.Set.of("dn"); }
+            public java.util.Set<String> acceptedParams() { return java.util.Set.of("dn"); }
+            public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
+                return StepOutcome.success("ok");
+            }
+        };
+        ScenarioEngine engine = engineWith(noValue);
+
+        ScenarioResult result = engine.run(scenario(
+                new StepSpec("silent", Map.of("dn", "x", "as", "created"))), "t.yaml");
+
+        assertThat(result.success()).isFalse();
+        assertThat(result.steps().get(0).message()).contains("silent").contains("created");
+    }
+
+    @Test
+    @DisplayName("Should fail a retried assertion, not bind \"null\", when it finally passes "
+            + "with as: set but no value")
+    void testNullCaptureFailsARetriedAssertionToo() {
+        StepType noValueAssertion = new StepType() {
+            public String name() { return "check"; }
+            public boolean retryable() { return true; }
+            public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
+                return StepOutcome.success("arrived");
+            }
+        };
+        ScenarioEngine engine = engineWith(noValueAssertion);
+
+        ScenarioResult result = engine.run(scenario(
+                new StepSpec("check", Map.of("dn", "x", "as", "created", "wait", Boolean.TRUE))),
+                "t.yaml");
+
+        assertThat(result.success()).isFalse();
+        assertThat(result.steps().get(0).message()).contains("check").contains("created");
+    }
+
+    @Test
+    @DisplayName("Should bind the value from the attempt that finally passed, when a retried "
+            + "step fails twice then succeeds with as: set")
+    void testRetriedStepBindsValueFromThePassingAttempt() {
+        AtomicInteger calls = new AtomicInteger();
+        StepType eventuallyPassingWithValue = new StepType() {
+            public String name() { return "check"; }
+            public boolean retryable() { return true; }
+            public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
+                int attempt = calls.getAndIncrement();
+                return attempt < 2
+                        ? StepOutcome.failure("not yet")
+                        : StepOutcome.success("arrived", null, "value-from-attempt-" + attempt);
+            }
+        };
+        List<String> seen = new ArrayList<>();
+        StepType reader = new StepType() {
+            public String name() { return "reader"; }
+            public java.util.Set<String> requiredParams() { return java.util.Set.of("dn"); }
+            public java.util.Set<String> acceptedParams() { return java.util.Set.of("dn"); }
+            public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
+                seen.add(String.valueOf(params.get("dn")));
+                return StepOutcome.success("ok");
+            }
+        };
+        ScenarioEngine engine = engineWith(eventuallyPassingWithValue, reader);
+
+        ScenarioResult result = engine.run(scenario(
+                new StepSpec("check", Map.of(
+                        "dn", "x", "as", "captured", "wait", Boolean.TRUE)),
+                new StepSpec("reader", Map.of("dn", "${captured}"))), "t.yaml");
+
+        assertThat(result.success()).isTrue();
+        assertThat(seen).containsExactly("value-from-attempt-2");
     }
 }

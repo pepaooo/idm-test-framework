@@ -452,4 +452,85 @@ class ScenarioEngineTest {
         assertThat(result.success()).isFalse();
         assertThat(result.failureSummary()).contains("absent");
     }
+
+    @Test
+    @DisplayName("Should fail the scenario, naming the step and the as: name, when a step "
+            + "declares as: but its outcome carries no value")
+    void testNullCaptureFailsTheScenario() {
+        // The default shape every step type gets for free: StepOutcome.success(msg) carries a
+        // null value(). Binding that under as: would let a later ${created...} reference
+        // resolve to the literal text "null" instead of failing loudly.
+        StepType noValue = new StepType() {
+            public String name() { return "silent"; }
+            public java.util.Set<String> requiredParams() { return java.util.Set.of("dn"); }
+            public java.util.Set<String> acceptedParams() { return java.util.Set.of("dn"); }
+            public StepOutcome execute(Map<String, Object> params) {
+                return StepOutcome.success("ok");
+            }
+        };
+        ScenarioEngine engine = engineWith(noValue);
+
+        ScenarioResult result = engine.run(scenario(
+                new StepSpec("silent", Map.of("dn", "x", "as", "created"))), "t.yaml");
+
+        assertThat(result.success()).isFalse();
+        assertThat(result.steps().get(0).message()).contains("silent").contains("created");
+    }
+
+    @Test
+    @DisplayName("Should fail a retried assertion, not bind \"null\", when it finally passes "
+            + "with as: set but no value")
+    void testNullCaptureFailsARetriedAssertionToo() {
+        StepType noValueAssertion = new StepType() {
+            public String name() { return "check"; }
+            public boolean retryable() { return true; }
+            public StepOutcome execute(Map<String, Object> params) {
+                return StepOutcome.success("arrived");
+            }
+        };
+        ScenarioEngine engine = engineWith(noValueAssertion);
+
+        ScenarioResult result = engine.run(scenario(
+                new StepSpec("check", Map.of("dn", "x", "as", "created", "wait", Boolean.TRUE))),
+                "t.yaml");
+
+        assertThat(result.success()).isFalse();
+        assertThat(result.steps().get(0).message()).contains("check").contains("created");
+    }
+
+    @Test
+    @DisplayName("Should bind the value from the attempt that finally passed, when a retried "
+            + "step fails twice then succeeds with as: set")
+    void testRetriedStepBindsValueFromThePassingAttempt() {
+        AtomicInteger calls = new AtomicInteger();
+        StepType eventuallyPassingWithValue = new StepType() {
+            public String name() { return "check"; }
+            public boolean retryable() { return true; }
+            public StepOutcome execute(Map<String, Object> params) {
+                int attempt = calls.getAndIncrement();
+                return attempt < 2
+                        ? StepOutcome.failure("not yet")
+                        : StepOutcome.success("arrived", null, "value-from-attempt-" + attempt);
+            }
+        };
+        List<String> seen = new ArrayList<>();
+        StepType reader = new StepType() {
+            public String name() { return "reader"; }
+            public java.util.Set<String> requiredParams() { return java.util.Set.of("dn"); }
+            public java.util.Set<String> acceptedParams() { return java.util.Set.of("dn"); }
+            public StepOutcome execute(Map<String, Object> params) {
+                seen.add(String.valueOf(params.get("dn")));
+                return StepOutcome.success("ok");
+            }
+        };
+        ScenarioEngine engine = engineWith(eventuallyPassingWithValue, reader);
+
+        ScenarioResult result = engine.run(scenario(
+                new StepSpec("check", Map.of(
+                        "dn", "x", "as", "captured", "wait", Boolean.TRUE)),
+                new StepSpec("reader", Map.of("dn", "${captured}"))), "t.yaml");
+
+        assertThat(result.success()).isTrue();
+        assertThat(seen).containsExactly("value-from-attempt-2");
+    }
 }

@@ -43,8 +43,13 @@ public final class LdapVerifyStep implements StepType {
     }
 
     @Override
-    @SuppressWarnings("unchecked")
     public StepOutcome execute(Map<String, Object> params) {
+        return execute(params, false);
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
         String dn = String.valueOf(params.get("dn"));
         Map<String, Object> expected =
                 (Map<String, Object>) params.getOrDefault("expect", Map.of());
@@ -56,14 +61,25 @@ public final class LdapVerifyStep implements StepType {
                     "ldap.verify failed for " + dn + ": " + result.getMessage());
         }
 
-        // Read once, only after verification passes, so a polling assertion does not double
-        // its read load on every failed attempt.
-        OperationResult<LdapUser> entry = connector.read(dn);
-        Map<String, Object> attributes = entry.isSuccess() && entry.getData().isPresent()
-                ? attributesOf(entry.getData().get())
-                : Map.of();
+        if (!captureRequested) {
+            // Nobody declared as: for this step, so there is nothing to capture — skip the
+            // follow-up read entirely rather than paying for it on every retry attempt of an
+            // assertion nobody is going to read the value of.
+            return StepOutcome.success("verified " + dn);
+        }
 
-        return StepOutcome.success("verified " + dn, null, attributes);
+        // Read once, only after verification passes and only because a capture was actually
+        // requested, so a polling assertion does not double its read load on every attempt.
+        OperationResult<LdapUser> entry = connector.read(dn);
+        if (!entry.isSuccess() || entry.getData().isEmpty()) {
+            // Verification passed but the entry could not be re-read for its as: capture.
+            // Reporting success with an empty map would let `${v.cn}` miss silently later, so
+            // this fails the step instead of fabricating a value.
+            return StepOutcome.failure("ldap.verify passed for " + dn
+                    + " but the follow-up read for its as: capture failed: " + entry.getMessage());
+        }
+
+        return StepOutcome.success("verified " + dn, null, attributesOf(entry.getData().get()));
     }
 
     /**

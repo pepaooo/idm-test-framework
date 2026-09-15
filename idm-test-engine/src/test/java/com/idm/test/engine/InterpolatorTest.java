@@ -29,7 +29,7 @@ class InterpolatorTest {
     @Test
     @DisplayName("Should replace a reference embedded in a larger string")
     void testReplacesEmbeddedReference() {
-        Object result = Interpolator.resolve("cn=${user.userId},ou=users", SCOPE);
+        Object result = Interpolator.resolve("cn=${user.userId},ou=users", SCOPE, evaluator);
 
         assertThat(result).isEqualTo("cn=test.123,ou=users");
     }
@@ -37,7 +37,8 @@ class InterpolatorTest {
     @Test
     @DisplayName("Should replace several references in one string")
     void testReplacesMultipleReferences() {
-        Object result = Interpolator.resolve("${user.firstName} <${user.userId}>", SCOPE);
+        Object result = Interpolator.resolve(
+                "${user.firstName} <${user.userId}>", SCOPE, evaluator);
 
         assertThat(result).isEqualTo("Ada <test.123>");
     }
@@ -48,7 +49,7 @@ class InterpolatorTest {
         Object result = Interpolator.resolve(
                 Map.of("expect", Map.of("givenName", "${user.firstName}"),
                        "roles", List.of("${user.userId}")),
-                SCOPE);
+                SCOPE, evaluator);
 
         assertThat(result).isEqualTo(
                 Map.of("expect", Map.of("givenName", "Ada"),
@@ -58,15 +59,15 @@ class InterpolatorTest {
     @Test
     @DisplayName("Should leave values without references untouched")
     void testLeavesPlainValues() {
-        assertThat(Interpolator.resolve("ou=users", SCOPE)).isEqualTo("ou=users");
-        assertThat(Interpolator.resolve(42, SCOPE)).isEqualTo(42);
-        assertThat(Interpolator.resolve(null, SCOPE)).isNull();
+        assertThat(Interpolator.resolve("ou=users", SCOPE, evaluator)).isEqualTo("ou=users");
+        assertThat(Interpolator.resolve(42, SCOPE, evaluator)).isEqualTo(42);
+        assertThat(Interpolator.resolve(null, SCOPE, evaluator)).isNull();
     }
 
     @Test
     @DisplayName("Should name the offending reference when it cannot be resolved")
     void testFailsOnUnknownReference() {
-        assertThatThrownBy(() -> Interpolator.resolve("cn=${missing.id}", SCOPE))
+        assertThatThrownBy(() -> Interpolator.resolve("cn=${missing.id}", SCOPE, evaluator))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("${missing.id}");
     }
@@ -74,7 +75,7 @@ class InterpolatorTest {
     @Test
     @DisplayName("Should name the offending reference when an intermediate path is missing")
     void testFailsOnUnknownNestedPath() {
-        assertThatThrownBy(() -> Interpolator.resolve("${user.absent}", SCOPE))
+        assertThatThrownBy(() -> Interpolator.resolve("${user.absent}", SCOPE, evaluator))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("${user.absent}");
     }
@@ -143,8 +144,9 @@ class InterpolatorTest {
     }
 
     @Test
-    @DisplayName("Should resolve ${...} before the expression runs, so both can be combined")
-    void testDollarRefsStillWorkAlongsideExpressions() {
+    @DisplayName("Should let a plain ${...} reference and a js:{ } expression coexist in the "
+            + "same params, without interpolating inside the expression")
+    void testExpressionsAreNotInterpolatedFirst() {
         Map<String, Object> params = Map.of(
                 "dn", "cn=${user.firstName},ou=users",
                 "upper", "js:{ user.firstName.toUpperCase() }");

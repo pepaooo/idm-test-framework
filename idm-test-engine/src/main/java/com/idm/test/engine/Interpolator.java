@@ -24,21 +24,8 @@ public final class Interpolator {
 
     private static final Pattern REFERENCE = Pattern.compile("\\$\\{([^}]+)}");
     private static final String EXPRESSION_PREFIX = "js:{";
-    private static final ExpressionEvaluator DEFAULT_EVALUATOR = new ExpressionEvaluator();
 
     private Interpolator() {
-    }
-
-    /**
-     * Replaces every reference in {@code value}, walking maps and lists, using a shared default
-     * expression evaluator.
-     * <p>
-     * Retained for existing callers. New code should prefer
-     * {@link #resolve(Object, Map, ExpressionEvaluator)} and pass a configured evaluator
-     * explicitly, rather than picking up this shared default out of habit.
-     */
-    public static Object resolve(Object value, Map<String, Object> scope) {
-        return resolve(value, scope, DEFAULT_EVALUATOR);
     }
 
     /**
@@ -50,7 +37,7 @@ public final class Interpolator {
     public static Object resolve(Object value, Map<String, Object> scope,
                                  ExpressionEvaluator evaluator) {
         if (value instanceof String text) {
-            String expression = expressionIn(text);
+            String expression = expressionBody(text);
             if (expression != null) {
                 // Deliberately NOT interpolated first. The evaluator already receives the
                 // variables, so ${...} inside an expression would be redundant — and actively
@@ -71,6 +58,27 @@ public final class Interpolator {
             return resolved;
         }
         return value;
+    }
+
+    /**
+     * Returns the body of the {@code js:{ ... }} expression in {@code text}, or {@code null}
+     * when {@code text} is not an expression at all.
+     * <p>
+     * Used both to evaluate ({@link #resolve}) and, before anything runs, to check a scenario
+     * file's expressions are structurally well-formed at load — see {@code ScenarioValidator}.
+     * Structural only: this does not check that the body is syntactically valid JavaScript.
+     * {@link com.idm.test.engine.expr.ExpressionEvaluator#validate(String)} does that.
+     *
+     * @throws IllegalArgumentException when {@code text} looks like an expression but is
+     *                                  malformed: embedded in a larger string, unterminated, or
+     *                                  empty
+     */
+    public static String expressionBody(String text) {
+        if (text.contains(EXPRESSION_PREFIX) && !text.trim().startsWith(EXPRESSION_PREFIX)) {
+            throw new IllegalArgumentException(
+                    "an expression must be the whole value, but found js:{ inside '" + text + "'");
+        }
+        return expressionIn(text);
     }
 
     /**
@@ -268,11 +276,8 @@ public final class Interpolator {
     }
 
     private static Object resolveString(String text, Map<String, Object> scope) {
-        if (text.contains(EXPRESSION_PREFIX) && !text.trim().startsWith(EXPRESSION_PREFIX)) {
-            throw new IllegalArgumentException(
-                    "an expression must be the whole value, but found js:{ inside '" + text + "'");
-        }
-
+        // The embedded-js:{ } check already ran in expressionBody(), called by resolve()
+        // before this is ever reached, so text.contains(EXPRESSION_PREFIX) cannot be true here.
         Matcher matcher = REFERENCE.matcher(text);
         StringBuilder result = new StringBuilder();
 

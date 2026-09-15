@@ -10,6 +10,22 @@ import java.util.Set;
  * Implementations receive parameters that are <em>already interpolated</em> — the engine
  * resolves {@code ${...}} before calling — and never handle retrying. Retrying belongs to
  * the engine so the policy lives in one place and steps stay trivially testable.
+ * <p>
+ * The engine strips the two reserved keys, {@code as} and {@code wait}, out of the parameter
+ * map before a step ever sees it: neither is ever present in {@link #execute}'s {@code params}.
+ * {@code wait} is retry policy, decided entirely by the engine. {@code as} is the name under
+ * which the engine will bind {@link StepOutcome#value()} into scenario scope — a step is told
+ * only <em>whether</em> a capture was requested (see {@link #execute(Map, boolean)}), never
+ * what it will be called, so a step can never choose or influence its own variable name.
+ * <p>
+ * <b>The {@code value()} contract:</b> {@link StepOutcome#value()} is what {@code as:} binds.
+ * Returning {@code null} there is only correct when nothing was requested to capture — the
+ * engine treats a null value from a step whose {@code as:} name was declared as a bug in that
+ * step and fails the scenario rather than binding the literal text {@code "null"} into scope.
+ * A step that computes something worth capturing only when asked (see {@code LdapVerifyStep}
+ * for the canonical example, which skips a follow-up read entirely when no capture was
+ * requested) should look at {@code captureRequested} before doing that extra work, and must
+ * still return a non-null value once it does.
  */
 public interface StepType {
 
@@ -61,7 +77,30 @@ public interface StepType {
     }
 
     /**
-     * Runs the step. Must not throw: a failure is an outcome, not an exception.
+     * Runs the step with no capture requested. Equivalent to
+     * {@code execute(params, false)} — implement {@link #execute(Map, boolean)} instead when a
+     * step's work should differ depending on whether {@code as:} was declared. Most step types
+     * only need this form.
+     * <p>
+     * Must not throw: a failure is an outcome, not an exception.
      */
     StepOutcome execute(Map<String, Object> params);
+
+    /**
+     * Runs the step.
+     *
+     * @param params            already-interpolated parameters, with {@code as} and
+     *                          {@code wait} stripped (see the interface javadoc)
+     * @param captureRequested  true when the scenario declared an {@code as:} name for this
+     *                          step, so the returned {@link StepOutcome#value()} will actually
+     *                          be bound. A step that only pays for its capture payload when
+     *                          asked should check this instead of always computing it — see
+     *                          {@code LdapVerifyStep}. Defaults to ignoring the flag and
+     *                          delegating to {@link #execute(Map)}, so a step that never varies
+     *                          its behaviour by capture need not override this at all.
+     * @return what happened; must not throw
+     */
+    default StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
+        return execute(params);
+    }
 }

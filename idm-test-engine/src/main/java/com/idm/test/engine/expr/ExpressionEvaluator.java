@@ -68,6 +68,44 @@ public final class ExpressionEvaluator {
         return doEvaluate(expression, variables);
     }
 
+    /**
+     * Checks that {@code expression} is syntactically valid JavaScript, without running it.
+     * <p>
+     * Compiling is the check: nothing here evaluates the expression, so this is safe to call
+     * during scenario validation, before any step has run — the governing rule is that
+     * expressions compute values and never perform actions, and validating must not itself be
+     * an action. {@code ScenarioValidator} is the intended caller, alongside
+     * {@link com.idm.test.engine.Interpolator#expressionBody(String)} for the structural checks
+     * (embedded, unterminated, empty) that this method does not repeat.
+     *
+     * @param expression a JavaScript expression, as extracted from a {@code js:{ ... }} value
+     * @throws ExpressionException on a syntax error, with the expression text in the message, or
+     *                             a foreign Rhino Context already open on this thread (see
+     *                             {@link #evaluate})
+     */
+    public void validate(String expression) {
+        Context current = Context.getCurrentContext();
+        if (current != null && current.getFactory() != contextFactory) {
+            throw new ExpressionException(
+                    "cannot validate js:{ " + expression + " }: another Rhino Context is already "
+                            + "open on this thread", null);
+        }
+
+        Context cx = contextFactory.enterContext();
+        try {
+            cx.setLanguageVersion(Context.VERSION_ES6);
+            // compileString parses and never executes, which is exactly the "check, don't run"
+            // this method promises: a syntax error throws here, and a well-formed expression's
+            // compiled Script is simply discarded.
+            cx.compileString(expression, "expression", 1, null);
+        } catch (RuntimeException e) {
+            throw new ExpressionException(
+                    "invalid expression js:{ " + expression + " }: " + e.getMessage(), e);
+        } finally {
+            Context.exit();
+        }
+    }
+
     private Object doEvaluate(String expression, Map<String, Object> variables) {
         Context cx = contextFactory.enterContext();
         try {

@@ -43,11 +43,6 @@ public final class LdapVerifyStep implements StepType {
     }
 
     @Override
-    public StepOutcome execute(Map<String, Object> params) {
-        return execute(params, false);
-    }
-
-    @Override
     @SuppressWarnings("unchecked")
     public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
         String dn = String.valueOf(params.get("dn"));

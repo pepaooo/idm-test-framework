@@ -67,7 +67,7 @@ class LdapStepsTest {
 
         StepOutcome outcome = create.execute(Map.of(
                 "dn", dn,
-                "attributes", Map.of("cn", "ada.create", "sn", "Lovelace", "givenName", "Ada")));
+                "attributes", Map.of("cn", "ada.create", "sn", "Lovelace", "givenName", "Ada")), false);
 
         assertThat(outcome.success()).isTrue();
         assertThat(connector.read(dn).isSuccess()).isTrue();
@@ -84,7 +84,7 @@ class LdapStepsTest {
         // inetOrgPerson requires sn; omitting it must fail
         StepOutcome outcome = create.execute(Map.of(
                 "dn", "cn=broken,ou=users",
-                "attributes", Map.of("cn", "broken")));
+                "attributes", Map.of("cn", "broken")), false);
 
         assertThat(outcome.success()).isFalse();
         assertThat(outcome.message()).containsIgnoringCase("failed");
@@ -96,11 +96,11 @@ class LdapStepsTest {
         String dn = "cn=ada.verify,ou=users";
         new LdapCreateStep(connector).execute(Map.of(
                 "dn", dn,
-                "attributes", Map.of("cn", "ada.verify", "sn", "Lovelace", "givenName", "Ada")));
+                "attributes", Map.of("cn", "ada.verify", "sn", "Lovelace", "givenName", "Ada")), false);
 
         StepOutcome outcome = new LdapVerifyStep(connector).execute(Map.of(
                 "dn", dn,
-                "expect", Map.of("givenName", "Ada", "sn", "Lovelace")));
+                "expect", Map.of("givenName", "Ada", "sn", "Lovelace")), false);
 
         assertThat(outcome.success()).isTrue();
         assertThat(outcome.undo()).isNull();
@@ -112,11 +112,11 @@ class LdapStepsTest {
         String dn = "cn=grace.verify,ou=users";
         new LdapCreateStep(connector).execute(Map.of(
                 "dn", dn,
-                "attributes", Map.of("cn", "grace.verify", "sn", "Hopper", "givenName", "Grace")));
+                "attributes", Map.of("cn", "grace.verify", "sn", "Hopper", "givenName", "Grace")), false);
 
         StepOutcome outcome = new LdapVerifyStep(connector).execute(Map.of(
                 "dn", dn,
-                "expect", Map.of("givenName", "Ada")));
+                "expect", Map.of("givenName", "Ada")), false);
 
         assertThat(outcome.success()).isFalse();
         assertThat(outcome.message()).contains(dn);
@@ -139,7 +139,7 @@ class LdapStepsTest {
 
         StepOutcome outcome = create.execute(Map.of(
                 "dn", dn,
-                "attributes", Map.of("cn", "ada.undo-failure", "sn", "Lovelace", "givenName", "Ada")));
+                "attributes", Map.of("cn", "ada.undo-failure", "sn", "Lovelace", "givenName", "Ada")), false);
 
         assertThat(outcome.success()).isTrue();
 
@@ -152,7 +152,7 @@ class LdapStepsTest {
     void testVerifyMissingEntry() {
         StepOutcome outcome = new LdapVerifyStep(connector).execute(Map.of(
                 "dn", "cn=absent,ou=users",
-                "expect", Map.of("givenName", "Ada")));
+                "expect", Map.of("givenName", "Ada")), false);
 
         assertThat(outcome.success()).isFalse();
     }
@@ -195,7 +195,7 @@ class LdapStepsTest {
 
         StepOutcome outcome = new LdapCreateStep(connector).execute(Map.of(
                 "dn", dn,
-                "attributes", Map.of("cn", "ada.value", "sn", "Lovelace")));
+                "attributes", Map.of("cn", "ada.value", "sn", "Lovelace")), false);
 
         assertThat(outcome.value()).isEqualTo(dn);
     }
@@ -207,7 +207,7 @@ class LdapStepsTest {
         String dn = "cn=grace.value,ou=users";
         new LdapCreateStep(connector).execute(Map.of(
                 "dn", dn,
-                "attributes", Map.of("cn", "grace.value", "sn", "Hopper", "givenName", "Grace")));
+                "attributes", Map.of("cn", "grace.value", "sn", "Hopper", "givenName", "Grace")), false);
 
         StepOutcome outcome = new LdapVerifyStep(connector).execute(Map.of(
                 "dn", dn,
@@ -245,7 +245,7 @@ class LdapStepsTest {
                 .thenReturn(OperationResult.success(true));
 
         StepOutcome outcome = new LdapVerifyStep(mockConnector).execute(Map.of(
-                "dn", "cn=x,ou=users", "expect", Map.of("givenName", "Ada")));
+                "dn", "cn=x,ou=users", "expect", Map.of("givenName", "Ada")), false);
 
         assertThat(outcome.success()).isTrue();
         verify(mockConnector, never()).read(any());
@@ -274,7 +274,7 @@ class LdapStepsTest {
     void testFailureHasNoValue() {
         StepOutcome outcome = new LdapVerifyStep(connector).execute(Map.of(
                 "dn", "cn=absent.value,ou=users",
-                "expect", Map.of("givenName", "Ada")));
+                "expect", Map.of("givenName", "Ada")), false);
 
         assertThat(outcome.success()).isFalse();
         assertThat(outcome.value()).isNull();

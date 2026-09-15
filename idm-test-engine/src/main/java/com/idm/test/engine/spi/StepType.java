@@ -77,30 +77,30 @@ public interface StepType {
     }
 
     /**
-     * Runs the step with no capture requested. Equivalent to
-     * {@code execute(params, false)} — implement {@link #execute(Map, boolean)} instead when a
-     * step's work should differ depending on whether {@code as:} was declared. Most step types
-     * only need this form.
-     * <p>
-     * Must not throw: a failure is an outcome, not an exception.
-     */
-    StepOutcome execute(Map<String, Object> params);
-
-    /**
      * Runs the step.
+     * <p>
+     * {@code params} arrives already resolved: {@code ${...}} interpolation has run, and the
+     * two engine-level keys, {@code as} and {@code wait}, are stripped before this is called —
+     * neither is ever present in {@code params}.
+     * <p>
+     * Must never throw: a failure is a returned {@link StepOutcome}, not an exception. The
+     * engine treats any thrown exception as a bug in the step, not a normal failure path.
      *
      * @param params            already-interpolated parameters, with {@code as} and
      *                          {@code wait} stripped (see the interface javadoc)
      * @param captureRequested  true when the scenario declared an {@code as:} name for this
      *                          step, so the returned {@link StepOutcome#value()} will actually
-     *                          be bound. A step that only pays for its capture payload when
-     *                          asked should check this instead of always computing it — see
-     *                          {@code LdapVerifyStep}. Defaults to ignoring the flag and
-     *                          delegating to {@link #execute(Map)}, so a step that never varies
-     *                          its behaviour by capture need not override this at all.
-     * @return what happened; must not throw
+     *                          be bound into scenario scope. A step whose work only exists to
+     *                          produce a capture value (for example a follow-up read after an
+     *                          assertion passes) should check this flag and skip that work when
+     *                          it is false — see {@code LdapVerifyStep} for the canonical
+     *                          example. A step that always produces its value cheaply may
+     *                          ignore the flag entirely, as {@code LdapCreateStep} does.
+     * @return what happened; must not be null, and must not throw. Returning a {@code null}
+     * {@link StepOutcome#value()} while {@code captureRequested} is true fails the scenario —
+     * the engine treats it as a bug in the step rather than binding the literal text
+     * {@code "null"} into scope. A step whose value can be legitimately absent must return a
+     * non-null sentinel instead of null in that case.
      */
-    default StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
-        return execute(params);
-    }
+    StepOutcome execute(Map<String, Object> params, boolean captureRequested);
 }

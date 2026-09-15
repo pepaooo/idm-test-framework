@@ -29,7 +29,7 @@ class ScenarioEngineTest {
     private StepType recordingAction(String name) {
         return new StepType() {
             public String name() { return name; }
-            public StepOutcome execute(Map<String, Object> params) {
+            public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
                 events.add("run:" + name + ":" + params.get("dn"));
                 return StepOutcome.success("ok", () -> events.add("undo:" + name));
             }
@@ -39,7 +39,7 @@ class ScenarioEngineTest {
     private StepType failingAction(String name) {
         return new StepType() {
             public String name() { return name; }
-            public StepOutcome execute(Map<String, Object> params) {
+            public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
                 events.add("run:" + name);
                 return StepOutcome.failure(name + " went wrong");
             }
@@ -52,7 +52,7 @@ class ScenarioEngineTest {
         return new StepType() {
             public String name() { return name; }
             public boolean retryable() { return true; }
-            public StepOutcome execute(Map<String, Object> params) {
+            public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
                 return calls.getAndIncrement() < failures
                         ? StepOutcome.failure("not yet")
                         : StepOutcome.success("arrived");
@@ -159,7 +159,7 @@ class ScenarioEngineTest {
     void testCleanupFailureDoesNotMaskOriginal() {
         StepType breaksOnUndo = new StepType() {
             public String name() { return "a"; }
-            public StepOutcome execute(Map<String, Object> params) {
+            public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
                 return StepOutcome.success("ok", () -> {
                     throw new IllegalStateException("undo exploded");
                 });
@@ -197,7 +197,7 @@ class ScenarioEngineTest {
     void testThrowingStepFailsButDoesNotAbort() {
         StepType throwing = new StepType() {
             public String name() { return "boom"; }
-            public StepOutcome execute(Map<String, Object> params) {
+            public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
                 throw new IllegalStateException("kaboom");
             }
         };
@@ -220,7 +220,7 @@ class ScenarioEngineTest {
         StepType alwaysThrows = new StepType() {
             public String name() { return "check"; }
             public boolean retryable() { return true; }
-            public StepOutcome execute(Map<String, Object> params) {
+            public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
                 throw new IllegalStateException("connector unavailable");
             }
         };
@@ -290,7 +290,7 @@ class ScenarioEngineTest {
         StepType throwsWithNullMessage = new StepType() {
             public String name() { return "check"; }
             public boolean retryable() { return true; }
-            public StepOutcome execute(Map<String, Object> params) {
+            public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
                 throw new IllegalStateException();
             }
         };
@@ -312,7 +312,7 @@ class ScenarioEngineTest {
             public String name() { return name; }
             public java.util.Set<String> requiredParams() { return java.util.Set.of("dn"); }
             public java.util.Set<String> acceptedParams() { return java.util.Set.of("dn"); }
-            public StepOutcome execute(Map<String, Object> params) {
+            public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
                 return StepOutcome.success("ok", null, value);
             }
         };
@@ -326,7 +326,7 @@ class ScenarioEngineTest {
             public String name() { return "reader"; }
             public java.util.Set<String> requiredParams() { return java.util.Set.of("dn"); }
             public java.util.Set<String> acceptedParams() { return java.util.Set.of("dn"); }
-            public StepOutcome execute(Map<String, Object> params) {
+            public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
                 seen.add(String.valueOf(params.get("dn")));
                 return StepOutcome.success("ok");
             }
@@ -349,7 +349,7 @@ class ScenarioEngineTest {
             public String name() { return "recorder"; }
             public java.util.Set<String> requiredParams() { return java.util.Set.of("dn"); }
             public java.util.Set<String> acceptedParams() { return java.util.Set.of("dn"); }
-            public StepOutcome execute(Map<String, Object> params) {
+            public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
                 received.add(params);
                 return StepOutcome.success("ok");
             }
@@ -369,7 +369,7 @@ class ScenarioEngineTest {
             public String name() { return "reader"; }
             public java.util.Set<String> requiredParams() { return java.util.Set.of("dn"); }
             public java.util.Set<String> acceptedParams() { return java.util.Set.of("dn"); }
-            public StepOutcome execute(Map<String, Object> params) {
+            public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
                 seen.add(String.valueOf(params.get("dn")));
                 return StepOutcome.success("ok");
             }
@@ -392,7 +392,7 @@ class ScenarioEngineTest {
             public String name() { return "reader"; }
             public java.util.Set<String> requiredParams() { return java.util.Set.of("dn"); }
             public java.util.Set<String> acceptedParams() { return java.util.Set.of("dn"); }
-            public StepOutcome execute(Map<String, Object> params) {
+            public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
                 seen.add(String.valueOf(params.get("dn")));
                 return StepOutcome.success("ok");
             }
@@ -416,7 +416,7 @@ class ScenarioEngineTest {
             public String name() { return "reader"; }
             public java.util.Set<String> requiredParams() { return java.util.Set.of("dn"); }
             public java.util.Set<String> acceptedParams() { return java.util.Set.of("dn"); }
-            public StepOutcome execute(Map<String, Object> params) {
+            public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
                 seen.add(String.valueOf(params.get("dn")));
                 return StepOutcome.success("ok");
             }
@@ -464,7 +464,7 @@ class ScenarioEngineTest {
             public String name() { return "silent"; }
             public java.util.Set<String> requiredParams() { return java.util.Set.of("dn"); }
             public java.util.Set<String> acceptedParams() { return java.util.Set.of("dn"); }
-            public StepOutcome execute(Map<String, Object> params) {
+            public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
                 return StepOutcome.success("ok");
             }
         };
@@ -484,7 +484,7 @@ class ScenarioEngineTest {
         StepType noValueAssertion = new StepType() {
             public String name() { return "check"; }
             public boolean retryable() { return true; }
-            public StepOutcome execute(Map<String, Object> params) {
+            public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
                 return StepOutcome.success("arrived");
             }
         };
@@ -506,7 +506,7 @@ class ScenarioEngineTest {
         StepType eventuallyPassingWithValue = new StepType() {
             public String name() { return "check"; }
             public boolean retryable() { return true; }
-            public StepOutcome execute(Map<String, Object> params) {
+            public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
                 int attempt = calls.getAndIncrement();
                 return attempt < 2
                         ? StepOutcome.failure("not yet")
@@ -518,7 +518,7 @@ class ScenarioEngineTest {
             public String name() { return "reader"; }
             public java.util.Set<String> requiredParams() { return java.util.Set.of("dn"); }
             public java.util.Set<String> acceptedParams() { return java.util.Set.of("dn"); }
-            public StepOutcome execute(Map<String, Object> params) {
+            public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
                 seen.add(String.valueOf(params.get("dn")));
                 return StepOutcome.success("ok");
             }

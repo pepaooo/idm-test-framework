@@ -40,7 +40,9 @@ public final class LdapCreateStep implements StepType {
 
     @Override
     @SuppressWarnings("unchecked")
-    public StepOutcome execute(Map<String, Object> params) {
+    public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
+        // captureRequested is ignored: the created DN is always cheap to return, so there is
+        // no extra work to skip when nobody asked to capture it.
         String dn = String.valueOf(params.get("dn"));
         Map<String, Object> attributes =
                 (Map<String, Object>) params.getOrDefault("attributes", Map.of());

@@ -23,7 +23,7 @@ class ScenarioValidatorTest {
         public String name() { return "ldap.create"; }
         public Set<String> requiredParams() { return Set.of("dn"); }
         public Set<String> acceptedParams() { return Set.of("dn", "attributes"); }
-        public StepOutcome execute(Map<String, Object> params) { return StepOutcome.success("ok"); }
+        public StepOutcome execute(Map<String, Object> params, boolean captureRequested) { return StepOutcome.success("ok"); }
     };
 
     // Mirrors LdapVerifyStep's real contract: requires 'dn' and 'expect'; acceptedParams()
@@ -32,7 +32,7 @@ class ScenarioValidatorTest {
         public String name() { return "ldap.verify"; }
         public boolean retryable() { return true; }
         public Set<String> requiredParams() { return Set.of("dn", "expect"); }
-        public StepOutcome execute(Map<String, Object> params) { return StepOutcome.success("ok"); }
+        public StepOutcome execute(Map<String, Object> params, boolean captureRequested) { return StepOutcome.success("ok"); }
     };
 
     private final ScenarioValidator validator = new ScenarioValidator(
@@ -169,7 +169,7 @@ class ScenarioValidatorTest {
             public Set<String> requiredParams() { return Set.of("dn"); }
             // Deliberately omits both 'wait' and the step's own required 'dn'.
             public Set<String> acceptedParams() { return Set.of("database", "query"); }
-            public StepOutcome execute(Map<String, Object> params) { return StepOutcome.success("ok"); }
+            public StepOutcome execute(Map<String, Object> params, boolean captureRequested) { return StepOutcome.success("ok"); }
         };
         ScenarioValidator localValidator = new ScenarioValidator(
                 Map.of("db.verify", retryableWithNarrowOverride), Set.of("random-user"));
@@ -458,7 +458,7 @@ class ScenarioValidatorTest {
         StepType reservedSet = new StepType() {
             public String name() { return "set"; }
             public Set<String> requiredParams() { return Set.of(); }
-            public StepOutcome execute(Map<String, Object> params) { return StepOutcome.success("ok"); }
+            public StepOutcome execute(Map<String, Object> params, boolean captureRequested) { return StepOutcome.success("ok"); }
         };
 
         assertThatThrownBy(() -> new ScenarioValidator(

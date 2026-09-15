@@ -1,8 +1,10 @@
 package com.idm.test.engine;
 
+import com.idm.test.engine.expr.ExpressionEvaluator;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -14,6 +16,15 @@ class InterpolatorTest {
 
     private static final Map<String, Object> SCOPE = Map.of(
             "user", Map.of("userId", "test.123", "firstName", "Ada"));
+
+    private final ExpressionEvaluator evaluator = new ExpressionEvaluator();
+
+    private static Map<String, Object> jsScope() {
+        Map<String, Object> user = new LinkedHashMap<>();
+        user.put("firstName", "ada");
+        user.put("lastName", "lovelace");
+        return Map.of("user", user);
+    }
 
     @Test
     @DisplayName("Should replace a reference embedded in a larger string")
@@ -74,5 +85,76 @@ class InterpolatorTest {
         assertThat(Interpolator.references(
                 Map.of("dn", "cn=${user.userId}", "note", "${created.body.id}")))
                 .containsExactlyInAnyOrder("user", "created");
+    }
+
+    @Test
+    @DisplayName("Should evaluate a value that is entirely an expression")
+    void testEvaluatesWholeValueExpression() {
+        Object result = Interpolator.resolve(
+                "js:{ user.lastName.toUpperCase() }", jsScope(), evaluator);
+
+        assertThat(result).isEqualTo("LOVELACE");
+    }
+
+    @Test
+    @DisplayName("Should return the expression's native type rather than a string")
+    void testExpressionKeepsItsType() {
+        assertThat(Interpolator.resolve("js:{ 1 + 1 }", jsScope(), evaluator)).isEqualTo(2.0);
+        assertThat(Interpolator.resolve("js:{ true }", jsScope(), evaluator)).isEqualTo(true);
+    }
+
+    @Test
+    @DisplayName("Should handle braces inside an expression")
+    void testNestedBraces() {
+        Object result = Interpolator.resolve(
+                "js:{ JSON.stringify({a: 1}) }", jsScope(), evaluator);
+
+        assertThat(result).isEqualTo("{\"a\":1}");
+    }
+
+    @Test
+    @DisplayName("Should evaluate expressions nested in maps and lists")
+    void testExpressionsInsideStructures() {
+        Object result = Interpolator.resolve(
+                Map.of("attributes", Map.of("sn", "js:{ user.lastName.toUpperCase() }")),
+                jsScope(), evaluator);
+
+        assertThat(result).isEqualTo(Map.of("attributes", Map.of("sn", "LOVELACE")));
+    }
+
+    @Test
+    @DisplayName("Should resolve ${...} before the expression runs, so both can be combined")
+    void testDollarRefsStillWorkAlongsideExpressions() {
+        Map<String, Object> params = Map.of(
+                "dn", "cn=${user.firstName},ou=users",
+                "upper", "js:{ user.firstName.toUpperCase() }");
+
+        assertThat(Interpolator.resolve(params, jsScope(), evaluator)).isEqualTo(
+                Map.of("dn", "cn=ada,ou=users", "upper", "ADA"));
+    }
+
+    @Test
+    @DisplayName("Should reject an expression embedded in a larger string")
+    void testRejectsEmbeddedExpression() {
+        assertThatThrownBy(() ->
+                Interpolator.resolve("cn=js:{ user.lastName }", jsScope(), evaluator))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("whole value");
+    }
+
+    @Test
+    @DisplayName("Should reject an expression whose braces never close")
+    void testRejectsUnterminatedExpression() {
+        assertThatThrownBy(() ->
+                Interpolator.resolve("js:{ user.lastName", jsScope(), evaluator))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("not closed");
+    }
+
+    @Test
+    @DisplayName("Should leave a value alone when js: is not the marker")
+    void testPlainValueWithJsPrefixIsUntouched() {
+        assertThat(Interpolator.resolve("javascript is fine here", jsScope(), evaluator))
+                .isEqualTo("javascript is fine here");
     }
 }

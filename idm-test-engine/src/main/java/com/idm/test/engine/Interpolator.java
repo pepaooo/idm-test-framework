@@ -98,11 +98,12 @@ public final class Interpolator {
      * double-quoted strings (backslash escapes honoured), backtick template literals — including
      * a {@code ${ ... }} substitution's own nested braces and strings — and both comment forms.
      * <p>
-     * <b>Known limitation:</b> a regular-expression literal containing a brace, such as
-     * {@code js:{ /}/.test('}') }}, still confuses the counter — telling a regex literal from a
-     * division apart requires real JavaScript lexing, which this deliberately is not. Such an
-     * expression is rejected (usually as "not closed"), which is confusing but safe: it never
-     * silently truncates what the author wrote.
+     * <b>Known limitation:</b> a regular-expression literal containing a character that is
+     * structural elsewhere — a brace, a quote, or a comment opener, such as
+     * {@code js:{ /}/.test('}') }} or {@code js:{ /'/.test(x) }} — still confuses the counter:
+     * telling a regex literal from a division apart requires real JavaScript lexing, which this
+     * deliberately is not. Such an expression is rejected (usually as "not closed"), which is
+     * confusing but safe: it never silently truncates what the author wrote.
      * <p>
      * <b>Also note:</b> {@code js:{ {a: 1} }} is parsed by JavaScript as a labelled block
      * containing the expression statement {@code 1}, not an object literal — so it evaluates to
@@ -144,7 +145,12 @@ public final class Interpolator {
                                         "an expression must be the whole value, but '" + text
                                                 + "' has text after the closing brace");
                             }
-                            return trimmed.substring(EXPRESSION_PREFIX.length(), i - 1);
+                            String body = trimmed.substring(EXPRESSION_PREFIX.length(), i - 1);
+                            if (body.isBlank()) {
+                                throw new IllegalArgumentException(
+                                        "the expression in '" + text + "' is empty");
+                            }
+                            return body;
                         }
                     } else if (c == '\'') {
                         regions.add(Region.SINGLE_QUOTED);
@@ -208,8 +214,16 @@ public final class Interpolator {
             }
         }
 
+        Region unclosed = regions.get(regions.size() - 1);
+        String missing = switch (unclosed) {
+            case SINGLE_QUOTED -> "a closing \"'\" is missing";
+            case DOUBLE_QUOTED -> "a closing '\"' is missing";
+            case TEMPLATE -> "a closing '`' is missing";
+            case BLOCK_COMMENT -> "a closing '*/' is missing";
+            case CODE, LINE_COMMENT -> "a '}' is missing";
+        };
         throw new IllegalArgumentException(
-                "the expression in '" + text + "' is not closed — a '}' is missing");
+                "the expression in '" + text + "' is not closed — " + missing);
     }
 
     private static boolean startsWith(String text, int index, String prefix) {
@@ -227,6 +241,13 @@ public final class Interpolator {
 
     private static void collectReferences(Object value, Set<String> roots) {
         if (value instanceof String text) {
+            if (isWholeValueExpression(text)) {
+                // An expression is JavaScript, not a scenario reference — a template literal's
+                // own ${...} substitutions must not be mistaken for ${path} references. A
+                // malformed expression is reported by resolve(), not here: references() is a
+                // query and must not throw.
+                return;
+            }
             Matcher matcher = REFERENCE.matcher(text);
             while (matcher.find()) {
                 roots.add(matcher.group(1).split("\\.", 2)[0]);
@@ -235,6 +256,14 @@ public final class Interpolator {
             map.values().forEach(v -> collectReferences(v, roots));
         } else if (value instanceof List<?> list) {
             list.forEach(element -> collectReferences(element, roots));
+        }
+    }
+
+    private static boolean isWholeValueExpression(String text) {
+        try {
+            return expressionIn(text) != null;
+        } catch (IllegalArgumentException malformed) {
+            return true;
         }
     }
 

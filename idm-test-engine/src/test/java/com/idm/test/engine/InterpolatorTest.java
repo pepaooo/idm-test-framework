@@ -88,6 +88,26 @@ class InterpolatorTest {
     }
 
     @Test
+    @DisplayName("Should still collect a reference embedded alongside plain text")
+    void testCollectsReferenceRootFromEmbeddedValue() {
+        assertThat(Interpolator.references("cn=${user.userId},ou=users"))
+                .containsExactly("user");
+    }
+
+    @Test
+    @DisplayName("Should not mistake a template literal substitution inside an expression for a reference")
+    void testDoesNotCollectReferencesInsideExpressionTemplateLiteral() {
+        assertThat(Interpolator.references("js:{ `${ 1 + 1 }` }")).isEmpty();
+        assertThat(Interpolator.references("js:{ `hello ${user.firstName}` }")).isEmpty();
+    }
+
+    @Test
+    @DisplayName("Should not throw when collecting references from a malformed expression")
+    void testCollectingReferencesDoesNotThrowOnMalformedExpression() {
+        assertThat(Interpolator.references("js:{ unclosed")).isEmpty();
+    }
+
+    @Test
     @DisplayName("Should evaluate a value that is entirely an expression")
     void testEvaluatesWholeValueExpression() {
         Object result = Interpolator.resolve(
@@ -149,6 +169,38 @@ class InterpolatorTest {
                 Interpolator.resolve("js:{ user.lastName", jsScope(), evaluator))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("not closed");
+    }
+
+    @Test
+    @DisplayName("Should name the unterminated string, not a missing brace")
+    void testUnterminatedStringNamesTheQuote() {
+        assertThatThrownBy(() ->
+                Interpolator.resolve("js:{ \"abc }", jsScope(), evaluator))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("not closed")
+                .hasMessageContaining("\"");
+    }
+
+    @Test
+    @DisplayName("Should name the unterminated block comment, not a missing brace")
+    void testUnterminatedBlockCommentNamesTheComment() {
+        assertThatThrownBy(() ->
+                Interpolator.resolve("js:{ /* abc }", jsScope(), evaluator))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("not closed")
+                .hasMessageContaining("*/");
+    }
+
+    @Test
+    @DisplayName("Should reject an expression with an empty body")
+    void testRejectsEmptyExpression() {
+        assertThatThrownBy(() -> Interpolator.resolve("js:{}", jsScope(), evaluator))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("js:{}");
+
+        assertThatThrownBy(() -> Interpolator.resolve("js:{   }", jsScope(), evaluator))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("js:{   }");
     }
 
     @Test

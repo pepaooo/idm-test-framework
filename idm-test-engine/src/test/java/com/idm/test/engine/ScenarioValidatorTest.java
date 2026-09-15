@@ -306,4 +306,21 @@ class ScenarioValidatorTest {
                 .isInstanceOf(ValidationException.class)
                 .hasMessageContaining("at least one");
     }
+
+    @Test
+    @DisplayName("Should reject a step type registry containing 'set', since set is reserved for the engine")
+    void testRejectsSetStepTypeInRegistry() {
+        StepType reservedSet = new StepType() {
+            public String name() { return "set"; }
+            public Set<String> requiredParams() { return Set.of(); }
+            public StepOutcome execute(Map<String, Object> params) { return StepOutcome.success("ok"); }
+        };
+
+        assertThatThrownBy(() -> new ScenarioValidator(
+                Map.of("set", reservedSet),
+                Set.of("random-user")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("set")
+                .hasMessageContaining("reserved");
+    }
 }

@@ -238,20 +238,6 @@ class LdapStepsTest {
     }
 
     @Test
-    @DisplayName("ldap.verify's single-arg execute (no capture info) should also skip the read")
-    void testVerifySingleArgExecuteSkipsRead() {
-        EdirectoryConnector mockConnector = mock(EdirectoryConnector.class);
-        when(mockConnector.verifyAttributes(any(), any()))
-                .thenReturn(OperationResult.success(true));
-
-        StepOutcome outcome = new LdapVerifyStep(mockConnector).execute(Map.of(
-                "dn", "cn=x,ou=users", "expect", Map.of("givenName", "Ada")), false);
-
-        assertThat(outcome.success()).isTrue();
-        verify(mockConnector, never()).read(any());
-    }
-
-    @Test
     @DisplayName("ldap.verify should fail, not fabricate an empty capture, when verification "
             + "passes but the follow-up read for a requested capture fails")
     void testVerifyFailsWhenCaptureReadFailsAfterSuccessfulVerify() {

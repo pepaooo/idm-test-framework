@@ -765,9 +765,11 @@ Replace the existing `resolve(Object, Map)` method with these three:
         if (value instanceof String text) {
             String expression = expressionIn(text);
             if (expression != null) {
-                // ${...} first, so an expression can read an interpolated value.
-                return evaluator.evaluate(
-                        (String) resolveString(expression, scope), scope);
+                // Deliberately NOT interpolated first. The evaluator already receives the
+                // variables, so ${...} inside an expression would be redundant — and actively
+                // harmful, because ES6 template literals use the same ${...} syntax and our
+                // interpolator would mangle them before JavaScript ever saw them.
+                return evaluator.evaluate(expression, scope);
             }
             return resolveString(text, scope);
         }
@@ -1469,6 +1471,8 @@ The engine needs an evaluator. Add the field and constructor parameter:
 Add `ExpressionEvaluator evaluator` as the final parameter of the existing constructor, assign it, and import `com.idm.test.engine.expr.ExpressionEvaluator`. Then replace the existing `Interpolator.resolve(step.params(), scope)` call in `runStep` with the three-argument form passing `evaluator`.
 
 An expression that throws inside `runSet` propagates as a `RuntimeException`, which the loop in `run()` already catches and records as a failed step — that is why `testSetExpressionFailureIsReported` expects a failed result rather than an exception.
+
+**A limitation worth stating rather than discovering.** `Interpolator.references` only finds `${...}` references, so the validator cannot see which variables an expression reads — `js:{ absnet.field }` passes validation and fails at run time. Closing that would mean parsing JavaScript, which is not worth it for a typo check. `ExpressionEvaluator` compensates by naming the expression text in its error, so the failure is still actionable. Do not attempt a regex over expression bodies to approximate this: it would produce false rejections on any expression mentioning a word that happens to match a variable name.
 
 - [ ] **Step 6: Update the engine's callers**
 

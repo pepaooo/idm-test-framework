@@ -3,6 +3,9 @@ package com.idm.test.engine.expr;
 import com.idm.test.engine.expr.ExpressionEvaluator.ExpressionException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
+import org.mozilla.javascript.Context;
+import org.mozilla.javascript.ContextFactory;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -112,5 +115,66 @@ class ExpressionEvaluatorTest {
 
         assertThatThrownBy(() -> evaluator.evaluate("leaked", Map.of()))
                 .isInstanceOf(ExpressionException.class);
+    }
+
+    @Test
+    @DisplayName("Should report a self-referencing object as an ExpressionException, not a StackOverflowError")
+    void testSelfReferencingObjectDoesNotOverflowStack() {
+        assertThatThrownBy(() -> evaluator.evaluate("var o = {}; o.self = o; o", Map.of()))
+                .isInstanceOf(ExpressionException.class)
+                .hasMessageContaining("o.self = o");
+    }
+
+    @Test
+    @DisplayName("Should report a self-referencing array as an ExpressionException, not a StackOverflowError")
+    void testSelfReferencingArrayDoesNotOverflowStack() {
+        assertThatThrownBy(() -> evaluator.evaluate("var x = []; x.push(x); x", Map.of()))
+                .isInstanceOf(ExpressionException.class)
+                .hasMessageContaining("x.push(x)");
+    }
+
+    @Test
+    @DisplayName("Should report a huge array as an ExpressionException, not an OutOfMemoryError")
+    void testHugeArrayDoesNotExhaustMemory() {
+        assertThatThrownBy(() -> evaluator.evaluate("new Array(2000000000)", Map.of()))
+                .isInstanceOf(ExpressionException.class)
+                .hasMessageContaining("new Array(2000000000)");
+    }
+
+    @Test
+    @DisplayName("Should reject a BigInt result rather than silently rounding it")
+    void testBigIntegerResultIsRejected() {
+        assertThatThrownBy(() -> evaluator.evaluate("(10n ** 30n)", Map.of()))
+                .isInstanceOf(ExpressionException.class)
+                .hasMessageContaining("(10n ** 30n)")
+                .hasMessageContaining("BigInt");
+    }
+
+    @Test
+    @DisplayName("Should reject a Date result rather than returning an empty map")
+    void testDateResultIsRejected() {
+        assertThatThrownBy(() -> evaluator.evaluate("new Date(0)", Map.of()))
+                .isInstanceOf(ExpressionException.class)
+                .hasMessageContaining("new Date(0)")
+                .hasMessageContaining("Date");
+    }
+
+    @Test
+    @Timeout(15)
+    @DisplayName("Should still enforce the instruction budget when a Context is already entered on this thread")
+    void testBudgetAppliesWithPreEnteredContext() {
+        // Simulates an embedded/nested use (Task 2: wiring this evaluator into the scenario
+        // engine) where some other code has already entered an unrelated Rhino Context on this
+        // thread. The @Timeout is a backstop only: this test must never be able to hang the suite.
+        Context unrelated = new ContextFactory().enterContext();
+        try {
+            ExpressionEvaluator budgeted = new ExpressionEvaluator(10_000);
+
+            assertThatThrownBy(() ->
+                    budgeted.evaluate("var i = 0; while (true) { i++; } i", Map.of()))
+                    .isInstanceOf(ExpressionException.class);
+        } finally {
+            Context.exit();
+        }
     }
 }

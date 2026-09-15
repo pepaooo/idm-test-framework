@@ -4,13 +4,22 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mozilla.javascript.Context;
 import org.mozilla.javascript.ContextFactory;
+import org.mozilla.javascript.NativeArray;
 import org.mozilla.javascript.Scriptable;
 
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Deque;
+import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.BiFunction;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @DisplayName("JsValues")
 class JsValuesTest {
@@ -107,5 +116,157 @@ class JsValuesTest {
             assertThat(JsValues.fromJs(null)).isNull();
             return null;
         });
+    }
+
+    @Test
+    @DisplayName("Should reject a self-referencing Java map instead of overflowing the stack")
+    void testToJsRejectsSelfReferencingMap() {
+        inContext((cx, scope) -> {
+            Map<String, Object> map = new HashMap<>();
+            map.put("self", map);
+
+            assertThatThrownBy(() -> JsValues.toJs(cx, scope, map))
+                    .isInstanceOf(JsValues.JsConversionException.class)
+                    .hasMessageContaining("self-referencing");
+            return null;
+        });
+    }
+
+    @Test
+    @DisplayName("Should reject a self-referencing Java list instead of overflowing the stack")
+    void testToJsRejectsSelfReferencingList() {
+        inContext((cx, scope) -> {
+            List<Object> list = new ArrayList<>();
+            list.add(list);
+
+            assertThatThrownBy(() -> JsValues.toJs(cx, scope, list))
+                    .isInstanceOf(JsValues.JsConversionException.class)
+                    .hasMessageContaining("self-referencing");
+            return null;
+        });
+    }
+
+    @Test
+    @DisplayName("Should reject a self-referencing JS object instead of overflowing the stack")
+    void testFromJsRejectsSelfReferencingObject() {
+        inContext((cx, scope) -> {
+            Object cyclic = cx.evaluateString(scope, "var o = {}; o.self = o; o", "t", 1, null);
+
+            assertThatThrownBy(() -> JsValues.fromJs(cyclic))
+                    .isInstanceOf(JsValues.JsConversionException.class)
+                    .hasMessageContaining("self-referencing");
+            return null;
+        });
+    }
+
+    @Test
+    @DisplayName("Should reject a self-referencing JS array instead of overflowing the stack")
+    void testFromJsRejectsSelfReferencingArray() {
+        inContext((cx, scope) -> {
+            Object cyclic = cx.evaluateString(scope, "var x = []; x.push(x); x", "t", 1, null);
+
+            assertThatThrownBy(() -> JsValues.fromJs(cyclic))
+                    .isInstanceOf(JsValues.JsConversionException.class)
+                    .hasMessageContaining("self-referencing");
+            return null;
+        });
+    }
+
+    @Test
+    @DisplayName("Should reject a huge JS array before allocating anything for it")
+    void testFromJsRejectsHugeArray() {
+        inContext((cx, scope) -> {
+            Object huge = cx.evaluateString(scope, "new Array(2000000000)", "t", 1, null);
+
+            assertThatThrownBy(() -> JsValues.fromJs(huge))
+                    .isInstanceOf(JsValues.JsConversionException.class)
+                    .hasMessageContaining("2000000000");
+            return null;
+        });
+    }
+
+    @Test
+    @DisplayName("Should reject a BigInt result instead of silently rounding it to a double")
+    void testFromJsRejectsBigInteger() {
+        inContext((cx, scope) -> {
+            Object bigInt = cx.evaluateString(scope, "(10n ** 30n)", "t", 1, null);
+
+            assertThatThrownBy(() -> JsValues.fromJs(bigInt))
+                    .isInstanceOf(JsValues.JsConversionException.class)
+                    .hasMessageContaining("BigInt");
+            return null;
+        });
+    }
+
+    @Test
+    @DisplayName("Should reject a JS Date result instead of returning an empty map")
+    void testFromJsRejectsDate() {
+        inContext((cx, scope) -> {
+            Object date = cx.evaluateString(scope, "new Date(0)", "t", 1, null);
+
+            assertThatThrownBy(() -> JsValues.fromJs(date))
+                    .isInstanceOf(JsValues.JsConversionException.class)
+                    .hasMessageContaining("Date");
+            return null;
+        });
+    }
+
+    @Test
+    @DisplayName("Should reject a JS RegExp result instead of returning an empty map")
+    void testFromJsRejectsRegExp() {
+        inContext((cx, scope) -> {
+            Object regExp = cx.evaluateString(scope, "/a/", "t", 1, null);
+
+            assertThatThrownBy(() -> JsValues.fromJs(regExp))
+                    .isInstanceOf(JsValues.JsConversionException.class)
+                    .hasMessageContaining("RegExp");
+            return null;
+        });
+    }
+
+    @Test
+    @DisplayName("Should populate a scope with no NativeJavaObject, which would unseal the sandbox")
+    void testPopulatedScopeContainsNoNativeJavaObject() {
+        inContext((cx, scope) -> {
+            Map<String, Object> user = new HashMap<>();
+            user.put("firstName", "ada");
+            user.put("roles", List.of("admin", "user"));
+            Map<String, Object> variables = Map.of("user", user, "count", 3, "active", true);
+
+            variables.forEach((name, value) -> scope.put(name, scope, JsValues.toJs(cx, scope, value)));
+
+            assertThat(containsNativeJavaObject(scope)).isFalse();
+            return null;
+        });
+    }
+
+    /**
+     * Walks a converted value graph looking for a {@code NativeJavaObject} - the wrapper Rhino
+     * produces for a raw Java object, which the sandbox's {@code ClassShutter} cannot see through.
+     * If {@link JsValues#toJs} ever started wrapping instead of converting, this would catch it.
+     */
+    private static boolean containsNativeJavaObject(Object value) {
+        Deque<Object> queue = new ArrayDeque<>();
+        queue.add(value);
+        Set<Object> seen = Collections.newSetFromMap(new IdentityHashMap<>());
+        while (!queue.isEmpty()) {
+            Object current = queue.poll();
+            if (current == null || !seen.add(current)) {
+                continue;
+            }
+            if (current.getClass().getName().contains("NativeJavaObject")) {
+                return true;
+            }
+            if (current instanceof NativeArray array) {
+                for (int i = 0; i < array.getLength(); i++) {
+                    queue.add(array.get(i, array));
+                }
+            } else if (current instanceof Scriptable scriptable) {
+                for (Object id : scriptable.getIds()) {
+                    queue.add(scriptable.get(String.valueOf(id), scriptable));
+                }
+            }
+        }
+        return false;
     }
 }

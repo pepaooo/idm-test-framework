@@ -1,6 +1,7 @@
 package com.idm.test.engine;
 
 import com.idm.test.core.engine.TestExecutor;
+import com.idm.test.engine.expr.ExpressionEvaluator;
 import com.idm.test.engine.model.Scenario;
 import com.idm.test.engine.model.StepSpec;
 import com.idm.test.engine.model.WaitSpec;
@@ -33,23 +34,29 @@ public final class ScenarioEngine {
 
     private static final Logger log = LoggerFactory.getLogger(ScenarioEngine.class);
 
+    /** Reserved: handled here rather than by a registered step type. */
+    private static final String SET_STEP = "set";
+
     private final Map<String, StepType> registry;
     private final FixtureFactory fixtures;
     private final TestExecutor executor;
     private final Duration defaultTimeout;
     private final Duration defaultPoll;
+    private final ExpressionEvaluator evaluator;
 
     public ScenarioEngine(
             Map<String, StepType> registry,
             FixtureFactory fixtures,
             TestExecutor executor,
             Duration defaultTimeout,
-            Duration defaultPoll) {
+            Duration defaultPoll,
+            ExpressionEvaluator evaluator) {
         this.registry = registry;
         this.fixtures = fixtures;
         this.executor = executor;
         this.defaultTimeout = defaultTimeout;
         this.defaultPoll = defaultPoll;
+        this.evaluator = evaluator;
     }
 
     public ScenarioResult run(Scenario scenario, String sourceName) {
@@ -108,6 +115,11 @@ public final class ScenarioEngine {
             StepSpec step, int index, Map<String, Object> scope, Deque<Runnable> undos) {
 
         long started = System.currentTimeMillis();
+
+        if (SET_STEP.equals(step.type())) {
+            return runSet(step, index, scope, started);
+        }
+
         StepType type = registry.get(step.type());
 
         if (type == null) {
@@ -119,7 +131,7 @@ public final class ScenarioEngine {
         }
 
         Map<String, Object> resolved = (Map<String, Object>) Interpolator.resolve(
-                step.params(), scope);
+                step.params(), scope, evaluator);
 
         WaitSpec wait = WaitSpec.parse(resolved.remove("wait"), defaultTimeout, defaultPoll);
         Object asName = resolved.remove("as");
@@ -185,6 +197,23 @@ public final class ScenarioEngine {
 
         return new StepResult(index, step.type(), resolved, passed, elapsed, message,
                 attempts.get(), waitedMillis);
+    }
+
+    /**
+     * Binds each entry into the scenario's variables, in declaration order so a later entry may
+     * read one bound earlier in the same step.
+     */
+    private StepResult runSet(StepSpec step, int index, Map<String, Object> scope, long started) {
+        Map<String, Object> bound = new LinkedHashMap<>();
+
+        for (Map.Entry<String, Object> entry : step.params().entrySet()) {
+            Object value = Interpolator.resolve(entry.getValue(), scope, evaluator);
+            scope.put(entry.getKey(), value);
+            bound.put(entry.getKey(), value);
+        }
+
+        return new StepResult(index, SET_STEP, bound, true,
+                System.currentTimeMillis() - started, "bound " + bound.keySet(), null, null);
     }
 
     /**

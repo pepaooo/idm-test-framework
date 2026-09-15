@@ -263,4 +263,47 @@ class ScenarioValidatorTest {
                 .hasMessageContaining("randmo-user")
                 .hasMessageContaining("random-user");
     }
+
+    @Test
+    @DisplayName("Should accept a reference to a name bound by an earlier as:")
+    void testAcceptsReferenceToEarlierCapture() {
+        Scenario valid = scenario(
+                new StepSpec("ldap.create", Map.of("dn", "cn=x,ou=users", "as", "created")),
+                new StepSpec("ldap.verify", Map.of("dn", "${created}", "expect", Map.of())));
+
+        assertThatCode(() -> validator.validate(valid, "ok.yaml")).doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("Should reject a reference to a name bound only by a later step")
+    void testRejectsForwardReference() {
+        Scenario invalid = scenario(
+                new StepSpec("ldap.verify", Map.of("dn", "${created}", "expect", Map.of())),
+                new StepSpec("ldap.create", Map.of("dn", "cn=x,ou=users", "as", "created")));
+
+        assertThatThrownBy(() -> validator.validate(invalid, "bad.yaml"))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("created")
+                .hasMessageContaining("bad.yaml");
+    }
+
+    @Test
+    @DisplayName("Should accept a set: step and the names it binds")
+    void testAcceptsSetStep() {
+        Scenario valid = scenario(
+                new StepSpec("set", Map.of("upper", "js:{ user.userId.toUpperCase() }")),
+                new StepSpec("ldap.create", Map.of("dn", "cn=${upper},ou=users")));
+
+        assertThatCode(() -> validator.validate(valid, "ok.yaml")).doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("Should reject a set: step with no entries")
+    void testRejectsEmptySet() {
+        Scenario invalid = scenario(new StepSpec("set", Map.of()));
+
+        assertThatThrownBy(() -> validator.validate(invalid, "bad.yaml"))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("at least one");
+    }
 }

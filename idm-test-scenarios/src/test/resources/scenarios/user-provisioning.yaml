@@ -8,20 +8,26 @@ fixtures:
       department: Engineering
 
 steps:
+  - set:
+      displayName: "js:{ user.firstName.charAt(0).toUpperCase() + user.firstName.slice(1) + ' ' + user.lastName.toUpperCase() }"
+
   - ldap.create:
       dn: "cn=${user.userId},ou=users"
+      as: created
       attributes:
         cn: ${user.userId}
         sn: ${user.lastName}
         givenName: ${user.firstName}
         mail: ${user.email}
+        description: ${displayName}
 
   - ldap.verify:
-      dn: "cn=${user.userId},ou=users"
+      dn: "${created}"
       expect:
         givenName: ${user.firstName}
         sn: ${user.lastName}
         mail: ${user.email}
+        description: ${displayName}
       wait:
         timeout: 30s
         poll: 2s

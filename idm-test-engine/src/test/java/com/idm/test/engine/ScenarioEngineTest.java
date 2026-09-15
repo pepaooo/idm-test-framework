@@ -1,6 +1,7 @@
 package com.idm.test.engine;
 
 import com.idm.test.core.engine.TestExecutor;
+import com.idm.test.engine.expr.ExpressionEvaluator;
 import com.idm.test.engine.model.FixtureSpec;
 import com.idm.test.engine.model.Scenario;
 import com.idm.test.engine.model.StepSpec;
@@ -69,7 +70,8 @@ class ScenarioEngineTest {
                 new FixtureFactory(new TestDataGenerator()),
                 new TestExecutor(),
                 Duration.ofSeconds(2),
-                Duration.ofMillis(50));
+                Duration.ofMillis(50),
+                new ExpressionEvaluator());
     }
 
     private static Scenario scenario(StepSpec... steps) {
@@ -380,5 +382,74 @@ class ScenarioEngineTest {
                 new StepSpec("reader", Map.of("dn", "${created.id}"))), "t.yaml");
 
         assertThat(seen).containsExactly("42");
+    }
+
+    @Test
+    @DisplayName("Should bind set: entries and make them readable by later steps")
+    void testSetBindsVariables() {
+        List<String> seen = new ArrayList<>();
+        StepType reader = new StepType() {
+            public String name() { return "reader"; }
+            public java.util.Set<String> requiredParams() { return java.util.Set.of("dn"); }
+            public java.util.Set<String> acceptedParams() { return java.util.Set.of("dn"); }
+            public StepOutcome execute(Map<String, Object> params) {
+                seen.add(String.valueOf(params.get("dn")));
+                return StepOutcome.success("ok");
+            }
+        };
+        ScenarioEngine engine = engineWith(reader);
+
+        ScenarioResult result = engine.run(scenario(
+                new StepSpec("set", Map.of("greeting", "js:{ 'hello ' + user.firstName }")),
+                new StepSpec("reader", Map.of("dn", "${greeting}"))), "t.yaml");
+
+        assertThat(result.success()).isTrue();
+        assertThat(seen).hasSize(1);
+        assertThat(seen.get(0)).startsWith("hello ");
+    }
+
+    @Test
+    @DisplayName("Should let a set: entry read one bound earlier in the same step")
+    void testSetEntriesBindInOrder() {
+        List<String> seen = new ArrayList<>();
+        StepType reader = new StepType() {
+            public String name() { return "reader"; }
+            public java.util.Set<String> requiredParams() { return java.util.Set.of("dn"); }
+            public java.util.Set<String> acceptedParams() { return java.util.Set.of("dn"); }
+            public StepOutcome execute(Map<String, Object> params) {
+                seen.add(String.valueOf(params.get("dn")));
+                return StepOutcome.success("ok");
+            }
+        };
+        Map<String, Object> ordered = new java.util.LinkedHashMap<>();
+        ordered.put("first", "ada");
+        ordered.put("second", "js:{ first.toUpperCase() }");
+
+        engineWith(reader).run(scenario(
+                new StepSpec("set", ordered),
+                new StepSpec("reader", Map.of("dn", "${second}"))), "t.yaml");
+
+        assertThat(seen).containsExactly("ADA");
+    }
+
+    @Test
+    @DisplayName("Should record a set: step in the results like any other step")
+    void testSetAppearsInResults() {
+        ScenarioResult result = engineWith().run(scenario(
+                new StepSpec("set", Map.of("a", "1"))), "t.yaml");
+
+        assertThat(result.success()).isTrue();
+        assertThat(result.steps()).hasSize(1);
+        assertThat(result.steps().get(0).type()).isEqualTo("set");
+    }
+
+    @Test
+    @DisplayName("Should fail the scenario when a set: expression cannot be evaluated")
+    void testSetExpressionFailureIsReported() {
+        ScenarioResult result = engineWith().run(scenario(
+                new StepSpec("set", Map.of("bad", "js:{ absent.field }"))), "t.yaml");
+
+        assertThat(result.success()).isFalse();
+        assertThat(result.failureSummary()).contains("absent");
     }
 }

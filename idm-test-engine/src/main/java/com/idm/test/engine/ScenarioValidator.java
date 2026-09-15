@@ -28,6 +28,9 @@ public final class ScenarioValidator {
      */
     private static final Duration PLACEHOLDER_DURATION = Duration.ofSeconds(1);
 
+    /** Reserved: handled by the engine itself rather than by a registered step type. */
+    private static final String SET_STEP = "set";
+
     private final Map<String, StepType> registry;
     private final Set<String> generatorNames;
 
@@ -40,6 +43,10 @@ public final class ScenarioValidator {
      *                       .SUPPORTED_GENERATORS})
      */
     public ScenarioValidator(Map<String, StepType> registry, Set<String> generatorNames) {
+        if (registry.containsKey(SET_STEP)) {
+            throw new IllegalArgumentException(
+                    "'" + SET_STEP + "' is a reserved step type and cannot be registered");
+        }
         this.registry = registry;
         this.generatorNames = generatorNames;
     }
@@ -61,10 +68,23 @@ public final class ScenarioValidator {
             }
         }
 
-        Set<String> known = scenario.fixtures().keySet();
+        Set<String> known = new LinkedHashSet<>(scenario.fixtures().keySet());
 
         for (int i = 0; i < scenario.steps().size(); i++) {
             StepSpec step = scenario.steps().get(i);
+
+            if (SET_STEP.equals(step.type())) {
+                if (step.params().isEmpty()) {
+                    throw new ValidationException(sourceName, i, step.type(),
+                            "a set: step needs at least one name to bind");
+                }
+                for (Map.Entry<String, Object> entry : step.params().entrySet()) {
+                    requireKnownReferences(entry.getValue(), known, sourceName, i, step.type());
+                    known.add(entry.getKey());   // later entries may read earlier ones
+                }
+                continue;
+            }
+
             StepType type = registry.get(step.type());
 
             if (type == null) {
@@ -130,12 +150,28 @@ public final class ScenarioValidator {
                 }
             }
 
-            for (String reference : Interpolator.references(step.params())) {
-                if (!known.contains(reference)) {
-                    throw new ValidationException(sourceName, i, step.type(),
-                            "references '${" + reference + "...}' but no fixture named '"
-                                    + reference + "' is declared");
-                }
+            requireKnownReferences(step.params(), known, sourceName, i, step.type());
+
+            Object asName = step.params().get("as");
+            if (asName != null) {
+                known.add(String.valueOf(asName));
+            }
+        }
+    }
+
+    /**
+     * Every {@code ${...}} reference must name something that exists at this point in the
+     * scenario. Checking order matters: a reference to a name bound by a *later* step is a
+     * mistake worth catching at load, not three minutes into a provisioning wait.
+     */
+    private static void requireKnownReferences(
+            Object value, Set<String> known, String sourceName, int index, String stepType) {
+
+        for (String reference : Interpolator.references(value)) {
+            if (!known.contains(reference)) {
+                throw new ValidationException(sourceName, index, stepType,
+                        "references '${" + reference + "...}' but nothing named '" + reference
+                                + "' has been declared or bound at this point");
             }
         }
     }

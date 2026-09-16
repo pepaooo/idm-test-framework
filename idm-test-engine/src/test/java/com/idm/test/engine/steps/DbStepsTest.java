@@ -274,6 +274,56 @@ class DbStepsTest {
     }
 
     @Test
+    @DisplayName("db.verify should reject an empty row map that would verify nothing")
+    void testVerifyRejectsEmptyRow() {
+        // expect: { row: {} } passes the "expect is non-empty" guard (it has a row key) and
+        // the "row is a Map" guard (it is, just an empty one) — the column loop then iterates
+        // zero entries and db.verify would pass against any single row whatsoever.
+        jdbc.update("INSERT INTO sap_users VALUES (?,?,?)", "jdoe", "PENDING", 0);
+        DbVerifyStep verify = new DbVerifyStep(connector);
+
+        StepOutcome outcome = verify.execute(Map.of(
+                "database", DB,
+                "query", "SELECT * FROM sap_users",
+                "expect", Map.of("row", Map.of())), false);
+
+        assertThat(outcome.success()).isFalse();
+        assertThat(outcome.message()).contains("row");
+    }
+
+    @Test
+    @DisplayName("db.verify should still allow rowCount: 0 as a legitimate assertion")
+    void testVerifyRowCountZeroStillWorks() {
+        // Guards against a fix for the empty-row-map hole overreaching and rejecting a
+        // legitimate zero-rows assertion, which is a different (and valid) thing entirely.
+        DbVerifyStep verify = new DbVerifyStep(connector);
+
+        StepOutcome outcome = verify.execute(Map.of(
+                "database", DB,
+                "query", "SELECT * FROM sap_users WHERE username = 'nobody'",
+                "expect", Map.of("rowCount", 0)), false);
+
+        assertThat(outcome.success()).isTrue();
+    }
+
+    @Test
+    @DisplayName("db.verify should fail rather than throw when expect itself is not a map")
+    void testVerifyRejectsNonMapExpect() {
+        // params.get("expect") is an unchecked cast inside execute(); a scenario writing
+        // `expect: something` (a scalar) must not turn into a ClassCastException — a
+        // StepType.execute implementation must never throw.
+        DbVerifyStep verify = new DbVerifyStep(connector);
+
+        StepOutcome outcome = verify.execute(Map.of(
+                "database", DB,
+                "query", "SELECT * FROM sap_users",
+                "expect", "something"), false);
+
+        assertThat(outcome.success()).isFalse();
+        assertThat(outcome.message()).contains("expect");
+    }
+
+    @Test
     @DisplayName("db.verify should bind the rows when a capture was requested")
     void testVerifyCaptureIsTheRows() {
         jdbc.update("INSERT INTO sap_users VALUES (?,?,?)", "jdoe", "ACTIVE", 3);

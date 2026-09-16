@@ -283,6 +283,25 @@ class RestStepsTest {
     }
 
     @Test
+    @DisplayName("rest.verify should reject an empty body map that would verify nothing")
+    void testVerifyRejectsEmptyBody() {
+        // expect: { body: {} } passes the "expect is non-empty" guard (it has a body key) and
+        // the "body is a Map" guard (it is, just an empty one) — the subset comparison then
+        // iterates zero fields and rest.verify would pass against any response whatsoever.
+        stubFor(get(urlEqualTo("/users/jdoe")).willReturn(aResponse()
+                .withStatus(200)
+                .withHeader("Content-Type", "application/json")
+                .withBody("{\"department\":\"Sales\"}")));
+
+        StepOutcome outcome = new RestVerifyStep(CONNECTOR, PROPERTIES).execute(Map.of(
+                "target", "idm", "path", "/users/jdoe",
+                "expect", Map.of("body", Map.of())), false);
+
+        assertThat(outcome.success()).isFalse();
+        assertThat(outcome.message()).contains("body");
+    }
+
+    @Test
     @DisplayName("rest.verify should fail rather than throw when expect itself is not a map")
     void testVerifyRejectsNonMapExpect() {
         // params.get("expect") is an unchecked cast inside execute(); a scenario writing

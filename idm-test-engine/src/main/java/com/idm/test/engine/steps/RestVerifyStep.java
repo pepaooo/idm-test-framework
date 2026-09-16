@@ -193,6 +193,12 @@ public final class RestVerifyStep implements StepType {
                     + " that is not a map of field names to expected values");
         }
 
+        if (expect.get(BODY) instanceof Map<?, ?> bodyMap && bodyMap.isEmpty()) {
+            return StepOutcome.failure("rest.verify on '" + target
+                    + "' has an empty " + BODY + ": map. Assert at least one field — an empty "
+                    + BODY + " would verify nothing.");
+        }
+
         return null;
     }
 }

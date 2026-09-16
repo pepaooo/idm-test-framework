@@ -143,4 +143,168 @@ class DbStepsTest {
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM sap_users", Integer.class))
                 .isZero();
     }
+
+    // ------------------------------------------------------------------
+    // db.verify
+    // ------------------------------------------------------------------
+
+    @Test
+    @DisplayName("db.verify should pass when rowCount and row both match")
+    void testVerifyMatches() {
+        jdbc.update("INSERT INTO sap_users VALUES (?,?,?)", "jdoe", "ACTIVE", 3);
+        DbVerifyStep verify = new DbVerifyStep(connector);
+
+        StepOutcome outcome = verify.execute(Map.of(
+                "database", DB,
+                "query", "SELECT * FROM sap_users WHERE username = ?",
+                "params", List.of("jdoe"),
+                "expect", Map.of("rowCount", 1, "row", Map.of("status", "ACTIVE"))), false);
+
+        assertThat(outcome.success()).isTrue();
+    }
+
+    @Test
+    @DisplayName("db.verify should match a column regardless of the database's casing")
+    void testVerifyIsCaseInsensitiveOnColumnNames() {
+        jdbc.update("INSERT INTO sap_users VALUES (?,?,?)", "jdoe", "ACTIVE", 3);
+        DbVerifyStep verify = new DbVerifyStep(connector);
+
+        // H2 stores unquoted identifiers uppercase, so the row's key is STATUS. A scenario
+        // author writes status. Spring's LinkedCaseInsensitiveMap bridges the two — this
+        // test exists so a refactor that copies rows into a plain HashMap gets caught.
+        StepOutcome outcome = verify.execute(Map.of(
+                "database", DB,
+                "query", "SELECT * FROM sap_users",
+                "expect", Map.of("row", Map.of("status", "ACTIVE"))), false);
+
+        assertThat(outcome.success()).isTrue();
+    }
+
+    @Test
+    @DisplayName("db.verify should match a numeric column across JDBC and YAML types")
+    void testVerifyMatchesNumericAcrossTypes() {
+        jdbc.update("INSERT INTO sap_users VALUES (?,?,?)", "jdoe", "ACTIVE", 3);
+        DbVerifyStep verify = new DbVerifyStep(connector);
+
+        StepOutcome outcome = verify.execute(Map.of(
+                "database", DB,
+                "query", "SELECT * FROM sap_users",
+                "expect", Map.of("row", Map.of("attempts", 3))), false);
+
+        assertThat(outcome.success()).isTrue();
+    }
+
+    @Test
+    @DisplayName("db.verify should fail on a value mismatch and name the column")
+    void testVerifyValueMismatchFails() {
+        jdbc.update("INSERT INTO sap_users VALUES (?,?,?)", "jdoe", "PENDING", 0);
+        DbVerifyStep verify = new DbVerifyStep(connector);
+
+        StepOutcome outcome = verify.execute(Map.of(
+                "database", DB,
+                "query", "SELECT * FROM sap_users",
+                "expect", Map.of("row", Map.of("status", "ACTIVE"))), false);
+
+        assertThat(outcome.success()).isFalse();
+        assertThat(outcome.message()).contains("status").contains("ACTIVE").contains("PENDING");
+    }
+
+    @Test
+    @DisplayName("db.verify should fail when rowCount does not match")
+    void testVerifyRowCountMismatchFails() {
+        jdbc.update("INSERT INTO sap_users VALUES (?,?,?)", "jdoe", "ACTIVE", 1);
+        jdbc.update("INSERT INTO sap_users VALUES (?,?,?)", "asmith", "ACTIVE", 1);
+        DbVerifyStep verify = new DbVerifyStep(connector);
+
+        StepOutcome outcome = verify.execute(Map.of(
+                "database", DB,
+                "query", "SELECT * FROM sap_users",
+                "expect", Map.of("rowCount", 1)), false);
+
+        assertThat(outcome.success()).isFalse();
+        assertThat(outcome.message()).contains("2");
+    }
+
+    @Test
+    @DisplayName("db.verify should reject a row matcher against more than one row")
+    void testVerifyRowMatcherRequiresExactlyOneRow() {
+        jdbc.update("INSERT INTO sap_users VALUES (?,?,?)", "jdoe", "ACTIVE", 1);
+        jdbc.update("INSERT INTO sap_users VALUES (?,?,?)", "asmith", "ACTIVE", 1);
+        DbVerifyStep verify = new DbVerifyStep(connector);
+
+        // Matching "the first row" would depend on an unordered result set: intermittently
+        // green, which is worse than red.
+        StepOutcome outcome = verify.execute(Map.of(
+                "database", DB,
+                "query", "SELECT * FROM sap_users",
+                "expect", Map.of("row", Map.of("status", "ACTIVE"))), false);
+
+        assertThat(outcome.success()).isFalse();
+        assertThat(outcome.message()).contains("exactly one row");
+    }
+
+    @Test
+    @DisplayName("db.verify should reject an expect block that asserts nothing")
+    void testVerifyRejectsEmptyExpect() {
+        DbVerifyStep verify = new DbVerifyStep(connector);
+
+        // The ITF-6 vacuous-assertion trap: an expect with nothing in it would pass having
+        // compared nothing at all.
+        StepOutcome outcome = verify.execute(Map.of(
+                "database", DB,
+                "query", "SELECT * FROM sap_users",
+                "expect", Map.of()), false);
+
+        assertThat(outcome.success()).isFalse();
+        assertThat(outcome.message()).contains("rowCount").contains("row");
+    }
+
+    @Test
+    @DisplayName("db.verify should reject an unknown key inside expect")
+    void testVerifyRejectsUnknownExpectKey() {
+        DbVerifyStep verify = new DbVerifyStep(connector);
+
+        StepOutcome outcome = verify.execute(Map.of(
+                "database", DB,
+                "query", "SELECT * FROM sap_users",
+                "expect", Map.of("rowCont", 1)), false);
+
+        assertThat(outcome.success()).isFalse();
+        assertThat(outcome.message()).contains("rowCont");
+    }
+
+    @Test
+    @DisplayName("db.verify should bind the rows when a capture was requested")
+    void testVerifyCaptureIsTheRows() {
+        jdbc.update("INSERT INTO sap_users VALUES (?,?,?)", "jdoe", "ACTIVE", 3);
+        DbVerifyStep verify = new DbVerifyStep(connector);
+
+        StepOutcome outcome = verify.execute(Map.of(
+                "database", DB,
+                "query", "SELECT * FROM sap_users",
+                "expect", Map.of("rowCount", 1)), true);
+
+        assertThat(outcome.success()).isTrue();
+        assertThat(outcome.value()).isInstanceOf(List.class);
+        assertThat((List<?>) outcome.value()).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("db.verify should be retryable so the engine can wait on provisioning")
+    void testVerifyIsRetryable() {
+        assertThat(new DbVerifyStep(connector).retryable()).isTrue();
+    }
+
+    @Test
+    @DisplayName("db.verify should report failure rather than throw on bad SQL")
+    void testVerifyBadSqlFails() {
+        DbVerifyStep verify = new DbVerifyStep(connector);
+
+        StepOutcome outcome = verify.execute(Map.of(
+                "database", DB,
+                "query", "SELECT * FROM no_such_table",
+                "expect", Map.of("rowCount", 0)), false);
+
+        assertThat(outcome.success()).isFalse();
+    }
 }

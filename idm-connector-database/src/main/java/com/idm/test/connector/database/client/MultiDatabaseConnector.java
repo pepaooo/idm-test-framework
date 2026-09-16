@@ -356,19 +356,7 @@ public class MultiDatabaseConnector {
      * @return true if values are equal
      */
     private boolean valuesEqual(Object expected, Object actual) {
-        if (expected == null && actual == null) {
-            return true;
-        }
-        if (expected == null || actual == null) {
-            return false;
-        }
-
-        // Handle numeric types that might have different precision
-        if (expected instanceof Number && actual instanceof Number) {
-            return ((Number) expected).doubleValue() == ((Number) actual).doubleValue();
-        }
-
-        return expected.equals(actual) || expected.toString().equals(actual.toString());
+        return ValueComparison.equal(expected, actual);
     }
 
     /**

@@ -40,7 +40,7 @@ class YamlScenarioValidationTest extends BaseIntegrationTest {
     @Test
     @DisplayName("Produces a test for every file; the invalid one fails by name, the valid one still passes")
     void testFactoryHandlesMixOfValidAndInvalidFiles(@TempDir Path tempDir) throws Exception {
-        Map<String, StepType> registry = YamlScenarioTest.registry(edirectoryConnector);
+        Map<String, StepType> registry = YamlScenarioTest.registry(edirectoryConnector, databaseConnector);
         ScenarioValidator validator = new ScenarioValidator(registry, FixtureFactory.SUPPORTED_GENERATORS);
         ScenarioEngine engine = new ScenarioEngine(
                 registry,

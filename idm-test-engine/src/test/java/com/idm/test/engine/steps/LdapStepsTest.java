@@ -265,4 +265,151 @@ class LdapStepsTest {
         assertThat(outcome.success()).isFalse();
         assertThat(outcome.value()).isNull();
     }
+
+    // ------------------------------------------------------------------
+    // ldap.update (ITF-8 Task 2)
+    // ------------------------------------------------------------------
+
+    @Test
+    @DisplayName("ldap.update should change attributes and restore prior values on undo")
+    void testUpdateRestoresPriorValues() {
+        LdapCreateStep create = new LdapCreateStep(connector);
+        LdapUpdateStep update = new LdapUpdateStep(connector);
+        String dn = "cn=ada.update,ou=users";
+
+        create.execute(Map.of("dn", dn, "attributes",
+                Map.of("cn", "ada.update", "sn", "Lovelace", "title", "Analyst")), false);
+
+        StepOutcome outcome = update.execute(
+                Map.of("dn", dn, "attributes", Map.of("title", "Engineer")), false);
+
+        assertThat(outcome.success()).isTrue();
+        assertThat(connector.read(dn).getData().orElseThrow().getTitle()).isEqualTo("Engineer");
+
+        outcome.undo().run();
+        assertThat(connector.read(dn).getData().orElseThrow().getTitle()).isEqualTo("Analyst");
+    }
+
+    @Test
+    @DisplayName("ldap.update undo should remove an attribute that did not exist before")
+    void testUpdateUndoRemovesNewlyAddedAttribute() {
+        LdapCreateStep create = new LdapCreateStep(connector);
+        LdapUpdateStep update = new LdapUpdateStep(connector);
+        String dn = "cn=ada.added,ou=users";
+
+        create.execute(Map.of("dn", dn, "attributes",
+                Map.of("cn", "ada.added", "sn", "Lovelace")), false);
+
+        StepOutcome outcome = update.execute(
+                Map.of("dn", dn, "attributes", Map.of("description", "temporary")), false);
+
+        assertThat(outcome.success()).isTrue();
+        assertThat(connector.read(dn).getData().orElseThrow().getDescription())
+                .isEqualTo("temporary");
+
+        // 'description' had no prior value, so restoring it means removing it. Without this
+        // the undo would silently leave the attribute behind and still report success.
+        outcome.undo().run();
+        assertThat(connector.read(dn).getData().orElseThrow().getDescription()).isNull();
+    }
+
+    @Test
+    @DisplayName("ldap.update should report failure rather than throw for a missing entry")
+    void testUpdateMissingEntryFails() {
+        LdapUpdateStep update = new LdapUpdateStep(connector);
+
+        StepOutcome outcome = update.execute(
+                Map.of("dn", "cn=nobody.here,ou=users", "attributes", Map.of("title", "X")), false);
+
+        assertThat(outcome.success()).isFalse();
+        assertThat(outcome.message()).contains("cn=nobody.here,ou=users");
+        assertThat(outcome.undo()).isNull();
+    }
+
+    @Test
+    @DisplayName("ldap.update should bind the dn when a capture was requested")
+    void testUpdateCaptureIsTheDn() {
+        LdapCreateStep create = new LdapCreateStep(connector);
+        LdapUpdateStep update = new LdapUpdateStep(connector);
+        String dn = "cn=ada.capture,ou=users";
+
+        create.execute(Map.of("dn", dn, "attributes",
+                Map.of("cn", "ada.capture", "sn", "Lovelace")), false);
+
+        StepOutcome outcome = update.execute(
+                Map.of("dn", dn, "attributes", Map.of("title", "Engineer")), true);
+
+        assertThat(outcome.success()).isTrue();
+        assertThat(outcome.value()).isEqualTo(dn);
+    }
+
+    // ------------------------------------------------------------------
+    // ldap.delete (ITF-8 Task 3)
+    // ------------------------------------------------------------------
+
+    @Test
+    @DisplayName("ldap.delete should remove the entry and register no undo")
+    void testDeleteRegistersNoUndo() {
+        LdapCreateStep create = new LdapCreateStep(connector);
+        LdapDeleteStep delete = new LdapDeleteStep(connector);
+        String dn = "cn=ada.delete,ou=users";
+
+        create.execute(Map.of("dn", dn, "attributes",
+                Map.of("cn", "ada.delete", "sn", "Lovelace")), false);
+
+        StepOutcome outcome = delete.execute(Map.of("dn", dn), false);
+
+        assertThat(outcome.success()).isTrue();
+        assertThat(connector.read(dn).isSuccess()).isFalse();
+
+        // Deliberate: a recreated entry silently loses userPassword and operational
+        // attributes, so no undo is better than a convincing fake.
+        assertThat(outcome.undo()).isNull();
+    }
+
+    @Test
+    @DisplayName("ldap.delete should fail for an entry that was never there")
+    void testDeleteMissingEntryFails() {
+        // LdapTemplate.unbind succeeds silently on a DN that does not exist, so without an
+        // explicit existence check this step would report "deleted" having deleted nothing.
+        LdapDeleteStep delete = new LdapDeleteStep(connector);
+
+        StepOutcome outcome = delete.execute(Map.of("dn", "cn=never.existed,ou=users"), false);
+
+        assertThat(outcome.success()).isFalse();
+        assertThat(outcome.message()).contains("cn=never.existed,ou=users");
+    }
+
+    @Test
+    @DisplayName("ldap.delete should bind the dn when a capture was requested")
+    void testDeleteCaptureIsTheDn() {
+        LdapCreateStep create = new LdapCreateStep(connector);
+        LdapDeleteStep delete = new LdapDeleteStep(connector);
+        String dn = "cn=ada.deletecapture,ou=users";
+
+        create.execute(Map.of("dn", dn, "attributes",
+                Map.of("cn", "ada.deletecapture", "sn", "Lovelace")), false);
+
+        StepOutcome outcome = delete.execute(Map.of("dn", dn), true);
+
+        assertThat(outcome.success()).isTrue();
+        assertThat(outcome.value()).isEqualTo(dn);
+    }
+
+    @Test
+    @DisplayName("ldap.verify should reject an expect block that asserts nothing")
+    void testVerifyRejectsEmptyExpect() {
+        LdapCreateStep create = new LdapCreateStep(connector);
+        String dn = "cn=ada.vacuous,ou=users";
+        create.execute(Map.of("dn", dn, "attributes",
+                Map.of("cn", "ada.vacuous", "sn", "Lovelace")), false);
+
+        // 'expect' being required catches a misspelled expct:, but a present-but-empty
+        // expect: {} passed that check and reported "verified" having compared nothing.
+        StepOutcome outcome = new LdapVerifyStep(connector).execute(
+                Map.of("dn", dn, "expect", Map.of()), false);
+
+        assertThat(outcome.success()).isFalse();
+        assertThat(outcome.message()).contains("verify nothing");
+    }
 }

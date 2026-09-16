@@ -353,6 +353,93 @@ class EdirectoryConnectorTest {
         assertThat(result.getData().get().get(0).getCn()).startsWith("john");
     }
 
+    // ------------------------------------------------------------------
+    // Attribute-complete read (ITF-8 Task 1)
+    //
+    // UserContextMapper used to map ten hardcoded names and never populate
+    // custom attributes, so verifyAttributes compared every other attribute
+    // against null and reported a mismatch that was not real.
+    // ------------------------------------------------------------------
+
+    @Test
+    @DisplayName("read should return attributes outside the ten mapped names")
+    void testReadReturnsCustomAttributes() {
+        String dn = "cn=custom.attr," + TEST_BASE_DN;
+        LdapUser user = new LdapUser();
+        user.setDn(dn);
+        user.setCn("custom.attr");
+        user.setSn("Custom");
+        user.addCustomAttribute("employeeNumber", "E12345");
+
+        assertThat(connector.create(user).isSuccess()).isTrue();
+
+        OperationResult<LdapUser> read = connector.read(dn);
+
+        assertThat(read.isSuccess()).isTrue();
+        assertThat(read.getData().orElseThrow().getCustomAttributes())
+                .containsEntry("employeeNumber", "E12345");
+
+        connector.delete(dn);
+    }
+
+    @Test
+    @DisplayName("verifyAttributes should pass for an attribute outside the ten mapped names")
+    void testVerifyAttributesSeesCustomAttributes() {
+        String dn = "cn=custom.verify," + TEST_BASE_DN;
+        LdapUser user = new LdapUser();
+        user.setDn(dn);
+        user.setCn("custom.verify");
+        user.setSn("Custom");
+        user.addCustomAttribute("employeeNumber", "E67890");
+
+        assertThat(connector.create(user).isSuccess()).isTrue();
+
+        // Before the fix this failed with "expected=E67890, actual=null" even though
+        // the directory genuinely held the value.
+        assertThat(connector.verifyAttributes(dn, Map.of("employeeNumber", "E67890")).isSuccess())
+                .isTrue();
+
+        connector.delete(dn);
+    }
+
+    @Test
+    @DisplayName("read should return a multi-valued attribute as a list")
+    void testReadReturnsMultiValuedAttributeAsList() {
+        String dn = "cn=multi.valued," + TEST_BASE_DN;
+        LdapUser user = new LdapUser();
+        user.setDn(dn);
+        user.setCn("multi.valued");
+        user.setSn("Multi");
+
+        assertThat(connector.create(user).isSuccess()).isTrue();
+
+        Object objectClass = connector.read(dn).getData().orElseThrow()
+                .getCustomAttributes().get("objectClass");
+
+        assertThat(objectClass).isInstanceOf(List.class);
+        assertThat((List<?>) objectClass).map(String::valueOf).contains("inetOrgPerson");
+
+        connector.delete(dn);
+    }
+
+    @Test
+    @DisplayName("read should never expose userPassword, which would leak into reports")
+    void testReadExcludesUserPassword() {
+        String dn = "cn=secret.holder," + TEST_BASE_DN;
+        LdapUser user = new LdapUser();
+        user.setDn(dn);
+        user.setCn("secret.holder");
+        user.setSn("Secret");
+        user.setUserPassword("s3cr3t");
+
+        assertThat(connector.create(user).isSuccess()).isTrue();
+
+        assertThat(connector.read(dn).getData().orElseThrow().getCustomAttributes())
+                .doesNotContainKey("userPassword");
+
+        connector.delete(dn);
+    }
+
     /**
      * Helper method to create a test user with standard attributes.
      */

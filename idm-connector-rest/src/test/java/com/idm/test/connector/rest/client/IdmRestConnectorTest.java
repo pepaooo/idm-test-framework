@@ -5,6 +5,7 @@ import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.client.WireMock;
 import com.idm.test.connector.rest.config.RestClientConfiguration;
 import com.idm.test.connector.rest.model.IdmUser;
+import com.idm.test.connector.rest.model.RestResponse;
 import com.idm.test.core.model.ErrorType;
 import com.idm.test.core.model.OperationResult;
 import org.junit.jupiter.api.*;
@@ -12,6 +13,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+
+import java.util.Map;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -282,6 +285,131 @@ class IdmRestConnectorTest {
         assertThat(result.getErrorType()).isPresent();
         // Should be NETWORK_ERROR or UNKNOWN_ERROR
         assertThat(result.getErrorType().get()).isIn(ErrorType.NETWORK_ERROR, ErrorType.UNKNOWN_ERROR);
+    }
+
+    @Test
+    @DisplayName("exchange should return status, headers and a parsed body")
+    void testExchangeReturnsStatusHeadersAndBody() {
+        stubFor(get(urlEqualTo("/api/users/1"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
+                        .withHeader("X-Request-Id", "abc123")
+                        .withBody("{\"id\":1,\"userId\":\"jdoe\"}")));
+
+        OperationResult<RestResponse> result =
+                connector.exchange("GET", baseUrl + "/api/users/1", null, null);
+
+        assertThat(result.isSuccess()).isTrue();
+        RestResponse response = result.getData().orElseThrow();
+        assertThat(response.status()).isEqualTo(200);
+        assertThat(response.headers()).containsKey("X-Request-Id");
+        assertThat(response.headers().get("X-Request-Id")).containsExactly("abc123");
+        assertThat(response.body()).isInstanceOf(Map.class);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> bodyMap = (Map<String, Object>) response.body();
+        assertThat(bodyMap).containsEntry("userId", "jdoe");
+    }
+
+    @Test
+    @DisplayName("exchange should report a 404 as a successful call carrying status 404")
+    void testExchangeTreatsHttpErrorAsAnOutcome() {
+        stubFor(get(urlEqualTo("/api/users/missing"))
+                .willReturn(aResponse().withStatus(404)));
+
+        OperationResult<RestResponse> result =
+                connector.exchange("GET", baseUrl + "/api/users/missing", null, null);
+
+        // The request itself succeeded; 404 is what the server said. Reporting this as an
+        // operation failure is what makes "expect status 404" impossible to write.
+        assertThat(result.isSuccess()).isTrue();
+        assertThat(result.getData().orElseThrow().status()).isEqualTo(404);
+    }
+
+    @Test
+    @DisplayName("exchange should report a 500 as a successful call carrying status 500")
+    void testExchangeTreatsServerErrorAsAnOutcome() {
+        stubFor(get(urlEqualTo("/api/boom"))
+                .willReturn(aResponse().withStatus(500)));
+
+        OperationResult<RestResponse> result =
+                connector.exchange("GET", baseUrl + "/api/boom", null, null);
+
+        assertThat(result.isSuccess()).isTrue();
+        assertThat(result.getData().orElseThrow().status()).isEqualTo(500);
+    }
+
+    @Test
+    @DisplayName("exchange should send a JSON body and custom headers")
+    void testExchangeSendsBodyAndHeaders() {
+        stubFor(post(urlEqualTo("/api/users"))
+                .willReturn(aResponse()
+                        .withStatus(201)
+                        .withHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
+                        .withBody("{\"id\":7}")));
+
+        OperationResult<RestResponse> result = connector.exchange(
+                "POST", baseUrl + "/api/users",
+                Map.of("userId", "jdoe", "department", "Engineering"),
+                Map.of("X-Correlation-Id", "corr-1"));
+
+        assertThat(result.isSuccess()).isTrue();
+        assertThat(result.getData().orElseThrow().status()).isEqualTo(201);
+
+        verify(postRequestedFor(urlEqualTo("/api/users"))
+                .withHeader("X-Correlation-Id", equalTo("corr-1"))
+                .withRequestBody(matchingJsonPath("$.userId", equalTo("jdoe"))));
+    }
+
+    @Test
+    @DisplayName("exchange should return a null body for an empty response")
+    void testExchangeEmptyBodyIsNull() {
+        stubFor(delete(urlEqualTo("/api/users/1"))
+                .willReturn(aResponse().withStatus(204)));
+
+        OperationResult<RestResponse> result =
+                connector.exchange("DELETE", baseUrl + "/api/users/1", null, null);
+
+        assertThat(result.isSuccess()).isTrue();
+        assertThat(result.getData().orElseThrow().status()).isEqualTo(204);
+        assertThat(result.getData().orElseThrow().body()).isNull();
+    }
+
+    @Test
+    @DisplayName("exchange should return a non-JSON body as plain text")
+    void testExchangeNonJsonBodyIsText() {
+        stubFor(get(urlEqualTo("/api/health"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withHeader(HttpHeaders.CONTENT_TYPE, MediaType.TEXT_PLAIN_VALUE)
+                        .withBody("OK")));
+
+        OperationResult<RestResponse> result =
+                connector.exchange("GET", baseUrl + "/api/health", null, null);
+
+        assertThat(result.getData().orElseThrow().body()).isEqualTo("OK");
+    }
+
+    @Test
+    @DisplayName("exchange should fail for a transport error, not return a status")
+    void testExchangeTransportFailure() {
+        // Nothing is listening on this port, so there is no HTTP status to report — this is
+        // the one case that is genuinely an operation failure rather than an outcome.
+        OperationResult<RestResponse> result =
+                connector.exchange("GET", "http://localhost:1/api/nothing", null, null);
+
+        assertThat(result.isSuccess()).isFalse();
+        assertThat(result.getData()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("exchange should reject an unsupported HTTP method rather than throw")
+    void testExchangeRejectsBadMethod() {
+        OperationResult<RestResponse> result =
+                connector.exchange("FETCH", baseUrl + "/api/users/1", null, null);
+
+        assertThat(result.isSuccess()).isFalse();
+        assertThat(result.getMessage()).contains("FETCH");
     }
 
     /**

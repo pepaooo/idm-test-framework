@@ -55,6 +55,6 @@ public final class ResourcesRevokeStep implements StepType {
 
         return StepOutcome.success(
                 "revoked " + resource + " from " + user, null,
-                ResourcesGrantStep.valueOf(result.getData().get().getResult()));
+                SoapValues.of(result.getData().get().getResult()));
     }
 }

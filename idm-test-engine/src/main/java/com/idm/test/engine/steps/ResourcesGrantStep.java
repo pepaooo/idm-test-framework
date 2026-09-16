@@ -7,7 +7,6 @@ import com.idm.test.core.model.OperationResult;
 import com.idm.test.engine.spi.StepOutcome;
 import com.idm.test.engine.spi.StepType;
 
-import jakarta.xml.bind.JAXBElement;
 import java.util.Map;
 import java.util.Set;
 
@@ -59,7 +58,7 @@ public final class ResourcesGrantStep implements StepType {
                     "resources.grant failed for " + user + ": " + result.getMessage());
         }
 
-        String requestId = valueOf(result.getData().get().getResult());
+        String requestId = SoapValues.of(result.getData().get().getResult());
 
         return StepOutcome.success(
                 "granted " + resource + " to " + user,
@@ -72,18 +71,5 @@ public final class ResourcesGrantStep implements StepType {
                     }
                 },
                 requestId);
-    }
-
-    /**
-     * The service returns a request identifier wrapped in a JAXBElement, which may be null at
-     * either level. An absent identifier becomes an empty string rather than null, because a
-     * null value with a capture requested fails the scenario — and "the grant succeeded but
-     * returned no identifier" is not a failure.
-     */
-    static String valueOf(JAXBElement<String> result) {
-        if (result == null || result.getValue() == null) {
-            return "";
-        }
-        return result.getValue();
     }
 }

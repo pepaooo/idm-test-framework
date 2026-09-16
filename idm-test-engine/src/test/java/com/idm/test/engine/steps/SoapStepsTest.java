@@ -248,8 +248,15 @@ class SoapStepsTest {
         // faithful rather than guessed — which is why this pair has an undo and roles
         // does not.
         stubResourceRevokeReturning(REQUEST_ID);
+        WIREMOCK.resetRequests();
         outcome.undo().run();
-        verify(postRequestedFor(urlEqualTo(RESOURCE_PATH)));
+
+        // Discriminate on the body, not just the URL: the grant call earlier in this test
+        // already POSTed to RESOURCE_PATH, so a URL-only match would pass even if undo did
+        // nothing. Pattern copied from ResourceServiceConnectorTest.
+        verify(postRequestedFor(urlEqualTo(RESOURCE_PATH))
+                .withRequestBody(containing("requestResourceRevoke"))
+                .withRequestBody(containing(RESOURCE_DN)));
     }
 
     @Test

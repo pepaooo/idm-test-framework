@@ -1,0 +1,45 @@
+name: Database provisioning and directory update
+description: Insert an application account, verify it, then update and delete the directory entry
+
+fixtures:
+  user:
+    generate: random-user
+
+steps:
+  - ldap.create:
+      dn: "cn=${user.userId},ou=users"
+      attributes:
+        cn: "${user.userId}"
+        sn: "${user.lastName}"
+        givenName: "${user.firstName}"
+        title: Analyst
+
+  - db.execute:
+      database: test-db
+      statement: "INSERT INTO sap_users (username, status) VALUES (?, ?)"
+      params: ["${user.userId}", "ACTIVE"]
+      undo:
+        statement: "DELETE FROM sap_users WHERE username = ?"
+        params: ["${user.userId}"]
+
+  - db.verify:
+      database: test-db
+      query: "SELECT status FROM sap_users WHERE username = ?"
+      params: ["${user.userId}"]
+      expect:
+        rowCount: 1
+        row: { status: ACTIVE }
+      wait: true
+
+  - ldap.update:
+      dn: "cn=${user.userId},ou=users"
+      attributes:
+        title: Engineer
+
+  - ldap.verify:
+      dn: "cn=${user.userId},ou=users"
+      expect:
+        title: Engineer
+
+  - ldap.delete:
+      dn: "cn=${user.userId},ou=users"

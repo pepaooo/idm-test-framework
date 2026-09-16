@@ -1,5 +1,6 @@
 package com.idm.test.scenarios.engine;
 
+import com.idm.test.connector.database.client.MultiDatabaseConnector;
 import com.idm.test.connector.ldap.client.EdirectoryConnector;
 import com.idm.test.engine.FixtureFactory;
 import com.idm.test.engine.ScenarioEngine;
@@ -10,9 +11,14 @@ import com.idm.test.engine.model.Scenario;
 import com.idm.test.engine.result.JsonResultWriter;
 import com.idm.test.engine.result.ScenarioResult;
 import com.idm.test.engine.spi.StepType;
+import com.idm.test.engine.steps.DbExecuteStep;
+import com.idm.test.engine.steps.DbVerifyStep;
 import com.idm.test.engine.steps.LdapCreateStep;
+import com.idm.test.engine.steps.LdapDeleteStep;
+import com.idm.test.engine.steps.LdapUpdateStep;
 import com.idm.test.engine.steps.LdapVerifyStep;
 import com.idm.test.scenarios.base.BaseIntegrationTest;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.TestFactory;
@@ -45,10 +51,22 @@ class YamlScenarioTest extends BaseIntegrationTest {
     private static final String SCENARIO_DIR = "scenarios";
     private static final Path RESULTS = Path.of("target", "scenario-results.json");
 
+    /**
+     * The scenarios module configures an H2 database named test-db but no schema, so the
+     * table the database scenario works against is created here. CREATE TABLE IF NOT EXISTS
+     * is idempotent, which is why this can safely run per test.
+     */
+    @BeforeEach
+    void createScenarioTable() {
+        databaseConnector.executeUpdate("test-db",
+                "CREATE TABLE IF NOT EXISTS sap_users ("
+                        + "username VARCHAR(50), status VARCHAR(20))");
+    }
+
     @TestFactory
     @DisplayName("Each scenario file runs as its own test")
     Stream<DynamicTest> scenarios() throws Exception {
-        Map<String, StepType> registry = registry(edirectoryConnector);
+        Map<String, StepType> registry = registry(edirectoryConnector, databaseConnector);
         ScenarioValidator validator = new ScenarioValidator(registry, FixtureFactory.SUPPORTED_GENERATORS);
         ScenarioEngine engine = new ScenarioEngine(
                 registry,
@@ -113,11 +131,16 @@ class YamlScenarioTest extends BaseIntegrationTest {
         return tests;
     }
 
-    static Map<String, StepType> registry(EdirectoryConnector edirectoryConnector) {
+    static Map<String, StepType> registry(
+            EdirectoryConnector edirectoryConnector, MultiDatabaseConnector databaseConnector) {
         Map<String, StepType> registry = new LinkedHashMap<>();
         for (StepType type : List.of(
                 new LdapCreateStep(edirectoryConnector),
-                new LdapVerifyStep(edirectoryConnector))) {
+                new LdapVerifyStep(edirectoryConnector),
+                new LdapUpdateStep(edirectoryConnector),
+                new LdapDeleteStep(edirectoryConnector),
+                new DbExecuteStep(databaseConnector),
+                new DbVerifyStep(databaseConnector))) {
             registry.put(type.name(), type);
         }
         return registry;

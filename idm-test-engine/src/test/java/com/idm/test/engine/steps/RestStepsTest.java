@@ -164,4 +164,120 @@ class RestStepsTest {
 
         assertThat(outcome.success()).isFalse();
     }
+
+    @Test
+    @DisplayName("rest.verify should pass when status and body both match")
+    void testVerifyMatches() {
+        stubFor(get(urlEqualTo("/users/jdoe")).willReturn(aResponse()
+                .withStatus(200)
+                .withHeader("Content-Type", "application/json")
+                .withBody("{\"userId\":\"jdoe\",\"department\":\"Engineering\"}")));
+
+        StepOutcome outcome = new RestVerifyStep(CONNECTOR, PROPERTIES).execute(Map.of(
+                "target", "idm", "path", "/users/jdoe",
+                "expect", Map.of("status", 200,
+                        "body", Map.of("department", "Engineering"))), false);
+
+        assertThat(outcome.success()).isTrue();
+    }
+
+    @Test
+    @DisplayName("rest.verify should match a subset of the body")
+    void testVerifyMatchesBodySubset() {
+        stubFor(get(urlEqualTo("/users/jdoe")).willReturn(aResponse()
+                .withStatus(200)
+                .withHeader("Content-Type", "application/json")
+                .withBody("{\"userId\":\"jdoe\",\"department\":\"Engineering\",\"extra\":1}")));
+
+        // A scenario should not have to restate a whole payload to assert one field.
+        StepOutcome outcome = new RestVerifyStep(CONNECTOR, PROPERTIES).execute(Map.of(
+                "target", "idm", "path", "/users/jdoe",
+                "expect", Map.of("body", Map.of("userId", "jdoe"))), false);
+
+        assertThat(outcome.success()).isTrue();
+    }
+
+    @Test
+    @DisplayName("rest.verify should assert a 404 as an expected status")
+    void testVerifyExpectsNotFound() {
+        stubFor(get(urlEqualTo("/users/gone")).willReturn(aResponse().withStatus(404)));
+
+        // The pattern this whole task exists for: after a deprovision, the account is gone.
+        StepOutcome outcome = new RestVerifyStep(CONNECTOR, PROPERTIES).execute(Map.of(
+                "target", "idm", "path", "/users/gone",
+                "expect", Map.of("status", 404)), false);
+
+        assertThat(outcome.success()).isTrue();
+    }
+
+    @Test
+    @DisplayName("rest.verify should fail on a status mismatch and name both codes")
+    void testVerifyStatusMismatchFails() {
+        stubFor(get(urlEqualTo("/users/jdoe")).willReturn(aResponse().withStatus(500)));
+
+        StepOutcome outcome = new RestVerifyStep(CONNECTOR, PROPERTIES).execute(Map.of(
+                "target", "idm", "path", "/users/jdoe",
+                "expect", Map.of("status", 200)), false);
+
+        assertThat(outcome.success()).isFalse();
+        assertThat(outcome.message()).contains("200").contains("500");
+    }
+
+    @Test
+    @DisplayName("rest.verify should fail on a body mismatch and name the field")
+    void testVerifyBodyMismatchFails() {
+        stubFor(get(urlEqualTo("/users/jdoe")).willReturn(aResponse()
+                .withStatus(200)
+                .withHeader("Content-Type", "application/json")
+                .withBody("{\"department\":\"Sales\"}")));
+
+        StepOutcome outcome = new RestVerifyStep(CONNECTOR, PROPERTIES).execute(Map.of(
+                "target", "idm", "path", "/users/jdoe",
+                "expect", Map.of("body", Map.of("department", "Engineering"))), false);
+
+        assertThat(outcome.success()).isFalse();
+        assertThat(outcome.message()).contains("department")
+                .contains("Engineering").contains("Sales");
+    }
+
+    @Test
+    @DisplayName("rest.verify should reject an expect block that asserts nothing")
+    void testVerifyRejectsEmptyExpect() {
+        StepOutcome outcome = new RestVerifyStep(CONNECTOR, PROPERTIES).execute(Map.of(
+                "target", "idm", "path", "/users/jdoe",
+                "expect", Map.of()), false);
+
+        assertThat(outcome.success()).isFalse();
+        assertThat(outcome.message()).contains("status").contains("body");
+    }
+
+    @Test
+    @DisplayName("rest.verify should reject an unknown key inside expect")
+    void testVerifyRejectsUnknownExpectKey() {
+        StepOutcome outcome = new RestVerifyStep(CONNECTOR, PROPERTIES).execute(Map.of(
+                "target", "idm", "path", "/users/jdoe",
+                "expect", Map.of("staus", 200)), false);
+
+        assertThat(outcome.success()).isFalse();
+        assertThat(outcome.message()).contains("staus");
+    }
+
+    @Test
+    @DisplayName("rest.verify should be retryable so the engine can wait on provisioning")
+    void testVerifyIsRetryable() {
+        assertThat(new RestVerifyStep(CONNECTOR, PROPERTIES).retryable()).isTrue();
+    }
+
+    @Test
+    @DisplayName("rest.verify should default to GET")
+    void testVerifyDefaultsToGet() {
+        stubFor(get(urlEqualTo("/users/jdoe")).willReturn(aResponse().withStatus(200)));
+
+        StepOutcome outcome = new RestVerifyStep(CONNECTOR, PROPERTIES).execute(Map.of(
+                "target", "idm", "path", "/users/jdoe",
+                "expect", Map.of("status", 200)), false);
+
+        assertThat(outcome.success()).isTrue();
+        verify(getRequestedFor(urlEqualTo("/users/jdoe")));
+    }
 }

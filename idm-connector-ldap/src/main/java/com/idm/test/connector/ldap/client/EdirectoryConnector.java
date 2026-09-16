@@ -206,6 +206,60 @@ public class EdirectoryConnector {
     }
 
     /**
+     * Removes attributes entirely.
+     * <p>
+     * {@link #update} can only REPLACE, which cannot express "this attribute had no value
+     * before". Without removal, an undo that restores prior state would silently leave behind
+     * every attribute the update introduced.
+     *
+     * @param dn             the distinguished name
+     * @param attributeNames attributes to remove; an empty collection is a no-op success
+     * @return operation result indicating success or failure
+     */
+    public OperationResult<Void> removeAttributes(String dn, java.util.Collection<String> attributeNames) {
+        log.debug("Removing LDAP attributes {} from: {}", attributeNames, dn);
+
+        if (attributeNames.isEmpty()) {
+            return OperationResult.<Void>builder()
+                    .success(true)
+                    .message("No attributes to remove")
+                    .build();
+        }
+
+        try {
+            Name name = LdapNameBuilder.newInstance(dn).build();
+
+            javax.naming.directory.ModificationItem[] mods =
+                new javax.naming.directory.ModificationItem[attributeNames.size()];
+
+            int i = 0;
+            for (String attributeName : attributeNames) {
+                mods[i++] = new javax.naming.directory.ModificationItem(
+                    javax.naming.directory.DirContext.REMOVE_ATTRIBUTE,
+                    new BasicAttribute(attributeName));
+            }
+
+            ldapTemplate.modifyAttributes(name, mods);
+
+            log.info("LDAP attributes removed successfully from: {}", dn);
+
+            return OperationResult.<Void>builder()
+                    .success(true)
+                    .message("Attributes removed successfully")
+                    .build();
+
+        } catch (Exception e) {
+            log.error("Failed to remove LDAP attributes from '{}': {}", dn, e.getMessage());
+            return OperationResult.<Void>builder()
+                    .success(false)
+                    .message("Failed to remove attributes: " + e.getMessage())
+                    .errorType(ErrorType.LDAP_ERROR)
+                    .throwable(e)
+                    .build();
+        }
+    }
+
+    /**
      * Deletes a user from LDAP.
      *
      * @param dn the distinguished name

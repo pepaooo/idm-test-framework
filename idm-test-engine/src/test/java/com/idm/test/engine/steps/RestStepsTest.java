@@ -263,6 +263,40 @@ class RestStepsTest {
     }
 
     @Test
+    @DisplayName("rest.verify should reject a body that is not a map")
+    void testVerifyRejectsNonMapBody() {
+        // A scenario author's plausible slip: `body: Engineering` instead of the nested
+        // `body: { department: Engineering }`. StepValues.toMap silently turns a non-map into
+        // an empty map, so without this guard the comparison would run against zero fields
+        // and rest.verify would pass no matter what the response actually held.
+        stubFor(get(urlEqualTo("/users/jdoe")).willReturn(aResponse()
+                .withStatus(200)
+                .withHeader("Content-Type", "application/json")
+                .withBody("{\"department\":\"Sales\"}")));
+
+        StepOutcome outcome = new RestVerifyStep(CONNECTOR, PROPERTIES).execute(Map.of(
+                "target", "idm", "path", "/users/jdoe",
+                "expect", Map.of("body", "Engineering")), false);
+
+        assertThat(outcome.success()).isFalse();
+        assertThat(outcome.message()).contains("body");
+    }
+
+    @Test
+    @DisplayName("rest.verify should fail rather than throw when expect itself is not a map")
+    void testVerifyRejectsNonMapExpect() {
+        // params.get("expect") is an unchecked cast inside execute(); a scenario writing
+        // `expect: something` (a scalar) must not turn into a ClassCastException — a
+        // StepType.execute implementation must never throw.
+        StepOutcome outcome = new RestVerifyStep(CONNECTOR, PROPERTIES).execute(Map.of(
+                "target", "idm", "path", "/users/jdoe",
+                "expect", "something"), false);
+
+        assertThat(outcome.success()).isFalse();
+        assertThat(outcome.message()).contains("expect");
+    }
+
+    @Test
     @DisplayName("rest.verify should be retryable so the engine can wait on provisioning")
     void testVerifyIsRetryable() {
         assertThat(new RestVerifyStep(CONNECTOR, PROPERTIES).retryable()).isTrue();

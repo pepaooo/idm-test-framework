@@ -60,12 +60,13 @@ public final class RestVerifyStep implements StepType {
     @SuppressWarnings("unchecked")
     public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
         String target = String.valueOf(params.get("target"));
-        Map<String, Object> expect = (Map<String, Object>) params.get("expect");
+        Object rawExpect = params.get("expect");
 
-        StepOutcome rejection = rejectMalformedExpect(expect, target);
+        StepOutcome rejection = rejectMalformedExpect(rawExpect, target);
         if (rejection != null) {
             return rejection;
         }
+        Map<String, Object> expect = (Map<String, Object>) rawExpect;
 
         RestProperties.RestApiConfig config = properties.getRest().get(target);
         if (config == null) {
@@ -154,12 +155,25 @@ public final class RestVerifyStep implements StepType {
     }
 
     /**
-     * An {@code expect} that asserts nothing, or one whose keys are typos, would pass having
-     * compared nothing at all — the vacuous-assertion trap, now caught three times in this
-     * project. Checked before the request is made, since neither problem depends on the
-     * response.
+     * An {@code expect} that asserts nothing, whose keys are typos, or whose {@code body} is
+     * not a map, would pass having compared nothing at all — the vacuous-assertion trap, now
+     * caught four times in this project. Checked before the request is made, since none of
+     * these problems depend on the response.
+     * <p>
+     * Takes the raw, unvalidated value from {@code params.get("expect")} rather than an
+     * already-cast {@code Map}: a scenario can write {@code expect} as a scalar, and
+     * {@code StepType.execute} must never throw, so the type check has to happen here, before
+     * any caller casts it.
      */
-    private static StepOutcome rejectMalformedExpect(Map<String, Object> expect, String target) {
+    @SuppressWarnings("unchecked")
+    private static StepOutcome rejectMalformedExpect(Object rawExpect, String target) {
+        if (rawExpect != null && !(rawExpect instanceof Map)) {
+            return StepOutcome.failure("rest.verify on '" + target
+                    + "' has an expect that is not a map of assertions (" + STATUS + ", " + BODY
+                    + ")");
+        }
+
+        Map<String, Object> expect = (Map<String, Object>) rawExpect;
         if (expect == null || expect.isEmpty()) {
             return StepOutcome.failure("rest.verify on '" + target
                     + "' has an empty expect: block. Assert " + STATUS + ", " + BODY
@@ -172,6 +186,11 @@ public final class RestVerifyStep implements StepType {
             return StepOutcome.failure("rest.verify on '" + target
                     + "' has unknown key(s) in expect: " + unknown + ". expect accepts: "
                     + new TreeSet<>(EXPECT_KEYS));
+        }
+
+        if (expect.get(BODY) != null && !(expect.get(BODY) instanceof Map)) {
+            return StepOutcome.failure("rest.verify on '" + target + "' has a " + BODY
+                    + " that is not a map of field names to expected values");
         }
 
         return null;

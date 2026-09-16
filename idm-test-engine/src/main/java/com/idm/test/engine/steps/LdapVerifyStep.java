@@ -48,6 +48,15 @@ public final class LdapVerifyStep implements StepType {
         Map<String, Object> expected =
                 (Map<String, Object>) params.getOrDefault("expect", Map.of());
 
+        if (expected.isEmpty()) {
+            // requiredParams() catches a missing or misspelled expect:, but a present-but-
+            // empty one slips past a containsKey check and makes every comparison in
+            // verifyAttributes vacuously true — "verified" having compared nothing. Same
+            // trap, one step further in; db.verify guards the identical case.
+            return StepOutcome.failure("ldap.verify for " + dn
+                    + " has an empty expect: block — it would verify nothing");
+        }
+
         OperationResult<Boolean> result = connector.verifyAttributes(dn, expected);
 
         if (!result.isSuccess()) {

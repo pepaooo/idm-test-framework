@@ -395,4 +395,21 @@ class LdapStepsTest {
         assertThat(outcome.success()).isTrue();
         assertThat(outcome.value()).isEqualTo(dn);
     }
+
+    @Test
+    @DisplayName("ldap.verify should reject an expect block that asserts nothing")
+    void testVerifyRejectsEmptyExpect() {
+        LdapCreateStep create = new LdapCreateStep(connector);
+        String dn = "cn=ada.vacuous,ou=users";
+        create.execute(Map.of("dn", dn, "attributes",
+                Map.of("cn", "ada.vacuous", "sn", "Lovelace")), false);
+
+        // 'expect' being required catches a misspelled expct:, but a present-but-empty
+        // expect: {} passed that check and reported "verified" having compared nothing.
+        StepOutcome outcome = new LdapVerifyStep(connector).execute(
+                Map.of("dn", dn, "expect", Map.of()), false);
+
+        assertThat(outcome.success()).isFalse();
+        assertThat(outcome.message()).contains("verify nothing");
+    }
 }

@@ -14,6 +14,7 @@ import org.springframework.ldap.support.LdapNameBuilder;
 import org.springframework.stereotype.Component;
 
 import javax.naming.Name;
+import javax.naming.NamingEnumeration;
 import javax.naming.NamingException;
 import javax.naming.directory.Attribute;
 import javax.naming.directory.Attributes;
@@ -394,23 +395,97 @@ public class EdirectoryConnector {
     /**
      * Context mapper to convert LDAP entry to LdapUser.
      */
+    /**
+     * The attribute names that have first-class getters on {@link LdapUser}. Everything else
+     * read from the directory becomes a custom attribute.
+     */
+    private static final java.util.Set<String> MAPPED_ATTRIBUTES = java.util.Set.of(
+            "cn", "sn", "givenName", "mail", "uid",
+            "telephoneNumber", "title", "ou", "description");
+
+    /**
+     * Never surfaced. A password read back here would flow into an {@code as:} capture and
+     * from there into the JSON result file — a credential written to disk by a test report.
+     * The cost is that a password change cannot be undone by cleanup; that is the honest
+     * trade, and it matches why ldap.delete registers no undo at all.
+     */
+    private static final String EXCLUDED_ATTRIBUTE = "userPassword";
+
+    /**
+     * Maps every attribute the directory returns, not a fixed list.
+     * <p>
+     * The previous version read ten hardcoded names and never populated custom attributes,
+     * which made {@link #verifyAttributes} report {@code actual=null} for any other attribute
+     * even when the directory genuinely held a value — a false failure, not a missed one.
+     */
     private static class UserContextMapper extends AbstractContextMapper<LdapUser> {
         @Override
         protected LdapUser doMapFromContext(DirContextOperations context) {
             LdapUser user = new LdapUser();
             user.setDn(context.getDn().toString());
-            user.setCn(context.getStringAttribute("cn"));
-            user.setSn(context.getStringAttribute("sn"));
-            user.setGivenName(context.getStringAttribute("givenName"));
-            user.setMail(context.getStringAttribute("mail"));
-            user.setUid(context.getStringAttribute("uid"));
-            user.setTelephoneNumber(context.getStringAttribute("telephoneNumber"));
-            user.setTitle(context.getStringAttribute("title"));
-            user.setOu(context.getStringAttribute("ou"));
-            user.setDescription(context.getStringAttribute("description"));
 
-            // Note: userPassword is typically not returned in searches
+            Attributes attributes = context.getAttributes();
+            if (attributes == null) {
+                return user;
+            }
+
+            try {
+                NamingEnumeration<? extends Attribute> all = attributes.getAll();
+                while (all.hasMore()) {
+                    Attribute attribute = all.next();
+                    String id = attribute.getID();
+
+                    if (EXCLUDED_ATTRIBUTE.equalsIgnoreCase(id)) {
+                        continue;
+                    }
+                    if (MAPPED_ATTRIBUTES.contains(id)) {
+                        // The first-class getters are typed String, so a multi-valued
+                        // instance of one of these collapses to its first value — the same
+                        // thing getStringAttribute did before.
+                        setMapped(user, id, String.valueOf(attribute.get()));
+                    } else {
+                        user.addCustomAttribute(id, valueOf(attribute));
+                    }
+                }
+            } catch (NamingException e) {
+                // Returning a partially-populated entry would be a silent lie: callers would
+                // read a missing attribute as absent rather than as unread. read() catches
+                // this and reports it as an LDAP_ERROR.
+                throw new org.springframework.ldap.UncategorizedLdapException(
+                        "Failed to read attributes for " + context.getDn(), e);
+            }
+
             return user;
+        }
+
+        /**
+         * A single-valued attribute reads as its scalar value; a multi-valued one as a list
+         * of every value, so nothing is silently dropped.
+         */
+        private static Object valueOf(Attribute attribute) throws NamingException {
+            if (attribute.size() == 1) {
+                return attribute.get();
+            }
+            List<Object> values = new java.util.ArrayList<>(attribute.size());
+            for (int i = 0; i < attribute.size(); i++) {
+                values.add(attribute.get(i));
+            }
+            return values;
+        }
+
+        private static void setMapped(LdapUser user, String id, String value) {
+            switch (id) {
+                case "cn" -> user.setCn(value);
+                case "sn" -> user.setSn(value);
+                case "givenName" -> user.setGivenName(value);
+                case "mail" -> user.setMail(value);
+                case "uid" -> user.setUid(value);
+                case "telephoneNumber" -> user.setTelephoneNumber(value);
+                case "title" -> user.setTitle(value);
+                case "ou" -> user.setOu(value);
+                case "description" -> user.setDescription(value);
+                default -> throw new IllegalStateException("not a mapped attribute: " + id);
+            }
         }
     }
 

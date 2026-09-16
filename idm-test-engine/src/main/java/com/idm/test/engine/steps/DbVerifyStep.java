@@ -163,6 +163,22 @@ public final class DbVerifyStep implements StepType {
                     + " would verify nothing");
         }
 
+        // The hole one level in: a misspelled column name (`staus:` instead of `status:`)
+        // parses as an entry whose value is null, indistinguishable from an explicit
+        // `staus: null` after Map.get() — and ValueComparison.equal(null, null) is true, so
+        // a typo'd column would report "verified" having compared nothing.
+        if (expect.containsKey(ROW)) {
+            for (Map.Entry<?, ?> column : ((Map<?, ?>) expect.get(ROW)).entrySet()) {
+                if (column.getValue() == null) {
+                    return StepOutcome.failure("db.verify on '" + database
+                            + "' has a null expected value for row column '" + column.getKey()
+                            + "' — a missing or misspelled column name parses the same way and "
+                            + "would verify nothing. Check for a typo, or assert rowCount to "
+                            + "check for absence instead.");
+                }
+            }
+        }
+
         return null;
     }
 

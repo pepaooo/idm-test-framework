@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.web.client.RestClient;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
@@ -75,7 +76,10 @@ class RestStepsTest {
         assertThat(outcome.success()).isTrue();
         Map<String, Object> captured = (Map<String, Object>) outcome.value();
         assertThat(captured.get("status")).isEqualTo(200);
-        assertThat(captured).containsKey("headers");
+        // containsKey alone would still pass if every header value were dropped; assert a
+        // value actually survived, not just the key.
+        Map<String, List<String>> headers = (Map<String, List<String>>) captured.get("headers");
+        assertThat(headers).containsEntry("content-type", List.of("application/json"));
         Map<String, Object> body = (Map<String, Object>) captured.get("body");
         assertThat(body).containsEntry("userId", "jdoe");
     }
@@ -124,6 +128,24 @@ class RestStepsTest {
 
         assertThat(outcome.success()).isFalse();
         assertThat(outcome.message()).contains("nope");
+    }
+
+    @Test
+    @DisplayName("rest.request should fail with a distinct message for a target with no "
+            + "base-url, rather than the self-contradictory 'unknown target' message")
+    void testRequestTargetMissingBaseUrlFails() {
+        RestProperties noBaseUrl = new RestProperties();
+        noBaseUrl.getRest().put("idm", new RestProperties.RestApiConfig());
+
+        StepOutcome outcome = new RestRequestStep(CONNECTOR, noBaseUrl).execute(Map.of(
+                "target", "idm", "method", "GET", "path", "/users/1"), false);
+
+        assertThat(outcome.success()).isFalse();
+        // Must name the target as configured (not "unknown") and say base-url specifically —
+        // the old message said "names unknown target 'idm'. Configured targets: [idm]",
+        // self-contradictory since 'idm' appears in both halves.
+        assertThat(outcome.message()).contains("idm").contains("base-url");
+        assertThat(outcome.message()).doesNotContain("unknown target");
     }
 
     @Test
@@ -325,6 +347,95 @@ class RestStepsTest {
 
         assertThat(outcome.success()).isFalse();
         assertThat(outcome.message()).contains("body");
+    }
+
+    @Test
+    @DisplayName("rest.verify should reject a null expected value for a body field "
+            + "(a misspelled field name)")
+    void testVerifyRejectsNullBodyField() {
+        // ITF-9: a misspelled field, e.g. `staus:` instead of `status:` inside body, is a YAML
+        // bare key whose value parses as null — indistinguishable from an explicit null after
+        // Map.get(). Before this guard, mismatchIn compared field.getValue()=null against
+        // whatever the response held via string form, and "null".equals("null") could pass;
+        // now it must be rejected before the request is made. Map.of cannot hold a null value,
+        // which is why a HashMap is required to express this case.
+        Map<String, Object> body = new HashMap<>();
+        body.put("staus", null);
+
+        StepOutcome outcome = new RestVerifyStep(CONNECTOR, PROPERTIES).execute(Map.of(
+                "target", "idm", "path", "/users/jdoe",
+                "expect", Map.of("body", body)), false);
+
+        assertThat(outcome.success()).isFalse();
+        assertThat(outcome.message()).contains("staus");
+    }
+
+    @Test
+    @DisplayName("rest.verify should reject an empty nested object, which would only assert "
+            + "'this field is an object'")
+    void testVerifyRejectsEmptyNestedBodyObject() {
+        // body: { profile: {} } passes the top-level "body is a non-empty map" guard (it has
+        // a profile key) but asserts only that profile is an object — the exact vacuous shape
+        // already rejected at the top level, one level further in. mismatchIn recursed into
+        // this with no emptiness check, so the subset comparison would iterate zero fields and
+        // pass against any object at all.
+        StepOutcome outcome = new RestVerifyStep(CONNECTOR, PROPERTIES).execute(Map.of(
+                "target", "idm", "path", "/users/jdoe",
+                "expect", Map.of("body", Map.of("profile", Map.of()))), false);
+
+        assertThat(outcome.success()).isFalse();
+        assertThat(outcome.message()).contains("profile");
+    }
+
+    @Test
+    @DisplayName("rest.verify should fail with a distinct message for a target with no "
+            + "base-url, rather than building a URL out of 'null'")
+    void testVerifyTargetMissingBaseUrlFails() {
+        RestProperties noBaseUrl = new RestProperties();
+        noBaseUrl.getRest().put("idm", new RestProperties.RestApiConfig());
+
+        StepOutcome outcome = new RestVerifyStep(CONNECTOR, noBaseUrl).execute(Map.of(
+                "target", "idm", "path", "/users/1",
+                "expect", Map.of("status", 200)), false);
+
+        assertThat(outcome.success()).isFalse();
+        assertThat(outcome.message()).contains("idm").contains("base-url");
+        assertThat(outcome.message()).doesNotContain("unknown target");
+    }
+
+    @Test
+    @DisplayName("rest.verify should match a numeric body field across JSON and YAML types, "
+            + "the same tolerance db.verify already has")
+    void testVerifyMatchesNumericBodyAcrossTypes() {
+        // ITF-9: a response of {"score": 1.0} against expect: { body: { score: 1 } } used to
+        // FAIL here (compared as text: "1.0" != "1") while the same authoring gesture PASSES
+        // in db.verify (ValueComparison.equal compares numbers numerically) — one assertion,
+        // two verdicts depending on which step type asserted it.
+        stubFor(get(urlEqualTo("/users/jdoe")).willReturn(aResponse()
+                .withStatus(200)
+                .withHeader("Content-Type", "application/json")
+                .withBody("{\"score\":1.0}")));
+
+        StepOutcome outcome = new RestVerifyStep(CONNECTOR, PROPERTIES).execute(Map.of(
+                "target", "idm", "path", "/users/jdoe",
+                "expect", Map.of("body", Map.of("score", 1))), false);
+
+        assertThat(outcome.success()).isTrue();
+    }
+
+    @Test
+    @DisplayName("rest.verify should still match a status given as text against the actual "
+            + "numeric status")
+    void testVerifyStatusStringStillMatchesNumericStatus() {
+        // Guards against the ValueComparison switch losing the existing text fallback: 200
+        // must still match "200".
+        stubFor(get(urlEqualTo("/users/jdoe")).willReturn(aResponse().withStatus(200)));
+
+        StepOutcome outcome = new RestVerifyStep(CONNECTOR, PROPERTIES).execute(Map.of(
+                "target", "idm", "path", "/users/jdoe",
+                "expect", Map.of("status", "200")), false);
+
+        assertThat(outcome.success()).isTrue();
     }
 
     @Test

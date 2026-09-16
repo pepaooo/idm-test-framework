@@ -397,6 +397,21 @@ class LdapStepsTest {
     }
 
     @Test
+    @DisplayName("ldap.verify should fail rather than throw when expect itself is not a map")
+    void testVerifyRejectsNonMapExpect() {
+        // A scenario writing `expect: Engineer` (a scalar) where a map of attribute names to
+        // expected values belongs used to throw a ClassCastException out of execute() — a
+        // StepType.execute implementation must never throw. rest.verify and db.verify were
+        // both fixed for exactly this; this closes the same gap in their remaining sibling.
+        StepOutcome outcome = new LdapVerifyStep(connector).execute(Map.of(
+                "dn", "cn=whoever,ou=users",
+                "expect", "Engineer"), false);
+
+        assertThat(outcome.success()).isFalse();
+        assertThat(outcome.message()).contains("expect");
+    }
+
+    @Test
     @DisplayName("ldap.verify should reject an expect block that asserts nothing")
     void testVerifyRejectsEmptyExpect() {
         LdapCreateStep create = new LdapCreateStep(connector);

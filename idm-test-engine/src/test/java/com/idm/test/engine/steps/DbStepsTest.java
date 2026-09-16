@@ -128,6 +128,23 @@ class DbStepsTest {
     }
 
     @Test
+    @DisplayName("db.execute should fail rather than throw when undo is not a map")
+    void testExecuteRejectsNonMapUndo() {
+        // undo: "DELETE FROM x" (a scalar) where a map with a statement belongs; the
+        // unchecked cast in execute() must not surface as a ClassCastException — a
+        // StepType.execute implementation must never throw.
+        DbExecuteStep execute = new DbExecuteStep(connector);
+
+        StepOutcome outcome = execute.execute(Map.of(
+                "database", DB,
+                "statement", "INSERT INTO sap_users (username) VALUES ('x')",
+                "undo", "DELETE FROM sap_users"), false);
+
+        assertThat(outcome.success()).isFalse();
+        assertThat(outcome.message()).contains("undo");
+    }
+
+    @Test
     @DisplayName("db.execute should reject an undo block with no statement")
     void testExecuteRejectsUndoWithoutStatement() {
         DbExecuteStep execute = new DbExecuteStep(connector);
@@ -329,6 +346,30 @@ class DbStepsTest {
 
         assertThat(outcome.success()).isFalse();
         assertThat(outcome.message()).contains("row");
+    }
+
+    @Test
+    @DisplayName("db.verify should reject a null expected value for a row column "
+            + "(a misspelled column name)")
+    void testVerifyRejectsNullColumnValue() {
+        // ITF-9: a misspelled column, e.g. `staus:` instead of `status:`, is a YAML bare key
+        // whose value parses as null — indistinguishable from an explicit `staus: null` after
+        // Map.get(). ValueComparison.equal(null, null) is true, so without this guard the step
+        // would report "verified 1 row(s)" having compared nothing for that column. Map.of
+        // cannot hold a null value, which is why a HashMap is required to express this case.
+        jdbc.update("INSERT INTO sap_users VALUES (?,?,?)", "jdoe", "ACTIVE", 3);
+        DbVerifyStep verify = new DbVerifyStep(connector);
+
+        Map<String, Object> row = new HashMap<>();
+        row.put("staus", null);
+
+        StepOutcome outcome = verify.execute(Map.of(
+                "database", DB,
+                "query", "SELECT * FROM sap_users WHERE username = 'jdoe'",
+                "expect", Map.of("row", row)), false);
+
+        assertThat(outcome.success()).isFalse();
+        assertThat(outcome.message()).contains("staus");
     }
 
     @Test

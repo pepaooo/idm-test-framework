@@ -21,7 +21,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.autoconfigure.ldap.LdapAutoConfiguration;
-import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -49,17 +48,15 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <p>
  * Excludes Spring Boot's LdapAutoConfiguration since we provide custom LDAP configuration.
  * <p>
- * {@code RestProperties} is a bare {@code @ConfigurationProperties} class with no
- * {@code @EnableConfigurationProperties} anywhere on its own classpath (unlike
- * {@code LdapProperties}, which {@code LdapConfiguration} enables), so it is not
- * registered as a bean by component scanning alone; it is enabled explicitly here so
- * {@code IdmRestConnector}'s siblings — the step types that need {@code RestProperties}
- * itself — can be autowired in tests.
+ * {@code RestProperties} no longer needs enabling here: {@code RestClientConfiguration} now
+ * carries {@code @EnableConfigurationProperties(RestProperties.class)} itself (the same fix
+ * this class used to patch in test-side only), and that configuration is already reached by
+ * this context's component scan, the same way {@code LdapConfiguration} and
+ * {@code SoapConfiguration} enable their own properties classes.
  */
 @SpringBootTest
 @ActiveProfiles("test")
 @EnableAutoConfiguration(exclude = {LdapAutoConfiguration.class})
-@EnableConfigurationProperties(RestProperties.class)
 public abstract class BaseIntegrationTest {
 
     protected final Logger log = LoggerFactory.getLogger(getClass());

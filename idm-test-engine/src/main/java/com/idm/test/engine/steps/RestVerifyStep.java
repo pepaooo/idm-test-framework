@@ -1,5 +1,6 @@
 package com.idm.test.engine.steps;
 
+import com.idm.test.connector.database.client.ValueComparison;
 import com.idm.test.connector.rest.client.IdmRestConnector;
 import com.idm.test.connector.rest.config.RestProperties;
 import com.idm.test.connector.rest.model.RestResponse;
@@ -68,13 +69,12 @@ public final class RestVerifyStep implements StepType {
         }
         Map<String, Object> expect = (Map<String, Object>) rawExpect;
 
-        RestProperties.RestApiConfig config = properties.getRest().get(target);
-        if (config == null) {
-            return StepOutcome.failure("rest.verify names unknown target '" + target
-                    + "'. Configured targets: " + new TreeSet<>(properties.getRest().keySet()));
+        RestTargets.Resolution resolution = RestTargets.resolveBaseUrl("rest.verify", target, properties);
+        if (resolution.isFailure()) {
+            return StepOutcome.failure(resolution.error());
         }
 
-        String url = config.getBaseUrl() + String.valueOf(params.get("path"));
+        String url = resolution.baseUrl() + String.valueOf(params.get("path"));
         Object rawMethod = params.get("method");
         String method = rawMethod == null ? "GET" : String.valueOf(rawMethod);
 
@@ -94,7 +94,7 @@ public final class RestVerifyStep implements StepType {
 
         if (expect.containsKey(STATUS)) {
             Object expectedStatus = expect.get(STATUS);
-            if (!String.valueOf(expectedStatus).equals(String.valueOf(response.status()))) {
+            if (!ValueComparison.equal(expectedStatus, response.status())) {
                 return StepOutcome.failure("rest.verify on " + url + " expected status "
                         + expectedStatus + " but got " + response.status());
             }
@@ -144,9 +144,11 @@ public final class RestVerifyStep implements StepType {
                 continue;
             }
 
-            // Compared as text so a JSON number and a YAML number agree without either side
-            // having to know which boxed type Jackson chose.
-            if (!String.valueOf(field.getValue()).equals(String.valueOf(actualValue))) {
+            // Shared with db.verify so a JSON number and a YAML number agree, and so the same
+            // authoring gesture (expect: 1 against an actual 1.0) does not pass in one
+            // assertion step and fail in the other — falls back to comparing string form, so
+            // 200 still matches "200".
+            if (!ValueComparison.equal(field.getValue(), actualValue)) {
                 return "found a mismatch for '" + where + "': expected="
                         + field.getValue() + ", actual=" + actualValue;
             }
@@ -200,6 +202,53 @@ public final class RestVerifyStep implements StepType {
                     + " would verify nothing");
         }
 
+        if (expect.containsKey(BODY)) {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> bodyMap = (Map<String, Object>) expect.get(BODY);
+            String vacuous = rejectVacuousField(bodyMap, "");
+            if (vacuous != null) {
+                return StepOutcome.failure("rest.verify on '" + target + "' " + vacuous);
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * The same hole as the top-level {@code body} check, one level in, and at every level
+     * below that: a field whose expected value is null (a misspelled key parses the same way,
+     * since a missing key and an explicit null are indistinguishable after {@code Map.get()}),
+     * or a nested object with nothing in it (a scenario writing {@code profile: {}} asserts
+     * only "profile is an object", the exact vacuous shape rejected at the top level), would
+     * let {@link #mismatchIn} report a match having compared nothing for that field. Recurses
+     * so the rule holds no matter how deep the {@code body} matcher nests.
+     *
+     * @return a description of the first offending field, or null when the matcher is sound
+     */
+    private static String rejectVacuousField(Map<String, Object> expected, String path) {
+        for (Map.Entry<String, Object> field : expected.entrySet()) {
+            String where = path.isEmpty() ? field.getKey() : path + "." + field.getKey();
+            Object value = field.getValue();
+
+            if (value == null) {
+                return "has a null expected value for '" + where + "' — a missing or "
+                        + "misspelled field parses the same way and would verify nothing. "
+                        + "Check for a typo, or remove it if it is not meant to be asserted.";
+            }
+
+            if (value instanceof Map<?, ?> nested) {
+                if (nested.isEmpty()) {
+                    return "has an empty object for '" + where
+                            + "' — a missing, null, non-map, or empty matcher would verify "
+                            + "nothing";
+                }
+                @SuppressWarnings("unchecked")
+                String deeper = rejectVacuousField((Map<String, Object>) nested, where);
+                if (deeper != null) {
+                    return deeper;
+                }
+            }
+        }
         return null;
     }
 }

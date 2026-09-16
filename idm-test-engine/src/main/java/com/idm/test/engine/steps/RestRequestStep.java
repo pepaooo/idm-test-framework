@@ -10,7 +10,6 @@ import com.idm.test.engine.spi.StepType;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
-import java.util.TreeSet;
 
 /**
  * Makes one HTTP request against a configured target.
@@ -55,13 +54,12 @@ public final class RestRequestStep implements StepType {
                     + "they mean the same thing, so give only one");
         }
 
-        String baseUrl = baseUrlOf(target);
-        if (baseUrl == null) {
-            return StepOutcome.failure("rest.request names unknown target '" + target
-                    + "'. Configured targets: " + new TreeSet<>(properties.getRest().keySet()));
+        RestTargets.Resolution resolution = RestTargets.resolveBaseUrl("rest.request", target, properties);
+        if (resolution.isFailure()) {
+            return StepOutcome.failure(resolution.error());
         }
 
-        String url = baseUrl + String.valueOf(params.get("path"));
+        String url = resolution.baseUrl() + String.valueOf(params.get("path"));
         Object body = params.containsKey("bodyFrom")
                 ? params.get("bodyFrom")
                 : params.get("body");
@@ -84,14 +82,6 @@ public final class RestRequestStep implements StepType {
                 String.valueOf(params.get("method")) + " " + url + " returned " + response.status(),
                 null,
                 captureOf(response));
-    }
-
-    /**
-     * @return the target's base URL, or null when the target is not configured
-     */
-    private String baseUrlOf(String target) {
-        RestProperties.RestApiConfig config = properties.getRest().get(target);
-        return config == null ? null : config.getBaseUrl();
     }
 
     /**

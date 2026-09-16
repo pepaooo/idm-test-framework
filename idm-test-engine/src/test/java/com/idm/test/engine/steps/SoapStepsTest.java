@@ -3,6 +3,7 @@ package com.idm.test.engine.steps;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.client.WireMock;
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
+import com.idm.test.connector.soap.client.ResourceServiceConnector;
 import com.idm.test.connector.soap.client.RoleServiceConnector;
 import com.idm.test.connector.soap.config.SoapProperties;
 import com.idm.test.engine.spi.StepOutcome;
@@ -31,6 +32,10 @@ class SoapStepsTest {
     private static final String ROLE_DN = "cn=SAP_USER,ou=roles,dc=company,dc=com";
     private static final String ASSIGNMENT_DN = "cn=assignment-1,ou=requests,dc=company,dc=com";
 
+    private static final String RESOURCE_PATH = "/IDMProv/resource/service";
+    private static final String RESOURCE_DN = "cn=SAP_ACCESS,ou=resources,dc=company,dc=com";
+    private static final String REQUEST_ID = "20250916-request-42";
+
     private static final WireMockServer WIREMOCK =
             new WireMockServer(WireMockConfiguration.options().dynamicPort());
 
@@ -40,11 +45,15 @@ class SoapStepsTest {
     }
 
     private static RoleServiceConnector roleConnector;
+    private static ResourceServiceConnector resourceConnector;
 
     static {
         SoapProperties properties = new SoapProperties();
         properties.setUrl("http://localhost:" + WIREMOCK.port() + ROLE_PATH);
         roleConnector = new RoleServiceConnector(properties);
+
+        properties.setResourceUrl("http://localhost:" + WIREMOCK.port() + RESOURCE_PATH);
+        resourceConnector = new ResourceServiceConnector(properties);
     }
 
     @AfterAll
@@ -184,5 +193,104 @@ class SoapStepsTest {
 
         assertThat(outcome.success()).isFalse();
         assertThat(outcome.message()).contains("assignments");
+    }
+
+    /**
+     * SOAP envelope matching idmprov-resource.wsdl's target namespace, copied from
+     * ResourceServiceConnectorTest, which already stubs both operations successfully.
+     */
+    private static void stubResourceGrantReturning(String requestId) {
+        stubFor(post(urlEqualTo(RESOURCE_PATH)).willReturn(aResponse()
+                .withStatus(200)
+                .withHeader("Content-Type", "text/xml; charset=utf-8")
+                .withBody("<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
+                        + "<soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\" "
+                        + "xmlns:tns=\"http://www.novell.com/resource/service\">"
+                        + "<soap:Body>"
+                        + "<tns:requestResourceGrantResponse>"
+                        + "<tns:result>" + requestId + "</tns:result>"
+                        + "</tns:requestResourceGrantResponse>"
+                        + "</soap:Body>"
+                        + "</soap:Envelope>")));
+    }
+
+    private static void stubResourceRevokeReturning(String requestId) {
+        stubFor(post(urlEqualTo(RESOURCE_PATH)).willReturn(aResponse()
+                .withStatus(200)
+                .withHeader("Content-Type", "text/xml; charset=utf-8")
+                .withBody("<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
+                        + "<soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\" "
+                        + "xmlns:tns=\"http://www.novell.com/resource/service\">"
+                        + "<soap:Body>"
+                        + "<tns:requestResourceRevokeResponse>"
+                        + "<tns:result>" + requestId + "</tns:result>"
+                        + "</tns:requestResourceRevokeResponse>"
+                        + "</soap:Body>"
+                        + "</soap:Envelope>")));
+    }
+
+    @Test
+    @DisplayName("resources.grant should grant and register an undo that revokes")
+    void testResourceGrantRegistersRevokingUndo() {
+        stubResourceGrantReturning(REQUEST_ID);
+        ResourcesGrantStep grant = new ResourcesGrantStep(resourceConnector);
+
+        StepOutcome outcome = grant.execute(Map.of(
+                "user", USER_DN,
+                "resource", RESOURCE_DN,
+                "reason", "Automated test"), true);
+
+        assertThat(outcome.success()).isTrue();
+        assertThat(outcome.value()).isEqualTo(REQUEST_ID);
+        assertThat(outcome.undo()).isNotNull();
+
+        // revokeResource takes exactly what grantResource was given, so the inverse is
+        // faithful rather than guessed — which is why this pair has an undo and roles
+        // does not.
+        stubResourceRevokeReturning(REQUEST_ID);
+        outcome.undo().run();
+        verify(postRequestedFor(urlEqualTo(RESOURCE_PATH)));
+    }
+
+    @Test
+    @DisplayName("resources.grant should fail rather than throw when the service errors")
+    void testResourceGrantServiceErrorFails() {
+        stubFor(post(urlEqualTo(RESOURCE_PATH)).willReturn(aResponse().withStatus(500)));
+        ResourcesGrantStep grant = new ResourcesGrantStep(resourceConnector);
+
+        StepOutcome outcome = grant.execute(
+                Map.of("user", USER_DN, "resource", RESOURCE_DN), false);
+
+        assertThat(outcome.success()).isFalse();
+        assertThat(outcome.undo()).isNull();
+    }
+
+    @Test
+    @DisplayName("resources.revoke should revoke and register no undo")
+    void testResourceRevokeRegistersNoUndo() {
+        stubResourceRevokeReturning(REQUEST_ID);
+        ResourcesRevokeStep revoke = new ResourcesRevokeStep(resourceConnector);
+
+        StepOutcome outcome = revoke.execute(
+                Map.of("user", USER_DN, "resource", RESOURCE_DN), true);
+
+        assertThat(outcome.success()).isTrue();
+        assertThat(outcome.value()).isEqualTo(REQUEST_ID);
+
+        // Re-granting a resource the scenario deliberately revoked would fight the test
+        // rather than clean up after it.
+        assertThat(outcome.undo()).isNull();
+    }
+
+    @Test
+    @DisplayName("resources.grant should work without a reason")
+    void testResourceGrantWithoutReason() {
+        stubResourceGrantReturning(REQUEST_ID);
+        ResourcesGrantStep grant = new ResourcesGrantStep(resourceConnector);
+
+        StepOutcome outcome = grant.execute(
+                Map.of("user", USER_DN, "resource", RESOURCE_DN), false);
+
+        assertThat(outcome.success()).isTrue();
     }
 }

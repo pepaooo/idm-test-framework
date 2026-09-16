@@ -342,4 +342,57 @@ class LdapStepsTest {
         assertThat(outcome.success()).isTrue();
         assertThat(outcome.value()).isEqualTo(dn);
     }
+
+    // ------------------------------------------------------------------
+    // ldap.delete (ITF-8 Task 3)
+    // ------------------------------------------------------------------
+
+    @Test
+    @DisplayName("ldap.delete should remove the entry and register no undo")
+    void testDeleteRegistersNoUndo() {
+        LdapCreateStep create = new LdapCreateStep(connector);
+        LdapDeleteStep delete = new LdapDeleteStep(connector);
+        String dn = "cn=ada.delete,ou=users";
+
+        create.execute(Map.of("dn", dn, "attributes",
+                Map.of("cn", "ada.delete", "sn", "Lovelace")), false);
+
+        StepOutcome outcome = delete.execute(Map.of("dn", dn), false);
+
+        assertThat(outcome.success()).isTrue();
+        assertThat(connector.read(dn).isSuccess()).isFalse();
+
+        // Deliberate: a recreated entry silently loses userPassword and operational
+        // attributes, so no undo is better than a convincing fake.
+        assertThat(outcome.undo()).isNull();
+    }
+
+    @Test
+    @DisplayName("ldap.delete should fail for an entry that was never there")
+    void testDeleteMissingEntryFails() {
+        // LdapTemplate.unbind succeeds silently on a DN that does not exist, so without an
+        // explicit existence check this step would report "deleted" having deleted nothing.
+        LdapDeleteStep delete = new LdapDeleteStep(connector);
+
+        StepOutcome outcome = delete.execute(Map.of("dn", "cn=never.existed,ou=users"), false);
+
+        assertThat(outcome.success()).isFalse();
+        assertThat(outcome.message()).contains("cn=never.existed,ou=users");
+    }
+
+    @Test
+    @DisplayName("ldap.delete should bind the dn when a capture was requested")
+    void testDeleteCaptureIsTheDn() {
+        LdapCreateStep create = new LdapCreateStep(connector);
+        LdapDeleteStep delete = new LdapDeleteStep(connector);
+        String dn = "cn=ada.deletecapture,ou=users";
+
+        create.execute(Map.of("dn", dn, "attributes",
+                Map.of("cn", "ada.deletecapture", "sn", "Lovelace")), false);
+
+        StepOutcome outcome = delete.execute(Map.of("dn", dn), true);
+
+        assertThat(outcome.success()).isTrue();
+        assertThat(outcome.value()).isEqualTo(dn);
+    }
 }

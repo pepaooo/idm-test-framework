@@ -4,6 +4,9 @@ import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
 import com.idm.test.connector.database.client.MultiDatabaseConnector;
 import com.idm.test.connector.ldap.client.EdirectoryConnector;
+import com.idm.test.connector.rest.client.IdmRestConnector;
+import com.idm.test.connector.rest.config.RestProperties;
+import com.idm.test.connector.soap.client.ResourceServiceConnector;
 import com.idm.test.connector.soap.client.RoleServiceConnector;
 import com.idm.test.core.config.TestExecutorProperties;
 import com.idm.test.core.engine.TestExecutor;
@@ -44,6 +47,12 @@ import static org.assertj.core.api.Assertions.assertThat;
  * - WireMock SOAP server (http://localhost:8090)
  * <p>
  * Excludes Spring Boot's LdapAutoConfiguration since we provide custom LDAP configuration.
+ * <p>
+ * {@code RestProperties} no longer needs enabling here: {@code RestClientConfiguration} now
+ * carries {@code @EnableConfigurationProperties(RestProperties.class)} itself (the same fix
+ * this class used to patch in test-side only), and that configuration is already reached by
+ * this context's component scan, the same way {@code LdapConfiguration} and
+ * {@code SoapConfiguration} enable their own properties classes.
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -104,6 +113,11 @@ public abstract class BaseIntegrationTest {
         registry.add("idm.test.ldap.password", () -> LDAP_BIND_PASSWORD);
         registry.add("idm.test.soap.url",
                 () -> "http://localhost:" + WIREMOCK_SERVER.port() + "/IDMProv/role/service");
+        // ResourceServiceConnector is only registered as a bean when this property is set
+        // (@ConditionalOnProperty), so it must be non-null here too, even though no scenario
+        // executed by this module drives a resource grant/revoke against it.
+        registry.add("idm.test.soap.resource-url",
+                () -> "http://localhost:" + WIREMOCK_SERVER.port() + "/IDMProv/resource/service");
     }
 
     // ===================================================================
@@ -121,6 +135,15 @@ public abstract class BaseIntegrationTest {
 
     @Autowired
     protected RoleServiceConnector roleServiceConnector;
+
+    @Autowired
+    protected ResourceServiceConnector resourceServiceConnector;
+
+    @Autowired
+    protected IdmRestConnector idmRestConnector;
+
+    @Autowired
+    protected RestProperties restProperties;
 
     @Autowired
     protected TestExecutor testExecutor;

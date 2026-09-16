@@ -59,12 +59,13 @@ public final class DbVerifyStep implements StepType {
         String database = String.valueOf(params.get("database"));
         String query = String.valueOf(params.get("query"));
         Object[] arguments = argumentsOf(params.get("params"));
-        Map<String, Object> expect = (Map<String, Object>) params.get("expect");
+        Object rawExpect = params.get("expect");
 
-        StepOutcome rejection = rejectMalformedExpect(expect, database);
+        StepOutcome rejection = rejectMalformedExpect(rawExpect, database);
         if (rejection != null) {
             return rejection;
         }
+        Map<String, Object> expect = (Map<String, Object>) rawExpect;
 
         OperationResult<List<Map<String, Object>>> result =
                 connector.executeQuery(database, query, arguments);
@@ -117,12 +118,25 @@ public final class DbVerifyStep implements StepType {
     }
 
     /**
-     * An {@code expect} that asserts nothing, or one whose keys are typos, would pass having
-     * compared nothing at all — the vacuous-assertion trap, caught once already on
-     * {@code ldap.verify}. Checked before the query runs, since neither problem depends on
-     * the result.
+     * An {@code expect} that asserts nothing, whose keys are typos, or whose {@code row} is
+     * empty or not a map, would pass having compared nothing at all — the vacuous-assertion
+     * trap, caught repeatedly in this project. Checked before the query runs, since none of
+     * these problems depend on the result.
+     * <p>
+     * Takes the raw, unvalidated value from {@code params.get("expect")} rather than an
+     * already-cast {@code Map}: a scenario can write {@code expect} as a scalar, and
+     * {@code StepType.execute} must never throw, so the type check has to happen here, before
+     * any caller casts it.
      */
-    private static StepOutcome rejectMalformedExpect(Map<String, Object> expect, String database) {
+    @SuppressWarnings("unchecked")
+    private static StepOutcome rejectMalformedExpect(Object rawExpect, String database) {
+        if (rawExpect != null && !(rawExpect instanceof Map)) {
+            return StepOutcome.failure("db.verify on '" + database
+                    + "' has an expect that is not a map of assertions (" + ROW_COUNT + ", " + ROW
+                    + ")");
+        }
+
+        Map<String, Object> expect = (Map<String, Object>) rawExpect;
         if (expect == null || expect.isEmpty()) {
             return StepOutcome.failure("db.verify on '" + database
                     + "' has an empty expect: block. Assert " + ROW_COUNT + ", " + ROW
@@ -137,9 +151,32 @@ public final class DbVerifyStep implements StepType {
                     + new TreeSet<>(EXPECT_KEYS));
         }
 
-        if (expect.get(ROW) != null && !(expect.get(ROW) instanceof Map)) {
+        // Positive rule: if ROW is present at all, it must be a Map with at least one
+        // entry. This is one condition rather than a "not a map" check plus an "empty map"
+        // check so that a present-but-null value (expect: { row: null }) cannot slip past
+        // both — containsKey agrees with execute() about what "present" means.
+        if (expect.containsKey(ROW)
+                && !(expect.get(ROW) instanceof Map<?, ?> rowMap && !rowMap.isEmpty())) {
             return StepOutcome.failure("db.verify on '" + database + "' has a " + ROW
-                    + " that is not a map of column names to expected values");
+                    + " that must be a map of column names to expected values with at least "
+                    + "one entry — a missing, null, non-map, or empty " + ROW
+                    + " would verify nothing");
+        }
+
+        // The hole one level in: a misspelled column name (`staus:` instead of `status:`)
+        // parses as an entry whose value is null, indistinguishable from an explicit
+        // `staus: null` after Map.get() — and ValueComparison.equal(null, null) is true, so
+        // a typo'd column would report "verified" having compared nothing.
+        if (expect.containsKey(ROW)) {
+            for (Map.Entry<?, ?> column : ((Map<?, ?>) expect.get(ROW)).entrySet()) {
+                if (column.getValue() == null) {
+                    return StepOutcome.failure("db.verify on '" + database
+                            + "' has a null expected value for row column '" + column.getKey()
+                            + "' — a missing or misspelled column name parses the same way and "
+                            + "would verify nothing. Check for a typo, or assert rowCount to "
+                            + "check for absence instead.");
+                }
+            }
         }
 
         return null;

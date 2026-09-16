@@ -2,8 +2,10 @@ package com.idm.test.scenarios.engine;
 
 import com.idm.test.engine.FixtureFactory;
 import com.idm.test.engine.ScenarioEngine;
+import com.idm.test.engine.ScenarioLoader;
 import com.idm.test.engine.ScenarioValidator;
 import com.idm.test.engine.expr.ExpressionEvaluator;
+import com.idm.test.engine.model.Scenario;
 import com.idm.test.engine.spi.StepType;
 import com.idm.test.scenarios.base.BaseIntegrationTest;
 import org.junit.jupiter.api.DisplayName;
@@ -12,6 +14,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.opentest4j.AssertionFailedError;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.UncheckedIOException;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
@@ -40,7 +45,9 @@ class YamlScenarioValidationTest extends BaseIntegrationTest {
     @Test
     @DisplayName("Produces a test for every file; the invalid one fails by name, the valid one still passes")
     void testFactoryHandlesMixOfValidAndInvalidFiles(@TempDir Path tempDir) throws Exception {
-        Map<String, StepType> registry = YamlScenarioTest.registry(edirectoryConnector, databaseConnector);
+        Map<String, StepType> registry = YamlScenarioTest.registry(
+                edirectoryConnector, databaseConnector, roleServiceConnector,
+                resourceServiceConnector, idmRestConnector, restProperties);
         ScenarioValidator validator = new ScenarioValidator(registry, FixtureFactory.SUPPORTED_GENERATORS);
         ScenarioEngine engine = new ScenarioEngine(
                 registry,
@@ -85,5 +92,30 @@ class YamlScenarioValidationTest extends BaseIntegrationTest {
         assertThat(json.indexOf("\"success\" : false", brokenIndex))
                 .as("broken-wait.yaml's recorded result should have success: false in %s", json)
                 .isNotEqualTo(-1);
+    }
+
+    @Test
+    @DisplayName("A scenario using every step type should load and validate")
+    void testFullVocabularyValidates() {
+        Map<String, StepType> registry = YamlScenarioTest.registry(
+                edirectoryConnector, databaseConnector, roleServiceConnector,
+                resourceServiceConnector, idmRestConnector, restProperties);
+        ScenarioValidator validator =
+                new ScenarioValidator(registry, FixtureFactory.SUPPORTED_GENERATORS);
+
+        Scenario scenario;
+        try (InputStream yaml = getClass().getClassLoader()
+                .getResourceAsStream("scenarios-vocabulary-fixture/full-vocabulary.yaml")) {
+            assertThat(yaml).isNotNull();
+            scenario = ScenarioLoader.load(yaml, "full-vocabulary.yaml");
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+
+        // Proves the authoring contract: every step name is registered, every parameter is
+        // accepted, and every ${...} reference resolves in order. The SOAP and REST steps are
+        // exercised for real against WireMock in SoapStepsTest and RestStepsTest.
+        assertThatCode(() -> validator.validate(scenario, "full-vocabulary.yaml"))
+                .doesNotThrowAnyException();
     }
 }

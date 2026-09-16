@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -124,6 +125,23 @@ class DbStepsTest {
 
         assertThat(outcome.success()).isFalse();
         assertThat(outcome.message()).contains("no-such-db");
+    }
+
+    @Test
+    @DisplayName("db.execute should fail rather than throw when undo is not a map")
+    void testExecuteRejectsNonMapUndo() {
+        // undo: "DELETE FROM x" (a scalar) where a map with a statement belongs; the
+        // unchecked cast in execute() must not surface as a ClassCastException — a
+        // StepType.execute implementation must never throw.
+        DbExecuteStep execute = new DbExecuteStep(connector);
+
+        StepOutcome outcome = execute.execute(Map.of(
+                "database", DB,
+                "statement", "INSERT INTO sap_users (username) VALUES ('x')",
+                "undo", "DELETE FROM sap_users"), false);
+
+        assertThat(outcome.success()).isFalse();
+        assertThat(outcome.message()).contains("undo");
     }
 
     @Test
@@ -271,6 +289,104 @@ class DbStepsTest {
 
         assertThat(outcome.success()).isFalse();
         assertThat(outcome.message()).contains("rowCont");
+    }
+
+    @Test
+    @DisplayName("db.verify should reject an empty row map that would verify nothing")
+    void testVerifyRejectsEmptyRow() {
+        // expect: { row: {} } passes the "expect is non-empty" guard (it has a row key) and
+        // the "row is a Map" guard (it is, just an empty one) — the column loop then iterates
+        // zero entries and db.verify would pass against any single row whatsoever.
+        jdbc.update("INSERT INTO sap_users VALUES (?,?,?)", "jdoe", "PENDING", 0);
+        DbVerifyStep verify = new DbVerifyStep(connector);
+
+        StepOutcome outcome = verify.execute(Map.of(
+                "database", DB,
+                "query", "SELECT * FROM sap_users",
+                "expect", Map.of("row", Map.of())), false);
+
+        assertThat(outcome.success()).isFalse();
+        assertThat(outcome.message()).contains("row");
+    }
+
+    @Test
+    @DisplayName("db.verify should still allow rowCount: 0 as a legitimate assertion")
+    void testVerifyRowCountZeroStillWorks() {
+        // Guards against a fix for the empty-row-map hole overreaching and rejecting a
+        // legitimate zero-rows assertion, which is a different (and valid) thing entirely.
+        DbVerifyStep verify = new DbVerifyStep(connector);
+
+        StepOutcome outcome = verify.execute(Map.of(
+                "database", DB,
+                "query", "SELECT * FROM sap_users WHERE username = 'nobody'",
+                "expect", Map.of("rowCount", 0)), false);
+
+        assertThat(outcome.success()).isTrue();
+    }
+
+    @Test
+    @DisplayName("db.verify should reject a present-but-null row that would verify nothing")
+    void testVerifyRejectsNullRow() {
+        // A bare `row:` key with no value parses as { row: null } — present per containsKey,
+        // but every earlier guard here started with "expect.get(ROW) != null", so a null value
+        // skipped them all, and execute() then did `(Map<String, Object>) expect.get(ROW)` and
+        // called .entrySet() on the resulting null, throwing an NPE — a StepType.execute must
+        // never throw. Map.of cannot hold a null value, which is exactly why this case slipped
+        // past every earlier round of tests — a HashMap is required to express it.
+        jdbc.update("INSERT INTO sap_users VALUES (?,?,?)", "jdoe", "PENDING", 0);
+        DbVerifyStep verify = new DbVerifyStep(connector);
+
+        Map<String, Object> expect = new HashMap<>();
+        expect.put("row", null);
+
+        StepOutcome outcome = verify.execute(Map.of(
+                "database", DB,
+                "query", "SELECT * FROM sap_users",
+                "expect", expect), false);
+
+        assertThat(outcome.success()).isFalse();
+        assertThat(outcome.message()).contains("row");
+    }
+
+    @Test
+    @DisplayName("db.verify should reject a null expected value for a row column "
+            + "(a misspelled column name)")
+    void testVerifyRejectsNullColumnValue() {
+        // ITF-9: a misspelled column, e.g. `staus:` instead of `status:`, is a YAML bare key
+        // whose value parses as null — indistinguishable from an explicit `staus: null` after
+        // Map.get(). ValueComparison.equal(null, null) is true, so without this guard the step
+        // would report "verified 1 row(s)" having compared nothing for that column. Map.of
+        // cannot hold a null value, which is why a HashMap is required to express this case.
+        jdbc.update("INSERT INTO sap_users VALUES (?,?,?)", "jdoe", "ACTIVE", 3);
+        DbVerifyStep verify = new DbVerifyStep(connector);
+
+        Map<String, Object> row = new HashMap<>();
+        row.put("staus", null);
+
+        StepOutcome outcome = verify.execute(Map.of(
+                "database", DB,
+                "query", "SELECT * FROM sap_users WHERE username = 'jdoe'",
+                "expect", Map.of("row", row)), false);
+
+        assertThat(outcome.success()).isFalse();
+        assertThat(outcome.message()).contains("staus");
+    }
+
+    @Test
+    @DisplayName("db.verify should fail rather than throw when expect itself is not a map")
+    void testVerifyRejectsNonMapExpect() {
+        // params.get("expect") is an unchecked cast inside execute(); a scenario writing
+        // `expect: something` (a scalar) must not turn into a ClassCastException — a
+        // StepType.execute implementation must never throw.
+        DbVerifyStep verify = new DbVerifyStep(connector);
+
+        StepOutcome outcome = verify.execute(Map.of(
+                "database", DB,
+                "query", "SELECT * FROM sap_users",
+                "expect", "something"), false);
+
+        assertThat(outcome.success()).isFalse();
+        assertThat(outcome.message()).contains("expect");
     }
 
     @Test

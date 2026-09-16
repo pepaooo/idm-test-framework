@@ -81,6 +81,70 @@ class InterpolatorTest {
     }
 
     @Test
+    @DisplayName("A whole-value reference to a map should preserve the map")
+    void testWholeValueReferencePreservesMap() {
+        Map<String, Object> user = Map.of("userId", "jdoe", "firstName", "Ada");
+        Object resolved = Interpolator.resolve("${user}", Map.of("user", user), evaluator);
+
+        // Previously this produced the String "{userId=jdoe, firstName=Ada}" — Java's
+        // Map.toString, which is not JSON and cannot be sent as a request body.
+        assertThat(resolved).isInstanceOf(Map.class);
+        // Cast to a concrete Map<String, Object> rather than Map<?, ?>: AssertJ's
+        // containsEntry(K, V) takes the map assert's own type parameters, and a wildcard
+        // capture there cannot accept a String literal argument — a real javac limitation,
+        // not a stale-build artifact.
+        assertThat((Map<String, Object>) resolved).containsEntry("userId", "jdoe");
+    }
+
+    @Test
+    @DisplayName("A whole-value reference to a number should preserve the number")
+    void testWholeValueReferencePreservesNumber() {
+        Object resolved = Interpolator.resolve("${count}", Map.of("count", 5), evaluator);
+
+        assertThat(resolved).isInstanceOf(Integer.class).isEqualTo(5);
+    }
+
+    @Test
+    @DisplayName("A whole-value reference to a list should preserve the list")
+    void testWholeValueReferencePreservesList() {
+        Object resolved = Interpolator.resolve(
+                "${roles}", Map.of("roles", List.of("cn=SAP,ou=roles")), evaluator);
+
+        assertThat(resolved).isInstanceOf(List.class);
+        // Same reasoning as the map test above: a concrete element type, not a wildcard.
+        assertThat((List<String>) resolved).containsExactly("cn=SAP,ou=roles");
+    }
+
+    @Test
+    @DisplayName("A reference embedded in a larger string should still produce a string")
+    void testEmbeddedReferenceStillStringifies() {
+        Object resolved = Interpolator.resolve(
+                "cn=${user.userId},ou=users",
+                Map.of("user", Map.of("userId", "jdoe")), evaluator);
+
+        assertThat(resolved).isInstanceOf(String.class).isEqualTo("cn=jdoe,ou=users");
+    }
+
+    @Test
+    @DisplayName("Two references in one value should still produce a string")
+    void testTwoReferencesStillStringify() {
+        Object resolved = Interpolator.resolve(
+                "${a}-${b}", Map.of("a", 1, "b", 2), evaluator);
+
+        assertThat(resolved).isInstanceOf(String.class).isEqualTo("1-2");
+    }
+
+    @Test
+    @DisplayName("A whole-value reference with surrounding whitespace is not a whole value")
+    void testReferenceWithWhitespaceStillStringifies() {
+        // Only an exact match is a whole value. Trimming here would silently change what a
+        // scenario asked for.
+        Object resolved = Interpolator.resolve(" ${count} ", Map.of("count", 5), evaluator);
+
+        assertThat(resolved).isInstanceOf(String.class).isEqualTo(" 5 ");
+    }
+
+    @Test
     @DisplayName("Should collect the root name of every reference for validation")
     void testCollectsReferenceRoots() {
         assertThat(Interpolator.references(

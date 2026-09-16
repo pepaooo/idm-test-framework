@@ -45,8 +45,20 @@ public final class LdapVerifyStep implements StepType {
     @SuppressWarnings("unchecked")
     public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
         String dn = String.valueOf(params.get("dn"));
-        Map<String, Object> expected =
-                (Map<String, Object>) params.getOrDefault("expect", Map.of());
+        Object rawExpect = params.get("expect");
+
+        // A scenario can write `expect: Engineer` (a scalar) where a map of attribute names
+        // to expected values belongs. requiredParams() catches a missing or misspelled
+        // expect:, but not one that is present with the wrong shape, and the unchecked cast
+        // below would throw a ClassCastException out of execute() — which must never throw.
+        // rest.verify and db.verify were both fixed for exactly this; this closes the same
+        // gap in their remaining sibling.
+        if (rawExpect != null && !(rawExpect instanceof Map)) {
+            return StepOutcome.failure("ldap.verify for " + dn
+                    + " has an expect that is not a map of attribute names to expected values");
+        }
+
+        Map<String, Object> expected = (Map<String, Object>) params.getOrDefault("expect", Map.of());
 
         if (expected.isEmpty()) {
             // requiredParams() catches a missing or misspelled expect:, but a present-but-

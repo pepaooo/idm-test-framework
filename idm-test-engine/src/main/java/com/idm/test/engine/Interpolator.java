@@ -25,6 +25,19 @@ public final class Interpolator {
     private static final Pattern REFERENCE = Pattern.compile("\\$\\{([^}]+)}");
     private static final String EXPRESSION_PREFIX = "js:{";
 
+    /**
+     * A value that is exactly one reference and nothing else. Such a value resolves to the
+     * referenced object itself rather than its text, so a map stays a map and a number stays
+     * a number. Anything else — a reference inside a larger string, or two references — is
+     * text by construction and goes through {@link #resolveString}.
+     * <p>
+     * Same regex body as {@link #REFERENCE}; the difference is purely in how each is used —
+     * {@link #REFERENCE} is scanned with {@code find()} to locate references anywhere in a
+     * string, while this one is checked with {@code matches()} to confirm the whole string is
+     * a single reference and nothing more.
+     */
+    private static final Pattern WHOLE_REFERENCE = Pattern.compile("\\$\\{([^}]+)}");
+
     private Interpolator() {
     }
 
@@ -44,6 +57,13 @@ public final class Interpolator {
                 // harmful, because ES6 template literals use the same ${...} syntax and our
                 // interpolator would mangle them before JavaScript ever saw them.
                 return evaluator.evaluate(expression, scope);
+            }
+            Matcher whole = WHOLE_REFERENCE.matcher(text);
+            if (whole.matches()) {
+                // Deliberately no trimming: " ${x} " is a string with a reference in it, not
+                // a whole-value reference, and treating it as one would silently discard the
+                // spaces the author wrote.
+                return lookup(whole.group(1), scope, text);
             }
             return resolveString(text, scope);
         }

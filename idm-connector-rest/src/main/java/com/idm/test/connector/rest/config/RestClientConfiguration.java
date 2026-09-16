@@ -2,6 +2,7 @@ package com.idm.test.connector.rest.config;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.client.ClientHttpRequestFactory;
@@ -13,8 +14,16 @@ import java.time.Duration;
 /**
  * Configuration for Spring RestClient.
  * Creates RestClient bean for REST API operations.
+ * <p>
+ * Enables {@link RestProperties} the same way {@code LdapConfiguration} enables
+ * {@code LdapProperties} and {@code SoapConfiguration} enables {@code SoapProperties}:
+ * {@code RestProperties} is a bare {@code @ConfigurationProperties} class with no
+ * {@code @Component}, so without this, no bean exists outside a test harness that patches it
+ * in, and neither {@code rest.request} nor {@code rest.verify} can be constructed in a real
+ * deployment.
  */
 @Configuration
+@EnableConfigurationProperties(RestProperties.class)
 public class RestClientConfiguration {
 
     private static final Logger log = LoggerFactory.getLogger(RestClientConfiguration.class);

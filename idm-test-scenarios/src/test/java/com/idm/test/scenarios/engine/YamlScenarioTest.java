@@ -2,6 +2,10 @@ package com.idm.test.scenarios.engine;
 
 import com.idm.test.connector.database.client.MultiDatabaseConnector;
 import com.idm.test.connector.ldap.client.EdirectoryConnector;
+import com.idm.test.connector.rest.client.IdmRestConnector;
+import com.idm.test.connector.rest.config.RestProperties;
+import com.idm.test.connector.soap.client.ResourceServiceConnector;
+import com.idm.test.connector.soap.client.RoleServiceConnector;
 import com.idm.test.engine.FixtureFactory;
 import com.idm.test.engine.ScenarioEngine;
 import com.idm.test.engine.ScenarioLoader;
@@ -17,6 +21,12 @@ import com.idm.test.engine.steps.LdapCreateStep;
 import com.idm.test.engine.steps.LdapDeleteStep;
 import com.idm.test.engine.steps.LdapUpdateStep;
 import com.idm.test.engine.steps.LdapVerifyStep;
+import com.idm.test.engine.steps.ResourcesGrantStep;
+import com.idm.test.engine.steps.ResourcesRevokeStep;
+import com.idm.test.engine.steps.RestRequestStep;
+import com.idm.test.engine.steps.RestVerifyStep;
+import com.idm.test.engine.steps.RolesGrantStep;
+import com.idm.test.engine.steps.RolesRevokeStep;
 import com.idm.test.scenarios.base.BaseIntegrationTest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -66,7 +76,9 @@ class YamlScenarioTest extends BaseIntegrationTest {
     @TestFactory
     @DisplayName("Each scenario file runs as its own test")
     Stream<DynamicTest> scenarios() throws Exception {
-        Map<String, StepType> registry = registry(edirectoryConnector, databaseConnector);
+        Map<String, StepType> registry = registry(
+                edirectoryConnector, databaseConnector, roleServiceConnector,
+                resourceServiceConnector, idmRestConnector, restProperties);
         ScenarioValidator validator = new ScenarioValidator(registry, FixtureFactory.SUPPORTED_GENERATORS);
         ScenarioEngine engine = new ScenarioEngine(
                 registry,
@@ -132,7 +144,12 @@ class YamlScenarioTest extends BaseIntegrationTest {
     }
 
     static Map<String, StepType> registry(
-            EdirectoryConnector edirectoryConnector, MultiDatabaseConnector databaseConnector) {
+            EdirectoryConnector edirectoryConnector,
+            MultiDatabaseConnector databaseConnector,
+            RoleServiceConnector roleServiceConnector,
+            ResourceServiceConnector resourceServiceConnector,
+            IdmRestConnector restConnector,
+            RestProperties restProperties) {
         Map<String, StepType> registry = new LinkedHashMap<>();
         for (StepType type : List.of(
                 new LdapCreateStep(edirectoryConnector),
@@ -140,7 +157,13 @@ class YamlScenarioTest extends BaseIntegrationTest {
                 new LdapUpdateStep(edirectoryConnector),
                 new LdapDeleteStep(edirectoryConnector),
                 new DbExecuteStep(databaseConnector),
-                new DbVerifyStep(databaseConnector))) {
+                new DbVerifyStep(databaseConnector),
+                new RolesGrantStep(roleServiceConnector),
+                new RolesRevokeStep(roleServiceConnector),
+                new ResourcesGrantStep(resourceServiceConnector),
+                new ResourcesRevokeStep(resourceServiceConnector),
+                new RestRequestStep(restConnector, restProperties),
+                new RestVerifyStep(restConnector, restProperties))) {
             registry.put(type.name(), type);
         }
         return registry;

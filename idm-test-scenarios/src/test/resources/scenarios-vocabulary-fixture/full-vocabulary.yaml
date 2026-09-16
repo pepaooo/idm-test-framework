@@ -1,0 +1,76 @@
+name: Full vocabulary
+description: Every step type, used only to prove the authoring contract validates
+
+fixtures:
+  user:
+    generate: random-user
+
+steps:
+  - set:
+      accountPath: "js:{ '/users/' + user.userId }"
+
+  - ldap.create:
+      dn: "cn=${user.userId},ou=users"
+      attributes:
+        cn: "${user.userId}"
+        sn: "${user.lastName}"
+
+  - ldap.update:
+      dn: "cn=${user.userId},ou=users"
+      attributes:
+        title: Engineer
+
+  - ldap.verify:
+      dn: "cn=${user.userId},ou=users"
+      expect:
+        title: Engineer
+
+  - db.execute:
+      database: test-db
+      statement: "INSERT INTO sap_users (username, status) VALUES (?, ?)"
+      params: ["${user.userId}", "ACTIVE"]
+
+  - db.verify:
+      database: test-db
+      query: "SELECT status FROM sap_users WHERE username = ?"
+      params: ["${user.userId}"]
+      expect:
+        rowCount: 1
+        row: { status: ACTIVE }
+      wait: true
+
+  - roles.grant:
+      user: "cn=${user.userId},ou=users"
+      roles: ["cn=SAP_USER,ou=roles"]
+      as: granted
+
+  - roles.revoke:
+      assignments: "${granted}"
+
+  - resources.grant:
+      user: "cn=${user.userId},ou=users"
+      resource: "cn=SAP_ACCESS,ou=resources"
+      reason: Automated test
+
+  - resources.revoke:
+      user: "cn=${user.userId},ou=users"
+      resource: "cn=SAP_ACCESS,ou=resources"
+
+  - rest.request:
+      target: idm
+      method: POST
+      path: /users
+      bodyFrom: "${user}"
+      as: created
+
+  - rest.verify:
+      target: idm
+      path: "${accountPath}"
+      expect:
+        status: 200
+        body:
+          userId: "${user.userId}"
+      wait: { timeout: 30s, poll: 2s }
+
+  - ldap.delete:
+      dn: "cn=${user.userId},ou=users"

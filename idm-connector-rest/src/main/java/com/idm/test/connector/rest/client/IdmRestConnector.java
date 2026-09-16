@@ -1,14 +1,23 @@
 package com.idm.test.connector.rest.client;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.idm.test.connector.rest.model.IdmUser;
+import com.idm.test.connector.rest.model.RestResponse;
 import com.idm.test.core.model.ErrorType;
 import com.idm.test.core.model.OperationResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
+
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 
 /**
  * IdM REST API connector using Spring's RestClient.
@@ -25,6 +34,7 @@ public class IdmRestConnector {
     private static final Logger log = LoggerFactory.getLogger(IdmRestConnector.class);
 
     private final RestClient restClient;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     public IdmRestConnector(RestClient restClient) {
         this.restClient = restClient;
@@ -275,6 +285,118 @@ public class IdmRestConnector {
 
         String url = baseUrl + "/users/" + userId;
         return delete(url);
+    }
+
+    /**
+     * Performs one HTTP request and reports exactly what came back.
+     * <p>
+     * Unlike {@link #get}, {@link #post}, {@link #put} and {@link #delete}, this never treats
+     * an HTTP error status as a failure: a 404 or a 500 returns a successful
+     * {@link OperationResult} whose {@link RestResponse#status()} carries the code. That is
+     * the point — a scenario asserting "the account is gone, so this returns 404" cannot be
+     * written against a method that turns 404 into an exception. Only a transport-level
+     * problem (connection refused, timeout, DNS failure) is an operation failure here.
+     *
+     * @param method  GET, POST, PUT, PATCH, DELETE or HEAD, case-insensitive
+     * @param url     the absolute URL
+     * @param body    request body, serialized as JSON, or null for none
+     * @param headers extra request headers, or null for none
+     * @return the response, or a failure result; never throws
+     */
+    public OperationResult<RestResponse> exchange(
+            String method, String url, Object body, Map<String, String> headers) {
+
+        log.debug("{} request to: {}", method, url);
+
+        HttpMethod httpMethod;
+        try {
+            httpMethod = HttpMethod.valueOf(method.toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException e) {
+            return OperationResult.<RestResponse>builder()
+                    .success(false)
+                    .message("Unsupported HTTP method: " + method)
+                    .errorType(ErrorType.VALIDATION_ERROR)
+                    .throwable(e)
+                    .build();
+        }
+
+        try {
+            RestClient.RequestBodySpec spec = restClient
+                    .method(httpMethod)
+                    .uri(url)
+                    .accept(MediaType.APPLICATION_JSON);
+
+            if (headers != null) {
+                headers.forEach(spec::header);
+            }
+
+            RestClient.RequestHeadersSpec<?> requestSpec;
+            if (body != null) {
+                requestSpec = spec.contentType(MediaType.APPLICATION_JSON).body(body);
+            } else {
+                requestSpec = spec;
+            }
+
+            RestClient.ResponseSpec responseSpec = requestSpec
+                    .retrieve()
+                    // Suppress the default error handling entirely: every status, including
+                    // 4xx and 5xx, must reach us as data rather than as an exception.
+                    .onStatus(status -> true, (request, response) -> { });
+
+            ResponseEntity<String> entity = responseSpec.toEntity(String.class);
+
+            Map<String, List<String>> plainHeaders = new LinkedHashMap<>();
+            entity.getHeaders().forEach(plainHeaders::put);
+
+            return OperationResult.<RestResponse>builder()
+                    .success(true)
+                    .data(new RestResponse(
+                            entity.getStatusCode().value(),
+                            plainHeaders,
+                            parseBody(entity)))
+                    .message(httpMethod + " " + url + " returned " + entity.getStatusCode().value())
+                    .build();
+
+        } catch (Exception e) {
+            log.error("{} request failed for URL '{}': {}", method, url, e.getMessage());
+            return OperationResult.<RestResponse>builder()
+                    .success(false)
+                    .message("Request failed: " + e.getMessage())
+                    .errorType(determineErrorType(e))
+                    .throwable(e)
+                    .build();
+        }
+    }
+
+    /**
+     * JSON becomes Maps, Lists and scalars so a scenario can walk it with
+     * {@code ${created.body.id}}. Anything else is returned as its raw text rather than
+     * guessed at, and an empty body is null rather than an empty string.
+     */
+    private Object parseBody(ResponseEntity<String> entity) {
+        String text = entity.getBody();
+        if (text == null || text.isBlank()) {
+            return null;
+        }
+
+        MediaType contentType = entity.getHeaders().getContentType();
+        boolean json = contentType != null
+                && (MediaType.APPLICATION_JSON.isCompatibleWith(contentType)
+                    || contentType.getSubtype().endsWith("+json"));
+        if (!json) {
+            return text;
+        }
+
+        try {
+            return objectMapper.readValue(text, Object.class);
+        } catch (Exception e) {
+            // The server said JSON and sent something else. Returning the raw text loses
+            // nothing and lets the scenario assert on it; throwing here would turn a server
+            // bug into an unrelated-looking connector failure.
+            log.warn("Response claimed JSON but could not be parsed, returning raw text: {}",
+                    e.getMessage());
+            return text;
+        }
     }
 
     /**

@@ -48,7 +48,18 @@ public final class DbExecuteStep implements StepType {
         String statement = String.valueOf(params.get("statement"));
         Object[] arguments = argumentsOf(params.get("params"));
 
-        Map<String, Object> undoSpec = (Map<String, Object>) params.get("undo");
+        Object rawUndo = params.get("undo");
+
+        // A scenario can write `undo: DELETE FROM x` (a scalar) where a map with a statement
+        // (and optional params) belongs. The unchecked cast below would throw a
+        // ClassCastException out of execute() — which must never throw, the same rule
+        // ldap.verify, rest.verify and db.verify were fixed for on this branch.
+        if (rawUndo != null && !(rawUndo instanceof Map)) {
+            return StepOutcome.failure("db.execute on '" + database
+                    + "' has an undo that is not a map with a statement (and optional params)");
+        }
+
+        Map<String, Object> undoSpec = (Map<String, Object>) rawUndo;
         String undoStatement = null;
         Object[] undoArguments = null;
 

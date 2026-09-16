@@ -151,15 +151,16 @@ public final class DbVerifyStep implements StepType {
                     + new TreeSet<>(EXPECT_KEYS));
         }
 
-        if (expect.get(ROW) != null && !(expect.get(ROW) instanceof Map)) {
+        // Positive rule: if ROW is present at all, it must be a Map with at least one
+        // entry. This is one condition rather than a "not a map" check plus an "empty map"
+        // check so that a present-but-null value (expect: { row: null }) cannot slip past
+        // both — containsKey agrees with execute() about what "present" means.
+        if (expect.containsKey(ROW)
+                && !(expect.get(ROW) instanceof Map<?, ?> rowMap && !rowMap.isEmpty())) {
             return StepOutcome.failure("db.verify on '" + database + "' has a " + ROW
-                    + " that is not a map of column names to expected values");
-        }
-
-        if (expect.get(ROW) instanceof Map<?, ?> rowMap && rowMap.isEmpty()) {
-            return StepOutcome.failure("db.verify on '" + database
-                    + "' has an empty " + ROW + ": map. Assert at least one column — an empty "
-                    + ROW + " would verify nothing.");
+                    + " that must be a map of column names to expected values with at least "
+                    + "one entry — a missing, null, non-map, or empty " + ROW
+                    + " would verify nothing");
         }
 
         return null;

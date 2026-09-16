@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -304,6 +305,30 @@ class DbStepsTest {
                 "expect", Map.of("rowCount", 0)), false);
 
         assertThat(outcome.success()).isTrue();
+    }
+
+    @Test
+    @DisplayName("db.verify should reject a present-but-null row that would verify nothing")
+    void testVerifyRejectsNullRow() {
+        // A bare `row:` key with no value parses as { row: null } — present per containsKey,
+        // but every earlier guard here started with "expect.get(ROW) != null", so a null value
+        // skipped them all, and execute() then did `(Map<String, Object>) expect.get(ROW)` and
+        // called .entrySet() on the resulting null, throwing an NPE — a StepType.execute must
+        // never throw. Map.of cannot hold a null value, which is exactly why this case slipped
+        // past every earlier round of tests — a HashMap is required to express it.
+        jdbc.update("INSERT INTO sap_users VALUES (?,?,?)", "jdoe", "PENDING", 0);
+        DbVerifyStep verify = new DbVerifyStep(connector);
+
+        Map<String, Object> expect = new HashMap<>();
+        expect.put("row", null);
+
+        StepOutcome outcome = verify.execute(Map.of(
+                "database", DB,
+                "query", "SELECT * FROM sap_users",
+                "expect", expect), false);
+
+        assertThat(outcome.success()).isFalse();
+        assertThat(outcome.message()).contains("row");
     }
 
     @Test

@@ -188,15 +188,16 @@ public final class RestVerifyStep implements StepType {
                     + new TreeSet<>(EXPECT_KEYS));
         }
 
-        if (expect.get(BODY) != null && !(expect.get(BODY) instanceof Map)) {
+        // Positive rule: if BODY is present at all, it must be a Map with at least one
+        // entry. This is one condition rather than a "not a map" check plus an "empty map"
+        // check so that a present-but-null value (expect: { body: null }) cannot slip past
+        // both — containsKey agrees with execute() about what "present" means.
+        if (expect.containsKey(BODY)
+                && !(expect.get(BODY) instanceof Map<?, ?> bodyMap && !bodyMap.isEmpty())) {
             return StepOutcome.failure("rest.verify on '" + target + "' has a " + BODY
-                    + " that is not a map of field names to expected values");
-        }
-
-        if (expect.get(BODY) instanceof Map<?, ?> bodyMap && bodyMap.isEmpty()) {
-            return StepOutcome.failure("rest.verify on '" + target
-                    + "' has an empty " + BODY + ": map. Assert at least one field — an empty "
-                    + BODY + " would verify nothing.");
+                    + " that must be a map of field names to expected values with at least "
+                    + "one entry — a missing, null, non-map, or empty " + BODY
+                    + " would verify nothing");
         }
 
         return null;

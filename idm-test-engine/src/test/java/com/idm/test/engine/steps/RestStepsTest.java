@@ -12,6 +12,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.client.RestClient;
 
+import java.util.HashMap;
 import java.util.Map;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
@@ -296,6 +297,31 @@ class RestStepsTest {
         StepOutcome outcome = new RestVerifyStep(CONNECTOR, PROPERTIES).execute(Map.of(
                 "target", "idm", "path", "/users/jdoe",
                 "expect", Map.of("body", Map.of())), false);
+
+        assertThat(outcome.success()).isFalse();
+        assertThat(outcome.message()).contains("body");
+    }
+
+    @Test
+    @DisplayName("rest.verify should reject a present-but-null body that would verify nothing")
+    void testVerifyRejectsNullBody() {
+        // A bare `body:` key with no value parses as { body: null } — present per containsKey,
+        // but every earlier guard here started with "expect.get(BODY) != null", so a null value
+        // skipped them all. StepValues.toMap(null) then silently returns an empty map and the
+        // subset comparison iterates zero fields: rest.verify would report SUCCESS having
+        // compared nothing. Map.of cannot hold a null value, which is exactly why this case
+        // slipped past every earlier round of tests — a HashMap is required to express it.
+        stubFor(get(urlEqualTo("/users/jdoe")).willReturn(aResponse()
+                .withStatus(200)
+                .withHeader("Content-Type", "application/json")
+                .withBody("{\"department\":\"Sales\"}")));
+
+        Map<String, Object> expect = new HashMap<>();
+        expect.put("body", null);
+
+        StepOutcome outcome = new RestVerifyStep(CONNECTOR, PROPERTIES).execute(Map.of(
+                "target", "idm", "path", "/users/jdoe",
+                "expect", expect), false);
 
         assertThat(outcome.success()).isFalse();
         assertThat(outcome.message()).contains("body");

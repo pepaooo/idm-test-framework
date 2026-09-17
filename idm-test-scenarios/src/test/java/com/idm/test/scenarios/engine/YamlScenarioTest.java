@@ -28,7 +28,6 @@ import com.idm.test.engine.steps.RestVerifyStep;
 import com.idm.test.engine.steps.RolesGrantStep;
 import com.idm.test.engine.steps.RolesRevokeStep;
 import com.idm.test.scenarios.base.BaseIntegrationTest;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.TestFactory;
@@ -60,18 +59,6 @@ class YamlScenarioTest extends BaseIntegrationTest {
 
     private static final String SCENARIO_DIR = "scenarios";
     private static final Path RESULTS = Path.of("target", "scenario-results.json");
-
-    /**
-     * The scenarios module configures an H2 database named test-db but no schema, so the
-     * table the database scenario works against is created here. CREATE TABLE IF NOT EXISTS
-     * is idempotent, which is why this can safely run per test.
-     */
-    @BeforeEach
-    void createScenarioTable() {
-        databaseConnector.executeUpdate("test-db",
-                "CREATE TABLE IF NOT EXISTS sap_users ("
-                        + "username VARCHAR(50), status VARCHAR(20))");
-    }
 
     @TestFactory
     @DisplayName("Each scenario file runs as its own test")

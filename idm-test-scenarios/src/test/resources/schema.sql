@@ -9,6 +9,7 @@
 DROP TABLE IF EXISTS user_access;
 DROP TABLE IF EXISTS users;
 DROP TABLE IF EXISTS audit_log;
+DROP TABLE IF EXISTS sap_users;
 
 -- ========================================
 -- Users Table
@@ -74,6 +75,14 @@ CREATE TABLE audit_log (
 CREATE INDEX idx_audit_user ON audit_log(user_id);
 CREATE INDEX idx_audit_action ON audit_log(action);
 CREATE INDEX idx_audit_date ON audit_log(performed_at);
+
+-- ========================================
+-- SAP Users Table (target-application stand-in for scenario tests)
+-- ========================================
+CREATE TABLE sap_users (
+    username VARCHAR(50),
+    status VARCHAR(20)
+);
 
 -- ========================================
 -- Sample Data (Optional - for manual testing)

@@ -1,0 +1,47 @@
+name: Department transfer workflow with cross-system sync
+description: Create a user in LDAP and the database, transfer them to a new department and title, then verify the change synced to the database
+
+fixtures:
+  user:
+    generate: random-user
+    values:
+      department: Engineering
+      jobTitle: Software Engineer
+
+steps:
+  - ldap.create:
+      dn: "cn=${user.userId},ou=users"
+      attributes:
+        cn: "${user.userId}"
+        sn: "${user.lastName}"
+        givenName: "${user.firstName}"
+        mail: "${user.email}"
+
+  - db.execute:
+      database: test-db
+      statement: "INSERT INTO users (user_id, first_name, last_name, email, department, job_title, active) VALUES (?, ?, ?, ?, ?, ?, ?)"
+      params: ["${user.userId}", "${user.firstName}", "${user.lastName}", "${user.email}", "${user.department}", "${user.jobTitle}", true]
+      undo:
+        statement: "DELETE FROM users WHERE user_id = ?"
+        params: ["${user.userId}"]
+
+  - ldap.update:
+      dn: "cn=${user.userId},ou=users"
+      attributes:
+        ou: "Sales"
+        title: "Sales Representative"
+
+  - db.execute:
+      database: test-db
+      statement: "UPDATE users SET department = ?, job_title = ? WHERE user_id = ?"
+      params: ["Sales", "Sales Representative", "${user.userId}"]
+
+  - db.verify:
+      database: test-db
+      query: "SELECT department, job_title FROM users WHERE user_id = ?"
+      params: ["${user.userId}"]
+      expect:
+        rowCount: 1
+        row:
+          department: Sales
+          job_title: Sales Representative

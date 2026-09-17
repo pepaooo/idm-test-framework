@@ -1,0 +1,97 @@
+name: Complete new hire onboarding workflow across all systems
+description: Create a user in eDirectory, assign base roles via SOAP, provision the HR database, grant application access, then verify the end state across LDAP and the database
+
+fixtures:
+  user:
+    generate: random-user
+    values:
+      department: Engineering
+      jobTitle: Software Engineer
+
+steps:
+  - ldap.create:
+      dn: "cn=${user.userId},ou=users"
+      attributes:
+        cn: "${user.userId}"
+        sn: "${user.lastName}"
+        givenName: "${user.firstName}"
+        mail: "${user.email}"
+
+  - ldap.verify:
+      dn: "cn=${user.userId},ou=users"
+      exists: true
+      wait: true
+
+  - roles.grant:
+      user: "cn=${user.userId},ou=users"
+      roles:
+        - "cn=EMAIL_ACCESS,ou=roles,dc=test,dc=com"
+        - "cn=INTRANET_USER,ou=roles,dc=test,dc=com"
+        - "cn=BASIC_EMPLOYEE,ou=roles,dc=test,dc=com"
+      reason: "New hire onboarding - base roles"
+      as: baseRoles
+
+  - db.execute:
+      database: test-db
+      statement: "INSERT INTO users (user_id, first_name, last_name, email, department, job_title, active) VALUES (?, ?, ?, ?, ?, ?, ?)"
+      params: ["${user.userId}", "${user.firstName}", "${user.lastName}", "${user.email}", "${user.department}", "${user.jobTitle}", true]
+      undo:
+        statement: "DELETE FROM users WHERE user_id = ?"
+        params: ["${user.userId}"]
+
+  - db.execute:
+      database: test-db
+      statement: "INSERT INTO user_access (user_id, system_name, access_level, granted_date) VALUES (?, ?, ?, CURRENT_TIMESTAMP)"
+      params: ["${user.userId}", "SAP", "USER"]
+
+  - db.execute:
+      database: test-db
+      statement: "INSERT INTO user_access (user_id, system_name, access_level, granted_date) VALUES (?, ?, ?, CURRENT_TIMESTAMP)"
+      params: ["${user.userId}", "Workday", "USER"]
+
+  - db.execute:
+      database: test-db
+      statement: "INSERT INTO user_access (user_id, system_name, access_level, granted_date) VALUES (?, ?, ?, CURRENT_TIMESTAMP)"
+      params: ["${user.userId}", "Email", "USER"]
+
+  - db.execute:
+      database: test-db
+      statement: "INSERT INTO user_access (user_id, system_name, access_level, granted_date) VALUES (?, ?, ?, CURRENT_TIMESTAMP)"
+      params: ["${user.userId}", "Intranet", "USER"]
+      undo:
+        statement: "DELETE FROM user_access WHERE user_id = ?"
+        params: ["${user.userId}"]
+
+  - db.verify:
+      database: test-db
+      query: "SELECT * FROM user_access WHERE user_id = ?"
+      params: ["${user.userId}"]
+      expect:
+        rowCount: 4
+      wait: true
+
+  - ldap.verify:
+      dn: "cn=${user.userId},ou=users"
+      expect:
+        mail: "${user.email}"
+
+  - db.verify:
+      database: test-db
+      query: "SELECT * FROM users WHERE user_id = ?"
+      params: ["${user.userId}"]
+      expect:
+        rowCount: 1
+        row:
+          email: "${user.email}"
+          department: "${user.department}"
+          active: true
+
+  - db.verify:
+      database: test-db
+      query: "SELECT system_name, access_level FROM user_access WHERE user_id = ? ORDER BY system_name"
+      params: ["${user.userId}"]
+      expect:
+        rowCount: 4
+
+  - roles.revoke:
+      assignments: "${baseRoles}"

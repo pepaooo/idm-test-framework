@@ -1,0 +1,39 @@
+name: Delete a user (hard delete) from all systems
+description: Create a user in LDAP and the database, delete it from both, then verify it is gone from both
+
+fixtures:
+  user:
+    generate: random-user
+
+steps:
+  - ldap.create:
+      dn: "cn=${user.userId},ou=users"
+      attributes:
+        cn: "${user.userId}"
+        sn: "${user.lastName}"
+        givenName: "${user.firstName}"
+        mail: "${user.email}"
+
+  - db.execute:
+      database: test-db
+      statement: "INSERT INTO users (user_id, first_name, last_name, email, active) VALUES (?, ?, ?, ?, ?)"
+      params: ["${user.userId}", "${user.firstName}", "${user.lastName}", "${user.email}", true]
+
+  - ldap.delete:
+      dn: "cn=${user.userId},ou=users"
+
+  - ldap.verify:
+      dn: "cn=${user.userId},ou=users"
+      exists: false
+
+  - db.execute:
+      database: test-db
+      statement: "DELETE FROM users WHERE user_id = ?"
+      params: ["${user.userId}"]
+
+  - db.verify:
+      database: test-db
+      query: "SELECT * FROM users WHERE user_id = ?"
+      params: ["${user.userId}"]
+      expect:
+        rowCount: 0

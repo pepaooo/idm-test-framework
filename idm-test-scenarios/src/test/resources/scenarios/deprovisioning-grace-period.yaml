@@ -1,0 +1,34 @@
+name: Deprovision a user with a grace period
+description: Mark a user inactive, verify it still exists in a disabled state, then delete it once the grace period ends
+
+fixtures:
+  user:
+    generate: random-user
+
+steps:
+  - db.execute:
+      database: test-db
+      statement: "INSERT INTO users (user_id, first_name, last_name, email, active) VALUES (?, ?, ?, ?, ?)"
+      params: ["${user.userId}", "${user.firstName}", "${user.lastName}", "${user.email}", true]
+      undo:
+        statement: "DELETE FROM users WHERE user_id = ?"
+        params: ["${user.userId}"]
+
+  - db.execute:
+      database: test-db
+      statement: "UPDATE users SET active = false WHERE user_id = ?"
+      params: ["${user.userId}"]
+
+  - db.verify:
+      database: test-db
+      query: "SELECT * FROM users WHERE user_id = ?"
+      params: ["${user.userId}"]
+      expect:
+        rowCount: 1
+        row:
+          active: false
+
+  - db.execute:
+      database: test-db
+      statement: "DELETE FROM users WHERE user_id = ? AND active = false"
+      params: ["${user.userId}"]

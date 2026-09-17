@@ -1,0 +1,38 @@
+name: Modify a user's attributes in eDirectory
+description: Update department, title and phone, then verify the changes stuck
+
+fixtures:
+  user:
+    generate: random-user
+    values:
+      department: Engineering
+      jobTitle: Software Engineer
+
+steps:
+  - ldap.create:
+      dn: "cn=${user.userId},ou=users"
+      attributes:
+        cn: "${user.userId}"
+        sn: "${user.lastName}"
+        givenName: "${user.firstName}"
+        mail: "${user.email}"
+
+  - ldap.update:
+      dn: "cn=${user.userId},ou=users"
+      attributes:
+        ou: "Product Management"
+        title: "Senior Product Manager"
+        telephoneNumber: "+1-555-0187"
+
+  - ldap.verify:
+      dn: "cn=${user.userId},ou=users"
+      expect:
+        title: "Senior Product Manager"
+      wait: true
+
+  - ldap.verify:
+      dn: "cn=${user.userId},ou=users"
+      expect:
+        ou: "Product Management"
+        title: "Senior Product Manager"
+        telephoneNumber: "+1-555-0187"

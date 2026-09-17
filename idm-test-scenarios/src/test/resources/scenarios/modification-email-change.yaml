@@ -1,0 +1,54 @@
+name: Change a user's email and sync it across systems
+description: Update the email address in LDAP and the database, then verify both
+
+fixtures:
+  user:
+    generate: random-user
+
+steps:
+  - ldap.create:
+      dn: "cn=${user.userId},ou=users"
+      attributes:
+        cn: "${user.userId}"
+        sn: "${user.lastName}"
+        givenName: "${user.firstName}"
+        mail: "${user.email}"
+
+  - db.execute:
+      database: test-db
+      statement: "INSERT INTO users (user_id, first_name, last_name, email, active) VALUES (?, ?, ?, ?, ?)"
+      params:
+        - "${user.userId}"
+        - "${user.firstName}"
+        - "${user.lastName}"
+        - "${user.email}"
+        - true
+      undo:
+        statement: "DELETE FROM users WHERE user_id = ?"
+        params: ["${user.userId}"]
+
+  - ldap.update:
+      dn: "cn=${user.userId},ou=users"
+      attributes:
+        mail: "changed.email@example.com"
+
+  - db.execute:
+      database: test-db
+      statement: "UPDATE users SET email = ? WHERE user_id = ?"
+      params:
+        - "changed.email@example.com"
+        - "${user.userId}"
+
+  - ldap.verify:
+      dn: "cn=${user.userId},ou=users"
+      expect:
+        mail: "changed.email@example.com"
+
+  - db.verify:
+      database: test-db
+      query: "SELECT email FROM users WHERE user_id = ?"
+      params: ["${user.userId}"]
+      expect:
+        rowCount: 1
+        row:
+          email: "changed.email@example.com"

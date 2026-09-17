@@ -167,16 +167,18 @@ class LdapStepsTest {
     }
 
     @Test
-    @DisplayName("ldap.verify should declare 'expect' as required, closing the "
-            + "vacuous-assertion path by construction")
+    @DisplayName("ldap.verify should require only 'dn', leaving the expect-vs-exists choice "
+            + "to rejectMalformedAssertion")
     void testVerifyDeclaresExpectRequired() {
         LdapVerifyStep verify = new LdapVerifyStep(connector);
 
-        // A typo like "expct" must fail ScenarioValidator instead of falling through to
-        // params.getOrDefault("expect", Map.of()), which would compare against nothing and
-        // report success. Declaring 'expect' (and 'dn') as required is what closes that gap.
-        assertThat(verify.requiredParams()).containsExactlyInAnyOrder("dn", "expect");
-        assertThat(verify.acceptedParams()).containsExactlyInAnyOrder("dn", "expect", "wait");
+        // 'expect' is no longer unconditionally required: exists: is now a valid alternative
+        // assertion. A typo like "expct" (with no exists: present either) is still caught,
+        // not by requiredParams() anymore, but by rejectMalformedAssertion's "neither
+        // supplied" branch, exercised in testVerifyRejectsNeitherExpectNorExists.
+        assertThat(verify.requiredParams()).containsExactly("dn");
+        assertThat(verify.acceptedParams())
+                .containsExactlyInAnyOrder("dn", "expect", "exists", "wait");
     }
 
     @Test
@@ -426,5 +428,91 @@ class LdapStepsTest {
 
         assertThat(outcome.success()).isFalse();
         assertThat(outcome.message()).contains("verify nothing");
+    }
+
+    // ------------------------------------------------------------------
+    // ldap.verify exists: (ITF-5 Task 1)
+    // ------------------------------------------------------------------
+
+    @Test
+    @DisplayName("ldap.verify exists:false should pass once the entry is gone")
+    void testVerifyExistsFalsePassesWhenAbsent() {
+        StepOutcome outcome = new LdapVerifyStep(connector).execute(
+                Map.of("dn", "cn=never.created,ou=users", "exists", false), false);
+
+        assertThat(outcome.success()).isTrue();
+    }
+
+    @Test
+    @DisplayName("ldap.verify exists:false should fail while the entry is still there")
+    void testVerifyExistsFalseFailsWhenPresent() {
+        LdapCreateStep create = new LdapCreateStep(connector);
+        String dn = "cn=ada.stillhere,ou=users";
+        create.execute(Map.of("dn", dn, "attributes",
+                Map.of("cn", "ada.stillhere", "sn", "Lovelace")), false);
+
+        StepOutcome outcome = new LdapVerifyStep(connector).execute(
+                Map.of("dn", dn, "exists", false), false);
+
+        assertThat(outcome.success()).isFalse();
+        assertThat(outcome.message()).contains(dn);
+    }
+
+    @Test
+    @DisplayName("ldap.verify exists:true should pass without asserting attributes")
+    void testVerifyExistsTruePassesWhenPresent() {
+        LdapCreateStep create = new LdapCreateStep(connector);
+        String dn = "cn=ada.present,ou=users";
+        create.execute(Map.of("dn", dn, "attributes",
+                Map.of("cn", "ada.present", "sn", "Lovelace")), false);
+
+        StepOutcome outcome = new LdapVerifyStep(connector).execute(
+                Map.of("dn", dn, "exists", true), false);
+
+        assertThat(outcome.success()).isTrue();
+    }
+
+    @Test
+    @DisplayName("ldap.verify exists:true should fail when the entry is absent")
+    void testVerifyExistsTrueFailsWhenAbsent() {
+        StepOutcome outcome = new LdapVerifyStep(connector).execute(
+                Map.of("dn", "cn=not.there,ou=users", "exists", true), false);
+
+        assertThat(outcome.success()).isFalse();
+    }
+
+    @Test
+    @DisplayName("ldap.verify should reject expect and exists supplied together")
+    void testVerifyRejectsExpectAndExistsTogether() {
+        // expect already implies existence, so supplying both says nothing about intent.
+        StepOutcome outcome = new LdapVerifyStep(connector).execute(Map.of(
+                "dn", "cn=ada,ou=users",
+                "expect", Map.of("sn", "Lovelace"),
+                "exists", true), false);
+
+        assertThat(outcome.success()).isFalse();
+        assertThat(outcome.message()).contains("expect").contains("exists");
+    }
+
+    @Test
+    @DisplayName("ldap.verify should reject neither expect nor exists")
+    void testVerifyRejectsNeitherExpectNorExists() {
+        // The vacuous-assertion trap: making expect optional means "neither supplied"
+        // must fail, or the step verifies nothing at all.
+        StepOutcome outcome = new LdapVerifyStep(connector).execute(
+                Map.of("dn", "cn=ada,ou=users"), false);
+
+        assertThat(outcome.success()).isFalse();
+        assertThat(outcome.message()).contains("expect").contains("exists");
+    }
+
+    @Test
+    @DisplayName("ldap.verify should reject a non-boolean exists")
+    void testVerifyRejectsNonBooleanExists() {
+        StepOutcome outcome = new LdapVerifyStep(connector).execute(
+                Map.of("dn", "cn=ada,ou=users", "exists", "yes"), false);
+
+        assertThat(outcome.success()).isFalse();
+        assertThat(outcome.message()).contains("exists");
     }
 }

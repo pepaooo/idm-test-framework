@@ -18,6 +18,6 @@
     "headers": {
       "Content-Type": "text/xml; charset=UTF-8"
     },
-    "body": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\">\n  <soap:Body>\n    <ns2:requestRolesAssignmentResponse xmlns:ns2=\"urn:idmprov\">\n      <result>SUCCESS</result>\n    </ns2:requestRolesAssignmentResponse>\n  </soap:Body>\n</soap:Envelope>"
+    "body": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:tns=\"http://www.novell.com/role/service\">\n  <soap:Body>\n    <tns:requestRolesAssignmentResponse>\n      <tns:result><tns:dnstring><tns:dn>cn=assignment-1,ou=requests,dc=test,dc=com</tns:dn></tns:dnstring></tns:result>\n    </tns:requestRolesAssignmentResponse>\n  </soap:Body>\n</soap:Envelope>"
   }
 }

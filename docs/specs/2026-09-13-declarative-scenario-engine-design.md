@@ -24,19 +24,27 @@ the first.
 
 ## 2. Evidence this is tractable
 
-The 27 existing scenario tests use exactly **nine distinct operations** between them:
+The 20 existing scenario tests use exactly **nine distinct operations** between them:
 
 | Operation | Call sites |
 |---|---|
-| `databaseConnector.executeUpdate` | 32 |
+| `databaseConnector.executeUpdate` | 31 |
 | `databaseConnector.executeQuery` | 19 |
 | `edirectoryConnector.create` | 13 |
 | `edirectoryConnector.read` | 10 |
 | `testExecutor.waitUntil` | 9 |
 | `edirectoryConnector.update` | 6 |
 | `roleServiceConnector.assignRoles` | 5 |
-| `edirectoryConnector.delete` | 3 |
-| `roleServiceConnector.removeRole` | 1 |
+| `edirectoryConnector.delete` | 2 |
+| `roleServiceConnector.removeRole` | 0 |
+
+(Re-measured directly against the five workflow test files for this correction. Six of the nine
+counts are unchanged. Two are lower for the same reason: the original figures included a call
+inside `BaseIntegrationTest`'s shared cleanup helper, not inside any of the 20 scenario tests
+themselves (`databaseConnector.executeUpdate`: 32 → 31, `edirectoryConnector.delete`: 3 → 2). The
+ninth, `roleServiceConnector.removeRole`, drops from 1 to 0: the "1" was a source comment in
+`BaseIntegrationTest` — `// Note: Actual cleanup would use roleServiceConnector.removeRole()` —
+not an actual call site anywhere in the corpus.)
 
 Nine operations cover the entire corpus. This is a small, closed vocabulary, not a general-purpose
 programming problem.
@@ -207,7 +215,7 @@ steps:
       target: idm
       method: POST
       path: /users
-      bodyFrom: user
+      bodyFrom: "${user}"
       as: created
 
   - ldap.verify:
@@ -289,7 +297,7 @@ Expressions are plain sandboxed ES6 with no helper object. Standard JavaScript a
 the cases that motivated one — date arithmetic, capitalisation, zero-padding, conditionals,
 JSON — verified against Rhino 1.8.0 before this was decided. A curated `dates`/`strings` API
 would be surface to design, document and keep stable with nothing yet requiring it. The
-conversion of the 27 existing scenarios (§8.3) is the evidence that should decide which
+conversion of the 20 existing scenarios (§8.3) is the evidence that should decide which
 helpers, if any, earn their place. The accepted cost is that the native date idiom reads
 clunkily for someone who is not a JavaScript programmer.
 
@@ -352,10 +360,10 @@ stubs. No new test infrastructure.
 Plus a golden-file test pinning the JSON result structure, since the HTML renderer and any future
 UI become consumers of that shape and silent changes would be expensive.
 
-### 8.3 The 27 existing Java scenarios
+### 8.3 The 20 existing Java scenarios
 
 Convert them to YAML — primarily as the engine's acceptance corpus rather than as migration. If all
-27 express cleanly in twelve step types, the vocabulary is proven sufficient by construction. Any
+20 express cleanly in twelve step types, the vocabulary is proven sufficient by construction. Any
 that resist conversion are the most valuable output: they define what the Java tier is *for*, and
 become its documented examples.
 
@@ -370,7 +378,7 @@ conversions should not be polished beyond what the engine needs.
 Most scenarios will begin by creating a user, and without a reuse mechanism every file repeats it.
 `fixtures:` covers data reuse but not step reuse.
 
-Ship without it. The conversion in 8.3 yields 27 real data points on how badly the duplication
+Ship without it. The conversion in 8.3 yields 20 real data points on how badly the duplication
 hurts — better than inventing an `extends:` syntax speculatively. It is the most likely first
 extension.
 
@@ -413,6 +421,6 @@ expressions, eroding the inspectability the specification amendment depends on. 
 5.4 is the defence and needs enforcing in review, not only at load time.
 
 **Delivery phasing.** This increment is large: a connector, an engine, twelve step types, an
-adapter, reporting and a 27-scenario conversion. The implementation plan should sequence it —
+adapter, reporting and a 20-scenario conversion. The implementation plan should sequence it —
 `ResourceServiceConnector` first, then engine core with a minimal vocabulary, then the remaining
 step types, then conversion — and may warrant splitting into more than one plan.

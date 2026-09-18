@@ -21,7 +21,7 @@ This is an **integration testing framework** for Identity Management (IdM) syste
 - ❌ Custom REST client wrappers (Spring provides excellent ones)
 - ❌ Custom OAuth token managers (Spring Security handles this)
 - ❌ JPA/Hibernate for test validation queries (raw SQL is more flexible)
-- ❌ Orchestration layers that hide test logic (tests must be explicit)
+- ❌ Orchestration layers that hide test logic in the Java tier (tests must be explicit) — the declarative YAML tier is a deliberate exception; see `docs/reference/specification.md`
 - ❌ Mocking external systems in integration tests (use real systems or Testcontainers)
 
 ## Development Commands

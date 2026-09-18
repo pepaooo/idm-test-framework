@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.ldap.core.LdapTemplate;
 import org.springframework.ldap.core.support.LdapContextSource;
 
+import java.util.HashMap;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -169,7 +170,7 @@ class LdapStepsTest {
     @Test
     @DisplayName("ldap.verify should require only 'dn', leaving the expect-vs-exists choice "
             + "to rejectMalformedAssertion")
-    void testVerifyDeclaresExpectRequired() {
+    void testVerifyRequiresOnlyDn() {
         LdapVerifyStep verify = new LdapVerifyStep(connector);
 
         // 'expect' is no longer unconditionally required: exists: is now a valid alternative
@@ -504,6 +505,33 @@ class LdapStepsTest {
 
         assertThat(outcome.success()).isFalse();
         assertThat(outcome.message()).contains("expect").contains("exists");
+    }
+
+    @Test
+    @DisplayName("ldap.verify should reject a null expected value inside expect rather than "
+            + "treat it as a match against an absent attribute")
+    void testVerifyRejectsNullValueInsideExpect() {
+        // The eighth occurrence of the vacuous-assertion class: EdirectoryConnector.valuesEqual
+        // treats (null, null) as equal, so expect: { titel: null } (a typo written without a
+        // value) or the deliberate-but-wrong expect: { telephoneNumber: null } both compare
+        // equal against an attribute the entry does not have, and the step reports "verified"
+        // having compared nothing. Map.of() cannot hold a null value — that is exactly why
+        // earlier test rounds never caught this — so a HashMap is required here.
+        LdapCreateStep create = new LdapCreateStep(connector);
+        String dn = "cn=ada.nullexpect,ou=users";
+        create.execute(Map.of("dn", dn, "attributes",
+                Map.of("cn", "ada.nullexpect", "sn", "Lovelace")), false);
+
+        Map<String, Object> expect = new HashMap<>();
+        expect.put("title", null);
+        Map<String, Object> params = new HashMap<>();
+        params.put("dn", dn);
+        params.put("expect", expect);
+
+        StepOutcome outcome = new LdapVerifyStep(connector).execute(params, false);
+
+        assertThat(outcome.success()).isFalse();
+        assertThat(outcome.message()).contains(dn).containsIgnoringCase("title");
     }
 
     @Test

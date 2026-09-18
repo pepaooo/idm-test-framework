@@ -122,7 +122,7 @@ public final class LdapVerifyStep implements StepType {
      * <p>
      * Making {@code expect} optional is what creates the risk here: "neither supplied" would
      * verify nothing at all while looking like an assertion. That defect class has been found
-     * seven times in this project, so the rule is stated positively and checked before any I/O.
+     * eight times in this project, so the rule is stated positively and checked before any I/O.
      */
     private static StepOutcome rejectMalformedAssertion(Map<String, Object> params, String dn) {
         boolean hasExpect = params.containsKey("expect");
@@ -141,12 +141,32 @@ public final class LdapVerifyStep implements StepType {
             return StepOutcome.failure("ldap.verify for " + dn + " has an 'exists' that is not "
                     + "true or false");
         }
-        if (hasExpect && !(params.get("expect") instanceof Map<?, ?> expect)) {
-            return StepOutcome.failure("ldap.verify for " + dn
-                    + " has an expect that is not a map of attribute names to expected values");
-        } else if (hasExpect && ((Map<?, ?>) params.get("expect")).isEmpty()) {
-            return StepOutcome.failure("ldap.verify for " + dn
-                    + " has an empty expect: block — it would verify nothing");
+        if (hasExpect) {
+            if (!(params.get("expect") instanceof Map<?, ?> expect)) {
+                return StepOutcome.failure("ldap.verify for " + dn
+                        + " has an expect that is not a map of attribute names to expected values");
+            }
+            if (expect.isEmpty()) {
+                return StepOutcome.failure("ldap.verify for " + dn
+                        + " has an empty expect: block — it would verify nothing");
+            }
+
+            // The hole one level in: a misspelled attribute name (`titel:` instead of
+            // `title:`) parses as an entry whose value is null, indistinguishable from an
+            // explicit `expect: { telephoneNumber: null }` written to assert an attribute is
+            // gone — and EdirectoryConnector.valuesEqual(null, null) is true, so either would
+            // report "verified" having compared nothing. This is the same trap
+            // DbVerifyStep.rejectMalformedExpect guards for its row matcher, found for the
+            // eighth time in this project.
+            for (Map.Entry<?, ?> attribute : expect.entrySet()) {
+                if (attribute.getValue() == null) {
+                    return StepOutcome.failure("ldap.verify for " + dn
+                            + " has a null expected value for attribute '" + attribute.getKey()
+                            + "' — a missing or misspelled attribute name parses the same way "
+                            + "and would verify nothing. Check for a typo, or assert exists: "
+                            + "false to check for absence instead.");
+                }
+            }
         }
 
         return null;

@@ -67,6 +67,17 @@ public final class RolesGrantStep implements StepType {
 
         List<String> assignments = SoapDns.of(result.getData().get().getResult());
 
+        if (assignments.isEmpty()) {
+            // The service call itself succeeded, but returned no assignment DNs at all. Every
+            // scenario in this corpus survives only because a roles.grant is always followed
+            // by a roles.revoke, whose own empty-assignments guard happens to catch this — an
+            // invariant nothing enforces. Reporting success here, with as: bound to an empty
+            // list, would be the vacuous-assertion trap: a grant that verified it granted
+            // nothing.
+            return StepOutcome.failure("roles.grant for " + user + " requested " + roles
+                    + " but the role service returned no assignment DNs");
+        }
+
         return StepOutcome.success(
                 "granted " + roles + " to " + user, null, assignments);
     }

@@ -9,7 +9,7 @@ No. Across all 18 converted scenarios, every teardown obligation traces back to 
 step in that same scenario created, and the two existing mechanisms already cover it:
 
 - **Automatic undo**, registered by the step itself when it succeeds — `ldap.create` (unbind on
-  cleanup) in 13 of the 18 files, and the explicit `undo:` blocks on `db.execute` inserts
+  cleanup) in 12 of the 18 files, and the explicit `undo:` blocks on `db.execute` inserts
   (`provisioning-user-to-database.yaml`, `modification-user-in-database.yaml`,
   `modification-email-change.yaml`, `deprovisioning-user-disable.yaml`,
   `deprovisioning-grace-period.yaml`, `deprovisioning-access-revocation.yaml`,
@@ -132,18 +132,19 @@ Yes, the duplication is real and substantial — this is exactly the data §8.4 
       mail: "${user.email}"
 ```
 
-— appears **byte-for-byte identical in 13 of the 18 converted files**
+— appears **byte-for-byte identical in 12 of the 18 converted files**
 (`deprovisioning-user-delete.yaml`, `deprovisioning-user-disable.yaml`,
 `integration-department-transfer.yaml`, `integration-employee-termination.yaml`,
-`integration-new-hire-onboarding.yaml`, `modification-attribute-removal.yaml`,
+`integration-new-hire-onboarding.yaml`,
 `modification-email-change.yaml`, `modification-user-in-ldap.yaml`,
 `provisioning-minimal-user.yaml`, `provisioning-user-to-ldap.yaml`,
 `roles-assign-multiple.yaml`, `roles-assign-to-ldap-group.yaml`,
 `roles-assign-with-database-access.yaml`), verified by a literal string match against every
-file, not by eye. Two more converted files (`database-provisioning.yaml`'s pre-existing
-`ldap.create`, and `user-provisioning.yaml`'s pre-existing one) create an LDAP entry too, but
-with extra or different attributes, so they don't match the exact block; every other converted
-scenario that touches LDAP uses this one verbatim.
+file, not by eye. Three more converted files don't match the exact block: `database-provisioning.yaml`'s
+pre-existing `ldap.create` and `user-provisioning.yaml`'s pre-existing one create an LDAP entry
+with extra or different attributes, and `modification-attribute-removal.yaml` carries the same
+four attributes plus a fifth (`telephoneNumber`), so its block is a superset, not a byte-for-byte
+match; every other converted scenario that touches LDAP uses this one verbatim.
 
 **The `users`-table insert.** 12 of the 18 files insert into `users`, in three column-list
 variants. The most common single statement —
@@ -175,11 +176,15 @@ corpus; the two blocks identified above are the concrete first targets.
 
 ## Vocabulary verdict
 
-**Yes, twelve step types sufficed for all 18 conversions, with no new step type invented.**
-Every one of the five task reports (2 through 6) states this explicitly, and the evidence is
-consistent across provisioning, modification, role assignment, deprovisioning and multi-system
-scenarios — the last group is the strongest single data point, since it forced LDAP, database
-and SOAP steps into single flows and still expressed cleanly.
+**Yes, the 8 step types the corpus actually exercised sufficed for all 18 conversions, with no
+new step type invented — but the corpus never touched the other 4 of the 12.** `rest.request`,
+`rest.verify`, `resources.grant` and `resources.revoke` are untouched by every conversion (see
+"Parameters that went unused" below), so this exercise validates 8 of 12 step types, not all
+twelve. For the 8 it did exercise, every one of the five task reports (2 through 6) states
+explicitly that nothing new was needed, and the evidence is consistent across provisioning,
+modification, role assignment, deprovisioning and multi-system scenarios — the last group is the
+strongest single data point, since it forced LDAP, database and SOAP steps into single flows and
+still expressed cleanly.
 
 The only vocabulary change made anywhere in this exercise was Task 1's addition of `exists:` to
 `ldap.verify`, to assert an entry is (or is not) present without needing an `expect:` map — the

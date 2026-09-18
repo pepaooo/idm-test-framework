@@ -1,0 +1,40 @@
+name: Attempt to remove an LDAP attribute
+description: >
+  Create a user with a phone number, then try to clear telephoneNumber with a null
+  value in ldap.update, mirroring the original Java test.
+
+# The Java original (testAttributeRemoval) asserts nothing: it creates a user, calls
+# update() with modifications.put("telephoneNumber", null), assigns the result to a
+# variable it never reads, and ends with a comment that removal behavior "depends on
+# the LDAP implementation". This conversion keeps that shape rather than inventing an
+# assertion — asserting the attribute is gone would need per-attribute absence, which
+# ldap.verify's exists: does not provide (that check is entry-level only).
+#
+# Empirically (see task-3-report.md): ldap.update with a null attribute value succeeds
+# and genuinely removes the attribute (a follow-up read shows no telephoneNumber at
+# all, not a stored null). EdirectoryConnector.update builds
+# `new BasicAttribute("telephoneNumber", null)` inside a REPLACE ModificationItem, and
+# against the embedded UnboundID directory the JNDI LDAP provider evidently encodes
+# that as a zero-value REPLACE, which LDAP treats as "delete this attribute". It does
+# not throw. Whether that is guaranteed across real directory implementations, and
+# whether it deserves a documented capability, is left to the findings report — this
+# scenario still stops at the two actions per Step 1 of the brief.
+
+fixtures:
+  user:
+    generate: random-user
+
+steps:
+  - ldap.create:
+      dn: "cn=${user.userId},ou=users"
+      attributes:
+        cn: "${user.userId}"
+        sn: "${user.lastName}"
+        givenName: "${user.firstName}"
+        mail: "${user.email}"
+        telephoneNumber: "${user.phoneNumber}"
+
+  - ldap.update:
+      dn: "cn=${user.userId},ou=users"
+      attributes:
+        telephoneNumber: null

@@ -96,9 +96,33 @@ Backend-focused **integration testing framework** using JUnit 5, with no front-e
 - ❌ Custom REST client wrappers (use Spring's)
 - ❌ Custom OAuth token managers (use Spring Security)
 - ❌ JPA entities for database validation (use raw SQL)
-- ❌ Orchestration layers hiding workflow logic
+- ❌ Orchestration layers hiding workflow logic **in the Java tier** (see "Two authoring tiers" below)
 - ❌ Extensive unit testing of integration code
 - ❌ Complex abstractions where simple solutions work
+
+---
+
+## Two authoring tiers
+
+The framework offers two ways to write a scenario.
+
+**The Java tier** is explicit: a test orchestrates its own workflow step by step, and nothing
+hides what it does. This is the tier the principles above describe.
+
+**The declarative YAML tier** is an orchestration layer, deliberately, so that IdM consultants
+who are not Java developers can author scenarios. It trades explicitness for accessibility and
+offers two guarantees in exchange:
+
+1. **A scenario's step list is its complete execution order.** There is no hidden setup, no
+   implicit ordering and no inherited behaviour. What the file lists is what runs, top to
+   bottom.
+2. **Expressions compute values; they never act.** A `js:{ }` expression is evaluated in a
+   sandbox with no connector access, no filesystem, no network and no Java class access. It
+   cannot change the system under test.
+
+Scenarios that cannot be expressed in the YAML vocabulary stay in Java, and are the documented
+examples of what that tier is for — `testProvisioningTimeout` and
+`testRoleAssignmentFailureHandling` are the current two.
 
 ---
 

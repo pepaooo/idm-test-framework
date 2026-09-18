@@ -35,39 +35,32 @@ public final class LdapVerifyStep implements StepType {
 
     @Override
     public Set<String> requiredParams() {
-        // 'expect' is required, not defaulted to empty: an empty map would make every
-        // comparison in EdirectoryConnector.verifyAttributes vacuously true, so a typo'd
-        // key (e.g. "expct") must fail validation instead of silently verifying nothing.
-        return Set.of("dn", "expect");
+        // Only 'dn' is unconditionally required. 'expect' and 'exists' are each optional on
+        // their own but exactly one must be present — a rule requiredParams() cannot express,
+        // so execute() enforces it before any I/O. See rejectMalformedAssertion.
+        return Set.of("dn");
+    }
+
+    @Override
+    public Set<String> acceptedParams() {
+        return Set.of("dn", "expect", "exists", "wait");
     }
 
     @Override
     @SuppressWarnings("unchecked")
     public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
         String dn = String.valueOf(params.get("dn"));
-        Object rawExpect = params.get("expect");
 
-        // A scenario can write `expect: Engineer` (a scalar) where a map of attribute names
-        // to expected values belongs. requiredParams() catches a missing or misspelled
-        // expect:, but not one that is present with the wrong shape, and the unchecked cast
-        // below would throw a ClassCastException out of execute() — which must never throw.
-        // rest.verify and db.verify were both fixed for exactly this; this closes the same
-        // gap in their remaining sibling.
-        if (rawExpect != null && !(rawExpect instanceof Map)) {
-            return StepOutcome.failure("ldap.verify for " + dn
-                    + " has an expect that is not a map of attribute names to expected values");
+        StepOutcome rejection = rejectMalformedAssertion(params, dn);
+        if (rejection != null) {
+            return rejection;
         }
 
-        Map<String, Object> expected = (Map<String, Object>) params.getOrDefault("expect", Map.of());
-
-        if (expected.isEmpty()) {
-            // requiredParams() catches a missing or misspelled expect:, but a present-but-
-            // empty one slips past a containsKey check and makes every comparison in
-            // verifyAttributes vacuously true — "verified" having compared nothing. Same
-            // trap, one step further in; db.verify guards the identical case.
-            return StepOutcome.failure("ldap.verify for " + dn
-                    + " has an empty expect: block — it would verify nothing");
+        if (params.containsKey("exists")) {
+            return verifyExistence(dn, (Boolean) params.get("exists"));
         }
+
+        Map<String, Object> expected = (Map<String, Object>) params.get("expect");
 
         OperationResult<Boolean> result = connector.verifyAttributes(dn, expected);
 
@@ -95,5 +88,87 @@ public final class LdapVerifyStep implements StepType {
         }
 
         return StepOutcome.success("verified " + dn, null, LdapAttributes.of(entry.getData().get()));
+    }
+
+    /**
+     * Asserts only presence or absence, with no attribute comparison.
+     * <p>
+     * Absence is what makes a de-provisioning testable: after a delete, the honest assertion
+     * is that the entry is gone, and until now the DSL could only assert that an entry still
+     * had particular values.
+     */
+    private StepOutcome verifyExistence(String dn, boolean shouldExist) {
+        OperationResult<Boolean> result = connector.exists(dn);
+
+        if (!result.isSuccess()) {
+            return StepOutcome.failure("ldap.verify could not check whether " + dn
+                    + " exists: " + result.getMessage());
+        }
+
+        boolean present = Boolean.TRUE.equals(result.getData().orElse(false));
+        if (present != shouldExist) {
+            return StepOutcome.failure("ldap.verify expected " + dn + " to be "
+                    + (shouldExist ? "present" : "absent") + " but it was "
+                    + (present ? "present" : "absent"));
+        }
+
+        return StepOutcome.success(
+                "verified " + dn + " is " + (shouldExist ? "present" : "absent"));
+    }
+
+    /**
+     * Exactly one of {@code expect} or {@code exists} must be supplied, and each must have the
+     * right shape.
+     * <p>
+     * Making {@code expect} optional is what creates the risk here: "neither supplied" would
+     * verify nothing at all while looking like an assertion. That defect class has been found
+     * eight times in this project, so the rule is stated positively and checked before any I/O.
+     */
+    private static StepOutcome rejectMalformedAssertion(Map<String, Object> params, String dn) {
+        boolean hasExpect = params.containsKey("expect");
+        boolean hasExists = params.containsKey("exists");
+
+        if (hasExpect && hasExists) {
+            return StepOutcome.failure("ldap.verify for " + dn + " supplies both 'expect' and "
+                    + "'exists'; expect already implies the entry exists, so give only one");
+        }
+        if (!hasExpect && !hasExists) {
+            return StepOutcome.failure("ldap.verify for " + dn + " supplies neither 'expect' "
+                    + "nor 'exists' — it would verify nothing. Assert attributes with expect:, "
+                    + "or presence with exists:");
+        }
+        if (hasExists && !(params.get("exists") instanceof Boolean)) {
+            return StepOutcome.failure("ldap.verify for " + dn + " has an 'exists' that is not "
+                    + "true or false");
+        }
+        if (hasExpect) {
+            if (!(params.get("expect") instanceof Map<?, ?> expect)) {
+                return StepOutcome.failure("ldap.verify for " + dn
+                        + " has an expect that is not a map of attribute names to expected values");
+            }
+            if (expect.isEmpty()) {
+                return StepOutcome.failure("ldap.verify for " + dn
+                        + " has an empty expect: block — it would verify nothing");
+            }
+
+            // The hole one level in: a misspelled attribute name (`titel:` instead of
+            // `title:`) parses as an entry whose value is null, indistinguishable from an
+            // explicit `expect: { telephoneNumber: null }` written to assert an attribute is
+            // gone — and EdirectoryConnector.valuesEqual(null, null) is true, so either would
+            // report "verified" having compared nothing. This is the same trap
+            // DbVerifyStep.rejectMalformedExpect guards for its row matcher, found for the
+            // eighth time in this project.
+            for (Map.Entry<?, ?> attribute : expect.entrySet()) {
+                if (attribute.getValue() == null) {
+                    return StepOutcome.failure("ldap.verify for " + dn
+                            + " has a null expected value for attribute '" + attribute.getKey()
+                            + "' — a missing or misspelled attribute name parses the same way "
+                            + "and would verify nothing. Check for a typo, or assert exists: "
+                            + "false to check for absence instead.");
+                }
+            }
+        }
+
+        return null;
     }
 }

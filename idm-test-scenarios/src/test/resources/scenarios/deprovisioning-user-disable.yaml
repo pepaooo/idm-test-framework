@@ -1,0 +1,42 @@
+name: Disable a user (soft delete) across systems
+description: Create an active user in LDAP and the database, disable it in both, then verify it still exists but is inactive
+
+fixtures:
+  user:
+    generate: random-user
+
+steps:
+  - ldap.create:
+      dn: "cn=${user.userId},ou=users"
+      attributes:
+        cn: "${user.userId}"
+        sn: "${user.lastName}"
+        givenName: "${user.firstName}"
+        mail: "${user.email}"
+
+  - db.execute:
+      database: test-db
+      statement: "INSERT INTO users (user_id, first_name, last_name, email, active) VALUES (?, ?, ?, ?, ?)"
+      params: ["${user.userId}", "${user.firstName}", "${user.lastName}", "${user.email}", true]
+      undo:
+        statement: "DELETE FROM users WHERE user_id = ?"
+        params: ["${user.userId}"]
+
+  - ldap.update:
+      dn: "cn=${user.userId},ou=users"
+      attributes:
+        loginDisabled: "TRUE"
+
+  - db.execute:
+      database: test-db
+      statement: "UPDATE users SET active = ? WHERE user_id = ?"
+      params: [false, "${user.userId}"]
+
+  - db.verify:
+      database: test-db
+      query: "SELECT * FROM users WHERE user_id = ?"
+      params: ["${user.userId}"]
+      expect:
+        rowCount: 1
+        row:
+          active: false

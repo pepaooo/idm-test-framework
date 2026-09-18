@@ -1,0 +1,26 @@
+name: Assign a role and revoke it
+description: Create a user, grant a role via SOAP, then revoke the granted assignment
+
+fixtures:
+  user:
+    generate: random-user
+    values:
+      department: Engineering
+
+steps:
+  - ldap.create:
+      dn: "cn=${user.userId},ou=users"
+      attributes:
+        cn: "${user.userId}"
+        sn: "${user.lastName}"
+        givenName: "${user.firstName}"
+        mail: "${user.email}"
+
+  - roles.grant:
+      user: "cn=${user.userId},ou=users"
+      roles: "cn=SAP_USER,ou=roles,dc=test,dc=com"
+      reason: "Integration test - assigning SAP_USER role"
+      as: granted
+
+  - roles.revoke:
+      assignments: "${granted}"

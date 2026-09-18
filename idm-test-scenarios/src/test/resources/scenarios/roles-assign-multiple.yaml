@@ -1,0 +1,27 @@
+name: Assign multiple roles to a single user
+description: Create a user, grant three roles in one call, then revoke the granted assignments
+
+fixtures:
+  user:
+    generate: random-user
+
+steps:
+  - ldap.create:
+      dn: "cn=${user.userId},ou=users"
+      attributes:
+        cn: "${user.userId}"
+        sn: "${user.lastName}"
+        givenName: "${user.firstName}"
+        mail: "${user.email}"
+
+  - roles.grant:
+      user: "cn=${user.userId},ou=users"
+      roles:
+        - "cn=SAP_USER,ou=roles,dc=test,dc=com"
+        - "cn=WORKDAY_USER,ou=roles,dc=test,dc=com"
+        - "cn=EMAIL_ACCESS,ou=roles,dc=test,dc=com"
+      reason: "Integration test - assigning multiple roles"
+      as: granted
+
+  - roles.revoke:
+      assignments: "${granted}"

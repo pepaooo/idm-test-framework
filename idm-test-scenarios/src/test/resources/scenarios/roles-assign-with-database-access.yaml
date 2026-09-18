@@ -1,0 +1,51 @@
+name: Assign a role and verify database access provisioning
+description: Create a user in LDAP and the database, grant SAP access via SOAP, then verify the access record and revoke the grant
+
+fixtures:
+  user:
+    generate: random-user
+
+steps:
+  - ldap.create:
+      dn: "cn=${user.userId},ou=users"
+      attributes:
+        cn: "${user.userId}"
+        sn: "${user.lastName}"
+        givenName: "${user.firstName}"
+        mail: "${user.email}"
+
+  - db.execute:
+      database: test-db
+      statement: "INSERT INTO users (user_id, first_name, last_name, email, active) VALUES (?, ?, ?, ?, ?)"
+      params: ["${user.userId}", "${user.firstName}", "${user.lastName}", "${user.email}", true]
+      undo:
+        statement: "DELETE FROM users WHERE user_id = ?"
+        params: ["${user.userId}"]
+
+  - roles.grant:
+      user: "cn=${user.userId},ou=users"
+      roles: "cn=SAP_ACCESS,ou=roles,dc=test,dc=com"
+      reason: "Integration test - granting SAP access"
+      as: granted
+
+  - db.execute:
+      database: test-db
+      statement: "INSERT INTO user_access (user_id, system_name, access_level, granted_date) VALUES (?, ?, ?, CURRENT_TIMESTAMP)"
+      params: ["${user.userId}", "SAP", "USER"]
+      undo:
+        statement: "DELETE FROM user_access WHERE user_id = ?"
+        params: ["${user.userId}"]
+
+  - db.verify:
+      database: test-db
+      query: "SELECT * FROM user_access WHERE user_id = ? AND system_name = ?"
+      params: ["${user.userId}", "SAP"]
+      expect:
+        rowCount: 1
+        row:
+          system_name: SAP
+          access_level: USER
+      wait: true
+
+  - roles.revoke:
+      assignments: "${granted}"

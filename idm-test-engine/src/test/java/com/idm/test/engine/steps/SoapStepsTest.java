@@ -91,6 +91,24 @@ class SoapStepsTest {
                 + "</soap:Body></soap:Envelope>";
     }
 
+    /**
+     * A SOAP envelope where the call itself succeeds but carries no assignment DNs at all —
+     * the shape that made {@code roles.grant} report success having granted nothing.
+     */
+    private static void stubAssignmentReturningNoDns() {
+        stubFor(post(urlEqualTo(ROLE_PATH)).willReturn(aResponse()
+                .withStatus(200)
+                .withHeader("Content-Type", "text/xml; charset=utf-8")
+                .withBody("<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
+                        + "<soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\" "
+                        + "xmlns:tns=\"http://www.novell.com/role/service\">"
+                        + "<soap:Body>"
+                        + "<tns:requestRolesAssignmentResponse>"
+                        + "<tns:result/>"
+                        + "</tns:requestRolesAssignmentResponse>"
+                        + "</soap:Body></soap:Envelope>")));
+    }
+
     private static void stubRemovalReturning(String dn) {
         stubFor(post(urlEqualTo(ROLE_PATH)).willReturn(aResponse()
                 .withStatus(200)
@@ -169,6 +187,26 @@ class SoapStepsTest {
 
         assertThat(outcome.success()).isFalse();
         assertThat(outcome.message()).contains("roles");
+    }
+
+    @Test
+    @DisplayName("roles.grant should fail, not report success with an empty capture, when the "
+            + "service returns zero assignment DNs")
+    void testGrantFailsWhenServiceReturnsNoAssignmentDns() {
+        // The service call itself succeeds — this is not the error path already covered by
+        // testGrantServiceErrorFails. Every scenario in this corpus survives this case today
+        // only because a roles.grant is always followed by a roles.revoke, whose own
+        // assignments.isEmpty() guard happens to catch it; this test proves the grant itself
+        // catches it too, without relying on that pairing.
+        stubAssignmentReturningNoDns();
+        RolesGrantStep grant = new RolesGrantStep(roleConnector);
+
+        StepOutcome outcome = grant.execute(Map.of(
+                "user", USER_DN, "roles", List.of(ROLE_DN)), true);
+
+        assertThat(outcome.success()).isFalse();
+        assertThat(outcome.message()).contains(USER_DN).contains(ROLE_DN);
+        assertThat(outcome.value()).isNull();
     }
 
     @Test

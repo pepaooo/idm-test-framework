@@ -1,0 +1,173 @@
+# Running scenarios against a real environment — design
+
+**Ticket:** ITF-12.
+
+## 1. The problem
+
+`BaseIntegrationTest` carries this comment:
+
+> Point the connectors at the embedded infrastructure. Everything else comes from
+> src/test/resources/application.yml, so switching to a real directory in phase (b) is a
+> **profile change rather than a code change**.
+
+That is not true. **Three** separate mechanisms pin every test in the module to the embedded
+infrastructure, and a profile change defeats none of them:
+
+1. **`@ActiveProfiles("test")`** is hardcoded on the class, so `IDM_TEST_PROFILE=dev` never
+   reaches Spring at all.
+2. **`@DynamicPropertySource`** then overrides `idm.test.ldap.url`, `base-dn`, `user-dn`,
+   `password`, `soap.url` and `soap.resource-url` with the embedded servers' values.
+   `@DynamicPropertySource` has the highest precedence in Spring's environment — it beats
+   profile YAML, environment variables and system properties.
+3. **The embedded LDAP and WireMock servers are `static final` fields** initialised in a static
+   initialiser, so they start at class load, before any Spring machinery runs and before any
+   profile is known.
+
+The consequence is the dangerous kind: setting `IDM_TEST_PROFILE=dev` today runs green against
+the embedded directory while appearing to test the real hosts the `dev` profile names.
+
+## 2. What this delivers, and what it does not
+
+**Goal:** the team can run YAML scenarios against a real OpenText IdM / eDirectory.
+
+Explicitly **not** a CLI. A consultant running their own scenarios against their own IdM is a
+different user with a different need — that would want argument parsing, connector wiring
+outside Spring Boot's test context, exit codes and console output. `ScenarioEngine` was built
+to allow it (its javadoc says "that is what lets a CLI reuse it"), but it is not this ticket.
+
+**Nothing is deleted or disabled.** All seven existing `BaseIntegrationTest` subclasses keep
+running against the embedded infrastructure, unchanged. The 18 converted YAML scenarios keep
+running. CI is untouched.
+
+## 3. The shape
+
+Neither option recorded on the ticket, quite. Conditional wiring has to defeat a static
+initialiser that runs before the profile is known; a wholly separate entry point duplicates the
+connector wiring. Splitting the class so each half has one job avoids both:
+
+```
+AbstractScenarioSupport          ← connectors, tracking, cleanup, assertion helpers
+├── BaseIntegrationTest          ← + @ActiveProfiles("test"), embedded LDAP, WireMock, overrides
+│   └── the 7 existing classes   ← unchanged
+└── RealEnvironmentScenarios     ← no profile pin, no overrides, no embedded infrastructure
+```
+
+The split follows the existing file almost exactly:
+
+| Moves up to `AbstractScenarioSupport` | Stays in `BaseIntegrationTest` |
+|---|---|
+| `@SpringBootTest`, `@EnableAutoConfiguration(exclude = LdapAutoConfiguration.class)` | `@ActiveProfiles("test")` |
+| the nine `@Autowired` connector and utility fields | `LDAP_BASE_DN`, `LDAP_BIND_DN`, `LDAP_BIND_PASSWORD` |
+| `createdLdapDns`, `databaseCleanupTasks`, `assignedRoles` | `LDAP_SERVER`, `WIREMOCK_SERVER`, the static initialiser, `startLdapServer()` |
+| `@BeforeEach` / `@AfterEach`, `setupTest`, `cleanupTest` | `@DynamicPropertySource configureProperties` |
+| `trackLdapDn`, `trackDatabaseRecord`, `trackRoleAssignment` | |
+| `cleanupLdap`, `cleanupDatabase`, `cleanupRoles` | |
+| `assertDataPresent` (both overloads), `DatabaseCleanupTask` | |
+
+Roughly 230 of the current 363 lines move up; about 60 stay. `BaseIntegrationTest` keeps its
+name, its behaviour and its public surface, so **no subclass changes at all**.
+
+## 4. Not running by default
+
+`RealEnvironmentScenarios` is named **without a `Test` suffix**. Surefire is configured in the
+parent POM with `<includes>` of `**/*Test.java` and `**/*Tests.java` only, so the default build
+does not see it. No Maven profile is needed to exclude it.
+
+Run it explicitly:
+
+```bash
+IDM_TEST_PROFILE=dev ./mvnw test -pl idm-test-scenarios -am \
+  -Dtest=RealEnvironmentScenarios -Dsurefire.failIfNoSpecifiedTests=false
+```
+
+**Why not `@EnabledIfSystemProperty`.** It would leave a permanently skipped test in every CI
+run. Green in this project was defined as *every test actually runs* — zero skips — and that
+definition has held since the phase (a) baseline. A disabled-by-default test breaks it.
+
+## 5. Failing loudly instead of silently
+
+The risk is not a connection error; that is visible. The risk is connecting to the **embedded**
+infrastructure, or to nothing at all, and reporting green. That is the same family as the eight
+vacuous-assertion defects this project has now found and fixed.
+
+Three guards, all before any scenario runs:
+
+1. **Refuse the embedded profile.** If the resolved active profile is `test`, fail naming it.
+   Running "real environment" scenarios against the embedded configuration is never intended.
+2. **Require the target explicitly.** Fail if `idm.test.ldap.url` or `idm.test.soap.url` is
+   unset, rather than silently accepting the `default` profile's `ldap://localhost:389`
+   placeholder.
+3. **Refuse an empty scenario directory.** If no `.yaml` is found, fail. A run that discovers
+   nothing, executes nothing and reports success is precisely the failure mode this codebase
+   treats as its worst — and since the directory ships empty (§7), it is the most likely thing
+   to happen on someone's first attempt.
+
+Each guard's message names what was wrong and what to set, because the person reading it is
+configuring an environment, not debugging Java.
+
+## 6. Verification, honestly scoped
+
+**We have no real eDirectory, so this design cannot prove it reaches one.** What it can prove,
+in CI, without any real environment:
+
+- **A structural test** — in the spirit of the existing `NoSpringDependencyTest`, which already
+  walks source to enforce a rule — asserting `RealEnvironmentScenarios` declares no
+  `@ActiveProfiles` and no `@DynamicPropertySource`, and references no embedded server type.
+  This is what stops a later change from helpfully wiring the embedded servers back in and
+  restoring the exact bug this ticket exists to fix.
+- **Each of the three guards fires**, with its own test.
+- **The seven existing classes still pass**, proving the split changed no behaviour.
+
+The gap — that nothing exercises the configuration-driven path against a genuine network
+service — is closed separately by the Testcontainers ticket (§8), not here.
+
+## 7. The scenario directory
+
+`RealEnvironmentScenarios` reads from `idm-test-scenarios/src/test/resources/scenarios-real/`,
+**not** the `scenarios/` directory the embedded corpus uses.
+
+It ships containing only a `README.md` explaining what belongs there. It is deliberately empty
+of scenarios, because the 18 converted ones write **directly** to LDAP and the database — they
+simulate IdM rather than driving it. Pointed at a real directory they would create entries IdM
+does not know about, which is worse than useless.
+
+The first real scenario gets written when there is an environment to point at. It will look
+different from the corpus: driving `rest.request` against IdM and then verifying what IdM
+provisioned downstream — which is the part of the twelve-step vocabulary the corpus never
+exercises (`rest.*` and `resources.*` are untouched by all 18; see
+`docs/reference/scenario-conversion-findings.md`).
+
+Guard 3 in §5 exists precisely because this directory ships empty.
+
+## 8. Out of scope
+
+- **A CLI** (§2).
+- **Testcontainers.** Filed separately. Testcontainers was dropped in phase (a) for a version
+  clash, not on merit — `Status 400: client version 1.32 is too old. Minimum supported API
+  version is 1.40`, recorded in `docs/specs/2026-09-11-suite-green-baseline-design.md`. The BOM
+  is still in the parent POM at 1.20.4 and `idm-connector-database` still declares
+  `testcontainers:postgresql`, though no source uses it. Upgrading past the docker-java clash
+  would allow a containerised OpenLDAP and PostgreSQL to exercise this runner against genuine
+  network services. It would **not** provide OpenText IdM, which has no public image, so the
+  SOAP role service and IdM REST API remain unexercised either way.
+- **Removing the dead `testcontainers:postgresql` dependency.** Left in place pending that
+  ticket, since it is the dependency that work would use.
+- **Writing a real scenario** (§7).
+- **TLS trust configuration** for the `prod` profile's `ldaps://` endpoint. Not covered anywhere
+  today; surfaces when someone first targets `prod`.
+
+## 9. Configuration a real run needs
+
+Already present in `idm-test-scenarios/src/test/resources/application.yml`, which defines
+`default`, `dev`, `test` and `prod` profiles with real hostnames, and both JDBC drivers
+(`postgresql`, `ojdbc11`) are on the classpath. What the operator must supply:
+
+- Credentials through the environment variables the YAML already references: `IDM_LDAP_URL`,
+  `IDM_SOAP_USER` / `IDM_SOAP_PASSWORD`, `SAP_DB_USER` / `SAP_DB_PASS`, `HR_DB_*`.
+- **`idm.test.soap.resource-url` must be set.** `ResourceServiceConnector` is
+  `@ConditionalOnProperty` on it, so omitting it removes the bean and `resources.grant` /
+  `resources.revoke` have no connector — surfacing as a context startup failure rather than a
+  clear message. `RoleServiceConnector` has carried the same pattern since before this work, so
+  it is consistent rather than a regression, but both must be set.
+- Scenarios name their database. The corpus says `database: test-db` (H2); real scenarios would
+  say `sap`, `oracle-hr` or `workday`.

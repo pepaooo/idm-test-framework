@@ -31,41 +31,57 @@ the embedded directory while appearing to test the real hosts the `dev` profile 
 **Goal:** the team can run YAML scenarios against a real OpenText IdM / eDirectory.
 
 Explicitly **not** a CLI. A consultant running their own scenarios against their own IdM is a
-different user with a different need — that would want argument parsing, connector wiring
-outside Spring Boot's test context, exit codes and console output. `ScenarioEngine` was built
-to allow it (its javadoc says "that is what lets a CLI reuse it"), but it is not this ticket.
+different user with a different need — argument parsing, connector wiring outside Spring Boot's
+test context, exit codes, console output. `ScenarioEngine` was built to allow it (its javadoc
+says "that is what lets a CLI reuse it"), but it is not this ticket.
 
-**Nothing is deleted or disabled.** All seven existing `BaseIntegrationTest` subclasses keep
-running against the embedded infrastructure, unchanged. The 18 converted YAML scenarios keep
-running. CI is untouched.
+**Nothing existing changes.** No file is moved, renamed, restructured or deleted.
+`BaseIntegrationTest` is not touched. The seven classes that extend it are not touched. The 18
+converted YAML scenarios keep running against the embedded infrastructure. CI is unaffected.
 
-## 3. The shape
+## 3. The shape: one new class, no refactor
 
-Neither option recorded on the ticket, quite. Conditional wiring has to defeat a static
-initialiser that runs before the profile is known; a wholly separate entry point duplicates the
-connector wiring. Splitting the class so each half has one job avoids both:
+```java
+package com.idm.test.scenarios.engine;
 
+@SpringBootTest
+@EnableAutoConfiguration(exclude = {LdapAutoConfiguration.class})
+public class RealEnvironmentScenarios {
+
+    @Autowired private EdirectoryConnector edirectoryConnector;
+    // ...and the other eight connector/utility beans
+
+    @TestFactory
+    Stream<DynamicTest> scenarios() { ... }
+}
 ```
-AbstractScenarioSupport          ← connectors, tracking, cleanup, assertion helpers
-├── BaseIntegrationTest          ← + @ActiveProfiles("test"), embedded LDAP, WireMock, overrides
-│   └── the 7 existing classes   ← unchanged
-└── RealEnvironmentScenarios     ← no profile pin, no overrides, no embedded infrastructure
-```
 
-The split follows the existing file almost exactly:
+It extends nothing. It declares **no** `@ActiveProfiles`, **no** `@DynamicPropertySource`, and
+starts no embedded server, so every `idm.test.*` property resolves from `application.yml` and
+the active profile — which is the whole point.
 
-| Moves up to `AbstractScenarioSupport` | Stays in `BaseIntegrationTest` |
-|---|---|
-| `@SpringBootTest`, `@EnableAutoConfiguration(exclude = LdapAutoConfiguration.class)` | `@ActiveProfiles("test")` |
-| the nine `@Autowired` connector and utility fields | `LDAP_BASE_DN`, `LDAP_BIND_DN`, `LDAP_BIND_PASSWORD` |
-| `createdLdapDns`, `databaseCleanupTasks`, `assignedRoles` | `LDAP_SERVER`, `WIREMOCK_SERVER`, the static initialiser, `startLdapServer()` |
-| `@BeforeEach` / `@AfterEach`, `setupTest`, `cleanupTest` | `@DynamicPropertySource configureProperties` |
-| `trackLdapDn`, `trackDatabaseRecord`, `trackRoleAssignment` | |
-| `cleanupLdap`, `cleanupDatabase`, `cleanupRoles` | |
-| `assertDataPresent` (both overloads), `DatabaseCleanupTask` | |
+It lives in `com.idm.test.scenarios.engine`, beside `YamlScenarioTest`, so it can call that
+class's existing package-private statics `registry(...)` and `buildTests(...)` directly. Those
+already exist and are already reused by `YamlScenarioValidationTest`.
 
-Roughly 230 of the current 363 lines move up; about 60 stay. `BaseIntegrationTest` keeps its
-name, its behaviour and its public surface, so **no subclass changes at all**.
+**An earlier draft of this design proposed extracting a shared parent class** —
+`AbstractScenarioSupport` — hoisting roughly 230 of `BaseIntegrationTest`'s 363 lines so both
+the embedded tests and this runner could inherit them. **That was wrong, and measuring killed
+it.** `YamlScenarioTest` references only the nine `@Autowired` fields. It uses none of the
+tracking lists (`createdLdapDns`, `databaseCleanupTasks`, `assignedRoles`), none of
+`trackLdapDn` / `trackDatabaseRecord` / `trackRoleAssignment`, none of the three cleanup
+methods, none of `assertDataPresent`, and neither `setupTest` nor `cleanupTest`.
+
+That machinery exists for the **Java** workflow tests, which track by hand what they create.
+The YAML engine does its own cleanup through the undos each action step registers. So the
+genuinely shared surface between the two is nine field declarations — well below the cost of an
+abstraction, and coupling them would bind two things that change for opposite reasons: the Java
+tests will keep wanting tracking helpers, this runner will never want them.
+
+The only repetition is those nine `@Autowired` lines and an eleven-line engine construction
+block. If the latter is worth removing, it becomes one more package-private static in
+`YamlScenarioTest` alongside the two that are already there — not a restructuring of
+`BaseIntegrationTest`.
 
 ## 4. Not running by default
 
@@ -88,7 +104,7 @@ definition has held since the phase (a) baseline. A disabled-by-default test bre
 
 The risk is not a connection error; that is visible. The risk is connecting to the **embedded**
 infrastructure, or to nothing at all, and reporting green. That is the same family as the eight
-vacuous-assertion defects this project has now found and fixed.
+vacuous-assertion defects this project has found and fixed.
 
 Three guards, all before any scenario runs:
 
@@ -116,10 +132,12 @@ in CI, without any real environment:
   This is what stops a later change from helpfully wiring the embedded servers back in and
   restoring the exact bug this ticket exists to fix.
 - **Each of the three guards fires**, with its own test.
-- **The seven existing classes still pass**, proving the split changed no behaviour.
 
-The gap — that nothing exercises the configuration-driven path against a genuine network
-service — is closed separately by the Testcontainers ticket (§8), not here.
+Because nothing existing is modified, there is no regression surface to re-verify beyond the
+suite continuing to pass unchanged.
+
+The remaining gap — that nothing exercises the configuration-driven path against a genuine
+network service — is closed separately by ITF-14, not here.
 
 ## 7. The scenario directory
 
@@ -142,16 +160,17 @@ Guard 3 in §5 exists precisely because this directory ships empty.
 ## 8. Out of scope
 
 - **A CLI** (§2).
-- **Testcontainers.** Filed separately. Testcontainers was dropped in phase (a) for a version
-  clash, not on merit — `Status 400: client version 1.32 is too old. Minimum supported API
-  version is 1.40`, recorded in `docs/specs/2026-09-11-suite-green-baseline-design.md`. The BOM
-  is still in the parent POM at 1.20.4 and `idm-connector-database` still declares
-  `testcontainers:postgresql`, though no source uses it. Upgrading past the docker-java clash
-  would allow a containerised OpenLDAP and PostgreSQL to exercise this runner against genuine
-  network services. It would **not** provide OpenText IdM, which has no public image, so the
-  SOAP role service and IdM REST API remain unexercised either way.
-- **Removing the dead `testcontainers:postgresql` dependency.** Left in place pending that
-  ticket, since it is the dependency that work would use.
+- **Any change to `BaseIntegrationTest` or its subclasses** (§3).
+- **Testcontainers** — ITF-14. Dropped in phase (a) for a version clash, not on merit:
+  `Status 400: client version 1.32 is too old. Minimum supported API version is 1.40`, recorded
+  in `docs/specs/2026-09-11-suite-green-baseline-design.md`. The BOM is still in the parent POM
+  at 1.20.4 and `idm-connector-database` still declares `testcontainers:postgresql`, though no
+  source uses it. Upgrading past the docker-java clash would let a containerised OpenLDAP and
+  PostgreSQL exercise this runner against genuine network services. It would **not** provide
+  OpenText IdM, which has no public image, so the SOAP role service and IdM REST API remain
+  unexercised either way.
+- **Removing the dead `testcontainers:postgresql` dependency.** Left in place pending ITF-14,
+  since that is the work which would use it.
 - **Writing a real scenario** (§7).
 - **TLS trust configuration** for the `prod` profile's `ldaps://` endpoint. Not covered anywhere
   today; surfaces when someone first targets `prod`.

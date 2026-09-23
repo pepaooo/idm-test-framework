@@ -40,6 +40,10 @@ This is an **integration testing framework** for Identity Management (IdM) syste
 # Run specific test method
 ./mvnw test -Dtest=UserProvisioningTest#testCompleteProvisioningWorkflow
 
+# Run one YAML scenario, or a glob-selected group (quote patterns containing * or braces)
+./mvnw test -pl idm-test-scenarios -am -Dtest=YamlScenarioTest -Dsurefire.failIfNoSpecifiedTests=false -Dscenario=provisioning-user-to-ldap.yaml
+./mvnw test -pl idm-test-scenarios -am -Dtest=YamlScenarioTest -Dsurefire.failIfNoSpecifiedTests=false -Dscenario='provisioning-*'
+
 # Skip tests during build
 ./mvnw clean install -DskipTests
 

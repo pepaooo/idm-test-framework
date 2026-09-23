@@ -45,6 +45,8 @@ import java.util.stream.Stream;
  * IDM_TEST_PROFILE=dev ./mvnw test -pl idm-test-scenarios -am \
  *   -Dtest=RealEnvironmentScenarios -Dsurefire.failIfNoSpecifiedTests=false
  * </pre>
+ * Add {@code -Dscenario=<file or glob>} to run only matching files, as with
+ * {@link YamlScenarioTest}.
  * The guards below run before any scenario. A connection error is loud on its own. The
  * failure they prevent is the quiet one: a run against the embedded configuration, a
  * placeholder, or an empty directory that reports green.
@@ -109,7 +111,10 @@ public class RealEnvironmentScenarios {
                 executorProperties.getDefaultPollInterval(),
                 new ExpressionEvaluator());
 
-        return YamlScenarioTest.buildTests(SCENARIO_DIR, validator, engine, RESULTS).stream();
+        // After guard 3, so an empty directory gets its README message and only a pattern
+        // that matches nothing gets the filter's message.
+        return YamlScenarioTest.buildTests(SCENARIO_DIR, YamlScenarioTest.selectedScenarioFiles(SCENARIO_DIR),
+                validator, engine, RESULTS).stream();
     }
 
     /**

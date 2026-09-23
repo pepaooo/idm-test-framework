@@ -36,20 +36,24 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.net.URISyntaxException;
+import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.PathMatcher;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.PatternSyntaxException;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.fail;
 
 /**
- * Runs every YAML scenario under src/test/resources/scenarios as its own test.
+ * Runs every YAML scenario under src/test/resources/scenarios as its own test, or, when
+ * {@code -Dscenario=<glob>} is set, only the files it selects (see {@link #select}).
  * <p>
  * This is the adapter between the engine and JUnit. It is the only place that knows about
  * both: the engine takes its connectors by constructor, and Spring supplies them here.
@@ -59,6 +63,9 @@ class YamlScenarioTest extends BaseIntegrationTest {
 
     private static final String SCENARIO_DIR = "scenarios";
     private static final Path RESULTS = Path.of("target", "scenario-results.json");
+
+    /** System property naming the scenario file, or glob of files, to run. */
+    static final String SCENARIO_PROPERTY = "scenario";
 
     @TestFactory
     @DisplayName("Each scenario file runs as its own test")
@@ -75,12 +82,21 @@ class YamlScenarioTest extends BaseIntegrationTest {
                 executorProperties.getDefaultPollInterval(),
                 new ExpressionEvaluator());
 
-        return buildTests(SCENARIO_DIR, validator, engine, RESULTS).stream();
+        return buildTests(SCENARIO_DIR, selectedScenarioFiles(SCENARIO_DIR), validator, engine, RESULTS).stream();
     }
 
     /**
-     * Loads and validates every scenario file in {@code scenarioDir} up front, before any
-     * dynamic test runs, so a malformed twentieth file is reported immediately rather than
+     * Builds a test for every scenario file in {@code scenarioDir}, unfiltered.
+     */
+    static List<DynamicTest> buildTests(
+            String scenarioDir, ScenarioValidator validator, ScenarioEngine engine, Path resultsPath)
+            throws URISyntaxException {
+        return buildTests(scenarioDir, scenarioFiles(scenarioDir), validator, engine, resultsPath);
+    }
+
+    /**
+     * Loads and validates each of {@code files} (names within {@code scenarioDir}) up front,
+     * before any dynamic test runs, so a malformed twentieth file is reported immediately rather than
      * after its predecessors have already spent minutes waiting on provisioning.
      * <p>
      * A file that loads and validates cleanly becomes a dynamic test that runs the engine.
@@ -95,13 +111,13 @@ class YamlScenarioTest extends BaseIntegrationTest {
      * dynamic tests and no results file, the exact failure shape this method exists to avoid.
      */
     static List<DynamicTest> buildTests(
-            String scenarioDir, ScenarioValidator validator, ScenarioEngine engine, Path resultsPath)
-            throws URISyntaxException {
+            String scenarioDir, List<String> files, ScenarioValidator validator, ScenarioEngine engine,
+            Path resultsPath) throws URISyntaxException {
 
         List<ScenarioResult> collected = Collections.synchronizedList(new ArrayList<>());
         List<DynamicTest> tests = new ArrayList<>();
 
-        for (String file : scenarioFiles(scenarioDir)) {
+        for (String file : files) {
             DynamicTest test;
             try {
                 Scenario scenario = ScenarioLoader.load(resource(scenarioDir, file), file);
@@ -128,6 +144,57 @@ class YamlScenarioTest extends BaseIntegrationTest {
             tests.add(test);
         }
         return tests;
+    }
+
+    /**
+     * The scenario files in {@code scenarioDir} selected by {@code -Dscenario}, or all of them
+     * when it is not set. The only place that reads the property.
+     */
+    static List<String> selectedScenarioFiles(String scenarioDir) throws URISyntaxException {
+        return select(scenarioFiles(scenarioDir), System.getProperty(SCENARIO_PROPERTY), scenarioDir);
+    }
+
+    /**
+     * Narrows {@code files} to those matching {@code pattern}, a glob tried against each file
+     * name with and without its {@code .yaml} extension. A {@code null} pattern means no
+     * filter was asked for and returns {@code files} unchanged.
+     * <p>
+     * Every other outcome that would select nothing throws instead: a blank pattern, an
+     * invalid glob, or a pattern matching no file. A filtered run that ran zero scenarios
+     * and reported green would be the vacuous success this project keeps closing.
+     * {@code scenarioDir} is used only in messages.
+     */
+    static List<String> select(List<String> files, String pattern, String scenarioDir) {
+        if (pattern == null) {
+            return files;
+        }
+        if (pattern.isBlank()) {
+            throw new IllegalStateException("-D" + SCENARIO_PROPERTY + " is set but empty. Name a scenario file or"
+                    + " glob, for example -D" + SCENARIO_PROPERTY + "=provisioning-user-to-ldap.yaml, or leave it"
+                    + " unset to run every scenario in " + scenarioDir + ".");
+        }
+
+        PathMatcher matcher;
+        try {
+            matcher = FileSystems.getDefault().getPathMatcher("glob:" + pattern);
+        } catch (PatternSyntaxException e) {
+            throw new IllegalStateException("-D" + SCENARIO_PROPERTY + "=" + pattern
+                    + " is not a valid glob: " + e.getDescription(), e);
+        }
+
+        List<String> selected = files.stream()
+                .filter(file -> matcher.matches(Path.of(file)) || matcher.matches(Path.of(stripYaml(file))))
+                .toList();
+
+        if (selected.isEmpty()) {
+            throw new IllegalStateException("-D" + SCENARIO_PROPERTY + "=" + pattern + " matches no scenario in "
+                    + scenarioDir + ". Available: " + (files.isEmpty() ? "none" : String.join(", ", files)));
+        }
+        return selected;
+    }
+
+    private static String stripYaml(String file) {
+        return file.endsWith(".yaml") ? file.substring(0, file.length() - ".yaml".length()) : file;
     }
 
     static Map<String, StepType> registry(

@@ -31,7 +31,7 @@
         <spring-ldap.version>3.2.9</spring-ldap.version>
         <unboundid-ldapsdk.version>7.0.1</unboundid-ldapsdk.version>
         <assertj.version>3.26.3</assertj.version>
-        <testcontainers.version>1.20.4</testcontainers.version>
+        <testcontainers.version>1.21.4</testcontainers.version>
         <wiremock.version>3.10.0</wiremock.version>
         <commons-lang3.version>3.17.0</commons-lang3.version>
         <h2.version>2.3.232</h2.version>

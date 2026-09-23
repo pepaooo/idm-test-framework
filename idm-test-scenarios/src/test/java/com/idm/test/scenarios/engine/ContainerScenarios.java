@@ -3,6 +3,10 @@ package com.idm.test.scenarios.engine;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.DynamicTest;
+import org.junit.jupiter.api.TestFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.test.annotation.DirtiesContext;
 import org.testcontainers.DockerClientFactory;
 import org.testcontainers.containers.Container.ExecResult;
 import org.testcontainers.containers.GenericContainer;
@@ -10,6 +14,8 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.images.builder.Transferable;
 import org.testcontainers.utility.MountableFile;
+
+import com.idm.test.connector.ldap.config.LdapProperties;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -19,6 +25,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Stream;
 
 /**
  * Runs the embedded scenario corpus through {@link RealEnvironmentScenarios} against real
@@ -36,8 +43,21 @@ import java.util.Map;
  * ./mvnw test -pl idm-test-scenarios -am -Dtest=ContainerScenarios -Dsurefire.failIfNoSpecifiedTests=false
  * </pre>
  * {@code -Dscenario=<file or glob>} narrows the run, as with {@link YamlScenarioTest}.
+ * <p>
+ * {@code ContainerScenarios} adds nothing Spring-relevant on top of {@link RealEnvironmentScenarios}
+ * (same {@code @SpringBootTest}, no profile, no property override), so both classes share the
+ * same cached-context key. Without {@link DirtiesContext}, a context cached by a prior
+ * {@code RealEnvironmentScenarios} run in the same JVM (for example {@code -Dtest='*Scenarios'}
+ * with {@code IDM_TEST_PROFILE=dev}) would be reused here, bound to the real target instead of
+ * these containers. {@code @DirtiesContext(BEFORE_CLASS)} evicts any such cached context in
+ * {@code SpringExtension.beforeAll}, which runs before this class's static {@code @BeforeAll},
+ * so the fresh context created afterwards sees the properties {@link #publish} sets. {@link
+ * #requireBoundTo} is the backstop: it checks that the context actually bound the URL these
+ * containers published, in case the cache key ever changes to no longer distinguish the two
+ * classes.
  */
 @DisplayName("Container scenarios")
+@DirtiesContext(classMode = DirtiesContext.ClassMode.BEFORE_CLASS)
 public class ContainerScenarios extends RealEnvironmentScenarios {
 
     static final String CORPUS_DIR = "scenarios";
@@ -61,6 +81,9 @@ public class ContainerScenarios extends RealEnvironmentScenarios {
     private static final List<GenericContainer<?>> STARTED = new ArrayList<>();
     private static final Map<String, String> PREVIOUS = new LinkedHashMap<>();
 
+    @Autowired
+    private LdapProperties ldapProperties;
+
     @BeforeAll
     static void startContainers() throws Exception {
         requireDocker(DockerClientFactory.instance().isDockerAvailable());
@@ -79,8 +102,10 @@ public class ContainerScenarios extends RealEnvironmentScenarios {
 
     /**
      * Restores every system property to what it was before, so nothing leaks into another
-     * class in the same JVM. Then stops the containers in reverse order. JUnit runs this even
-     * when {@code @BeforeAll} failed part-way, which is what cleans up a partial start.
+     * class in the same JVM. The Spring context itself is not restored here: it is evicted by
+     * {@code @DirtiesContext} on the class, which runs separately. Then stops every container,
+     * even if one fails to stop. JUnit runs this even when {@code @BeforeAll} failed part-way,
+     * which is what cleans up a partial start.
      */
     @AfterAll
     static void stopContainers() {
@@ -93,10 +118,30 @@ public class ContainerScenarios extends RealEnvironmentScenarios {
         });
         PREVIOUS.clear();
 
+        RuntimeException failure = null;
         for (int i = STARTED.size() - 1; i >= 0; i--) {
-            STARTED.get(i).stop();
+            try {
+                STARTED.get(i).stop();
+            } catch (RuntimeException e) {
+                if (failure == null) {
+                    failure = e;
+                } else {
+                    failure.addSuppressed(e);
+                }
+            }
         }
         STARTED.clear();
+        if (failure != null) {
+            throw failure;
+        }
+    }
+
+    @TestFactory
+    @Override
+    @DisplayName("Each container scenario file runs as its own test")
+    Stream<DynamicTest> scenarios() throws Exception {
+        requireBoundTo(ldapProperties.getUrl(), System.getProperty("idm.test.ldap.url"));
+        return super.scenarios();
     }
 
     @Override
@@ -110,6 +155,20 @@ public class ContainerScenarios extends RealEnvironmentScenarios {
         }
     }
 
+    /**
+     * Refuses to run unless the context actually bound the LDAP URL these containers published.
+     * A stale, reused context (see the class Javadoc) would carry a different {@code boundUrl},
+     * bound when that other context was created; {@code @DirtiesContext} should already prevent
+     * that, but this is the check that would catch it if it did not.
+     */
+    static void requireBoundTo(String boundUrl, String publishedUrl) {
+        if (publishedUrl == null || !publishedUrl.equals(boundUrl)) {
+            throw new IllegalStateException("LdapProperties.url (" + boundUrl + ") was not built from the "
+                    + "containers this run just published (idm.test.ldap.url=" + publishedUrl + "). The Spring "
+                    + "context this test class is using was not built from the containers.");
+        }
+    }
+
     private static GenericContainer<?> startLdap() throws IOException, InterruptedException {
         GenericContainer<?> ldap = start(new GenericContainer<>(LDAP_IMAGE)
                 .withEnv("LDAP_ORGANISATION", "Test Organization")
@@ -117,6 +176,8 @@ public class ContainerScenarios extends RealEnvironmentScenarios {
                 .withEnv("LDAP_ADMIN_PASSWORD", LDAP_ADMIN_PASSWORD)
                 .withEnv("LDAP_TLS", "false")
                 .withExposedPorts(LDAP_PORT)
+                // Relies on osixia daemonizing its bootstrap slapd at the default log level;
+                // raising LDAP_LOG_LEVEL would make the bootstrap instance's line match first.
                 .waitingFor(Wait.forLogMessage(".*slapd starting.*", 1)
                         .withStartupTimeout(Duration.ofMinutes(2))), "OpenLDAP");
 

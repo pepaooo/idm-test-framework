@@ -2,8 +2,10 @@ package com.idm.test.scenarios.engine;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.core.annotation.MergedAnnotations;
 import org.springframework.core.annotation.MergedAnnotations.SearchStrategy;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.TestPropertySource;
@@ -48,6 +50,48 @@ class ContainerScenariosStructureTest {
                 .map(Method::getName))
                 .as("configuration must arrive as system properties, the way an operator supplies it")
                 .isEmpty();
+
+        SpringBootTest springBootTest = annotations.get(SpringBootTest.class).synthesize();
+        assertThat(springBootTest.properties())
+                .as("@SpringBootTest(properties=...) would override profile and environment-variable values too")
+                .isEmpty();
+        assertThat(springBootTest.args())
+                .as("@SpringBootTest(args=...) would override profile and environment-variable values too")
+                .isEmpty();
+    }
+
+    @Test
+    @DisplayName("Evicts any context cached by another runner before its own @BeforeAll runs")
+    void testDirtiesContextBeforeClass() {
+        MergedAnnotations annotations = MergedAnnotations.from(RUNNER, SearchStrategy.TYPE_HIERARCHY);
+        assertThat(annotations.isPresent(DirtiesContext.class)).isTrue();
+        assertThat(annotations.get(DirtiesContext.class).synthesize().classMode())
+                .isEqualTo(DirtiesContext.ClassMode.BEFORE_CLASS);
+    }
+
+    @Test
+    @DisplayName("requireBoundTo accepts a matching URL")
+    void testRequireBoundToMatching() {
+        assertThatCode(() -> ContainerScenarios.requireBoundTo("ldap://a:1", "ldap://a:1"))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("requireBoundTo refuses a mismatched URL")
+    void testRequireBoundToMismatch() {
+        assertThatThrownBy(() -> ContainerScenarios.requireBoundTo("ldap://real:389", "ldap://localhost:5000"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("ldap://real:389")
+                .hasMessageContaining("ldap://localhost:5000")
+                .hasMessageContaining("was not built from the containers");
+    }
+
+    @Test
+    @DisplayName("requireBoundTo refuses a null published URL")
+    void testRequireBoundToNullPublished() {
+        assertThatThrownBy(() -> ContainerScenarios.requireBoundTo("ldap://a:1", null))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("was not built from the containers");
     }
 
     @Test

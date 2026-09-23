@@ -93,6 +93,13 @@ embedded H2.
 against real OpenLDAP, PostgreSQL and WireMock containers that Testcontainers starts and stops.
 It needs a running Docker daemon. The default build never runs it.
 
+Its cleanup restores the system properties it set, so those values do not leak into another
+class in the same JVM. That says nothing about the Spring context: `ContainerScenarios` shares
+`RealEnvironmentScenarios`' cached-context key, so it carries `@DirtiesContext(BEFORE_CLASS)` to
+evict any context a prior `RealEnvironmentScenarios` run left cached, and it checks that the
+context it is using actually bound the LDAP URL these containers just published before running
+any scenario.
+
 ```bash
 ./mvnw test -pl idm-test-scenarios -am -Dtest=ContainerScenarios -Dsurefire.failIfNoSpecifiedTests=false
 ```

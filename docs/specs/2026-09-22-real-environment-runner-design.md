@@ -111,8 +111,16 @@ Three guards, all before any scenario runs:
 1. **Refuse the embedded profile.** If the resolved active profile is `test`, fail naming it.
    Running "real environment" scenarios against the embedded configuration is never intended.
 2. **Require the target explicitly.** Fail if `idm.test.ldap.url` or `idm.test.soap.url` is
-   unset, rather than silently accepting the `default` profile's `ldap://localhost:389`
-   placeholder.
+   blank **or still equals the placeholder `application.yml` falls back to** —
+   `ldap://localhost:389` and `https://idm.company.com:8543/IDMProv/role/service`.
+
+   *Amended while planning.* This guard originally said "unset". But `application.yml` writes
+   both properties as `${IDM_LDAP_URL:ldap://localhost:389}` and
+   `${IDM_SOAP_URL:https://idm.company.com:...}`, so they always resolve to *something* and
+   an "unset" check could never fire — a vacuous guard, the defect class it exists to
+   prevent. Comparing against the fallbacks is what actually catches "nobody named a target".
+   A test pins the two constants to the text of `application.yml`, so if the fallbacks change
+   the guard fails its test rather than silently going stale.
 3. **Refuse an empty scenario directory.** If no `.yaml` is found, fail. A run that discovers
    nothing, executes nothing and reports success is precisely the failure mode this codebase
    treats as its worst — and since the directory ships empty (§7), it is the most likely thing
@@ -188,5 +196,13 @@ Already present in `idm-test-scenarios/src/test/resources/application.yml`, whic
   `resources.revoke` have no connector — surfacing as a context startup failure rather than a
   clear message. `RoleServiceConnector` has carried the same pattern since before this work, so
   it is consistent rather than a regression, but both must be set.
+- **Every configured database must be reachable, not only the ones a scenario uses.**
+  *Found while planning.* `DatabaseConfiguration` builds each pool with
+  `new HikariDataSource(config)`, which opens a connection immediately and throws if it
+  cannot. So `sap`, `oracle-hr` and `workday` must all accept a connection or the Spring
+  context fails to start, before any guard or scenario runs. That failure is loud, so it is
+  safe, but it is a real barrier for a team that only has a directory to point at. Changing it
+  means touching a connector and is out of scope here. The `scenarios-real/README.md`
+  documents it.
 - Scenarios name their database. The corpus says `database: test-db` (H2); real scenarios would
   say `sap`, `oracle-hr` or `workday`.

@@ -122,8 +122,8 @@ public class RealEnvironmentScenarios {
                     + " include '" + EMBEDDED_PROFILE + "', the embedded test configuration. Set IDM_TEST_PROFILE"
                     + " to the profile that names your real environment, for example IDM_TEST_PROFILE=dev.");
         }
-        requireNamed(environment, "idm.test.ldap.url", "IDM_LDAP_URL", LDAP_URL_PLACEHOLDER);
-        requireNamed(environment, "idm.test.soap.url", "IDM_SOAP_URL", SOAP_URL_PLACEHOLDER);
+        requireNamed(environment, "idm.test.ldap.url", "IDM_TEST_LDAP_URL", LDAP_URL_PLACEHOLDER);
+        requireNamed(environment, "idm.test.soap.url", "IDM_TEST_SOAP_URL", SOAP_URL_PLACEHOLDER);
     }
 
     private static void requireNamed(Environment environment, String property, String variable, String placeholder) {

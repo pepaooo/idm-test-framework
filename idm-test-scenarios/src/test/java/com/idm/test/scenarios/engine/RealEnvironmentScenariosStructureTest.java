@@ -4,8 +4,10 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.annotation.MergedAnnotations;
 import org.springframework.core.annotation.MergedAnnotations.SearchStrategy;
+import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.TestPropertySource;
 
 import java.io.IOException;
 import java.lang.reflect.Method;
@@ -52,6 +54,18 @@ class RealEnvironmentScenariosStructureTest {
                 .filter(method -> method.isAnnotationPresent(DynamicPropertySource.class))
                 .map(Method::getName))
                 .as("@DynamicPropertySource beats every profile, environment variable and system property")
+                .isEmpty();
+
+        assertThat(MergedAnnotations.from(RUNNER, SearchStrategy.TYPE_HIERARCHY).isPresent(TestPropertySource.class))
+                .as("@TestPropertySource would override profile and environment-variable values too")
+                .isFalse();
+
+        assertThat(RUNNER.getAnnotation(SpringBootTest.class).properties())
+                .as("@SpringBootTest(properties=...) would override profile and environment-variable values too")
+                .isEmpty();
+
+        assertThat(RUNNER.getAnnotation(SpringBootTest.class).args())
+                .as("@SpringBootTest(args=...) would override profile and environment-variable values too")
                 .isEmpty();
     }
 

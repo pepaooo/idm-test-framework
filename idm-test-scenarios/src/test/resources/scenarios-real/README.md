@@ -36,6 +36,35 @@ The runner refuses to start, before any scenario runs, when:
   (`ldap://localhost:389`, `https://idm.company.com:8543/IDMProv/role/service`)
 - this directory contains no `.yaml`
 
+A real directory genuinely reachable at `ldap://localhost:389` is refused too, because that is
+the placeholder value — point it at `ldap://127.0.0.1:389` instead (or any other address) to
+run against it.
+
+### Profiles override the `IDM_*` variables — use `IDM_TEST_*` instead
+
+`application.yml` has three documents: the default one (where `idm.test.ldap.url`,
+`base-dn`, `user-dn`, `soap.url` and the REST/JDBC URLs are `${IDM_LDAP_URL:...}`-style
+placeholders), and `dev`/`prod` documents that load after it and hardcode those same keys.
+A later profile document overrides the default one, so under `IDM_TEST_PROFILE=dev` or
+`IDM_TEST_PROFILE=prod`, setting `IDM_LDAP_URL` or `IDM_SOAP_URL` has no effect:
+
+- Under `dev`, `idm.test.ldap.url`, `base-dn`, `user-dn`, `soap.url`, the `sap`/`oracle-hr`/
+  `workday` JDBC URLs, and the `idm`/`sap`/`workday` REST base URLs are all hardcoded in the
+  `dev` block.
+- Under `prod`, the same keys are hardcoded in the `prod` block — and `prod`'s `soap.url` is
+  exactly `https://idm.company.com:8543/IDMProv/role/service`, the placeholder value. That
+  means **`prod` is refused by guard 2 until you override it**, since the profile's own value
+  is indistinguishable from nobody having named a target.
+
+To point at a different host without editing `application.yml`, set the Spring property
+itself as an environment variable, using its relaxed-binding form, for example
+`IDM_TEST_LDAP_URL`, `IDM_TEST_SOAP_URL` or `IDM_TEST_REST_IDM_BASEURL`. OS environment
+variables outrank every profile document, so these work under any profile, including `dev`
+and `prod`.
+
+Usernames and passwords still come from the `IDM_*`, `SAP_DB_*`, `HR_DB_*` and `WORKDAY_DB_*`
+variables listed below, since neither `dev` nor `prod` overrides those keys.
+
 The Spring context will not start unless the following are also true:
 
 - **Every database configured under `idm.test.databases` accepts a connection.** That means

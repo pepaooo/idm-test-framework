@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Run the 18-scenario corpus through `RealEnvironmentScenarios` against OpenLDAP, PostgreSQL and WireMock containers started by Testcontainers. This is an optional runner that the default build never touches.
+**Goal:** Run the 20-scenario corpus through `RealEnvironmentScenarios` against OpenLDAP, PostgreSQL and WireMock containers started by Testcontainers. This is an optional runner that the default build never touches.
 
 **Architecture:** `ContainerScenarios extends RealEnvironmentScenarios`. A static `@BeforeAll` starts the containers and publishes their addresses as `idm.test.*` system properties, the same knobs an operator sets with `-D`, before Spring loads the context. A static `@AfterAll` restores the properties and stops the containers. The only change to the parent runner is that its scenario directory becomes an overridable method.
 
@@ -635,7 +635,7 @@ If the failure message contains `OpenLDAP schema extension failed`, OpenLDAP ref
 
 Run the Step 7 command without `-Dscenario`.
 
-Expected: `BUILD SUCCESS` and **18** testcases, all passing.
+Expected: `BUILD SUCCESS` and **20** testcases, all passing.
 
 If any scenario fails, **do not edit the scenario or weaken the runner.** Record the scenario, the failing step and the message in your report as a finding about OpenLDAP or PostgreSQL versus the embedded servers, and stop.
 

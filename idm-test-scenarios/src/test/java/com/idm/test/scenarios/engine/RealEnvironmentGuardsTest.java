@@ -114,15 +114,23 @@ class RealEnvironmentGuardsTest {
     @Test
     @DisplayName("An empty scenario directory is refused")
     void testEmptyScenarioDirectoryRefused() {
-        assertThatThrownBy(() -> RealEnvironmentScenarios.requireScenarios(List.of()))
+        assertThatThrownBy(() -> RealEnvironmentScenarios.requireScenarios(List.of(), RealEnvironmentScenarios.DEFAULT_SCENARIO_DIR))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("scenarios-real");
     }
 
     @Test
+    @DisplayName("The empty-directory message names the directory that was actually searched")
+    void testEmptyScenarioDirectoryMessageNamesDirectory() {
+        assertThatThrownBy(() -> RealEnvironmentScenarios.requireScenarios(List.of(), "some-other-dir"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("src/test/resources/some-other-dir");
+    }
+
+    @Test
     @DisplayName("A scenario directory with at least one file passes")
     void testNonEmptyScenarioDirectoryPasses() {
-        assertThatCode(() -> RealEnvironmentScenarios.requireScenarios(List.of("create-user.yaml")))
+        assertThatCode(() -> RealEnvironmentScenarios.requireScenarios(List.of("create-user.yaml"), RealEnvironmentScenarios.DEFAULT_SCENARIO_DIR))
                 .doesNotThrowAnyException();
     }
 
@@ -134,8 +142,8 @@ class RealEnvironmentGuardsTest {
         // not know about, this fails and makes them read the README first.
         // This is a deliberate tripwire, not a permanent invariant: when the first real
         // scenario is added here, delete this test.
-        assertThat(YamlScenarioTest.scenarioFiles(RealEnvironmentScenarios.SCENARIO_DIR)).isEmpty();
-        assertThat(getClass().getClassLoader().getResource(RealEnvironmentScenarios.SCENARIO_DIR + "/README.md"))
+        assertThat(YamlScenarioTest.scenarioFiles(RealEnvironmentScenarios.DEFAULT_SCENARIO_DIR)).isEmpty();
+        assertThat(getClass().getClassLoader().getResource(RealEnvironmentScenarios.DEFAULT_SCENARIO_DIR + "/README.md"))
                 .as("scenarios-real/README.md must ship so the directory exists on the classpath")
                 .isNotNull();
     }

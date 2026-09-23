@@ -7,7 +7,7 @@
 ITF-12 built `RealEnvironmentScenarios`, a runner that takes its target from configuration
 instead of the embedded overrides. Its structure is tested. What nobody has shown is that pointing
 it at genuine servers really is just a change of address. This ticket shows that for LDAP and SQL.
-It runs the 18-scenario corpus through that runner against a real OpenLDAP, a real PostgreSQL and a
+It runs the 20-scenario corpus through that runner against a real OpenLDAP, a real PostgreSQL and a
 WireMock container, which Testcontainers starts and stops.
 
 **What it proves:**
@@ -25,7 +25,8 @@ A green container run must not be read as "validated against IdM".
 
 ## 2. Decisions already taken
 
-- **The corpus, not a new scenario set.** The same 18 scenarios the embedded suite runs.
+- **The corpus, not a new scenario set.** The same 20 scenarios the embedded suite runs (18
+  converted plus 2 originals).
 - **Optional, and never in the default build.** The runner is named without a `Test` suffix, like
   `RealEnvironmentScenarios`, so surefire's includes skip it. A plain `./mvnw test` never touches
   Docker. Anyone without Docker keeps a green build and never notices this exists.
@@ -85,8 +86,19 @@ under JUnit's default per-method lifecycle. The plan's first task proves this wi
 running, and stops if it is wrong.
 
 **Cleanup is part of correctness.** `@AfterAll` removes every system property the runner set,
-restoring any value that existed before. That way nothing leaks into another class that runs in the
-same JVM, for example when someone runs `-Dtest='ContainerScenarios,YamlScenarioTest'`.
+restoring any value that existed before. That way the *system properties* do not leak into another
+class that runs in the same JVM, for example when someone runs `-Dtest='ContainerScenarios,YamlScenarioTest'`.
+
+That says nothing about the Spring context. `ContainerScenarios` adds nothing Spring-relevant on
+top of `RealEnvironmentScenarios` (same `@SpringBootTest`, no profile, no property override), so
+the two classes share the same cached-context key: a context cached by a prior
+`RealEnvironmentScenarios` run in the same JVM (for example `-Dtest='*Scenarios'` with
+`IDM_TEST_PROFILE=dev`) could be reused here, bound to the real target instead of these
+containers. `ContainerScenarios` carries `@DirtiesContext(classMode = BEFORE_CLASS)`, which
+evicts any such cached context in `SpringExtension.beforeAll` — before the static `@BeforeAll`
+that publishes the container properties — so the context built afterwards sees them. As a
+backstop, `scenarios()` also checks that the context it is running against actually bound the
+LDAP URL these containers just published, and refuses with `IllegalStateException` if not.
 
 ## 5. The containers
 
@@ -127,7 +139,10 @@ same JVM, for example when someone runs `-Dtest='ContainerScenarios,YamlScenario
 
 The runner sets `idm.test.ldap.url`, `base-dn`, `user-dn` and `password`, then `idm.test.soap.url`
 and `resource-url`. For each of `test-db`, `sap`, `oracle-hr` and `workday` it sets
-`idm.test.databases.<name>.jdbc-url`, `username`, `password` and `driver-class-name`.
+`idm.test.databases.<name>.jdbc-url`, `username`, `password` and `driver-class-name`. It also sets
+`idm.test.executor.default-timeout-seconds=60` and `idm.test.executor.default-poll-interval-seconds=1`,
+because the default profile waits up to 5 minutes, polling every 5 seconds, but the corpus was
+written against the test profile's 60 seconds and 1 second.
 
 It sets no profile. The run happens under whatever `IDM_TEST_PROFILE` resolves to, normally
 `default`, and the system properties override that profile's placeholders. That makes guard 2 in
@@ -205,7 +220,7 @@ If either fails, stop and report.
   startup.
 
 **Live, run by hand in the plan:**
-- `-Dtest=ContainerScenarios`: 18 of 18 corpus scenarios pass, recorded in the report.
+- `-Dtest=ContainerScenarios`: 20 of 20 corpus scenarios pass, recorded in the report.
 - `-Dtest=ContainerScenarios -Dscenario=deprovisioning-user-disable.yaml`: 1 test passes. This is
   one of the two schema-extension scenarios.
 - With Docker stopped, or `DOCKER_HOST` pointing nowhere: `BUILD FAILURE` with the plain message.

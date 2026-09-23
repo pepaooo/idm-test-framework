@@ -44,6 +44,9 @@ This is an **integration testing framework** for Identity Management (IdM) syste
 ./mvnw test -pl idm-test-scenarios -am -Dtest=YamlScenarioTest -Dsurefire.failIfNoSpecifiedTests=false -Dscenario=provisioning-user-to-ldap.yaml
 ./mvnw test -pl idm-test-scenarios -am -Dtest=YamlScenarioTest -Dsurefire.failIfNoSpecifiedTests=false -Dscenario='provisioning-*'
 
+# Run the YAML corpus against OpenLDAP/PostgreSQL/WireMock containers (optional; needs Docker)
+./mvnw test -pl idm-test-scenarios -am -Dtest=ContainerScenarios -Dsurefire.failIfNoSpecifiedTests=false
+
 # Skip tests during build
 ./mvnw clean install -DskipTests
 

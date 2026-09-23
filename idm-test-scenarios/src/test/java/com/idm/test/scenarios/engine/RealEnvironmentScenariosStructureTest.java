@@ -70,7 +70,7 @@ class RealEnvironmentScenariosStructureTest {
     }
 
     @Test
-    @DisplayName("Starts no embedded server")
+    @DisplayName("Source references no embedded server")
     void testNoEmbeddedServerReferences() throws IOException {
         String source = Files.readString(SOURCE);
 

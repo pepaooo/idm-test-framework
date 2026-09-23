@@ -86,3 +86,28 @@ Credentials come from the environment variables `application.yml` already refere
 
 Scenarios name their database by its key: `sap`, `oracle-hr` or `workday`. `test-db` is the
 embedded H2.
+
+## Running against containers
+
+`ContainerScenarios` runs the embedded corpus (`../scenarios/`) through this same runner,
+against real OpenLDAP, PostgreSQL and WireMock containers that Testcontainers starts and stops.
+It needs a running Docker daemon. The default build never runs it.
+
+Its cleanup restores the system properties it set, so those values do not leak into another
+class in the same JVM. That says nothing about the Spring context: `ContainerScenarios` shares
+`RealEnvironmentScenarios`' cached-context key, so it carries `@DirtiesContext(BEFORE_CLASS)` to
+evict any context a prior `RealEnvironmentScenarios` run left cached, and it checks that the
+context it is using actually bound the LDAP URL these containers just published before running
+any scenario.
+
+```bash
+./mvnw test -pl idm-test-scenarios -am -Dtest=ContainerScenarios -Dsurefire.failIfNoSpecifiedTests=false
+```
+
+It proves this runner's configuration path reaches genuine LDAP and SQL servers. It proves
+nothing about OpenText IdM: the SOAP services are WireMock stubs.
+
+## Running against a lab
+
+A team with its own eDirectory / IdM environment (containers, VMs or a shared lab) points
+this runner at it with the `IDM_TEST_*` variables described above. No code change is needed.

@@ -56,7 +56,7 @@ import java.util.stream.Stream;
 @DisplayName("Real-environment scenarios")
 public class RealEnvironmentScenarios {
 
-    static final String SCENARIO_DIR = "scenarios-real";
+    static final String DEFAULT_SCENARIO_DIR = "scenarios-real";
     static final String EMBEDDED_PROFILE = "test";
     static final String LDAP_URL_PLACEHOLDER = "ldap://localhost:389";
     static final String SOAP_URL_PLACEHOLDER = "https://idm.company.com:8543/IDMProv/role/service";
@@ -97,7 +97,8 @@ public class RealEnvironmentScenarios {
     @DisplayName("Each real-environment scenario file runs as its own test")
     Stream<DynamicTest> scenarios() throws Exception {
         requireRealTarget(environment);
-        requireScenarios(YamlScenarioTest.scenarioFiles(SCENARIO_DIR));
+        String scenarioDir = scenarioDirectory();
+        requireScenarios(YamlScenarioTest.scenarioFiles(scenarioDir), scenarioDir);
 
         Map<String, StepType> registry = YamlScenarioTest.registry(
                 edirectoryConnector, databaseConnector, roleServiceConnector,
@@ -113,8 +114,17 @@ public class RealEnvironmentScenarios {
 
         // After guard 3, so an empty directory gets its README message and only a pattern
         // that matches nothing gets the filter's message.
-        return YamlScenarioTest.buildTests(SCENARIO_DIR, YamlScenarioTest.selectedScenarioFiles(SCENARIO_DIR),
+        return YamlScenarioTest.buildTests(scenarioDir, YamlScenarioTest.selectedScenarioFiles(scenarioDir),
                 validator, engine, RESULTS).stream();
+    }
+
+    /**
+     * The classpath directory this runner reads scenarios from. {@code ContainerScenarios}
+     * overrides it to run the embedded corpus against containers; configuration still comes
+     * only from the environment, exactly as for a real target.
+     */
+    String scenarioDirectory() {
+        return DEFAULT_SCENARIO_DIR;
     }
 
     /**
@@ -149,10 +159,10 @@ public class RealEnvironmentScenarios {
      * worst outcome this runner can have. The directory ships empty, so this is the most
      * likely thing to happen on a first attempt.
      */
-    static void requireScenarios(List<String> scenarioFiles) {
+    static void requireScenarios(List<String> scenarioFiles, String scenarioDir) {
         if (scenarioFiles.isEmpty()) {
-            throw new IllegalStateException("No .yaml scenarios found in src/test/resources/" + SCENARIO_DIR
-                    + ". Add a scenario there; see " + SCENARIO_DIR + "/README.md for what belongs in it.");
+            throw new IllegalStateException("No .yaml scenarios found in src/test/resources/" + scenarioDir
+                    + ". Add a scenario there; see " + DEFAULT_SCENARIO_DIR + "/README.md for what belongs in it.");
         }
     }
 }

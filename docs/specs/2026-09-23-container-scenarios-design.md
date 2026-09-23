@@ -155,6 +155,14 @@ It sets no profile. The run happens under whatever `IDM_TEST_PROFILE` resolves t
   artifact, which `postgresql` brings in transitively. `org.testcontainers:junit-jupiter` is not
   added, because the containers are started and stopped by hand in `@BeforeAll` and `@AfterAll`.
 
+- **JDBC drivers** (*found while planning*): `org.postgresql:postgresql` and `ojdbc11` are
+  declared `<optional>true</optional>` in `idm-connector-database`, so they are **not** on
+  `idm-test-scenarios`' classpath. `dependency:tree` confirms this. The ITF-12 spec (§9) said they
+  were, and that was wrong: `RealEnvironmentScenarios` would fail with "driver not found" against
+  any real PostgreSQL or Oracle database. Both are added to `idm-test-scenarios` at test scope,
+  with versions from the parent POM. The container run needs `postgresql`; `ojdbc11` is added so
+  the ITF-12 README's promise about `oracle-hr` holds.
+
 `BaseIntegrationTest`, its subclasses, the corpus YAML and the embedded infrastructure are
 unchanged. The default suite stays Docker-free.
 

@@ -118,7 +118,7 @@ public class RealEnvironmentScenarios {
         // After guard 3, so an empty directory gets its README message and only a pattern
         // that matches nothing gets the filter's message.
         List<String> selected = YamlScenarioTest.selectedScenarioFiles(scenarioDir);
-        requireRestTargets(restTargets(loadForGuards(scenarioDir, selected)), restProperties);
+        requireRestTargetsIn(scenarioDir, selected, restProperties);
 
         Map<String, StepType> registry = YamlScenarioTest.registry(
                 edirectoryConnector, databaseConnector, roleServiceConnector,
@@ -208,21 +208,39 @@ public class RealEnvironmentScenarios {
 
     /**
      * The literal {@code target} of every {@code rest.*} step, sorted. A target containing
-     * {@code ${} is only known at run time, so it is skipped; {@code RestTargets} still
-     * refuses an unknown or blank one when the step runs.
+     * {@code ${} is only known at run time, so it is skipped, as is a {@code null} target.
+     * Any other non-null value is converted with {@code String.valueOf}, matching
+     * {@code RestRequestStep}/{@code RestVerifyStep}, so a non-string target such as
+     * {@code target: 1} is still caught here instead of only failing at run time.
      */
     static Set<String> restTargets(List<Scenario> scenarios) {
         Set<String> targets = new TreeSet<>();
         for (Scenario scenario : scenarios) {
             for (StepSpec step : scenario.steps()) {
-                if (step.type().startsWith("rest.")
-                        && step.params().get("target") instanceof String target
-                        && !target.contains("${")) {
-                    targets.add(target);
+                if (!step.type().startsWith("rest.")) {
+                    continue;
+                }
+                Object target = step.params().get("target");
+                if (target == null) {
+                    continue;
+                }
+                String value = String.valueOf(target);
+                if (!value.contains("${")) {
+                    targets.add(value);
                 }
             }
         }
         return targets;
+    }
+
+    /**
+     * Guard 4's entry point: loads {@code files} from {@code scenarioDir} and applies
+     * {@link #requireRestTargets(Set, RestProperties)} to the REST targets they use.
+     * Package-private and static so the file-to-guard wiring itself is testable without
+     * building the rest of {@link #scenarios()}.
+     */
+    static void requireRestTargetsIn(String scenarioDir, List<String> files, RestProperties properties) {
+        requireRestTargets(restTargets(loadForGuards(scenarioDir, files)), properties);
     }
 
     /**

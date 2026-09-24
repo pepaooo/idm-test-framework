@@ -70,9 +70,12 @@ itself as an environment variable, using its relaxed-binding form, for example
 variables outrank every profile document, so these work under any profile, including `dev`
 and `prod`.
 
-The same applies to REST targets. `prod` hardcodes every REST `base-url` to its placeholder
-value, so a `prod` run whose scenarios use a REST target is refused until that target's
-`IDM_TEST_REST_<TARGET>_BASEURL` is set, for example `IDM_TEST_REST_IDM_BASEURL`.
+The same applies to REST targets, for three of the four. `prod` hardcodes `idm`, `sap` and
+`workday`'s REST `base-url` to exactly their placeholder values, so a `prod` run whose
+scenarios use one of those targets is refused until that target's
+`IDM_TEST_REST_<TARGET>_BASEURL` is set, for example `IDM_TEST_REST_IDM_BASEURL`. `prod`'s
+`servicenow` base-url is `https://company.service-now.com/api`, which is not its placeholder
+(`https://instance.service-now.com/api`), so a `servicenow` target is not refused.
 
 Usernames and passwords still come from the `IDM_*`, `SAP_DB_*`, `HR_DB_*` and `WORKDAY_DB_*`
 variables listed below, since neither `dev` nor `prod` overrides those keys.

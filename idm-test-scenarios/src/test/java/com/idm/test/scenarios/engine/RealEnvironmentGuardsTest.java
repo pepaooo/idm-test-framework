@@ -279,6 +279,63 @@ class RealEnvironmentGuardsTest {
     }
 
     @Test
+    @DisplayName("Guard 4's file loading ties into the guard: a placeholder from a real fixture is refused")
+    void testRequireRestTargetsInLoadsFixtureAndRefusesPlaceholder() {
+        RestProperties properties = restTarget("idm", RealEnvironmentScenarios.REST_URL_PLACEHOLDERS.get("idm"));
+
+        assertThatThrownBy(() -> RealEnvironmentScenarios.requireRestTargetsIn(
+                "scenarios-vocabulary-fixture", List.of("full-vocabulary.yaml"), properties))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("IDM_TEST_REST_IDM_BASEURL");
+    }
+
+    @Test
+    @DisplayName("Guard 4's file loading passes a real fixture with a real base-url")
+    void testRequireRestTargetsInLoadsFixtureAndPasses() {
+        RestProperties properties = restTarget("idm", "https://idm.example.org/IDMProv");
+
+        assertThatCode(() -> RealEnvironmentScenarios.requireRestTargetsIn(
+                "scenarios-vocabulary-fixture", List.of("full-vocabulary.yaml"), properties))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("Guard 4's file loading skips a file that does not exist")
+    void testRequireRestTargetsInSkipsMissingFile() {
+        // A missing file is skipped here on purpose: buildTests reports it as its own failing
+        // test carrying the real error, and reporting it twice would only add noise.
+        RestProperties properties = restTarget("idm", RealEnvironmentScenarios.REST_URL_PLACEHOLDERS.get("idm"));
+
+        assertThatCode(() -> RealEnvironmentScenarios.requireRestTargetsIn(
+                "scenarios-vocabulary-fixture", List.of("no-such-file.yaml"), properties))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("Guard 4's target variable name strips hyphens from hyphenated target names")
+    void testHyphenatedRestTargetMessage() {
+        assertThatThrownBy(() -> RealEnvironmentScenarios.requireRestTargets(
+                Set.of("my-api"), restTarget("my-api", "  ")))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("IDM_TEST_REST_MYAPI_BASEURL");
+    }
+
+    @Test
+    @DisplayName("Guard 4 collects a non-string REST target as its String.valueOf form")
+    void testNonStringRestTargetCollected() {
+        Scenario scenario = scenario("""
+                name: numeric target
+                steps:
+                  - rest.request:
+                      target: 7
+                      method: GET
+                      path: /x
+                """);
+
+        assertThat(RealEnvironmentScenarios.restTargets(List.of(scenario))).containsExactly("7");
+    }
+
+    @Test
     @DisplayName("The placeholders match the fallbacks application.yml actually declares")
     void testPlaceholdersMatchApplicationYml() throws IOException {
         // If application.yml's fallbacks change and these constants don't, guard 2 would

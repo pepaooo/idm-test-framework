@@ -126,6 +126,12 @@ Three guards, all before any scenario runs:
    treats as its worst — and since the directory ships empty (§7), it is the most likely thing
    to happen on someone's first attempt.
 
+4. **Require every REST target the run uses to be named** *(added by ITF-15; see
+   `docs/specs/2026-09-23-rest-target-guard-design.md`)*. For the `target:` of each `rest.*`
+   step in the selected scenarios, fail if the target is not configured, or its `base-url` is
+   blank or still its `application.yml` placeholder. A run with no REST steps makes no REST
+   demand.
+
 Each guard's message names what was wrong and what to set, because the person reading it is
 configuring an environment, not debugging Java.
 

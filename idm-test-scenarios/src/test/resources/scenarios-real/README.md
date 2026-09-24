@@ -40,6 +40,9 @@ The runner refuses to start, before any scenario runs, when:
 - `idm.test.ldap.url` or `idm.test.soap.url` is blank or still the `application.yml` placeholder
   (`ldap://localhost:389`, `https://idm.company.com:8543/IDMProv/role/service`)
 - this directory contains no `.yaml`
+- a scenario about to run uses a REST `target:` that is not configured, or whose `base-url` is
+  blank or still its `application.yml` placeholder. Only targets the selected scenarios use are
+  checked: a run with no `rest.*` steps is never asked for REST addresses.
 
 A real directory genuinely reachable at `ldap://localhost:389` is refused too, because that is
 the placeholder value — point it at `ldap://127.0.0.1:389` instead (or any other address) to
@@ -66,6 +69,10 @@ itself as an environment variable, using its relaxed-binding form, for example
 `IDM_TEST_LDAP_URL`, `IDM_TEST_SOAP_URL` or `IDM_TEST_REST_IDM_BASEURL`. OS environment
 variables outrank every profile document, so these work under any profile, including `dev`
 and `prod`.
+
+The same applies to REST targets. `prod` hardcodes every REST `base-url` to its placeholder
+value, so a `prod` run whose scenarios use a REST target is refused until that target's
+`IDM_TEST_REST_<TARGET>_BASEURL` is set, for example `IDM_TEST_REST_IDM_BASEURL`.
 
 Usernames and passwords still come from the `IDM_*`, `SAP_DB_*`, `HR_DB_*` and `WORKDAY_DB_*`
 variables listed below, since neither `dev` nor `prod` overrides those keys.

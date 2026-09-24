@@ -316,6 +316,9 @@ binding `created` fails at load time rather than three minutes into a provisioni
 
 ### 7.6 Cleanup
 
+> **Superseded by ITF-19** (docs/specs/2026-09-24-explicit-cleanup-design.md): steps no longer
+> register undos; teardown is the author's cleanup: block.
+
 Every action step registers its undo when it succeeds. The engine unwinds them in reverse order
 after the scenario, on success and failure alike — the behaviour `BaseIntegrationTest` implements
 by hand today. An optional `cleanup:` block handles anything the engine cannot infer.

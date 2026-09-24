@@ -113,7 +113,7 @@ public final class DbVerifyStep implements StepType {
 
         String message = "verified " + rows.size() + " row(s) on '" + database + "'";
         return captureRequested
-                ? StepOutcome.success(message, null, rows)
+                ? StepOutcome.success(message, rows)
                 : StepOutcome.success(message);
     }
 

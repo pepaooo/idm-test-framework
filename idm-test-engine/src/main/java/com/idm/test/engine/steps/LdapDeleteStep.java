@@ -9,13 +9,8 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Deletes an LDAP entry.
- * <p>
- * <b>Registers no undo, deliberately.</b> Recreating the entry would need every attribute it
- * had, and {@code userPassword} and operational attributes (createTimestamp, entryUUID) cannot
- * be read back. The "restored" entry would differ from the original without saying so, and a
- * cleanup that quietly produces a different entry is worse than one that does nothing. A
- * scenario that needs the entry back should recreate it with an explicit {@code ldap.create}.
+ * Deletes an LDAP entry. Registers nothing, like every step; recreating a deleted entry is the
+ * author's job, with an explicit {@code ldap.create}.
  */
 public final class LdapDeleteStep implements StepType {
 
@@ -60,6 +55,6 @@ public final class LdapDeleteStep implements StepType {
             return StepOutcome.failure("ldap.delete failed for " + dn + ": " + result.getMessage());
         }
 
-        return StepOutcome.success("deleted " + dn, null, dn);
+        return StepOutcome.success("deleted " + dn, dn);
     }
 }

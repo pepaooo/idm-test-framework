@@ -6,11 +6,8 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Flattens an {@link LdapUser} into the name→value view a scenario sees.
- * <p>
- * One implementation, two callers: {@code LdapVerifyStep} exposes it through {@code as:} and
- * {@code LdapUpdateStep} reads prior values from it to build its undo. Two copies would drift,
- * and a drifted copy here means an undo that restores the wrong thing.
+ * Flattens an {@link LdapUser} into the name→value view a scenario sees, which
+ * {@code LdapVerifyStep} exposes through {@code as:}.
  */
 final class LdapAttributes {
 

@@ -26,13 +26,13 @@ class ScenarioEngineTest {
 
     private final List<String> events = new ArrayList<>();
 
-    /** Records that it ran, and registers an undo that records too. */
+    /** Records that it ran. */
     private StepType recordingAction(String name) {
         return new StepType() {
             public String name() { return name; }
             public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
                 events.add("run:" + name + ":" + params.get("dn"));
-                return StepOutcome.success("ok", () -> events.add("undo:" + name));
+                return StepOutcome.success("ok");
             }
         };
     }
@@ -43,17 +43,6 @@ class ScenarioEngineTest {
             public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
                 events.add("run:" + name);
                 return StepOutcome.failure(name + " went wrong");
-            }
-        };
-    }
-
-    /** Records that it ran, registers nothing. */
-    private StepType plainAction(String name) {
-        return new StepType() {
-            public String name() { return name; }
-            public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
-                events.add("run:" + name + ":" + params.get("dn"));
-                return StepOutcome.success("ok");
             }
         };
     }
@@ -131,21 +120,6 @@ class ScenarioEngineTest {
     }
 
     @Test
-    @DisplayName("Should unwind cleanup in reverse order, including after a failure")
-    void testCleanupRunsInReverse() {
-        ScenarioEngine engine = engineWith(
-                recordingAction("a"), recordingAction("b"), failingAction("c"));
-
-        engine.run(scenario(
-                new StepSpec("a", Map.of("dn", "x")),
-                new StepSpec("b", Map.of("dn", "y")),
-                new StepSpec("c", Map.of("dn", "z"))), "t.yaml");
-
-        assertThat(events).containsExactly(
-                "run:a:x", "run:b:y", "run:c", "undo:b", "undo:a");
-    }
-
-    @Test
     @DisplayName("Should retry a failing assertion until it passes")
     void testRetriesAssertion() {
         ScenarioEngine engine = engineWith(eventuallyPassing("check", 2));
@@ -173,29 +147,8 @@ class ScenarioEngineTest {
     }
 
     @Test
-    @DisplayName("Should keep the original failure when a cleanup action also fails")
-    void testCleanupFailureDoesNotMaskOriginal() {
-        StepType breaksOnUndo = new StepType() {
-            public String name() { return "a"; }
-            public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
-                return StepOutcome.success("ok", () -> {
-                    throw new IllegalStateException("undo exploded");
-                });
-            }
-        };
-        ScenarioEngine engine = engineWith(breaksOnUndo, failingAction("b"));
-
-        ScenarioResult result = engine.run(scenario(
-                new StepSpec("a", Map.of("dn", "x")),
-                new StepSpec("b", Map.of("dn", "y"))), "t.yaml");
-
-        assertThat(result.success()).isFalse();
-        assertThat(result.failureSummary()).contains("b went wrong");
-    }
-
-    @Test
-    @DisplayName("Should fail the step and still run cleanup when a param reference can't resolve")
-    void testUnresolvableReferenceFailsStepAndStillCleansUp() {
+    @DisplayName("Should fail the step when a param reference can't resolve")
+    void testUnresolvableReferenceFailsStep() {
         ScenarioEngine engine = engineWith(recordingAction("a"), recordingAction("b"));
 
         ScenarioResult result = engine.run(scenario(
@@ -206,8 +159,7 @@ class ScenarioEngineTest {
         assertThat(result.steps()).hasSize(2);
         assertThat(result.steps().get(1).success()).isFalse();
         assertThat(result.steps().get(1).message()).contains("b").contains("bogus");
-        // "a" ran and must still be cleaned up even though "b" blew up with an exception.
-        assertThat(events).containsExactly("run:a:x", "undo:a");
+        assertThat(events).containsExactly("run:a:x");
     }
 
     @Test
@@ -229,7 +181,7 @@ class ScenarioEngineTest {
         assertThat(result.steps()).hasSize(2);
         assertThat(result.steps().get(1).success()).isFalse();
         assertThat(result.steps().get(1).message()).contains("boom").contains("kaboom");
-        assertThat(events).containsExactly("run:a:x", "undo:a");
+        assertThat(events).containsExactly("run:a:x");
     }
 
     @Test
@@ -331,7 +283,7 @@ class ScenarioEngineTest {
             public java.util.Set<String> requiredParams() { return java.util.Set.of("dn"); }
             public java.util.Set<String> acceptedParams() { return java.util.Set.of("dn"); }
             public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
-                return StepOutcome.success("ok", null, value);
+                return StepOutcome.success("ok", value);
             }
         };
     }
@@ -528,7 +480,7 @@ class ScenarioEngineTest {
                 int attempt = calls.getAndIncrement();
                 return attempt < 2
                         ? StepOutcome.failure("not yet")
-                        : StepOutcome.success("arrived", null, "value-from-attempt-" + attempt);
+                        : StepOutcome.success("arrived", "value-from-attempt-" + attempt);
             }
         };
         List<String> seen = new ArrayList<>();
@@ -555,7 +507,7 @@ class ScenarioEngineTest {
     @Test
     @DisplayName("Cleanup runs after the steps, in declaration order")
     void testCleanupRunsAfterStepsInOrder() {
-        ScenarioEngine engine = engineWith(plainAction("a"), plainAction("b"));
+        ScenarioEngine engine = engineWith(recordingAction("a"), recordingAction("b"));
 
         ScenarioResult result = engine.run(withCleanup(
                 List.of(new StepSpec("a", Map.of("dn", "s1"))),
@@ -571,7 +523,7 @@ class ScenarioEngineTest {
     @Test
     @DisplayName("Cleanup still runs when a step failed")
     void testCleanupRunsAfterAFailedStep() {
-        ScenarioEngine engine = engineWith(plainAction("a"), failingAction("f"));
+        ScenarioEngine engine = engineWith(recordingAction("a"), failingAction("f"));
 
         ScenarioResult result = engine.run(withCleanup(
                 List.of(new StepSpec("a", Map.of("dn", "s1")), new StepSpec("f", Map.of())),
@@ -584,7 +536,7 @@ class ScenarioEngineTest {
     @Test
     @DisplayName("Every cleanup entry is attempted even after one fails, and the failure fails the scenario")
     void testAllCleanupEntriesAttempted() {
-        ScenarioEngine engine = engineWith(plainAction("a"), failingAction("f"));
+        ScenarioEngine engine = engineWith(recordingAction("a"), failingAction("f"));
 
         ScenarioResult result = engine.run(withCleanup(
                 List.of(new StepSpec("a", Map.of("dn", "s1"))),
@@ -601,7 +553,7 @@ class ScenarioEngineTest {
     @Test
     @DisplayName("A cleanup entry whose capture was never bound is SKIPPED, and a skip never fails a scenario")
     void testUnboundCaptureSkips() {
-        ScenarioEngine engine = engineWith(plainAction("a"));
+        ScenarioEngine engine = engineWith(recordingAction("a"));
 
         ScenarioResult result = engine.run(withCleanup(
                 List.of(new StepSpec("a", Map.of("dn", "s1"))),
@@ -618,7 +570,7 @@ class ScenarioEngineTest {
     @Test
     @DisplayName("A cleanup entry can use a capture a step bound")
     void testCleanupSeesCaptures() {
-        ScenarioEngine engine = engineWith(valueProducing("v", "cn=made"), plainAction("a"));
+        ScenarioEngine engine = engineWith(valueProducing("v", "cn=made"), recordingAction("a"));
 
         ScenarioResult result = engine.run(withCleanup(
                 List.of(new StepSpec("v", Map.of("dn", "x", "as", "created"))),
@@ -632,7 +584,7 @@ class ScenarioEngineTest {
     @Test
     @DisplayName("A bad field on a bound name is FAILED, not SKIPPED, so a typo cannot hide as a skip")
     void testBadFieldOnBoundNameFails() {
-        ScenarioEngine engine = engineWith(plainAction("a"));
+        ScenarioEngine engine = engineWith(recordingAction("a"));
 
         ScenarioResult result = engine.run(withCleanup(
                 List.of(new StepSpec("a", Map.of("dn", "s1"))),
@@ -662,7 +614,7 @@ class ScenarioEngineTest {
     @Test
     @DisplayName("A scenario with no cleanup block reports an empty cleanup list")
     void testNoCleanupMeansEmptyList() {
-        ScenarioEngine engine = engineWith(plainAction("a"));
+        ScenarioEngine engine = engineWith(recordingAction("a"));
 
         ScenarioResult result = engine.run(scenario(new StepSpec("a", Map.of("dn", "s1"))), "t.yaml");
 

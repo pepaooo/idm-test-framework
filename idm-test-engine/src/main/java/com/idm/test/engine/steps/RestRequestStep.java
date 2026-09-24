@@ -80,7 +80,6 @@ public final class RestRequestStep implements StepType {
 
         return StepOutcome.success(
                 String.valueOf(params.get("method")) + " " + url + " returned " + response.status(),
-                null,
                 captureOf(response));
     }
 

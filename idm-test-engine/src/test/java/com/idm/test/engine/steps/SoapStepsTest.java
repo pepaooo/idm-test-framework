@@ -139,18 +139,15 @@ class SoapStepsTest {
     }
 
     @Test
-    @DisplayName("roles.grant should register no undo")
-    void testGrantRegistersNoUndo() {
+    @DisplayName("roles.grant should succeed for a plain grant with no capture requested")
+    void testGrantCapturesItsResult() {
         stubAssignmentReturning(ASSIGNMENT_DN);
         RolesGrantStep grant = new RolesGrantStep(roleConnector);
 
         StepOutcome outcome = grant.execute(Map.of(
                 "user", USER_DN, "roles", List.of(ROLE_DN)), false);
 
-        // Deliberate: removeRoles needs assignment DNs whose real-server semantics cannot be
-        // validated against WireMock, so scenarios pair a grant with an explicit revoke.
         assertThat(outcome.success()).isTrue();
-        assertThat(outcome.undo()).isNull();
     }
 
     @Test
@@ -174,7 +171,6 @@ class SoapStepsTest {
                 "user", USER_DN, "roles", List.of(ROLE_DN)), false);
 
         assertThat(outcome.success()).isFalse();
-        assertThat(outcome.undo()).isNull();
     }
 
     @Test
@@ -268,36 +264,6 @@ class SoapStepsTest {
     }
 
     @Test
-    @DisplayName("resources.grant should grant and register an undo that revokes")
-    void testResourceGrantRegistersRevokingUndo() {
-        stubResourceGrantReturning(REQUEST_ID);
-        ResourcesGrantStep grant = new ResourcesGrantStep(resourceConnector);
-
-        StepOutcome outcome = grant.execute(Map.of(
-                "user", USER_DN,
-                "resource", RESOURCE_DN,
-                "reason", "Automated test"), true);
-
-        assertThat(outcome.success()).isTrue();
-        assertThat(outcome.value()).isEqualTo(REQUEST_ID);
-        assertThat(outcome.undo()).isNotNull();
-
-        // revokeResource takes exactly what grantResource was given, so the inverse is
-        // faithful rather than guessed — which is why this pair has an undo and roles
-        // does not.
-        stubResourceRevokeReturning(REQUEST_ID);
-        WIREMOCK.resetRequests();
-        outcome.undo().run();
-
-        // Discriminate on the body, not just the URL: the grant call earlier in this test
-        // already POSTed to RESOURCE_PATH, so a URL-only match would pass even if undo did
-        // nothing. Pattern copied from ResourceServiceConnectorTest.
-        verify(postRequestedFor(urlEqualTo(RESOURCE_PATH))
-                .withRequestBody(containing("requestResourceRevoke"))
-                .withRequestBody(containing(RESOURCE_DN)));
-    }
-
-    @Test
     @DisplayName("resources.grant should fail rather than throw when the service errors")
     void testResourceGrantServiceErrorFails() {
         stubFor(post(urlEqualTo(RESOURCE_PATH)).willReturn(aResponse().withStatus(500)));
@@ -307,12 +273,11 @@ class SoapStepsTest {
                 Map.of("user", USER_DN, "resource", RESOURCE_DN), false);
 
         assertThat(outcome.success()).isFalse();
-        assertThat(outcome.undo()).isNull();
     }
 
     @Test
-    @DisplayName("resources.revoke should revoke and register no undo")
-    void testResourceRevokeRegistersNoUndo() {
+    @DisplayName("resources.revoke should capture its request id")
+    void testResourceRevokeCapturesItsResult() {
         stubResourceRevokeReturning(REQUEST_ID);
         ResourcesRevokeStep revoke = new ResourcesRevokeStep(resourceConnector);
 
@@ -321,10 +286,6 @@ class SoapStepsTest {
 
         assertThat(outcome.success()).isTrue();
         assertThat(outcome.value()).isEqualTo(REQUEST_ID);
-
-        // Re-granting a resource the scenario deliberately revoked would fight the test
-        // rather than clean up after it.
-        assertThat(outcome.undo()).isNull();
     }
 
     @Test

@@ -2,7 +2,6 @@ package com.idm.test.engine.steps;
 
 import com.idm.test.connector.soap.client.ResourceServiceConnector;
 import com.idm.test.connector.soap.generated.resource.RequestResourceGrantResponse;
-import com.idm.test.connector.soap.generated.resource.RequestResourceRevokeResponse;
 import com.idm.test.core.model.OperationResult;
 import com.idm.test.engine.spi.StepOutcome;
 import com.idm.test.engine.spi.StepType;
@@ -11,12 +10,8 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Grants a resource to a user.
- * <p>
- * Registers an undo, unlike {@code roles.grant}: {@code revokeResource} takes exactly the
- * arguments {@code grantResource} was given, so the inverse is built from inputs already in
- * hand rather than from a server-returned DN whose semantics cannot be checked. That is the
- * same rule that gave {@code ldap.create} an undo and denied one to {@code ldap.delete}.
+ * Grants a resource to a user. Registers nothing. To revoke afterwards, write
+ * {@code resources.revoke} in the scenario's {@code cleanup:} block.
  */
 public final class ResourcesGrantStep implements StepType {
 
@@ -60,16 +55,6 @@ public final class ResourcesGrantStep implements StepType {
 
         String requestId = SoapValues.of(result.getData().get().getResult());
 
-        return StepOutcome.success(
-                "granted " + resource + " to " + user,
-                () -> {
-                    OperationResult<RequestResourceRevokeResponse> revoked =
-                            connector.revokeResource(user, resource, reason);
-                    if (!revoked.isSuccess()) {
-                        throw new IllegalStateException("cleanup failed to revoke " + resource
-                                + " from " + user + ": " + revoked.getMessage());
-                    }
-                },
-                requestId);
+        return StepOutcome.success("granted " + resource + " to " + user, requestId);
     }
 }

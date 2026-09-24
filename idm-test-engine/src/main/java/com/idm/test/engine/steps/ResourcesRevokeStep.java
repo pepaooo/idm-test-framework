@@ -10,11 +10,8 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Revokes a resource from a user.
- * <p>
- * Registers no undo: re-granting a resource the scenario deliberately revoked would fight the
- * test rather than clean up after it. A scenario that wants the resource back grants it again
- * explicitly.
+ * Revokes a resource from a user. Registers nothing. A scenario that wants the resource back
+ * grants it again explicitly.
  */
 public final class ResourcesRevokeStep implements StepType {
 
@@ -54,7 +51,7 @@ public final class ResourcesRevokeStep implements StepType {
         }
 
         return StepOutcome.success(
-                "revoked " + resource + " from " + user, null,
+                "revoked " + resource + " from " + user,
                 SoapValues.of(result.getData().get().getResult()));
     }
 }

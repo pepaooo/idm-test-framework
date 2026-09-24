@@ -5,6 +5,8 @@ question that was deliberately deferred until this evidence existed.
 
 ## 1. Does anything need a scenario-level `cleanup:` block? (ITF-11)
 
+> **Superseded by ITF-19** — see docs/specs/2026-09-24-explicit-cleanup-design.md.
+
 No. Across all 18 converted scenarios, every teardown obligation traces back to something a
 step in that same scenario created, and the two existing mechanisms already cover it:
 
@@ -34,6 +36,8 @@ a single scenario, for instance — that is new evidence and a new ticket, not a
 this one open speculatively.
 
 ## 2. Does anything need a per-step `undo: false` opt-out?
+
+> **Superseded by ITF-19** — see docs/specs/2026-09-24-explicit-cleanup-design.md.
 
 No, and the feature does not exist to opt out of today: `ldap.create`'s `acceptedParams()` is
 only `{dn, attributes}` — there is no `undo` parameter to set to `false`. Its undo (unbind the

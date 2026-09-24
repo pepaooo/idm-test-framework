@@ -61,23 +61,6 @@ class LdapStepsTest {
     }
 
     @Test
-    @DisplayName("ldap.create should create an entry and return an undo that deletes it")
-    void testCreateAndUndo() {
-        LdapCreateStep create = new LdapCreateStep(connector);
-        String dn = "cn=ada.create,ou=users";
-
-        StepOutcome outcome = create.execute(Map.of(
-                "dn", dn,
-                "attributes", Map.of("cn", "ada.create", "sn", "Lovelace", "givenName", "Ada")), false);
-
-        assertThat(outcome.success()).isTrue();
-        assertThat(connector.read(dn).isSuccess()).isTrue();
-
-        outcome.undo().run();
-        assertThat(connector.read(dn).isSuccess()).isFalse();
-    }
-
-    @Test
     @DisplayName("ldap.create should report failure rather than throw on a schema violation")
     void testCreateFailure() {
         LdapCreateStep create = new LdapCreateStep(connector);
@@ -104,7 +87,6 @@ class LdapStepsTest {
                 "expect", Map.of("givenName", "Ada", "sn", "Lovelace")), false);
 
         assertThat(outcome.success()).isTrue();
-        assertThat(outcome.undo()).isNull();
     }
 
     @Test
@@ -122,30 +104,6 @@ class LdapStepsTest {
         assertThat(outcome.success()).isFalse();
         assertThat(outcome.message()).contains(dn);
         assertThat(outcome.message()).containsIgnoringCase("givenName");
-    }
-
-    @Test
-    @DisplayName("ldap.create's undo should remove the entry it created")
-    void testCreateUndoRemovesEntry() {
-        // NOTE: the undo-throws-on-failed-delete path (IllegalStateException) could not be
-        // exercised here. EdirectoryConnector.delete() on this embedded directory treats
-        // deleting an already-absent DN as a successful no-op rather than a failure (verified
-        // by running undo twice: both runs logged "LDAP user deleted successfully" and returned
-        // success). Since the connector never reports failure for this case, the throwing
-        // branch of the undo is untestable against this connector/backend and is instead
-        // covered by the fact that undo() surfaces IllegalStateException whenever
-        // connector.delete(dn) does return an unsuccessful OperationResult.
-        LdapCreateStep create = new LdapCreateStep(connector);
-        String dn = "cn=ada.undo-failure,ou=users";
-
-        StepOutcome outcome = create.execute(Map.of(
-                "dn", dn,
-                "attributes", Map.of("cn", "ada.undo-failure", "sn", "Lovelace", "givenName", "Ada")), false);
-
-        assertThat(outcome.success()).isTrue();
-
-        outcome.undo().run();
-        assertThat(connector.read(dn).isSuccess()).isFalse();
     }
 
     @Test
@@ -274,49 +232,6 @@ class LdapStepsTest {
     // ------------------------------------------------------------------
 
     @Test
-    @DisplayName("ldap.update should change attributes and restore prior values on undo")
-    void testUpdateRestoresPriorValues() {
-        LdapCreateStep create = new LdapCreateStep(connector);
-        LdapUpdateStep update = new LdapUpdateStep(connector);
-        String dn = "cn=ada.update,ou=users";
-
-        create.execute(Map.of("dn", dn, "attributes",
-                Map.of("cn", "ada.update", "sn", "Lovelace", "title", "Analyst")), false);
-
-        StepOutcome outcome = update.execute(
-                Map.of("dn", dn, "attributes", Map.of("title", "Engineer")), false);
-
-        assertThat(outcome.success()).isTrue();
-        assertThat(connector.read(dn).getData().orElseThrow().getTitle()).isEqualTo("Engineer");
-
-        outcome.undo().run();
-        assertThat(connector.read(dn).getData().orElseThrow().getTitle()).isEqualTo("Analyst");
-    }
-
-    @Test
-    @DisplayName("ldap.update undo should remove an attribute that did not exist before")
-    void testUpdateUndoRemovesNewlyAddedAttribute() {
-        LdapCreateStep create = new LdapCreateStep(connector);
-        LdapUpdateStep update = new LdapUpdateStep(connector);
-        String dn = "cn=ada.added,ou=users";
-
-        create.execute(Map.of("dn", dn, "attributes",
-                Map.of("cn", "ada.added", "sn", "Lovelace")), false);
-
-        StepOutcome outcome = update.execute(
-                Map.of("dn", dn, "attributes", Map.of("description", "temporary")), false);
-
-        assertThat(outcome.success()).isTrue();
-        assertThat(connector.read(dn).getData().orElseThrow().getDescription())
-                .isEqualTo("temporary");
-
-        // 'description' had no prior value, so restoring it means removing it. Without this
-        // the undo would silently leave the attribute behind and still report success.
-        outcome.undo().run();
-        assertThat(connector.read(dn).getData().orElseThrow().getDescription()).isNull();
-    }
-
-    @Test
     @DisplayName("ldap.update should report failure rather than throw for a missing entry")
     void testUpdateMissingEntryFails() {
         LdapUpdateStep update = new LdapUpdateStep(connector);
@@ -325,8 +240,8 @@ class LdapStepsTest {
                 Map.of("dn", "cn=nobody.here,ou=users", "attributes", Map.of("title", "X")), false);
 
         assertThat(outcome.success()).isFalse();
-        assertThat(outcome.message()).contains("cn=nobody.here,ou=users");
-        assertThat(outcome.undo()).isNull();
+        assertThat(outcome.message()).contains("ldap.update failed for")
+                .contains("cn=nobody.here,ou=users");
     }
 
     @Test
@@ -351,8 +266,8 @@ class LdapStepsTest {
     // ------------------------------------------------------------------
 
     @Test
-    @DisplayName("ldap.delete should remove the entry and register no undo")
-    void testDeleteRegistersNoUndo() {
+    @DisplayName("ldap.delete should remove the entry")
+    void testDeleteReturnsTheDn() {
         LdapCreateStep create = new LdapCreateStep(connector);
         LdapDeleteStep delete = new LdapDeleteStep(connector);
         String dn = "cn=ada.delete,ou=users";
@@ -364,10 +279,6 @@ class LdapStepsTest {
 
         assertThat(outcome.success()).isTrue();
         assertThat(connector.read(dn).isSuccess()).isFalse();
-
-        // Deliberate: a recreated entry silently loses userPassword and operational
-        // attributes, so no undo is better than a convincing fake.
-        assertThat(outcome.undo()).isNull();
     }
 
     @Test
@@ -542,5 +453,22 @@ class LdapStepsTest {
 
         assertThat(outcome.success()).isFalse();
         assertThat(outcome.message()).contains("exists");
+    }
+
+    @Test
+    @DisplayName("ldap.create registers nothing: the entry is still there after the step")
+    void testCreateLeavesTheEntry() {
+        LdapCreateStep create = new LdapCreateStep(connector);
+        String dn = "cn=ada.stays,ou=users";
+
+        StepOutcome outcome = create.execute(Map.of(
+                "dn", dn,
+                "attributes", Map.of("cn", "ada.stays", "sn", "Lovelace", "givenName", "Ada")), false);
+
+        assertThat(outcome.success()).isTrue();
+        assertThat(outcome.value()).isEqualTo(dn);
+        assertThat(connector.read(dn).isSuccess()).isTrue();
+
+        connector.delete(dn);   // tidy the shared directory; nothing else will
     }
 }

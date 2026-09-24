@@ -11,14 +11,9 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Grants one or more roles to a user.
- * <p>
- * <b>Registers no undo, deliberately.</b> The inverse, {@code removeRoles}, consumes role
- * assignment DNs rather than role definition DNs, and nothing in the role service maps a user
- * and a role back to an assignment DN. Handing back the DNs this call returned would be
- * plausible, but it cannot be validated against anything but a stub until a live eDirectory
- * exists — so a scenario that needs cleanup writes an explicit {@code roles.revoke} using the
- * DNs captured here through {@code as:}.
+ * Grants one or more roles to a user. Registers nothing. A scenario that needs cleanup writes
+ * an explicit {@code roles.revoke} in its {@code cleanup:} block, using the DNs captured here
+ * through {@code as:}.
  */
 public final class RolesGrantStep implements StepType {
 
@@ -79,6 +74,6 @@ public final class RolesGrantStep implements StepType {
         }
 
         return StepOutcome.success(
-                "granted " + roles + " to " + user, null, assignments);
+                "granted " + roles + " to " + user, assignments);
     }
 }

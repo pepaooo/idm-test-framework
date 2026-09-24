@@ -11,13 +11,9 @@ import com.idm.test.engine.result.ScenarioResult;
 import com.idm.test.engine.result.StepResult;
 import com.idm.test.engine.spi.StepOutcome;
 import com.idm.test.engine.spi.StepType;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
-import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.Deque;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -34,8 +30,6 @@ import java.util.concurrent.atomic.AtomicReference;
  * dependencies by constructor and returns a result object. That is what lets a CLI reuse it.
  */
 public final class ScenarioEngine {
-
-    private static final Logger log = LoggerFactory.getLogger(ScenarioEngine.class);
 
     /** Reserved: handled here rather than by a registered step type. */
     private static final String SET_STEP = "set";
@@ -68,7 +62,6 @@ public final class ScenarioEngine {
 
         List<StepResult> results = new ArrayList<>();
         List<CleanupResult> cleanupResults = List.of();
-        Deque<Runnable> undos = new ArrayDeque<>();
         boolean success = true;
         String failureDetail = null;
 
@@ -91,7 +84,7 @@ public final class ScenarioEngine {
                 long stepStarted = System.currentTimeMillis();
                 StepResult result;
                 try {
-                    result = runStep(step, i, scope, undos);
+                    result = runStep(step, i, scope);
                 } catch (RuntimeException e) {
                     result = new StepResult(i, step.type(), Map.of(), false,
                             System.currentTimeMillis() - stepStarted,
@@ -103,10 +96,8 @@ public final class ScenarioEngine {
                 success = result.success();
             }
         } finally {
-            // Author-written cleanup first, then the remaining inferred undos (removed in a
-            // later change). Both always run, whether or not the steps passed.
+            // The author's cleanup always runs, whether or not the steps passed.
             cleanupResults = runCleanup(scenario.cleanup(), scope);
-            unwind(undos);
         }
 
         boolean cleanupFailed = cleanupResults.stream()
@@ -117,8 +108,7 @@ public final class ScenarioEngine {
     }
 
     @SuppressWarnings("unchecked")
-    private StepResult runStep(
-            StepSpec step, int index, Map<String, Object> scope, Deque<Runnable> undos) {
+    private StepResult runStep(StepSpec step, int index, Map<String, Object> scope) {
 
         long started = System.currentTimeMillis();
 
@@ -154,7 +144,6 @@ public final class ScenarioEngine {
 
         if (wait == null) {
             StepOutcome outcome = type.execute(resolved, captureRequested);
-            register(undos, outcome);
             outcome = bind(scope, asName, outcome, step.type());
             return new StepResult(index, step.type(), resolved, outcome.success(),
                     System.currentTimeMillis() - started, outcome.message(), null, null);
@@ -180,9 +169,6 @@ public final class ScenarioEngine {
                         "threw " + e.getClass().getSimpleName() + ": " + e.getMessage());
             }
             last.set(outcome);
-            // Register as each attempt happens, not just the final one, so an undo
-            // returned by an earlier attempt (that later attempts don't repeat) isn't lost.
-            register(undos, outcome);
             return outcome.success();
         }, wait.timeout(), wait.poll());
         long waitedMillis = System.currentTimeMillis() - waitStarted;
@@ -233,8 +219,8 @@ public final class ScenarioEngine {
      * Binds a successful step's value under its {@code as:} name, so later steps can read it.
      * <p>
      * A scenario must never report success on a fabricated value. {@link StepOutcome#value()}
-     * defaults to {@code null} — that is the shape {@code StepOutcome.success(msg)} and
-     * {@code success(msg, undo)} produce, and every future step type gets it for free unless it
+     * defaults to {@code null} — that is the shape {@code StepOutcome.success(msg)} produces,
+     * and every future step type gets it for free unless it
      * opts into capturing something. Binding a null value anyway would let {@code containsKey}
      * report the name as known while {@code String.valueOf(null)} renders the literal text
      * {@code "null"} into scope, which the interpolator would then hand to a later step as if it
@@ -257,12 +243,6 @@ public final class ScenarioEngine {
         }
         scope.put(String.valueOf(asName), outcome.value());
         return outcome;
-    }
-
-    private static void register(Deque<Runnable> undos, StepOutcome outcome) {
-        if (outcome != null && outcome.undo() != null) {
-            undos.push(outcome.undo());
-        }
     }
 
     /**
@@ -316,17 +296,4 @@ public final class ScenarioEngine {
                 System.currentTimeMillis() - started, outcome.message());
     }
 
-    /**
-     * Runs every undo in reverse order. A cleanup failure is logged but never replaces the
-     * scenario's own result: what broke matters more than what could not be tidied.
-     */
-    private static void unwind(Deque<Runnable> undos) {
-        while (!undos.isEmpty()) {
-            try {
-                undos.pop().run();
-            } catch (Exception e) {
-                log.warn("Cleanup action failed, continuing: {}", e.getMessage());
-            }
-        }
-    }
 }

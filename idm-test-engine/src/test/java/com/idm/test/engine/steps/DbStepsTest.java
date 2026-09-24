@@ -66,30 +66,8 @@ class DbStepsTest {
     }
 
     @Test
-    @DisplayName("db.execute should run its declared undo on unwind")
-    void testExecuteUndo() {
-        DbExecuteStep execute = new DbExecuteStep(connector);
-
-        StepOutcome outcome = execute.execute(Map.of(
-                "database", DB,
-                "statement", "INSERT INTO sap_users (username, status) VALUES (?, ?)",
-                "params", List.of("jdoe", "ACTIVE"),
-                "undo", Map.of(
-                        "statement", "DELETE FROM sap_users WHERE username = ?",
-                        "params", List.of("jdoe"))), false);
-
-        assertThat(outcome.success()).isTrue();
-        assertThat(outcome.undo()).isNotNull();
-
-        outcome.undo().run();
-
-        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM sap_users", Integer.class))
-                .isZero();
-    }
-
-    @Test
-    @DisplayName("db.execute should register no undo when none was declared")
-    void testExecuteWithoutUndo() {
+    @DisplayName("db.execute should report the affected row count when it succeeds")
+    void testExecuteReturnsAffectedRows() {
         DbExecuteStep execute = new DbExecuteStep(connector);
 
         StepOutcome outcome = execute.execute(Map.of(
@@ -98,7 +76,7 @@ class DbStepsTest {
                 "INSERT INTO sap_users (username, status) VALUES ('x', 'y')"), false);
 
         assertThat(outcome.success()).isTrue();
-        assertThat(outcome.undo()).isNull();
+        assertThat(outcome.value()).isEqualTo(1);
     }
 
     @Test
@@ -111,7 +89,6 @@ class DbStepsTest {
                 "statement", "INSERT INTO no_such_table (a) VALUES (1)"), false);
 
         assertThat(outcome.success()).isFalse();
-        assertThat(outcome.undo()).isNull();
     }
 
     @Test
@@ -128,38 +105,22 @@ class DbStepsTest {
     }
 
     @Test
-    @DisplayName("db.execute should fail rather than throw when undo is not a map")
-    void testExecuteRejectsNonMapUndo() {
-        // undo: "DELETE FROM x" (a scalar) where a map with a statement belongs; the
-        // unchecked cast in execute() must not surface as a ClassCastException — a
-        // StepType.execute implementation must never throw.
-        DbExecuteStep execute = new DbExecuteStep(connector);
-
-        StepOutcome outcome = execute.execute(Map.of(
-                "database", DB,
-                "statement", "INSERT INTO sap_users (username) VALUES ('x')",
-                "undo", "DELETE FROM sap_users"), false);
-
-        assertThat(outcome.success()).isFalse();
-        assertThat(outcome.message()).contains("undo");
+    @DisplayName("db.execute no longer accepts undo:")
+    void testExecuteDoesNotAcceptUndo() {
+        assertThat(new DbExecuteStep(null).acceptedParams()).doesNotContain("undo");
     }
 
     @Test
-    @DisplayName("db.execute should reject an undo block with no statement")
-    void testExecuteRejectsUndoWithoutStatement() {
-        DbExecuteStep execute = new DbExecuteStep(connector);
-
-        StepOutcome outcome = execute.execute(Map.of(
+    @DisplayName("0 affected rows is still success, so a cleanup DELETE of absent rows passes")
+    void testZeroAffectedRowsSucceeds() {
+        StepOutcome outcome = new DbExecuteStep(connector).execute(Map.of(
                 "database", DB,
-                "statement", "INSERT INTO sap_users (username) VALUES ('x')",
-                "undo", Map.of("params", List.of("x"))), false);
+                "statement", "DELETE FROM sap_users WHERE username = ?",
+                "params", List.of("nobody")), false);
 
-        // Caught before the statement runs: an undo that cannot run is a cleanup hole, and
-        // discovering it at unwind time is far too late.
-        assertThat(outcome.success()).isFalse();
-        assertThat(outcome.message()).contains("undo");
-        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM sap_users", Integer.class))
-                .isZero();
+        assertThat(outcome.success()).isTrue();
+        assertThat(outcome.value()).isEqualTo(0);
+        assertThat(outcome.message()).contains("0 row(s) affected");
     }
 
     // ------------------------------------------------------------------

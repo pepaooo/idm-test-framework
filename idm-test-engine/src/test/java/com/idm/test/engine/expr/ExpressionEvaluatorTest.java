@@ -113,10 +113,21 @@ class ExpressionEvaluatorTest {
     void testNoStateLeak() {
         // The trailing reference gives the statement a defined completion value; a bare `var`
         // declaration's completion value is itself `undefined`, which ITF-20 now refuses.
-        evaluator.evaluate("var leaked = 'first'; leaked", Map.of());
+        Object first = evaluator.evaluate("var leaked = 'first'; leaked", Map.of());
+        assertThat(first).isEqualTo("first");
 
         assertThatThrownBy(() -> evaluator.evaluate("leaked", Map.of()))
-                .isInstanceOf(ExpressionException.class);
+                .isInstanceOf(ExpressionException.class)
+                .hasMessageContaining("leaked")
+                .hasMessageContaining("not defined");
+    }
+
+    @Test
+    @DisplayName("Should read integer-keyed object properties instead of calling them undefined")
+    void testIntegerKeyedPropertiesConvert() {
+        Object result = evaluator.evaluate("({0: 'a', 1001: 'x', b: 1})", Map.of());
+
+        assertThat(result).isEqualTo(Map.of("0", "a", "1001", "x", "b", 1.0));
     }
 
     @Test

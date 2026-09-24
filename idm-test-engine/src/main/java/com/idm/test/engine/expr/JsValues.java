@@ -195,7 +195,8 @@ final class JsValues {
                 Map<String, Object> map = new LinkedHashMap<>();
                 for (Object id : object.getIds()) {
                     String key = String.valueOf(id);
-                    map.put(key, fromJs(object.get(key, object), path + "." + key, ancestors, depth + 1, budget));
+                    Object property = id instanceof Integer index ? object.get(index, object) : object.get(key, object);
+                    map.put(key, fromJs(property, path + "." + key, ancestors, depth + 1, budget));
                 }
                 return map;
             } finally {

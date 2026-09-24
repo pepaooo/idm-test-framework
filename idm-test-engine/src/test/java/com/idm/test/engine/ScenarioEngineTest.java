@@ -658,4 +658,35 @@ class ScenarioEngineTest {
         assertThat(result.cleanup()).isEmpty();
         assertThat(result.success()).isTrue();
     }
+
+    @Test
+    @DisplayName("A js: typo in a cleanup parameter is FAILED, not a silent success")
+    void testJsTypoInCleanupFails() {
+        ScenarioEngine engine = engineWith(recordingAction("a"));
+
+        ScenarioResult result = engine.run(withCleanup(
+                List.of(new StepSpec("a", Map.of("dn", "s1"))),
+                new StepSpec("a", Map.of("dn", "js:{ user.userid }"))), "t.yaml");
+
+        // Before this fix the cleanup action ran with dn=null and reported SUCCEEDED.
+        assertThat(events).containsExactly("run:a:s1");
+        assertThat(result.cleanup()).singleElement().satisfies(c -> {
+            assertThat(c.status()).isEqualTo(CleanupStatus.FAILED);
+            assertThat(c.message()).contains("userid").contains("undefined");
+        });
+        assertThat(result.success()).isFalse();
+    }
+
+    @Test
+    @DisplayName("A js: typo in a step parameter fails that step")
+    void testJsTypoInStepFails() {
+        ScenarioEngine engine = engineWith(recordingAction("a"));
+
+        ScenarioResult result = engine.run(
+                scenario(new StepSpec("a", Map.of("dn", "js:{ user.userid }"))), "t.yaml");
+
+        assertThat(events).isEmpty();
+        assertThat(result.success()).isFalse();
+        assertThat(result.failureSummary()).contains("userid").contains("undefined");
+    }
 }

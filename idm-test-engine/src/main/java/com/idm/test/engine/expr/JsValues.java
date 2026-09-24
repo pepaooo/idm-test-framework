@@ -120,15 +120,30 @@ final class JsValues {
      *
      * @throws JsConversionException if the result nests too deeply, contains a cycle, has too
      *                                many total nodes, is an array beyond the size cap, is a
-     *                                BigInt, or is a JS value (such as a Date or RegExp) with no
-     *                                plain Java equivalent
+     *                                BigInt, is a JS value (such as a Date or RegExp) with no
+     *                                plain Java equivalent, or contains {@code undefined} anywhere
+     *                                (including an array hole)
      */
     static Object fromJs(Object value) {
-        return fromJs(value, Collections.newSetFromMap(new IdentityHashMap<>()), 0, new NodeBudget());
+        return fromJs(value, "result", Collections.newSetFromMap(new IdentityHashMap<>()), 0, new NodeBudget());
     }
 
-    private static Object fromJs(Object value, Set<Object> ancestors, int depth, NodeBudget budget) {
-        if (value == null || value instanceof Undefined || value == Scriptable.NOT_FOUND) {
+    /**
+     * @param path where {@code value} sits in the result, e.g. {@code result.items[2]}, so an
+     *             error can point at the exact spot
+     */
+    private static Object fromJs(
+            Object value, String path, Set<Object> ancestors, int depth, NodeBudget budget) {
+        // JavaScript reads a missing property as undefined rather than failing, so a typo like
+        // user.userid would otherwise become a silent null — and a null parameter can make a
+        // step, or a cleanup DELETE, quietly do nothing. An array hole reads as NOT_FOUND, which
+        // JavaScript also treats as undefined. Explicit null is a deliberate value and passes.
+        if (value instanceof Undefined || value == Scriptable.NOT_FOUND) {
+            throw new JsConversionException(path + " is undefined — a property that does not exist "
+                    + "reads as undefined in JavaScript. Check the name, or write null if no value "
+                    + "is intended.");
+        }
+        if (value == null) {
             return null;
         }
         budget.visit();
@@ -160,7 +175,7 @@ final class JsValues {
                 }
                 List<Object> list = new ArrayList<>((int) length);
                 for (int i = 0; i < length; i++) {
-                    list.add(fromJs(array.get(i, array), ancestors, depth + 1, budget));
+                    list.add(fromJs(array.get(i, array), path + "[" + i + "]", ancestors, depth + 1, budget));
                 }
                 return list;
             } finally {
@@ -180,7 +195,8 @@ final class JsValues {
                 Map<String, Object> map = new LinkedHashMap<>();
                 for (Object id : object.getIds()) {
                     String key = String.valueOf(id);
-                    map.put(key, fromJs(object.get(key, object), ancestors, depth + 1, budget));
+                    Object property = id instanceof Integer index ? object.get(index, object) : object.get(key, object);
+                    map.put(key, fromJs(property, path + "." + key, ancestors, depth + 1, budget));
                 }
                 return map;
             } finally {

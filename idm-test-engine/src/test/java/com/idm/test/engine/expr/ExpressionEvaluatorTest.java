@@ -111,10 +111,23 @@ class ExpressionEvaluatorTest {
     @Test
     @DisplayName("Should not leak variables between evaluations")
     void testNoStateLeak() {
-        evaluator.evaluate("var leaked = 'first'", Map.of());
+        // The trailing reference gives the statement a defined completion value; a bare `var`
+        // declaration's completion value is itself `undefined`, which ITF-20 now refuses.
+        Object first = evaluator.evaluate("var leaked = 'first'; leaked", Map.of());
+        assertThat(first).isEqualTo("first");
 
         assertThatThrownBy(() -> evaluator.evaluate("leaked", Map.of()))
-                .isInstanceOf(ExpressionException.class);
+                .isInstanceOf(ExpressionException.class)
+                .hasMessageContaining("leaked")
+                .hasMessageContaining("not defined");
+    }
+
+    @Test
+    @DisplayName("Should read integer-keyed object properties instead of calling them undefined")
+    void testIntegerKeyedPropertiesConvert() {
+        Object result = evaluator.evaluate("({0: 'a', 1001: 'x', b: 1})", Map.of());
+
+        assertThat(result).isEqualTo(Map.of("0", "a", "1001", "x", "b", 1.0));
     }
 
     @Test
@@ -194,5 +207,61 @@ class ExpressionEvaluatorTest {
 
         assertThatThrownBy(() -> evaluator.evaluate(expression, Map.of()))
                 .isInstanceOf(ExpressionException.class);
+    }
+
+    @Test
+    @DisplayName("Should refuse a result that is undefined, naming the expression")
+    void testUndefinedResultRefused() {
+        assertThatThrownBy(() -> evaluator.evaluate("user.firstname", scope()))
+                .isInstanceOf(ExpressionEvaluator.ExpressionException.class)
+                .hasMessageContaining("js:{ user.firstname }")
+                .hasMessageContaining("result is undefined");
+    }
+
+    @Test
+    @DisplayName("Should refuse undefined nested in an object, naming the property")
+    void testUndefinedPropertyRefused() {
+        assertThatThrownBy(() -> evaluator.evaluate("({ dn: user.firstname })", scope()))
+                .isInstanceOf(ExpressionEvaluator.ExpressionException.class)
+                .hasMessageContaining("result.dn is undefined");
+    }
+
+    @Test
+    @DisplayName("Should refuse undefined nested in an array, naming the index")
+    void testUndefinedElementRefused() {
+        assertThatThrownBy(() -> evaluator.evaluate("[user.firstName, user.firstname]", scope()))
+                .isInstanceOf(ExpressionEvaluator.ExpressionException.class)
+                .hasMessageContaining("result[1] is undefined");
+    }
+
+    @Test
+    @DisplayName("Should refuse an array hole, which JavaScript reads as undefined")
+    void testArrayHoleRefused() {
+        assertThatThrownBy(() -> evaluator.evaluate("[1, , 3]", Map.of()))
+                .isInstanceOf(ExpressionEvaluator.ExpressionException.class)
+                .hasMessageContaining("result[1] is undefined");
+    }
+
+    @Test
+    @DisplayName("Should still allow an explicit null, at the top level and nested")
+    void testExplicitNullAllowed() {
+        assertThat(evaluator.evaluate("null", Map.of())).isNull();
+
+        Object result = evaluator.evaluate("({ a: null, b: [null] })", Map.of());
+        assertThat(result).isInstanceOf(Map.class);
+        Map<?, ?> map = (Map<?, ?>) result;
+        assertThat(map.containsKey("a")).isTrue();
+        assertThat(map.get("a")).isNull();
+        @SuppressWarnings("unchecked")
+        List<Object> b = (List<Object>) map.get("b");
+        assertThat(b).containsExactly((Object) null);
+    }
+
+    @Test
+    @DisplayName("Should convert a result with no undefined exactly as before")
+    void testOrdinaryResultUnchanged() {
+        Object result = evaluator.evaluate("({ name: user.firstName, tags: ['a', 'b'] })", scope());
+
+        assertThat(result).isEqualTo(Map.of("name", "ada", "tags", List.of("a", "b")));
     }
 }

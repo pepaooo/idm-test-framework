@@ -24,6 +24,6 @@ sequenceDiagram
     E->>S: execute(resolved cleanup params)
     S-->>E: Outcome
   end
-  Note over E,S: SUCCEEDED / FAILED / SKIPPED per entry; a FAILED entry fails the scenario
+  Note over E,T: SUCCEEDED / FAILED / SKIPPED per entry, and a FAILED entry fails the scenario
   E-->>J: ScenarioResult with steps and cleanup
   J->>J: Write accumulated JSON, assert success

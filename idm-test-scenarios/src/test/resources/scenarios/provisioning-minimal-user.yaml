@@ -8,6 +8,7 @@ fixtures:
 steps:
   - ldap.create:
       dn: "cn=${user.userId},ou=users"
+      as: createdDn
       attributes:
         cn: "${user.userId}"
         sn: "${user.lastName}"
@@ -17,3 +18,7 @@ steps:
   - ldap.verify:
       dn: "cn=${user.userId},ou=users"
       exists: true
+
+cleanup:
+  - ldap.delete:
+      dn: "${createdDn}"

@@ -10,9 +10,6 @@ steps:
       database: test-db
       statement: "INSERT INTO users (user_id, first_name, last_name, email, active) VALUES (?, ?, ?, ?, ?)"
       params: ["${user.userId}", "${user.firstName}", "${user.lastName}", "${user.email}", true]
-      undo:
-        statement: "DELETE FROM users WHERE user_id = ?"
-        params: ["${user.userId}"]
 
   - db.execute:
       database: test-db
@@ -28,9 +25,6 @@ steps:
       database: test-db
       statement: "INSERT INTO user_access (user_id, system_name, access_level, granted_date) VALUES (?, ?, ?, CURRENT_TIMESTAMP)"
       params: ["${user.userId}", "ServiceNow", "USER"]
-      undo:
-        statement: "DELETE FROM user_access WHERE user_id = ?"
-        params: ["${user.userId}"]
 
   - db.verify:
       database: test-db
@@ -50,3 +44,14 @@ steps:
       params: ["${user.userId}"]
       expect:
         rowCount: 0
+
+cleanup:
+  - db.execute:
+      database: test-db
+      statement: "DELETE FROM user_access WHERE user_id = ?"
+      params: ["${user.userId}"]
+
+  - db.execute:
+      database: test-db
+      statement: "DELETE FROM users WHERE user_id = ?"
+      params: ["${user.userId}"]

@@ -9,6 +9,7 @@ fixtures:
 steps:
   - ldap.create:
       dn: "cn=${user.userId},ou=users"
+      as: createdDn
       attributes:
         cn: ${user.userId}
         sn: ${user.lastName}
@@ -24,3 +25,7 @@ steps:
       wait:
         timeout: 30s
         poll: 2s
+
+cleanup:
+  - ldap.delete:
+      dn: "${createdDn}"

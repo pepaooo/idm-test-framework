@@ -115,7 +115,7 @@ public final class RestVerifyStep implements StepType {
         capture.put("body", response.body());
 
         return captureRequested
-                ? StepOutcome.success(message, null, capture)
+                ? StepOutcome.success(message, capture)
                 : StepOutcome.success(message);
     }
 

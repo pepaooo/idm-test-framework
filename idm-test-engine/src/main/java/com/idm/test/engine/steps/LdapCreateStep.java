@@ -54,13 +54,7 @@ public final class LdapCreateStep implements StepType {
             return StepOutcome.failure("ldap.create failed for " + dn + ": " + result.getMessage());
         }
 
-        return StepOutcome.success("created " + dn, () -> {
-            OperationResult<Void> deleted = connector.delete(dn);
-            if (!deleted.isSuccess()) {
-                throw new IllegalStateException(
-                        "cleanup failed to delete " + dn + ": " + deleted.getMessage());
-            }
-        }, dn);
+        return StepOutcome.success("created " + dn, dn);
     }
 
     /**

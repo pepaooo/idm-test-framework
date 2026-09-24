@@ -87,7 +87,7 @@ public final class LdapVerifyStep implements StepType {
                     + " but the follow-up read for its as: capture failed: " + entry.getMessage());
         }
 
-        return StepOutcome.success("verified " + dn, null, LdapAttributes.of(entry.getData().get()));
+        return StepOutcome.success("verified " + dn, LdapAttributes.of(entry.getData().get()));
     }
 
     /**

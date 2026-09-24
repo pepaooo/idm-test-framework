@@ -14,12 +14,16 @@ sequenceDiagram
       E->>S: execute(resolved params, capture requested)
       S->>T: Protocol operation
       T-->>S: Observed response
-      S-->>E: Outcome, optional undo and value
-      E->>E: Register undo, record last outcome
+      S-->>E: Outcome and optional value
+      E->>E: Record last outcome
     end
     E->>E: Bind successful capture, record result
   end
-  E->>S: Run registered undo actions in reverse
-  Note over E,S: Best effort, cleanup exceptions logged
-  E-->>J: ScenarioResult
+  loop Author-written cleanup entries, in order, pass or fail
+    E->>E: Skip if a referenced capture was never bound
+    E->>S: execute(resolved cleanup params)
+    S-->>E: Outcome
+  end
+  Note over E,S: SUCCEEDED / FAILED / SKIPPED per entry; a FAILED entry fails the scenario
+  E-->>J: ScenarioResult with steps and cleanup
   J->>J: Write accumulated JSON, assert success

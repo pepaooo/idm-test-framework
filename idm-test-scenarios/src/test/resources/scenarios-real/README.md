@@ -32,6 +32,30 @@ This directory ships empty on purpose. Running with no `.yaml` here fails with a
 pointing back to this file, because a run that finds nothing and reports success would be
 worse than no run.
 
+## Cleaning up
+
+The engine never tears anything down on its own. Write teardown in a `cleanup:` block, which
+runs after the steps whether they passed or not. Capture what a step created with `as:`, and
+reference it in cleanup, so the entry is skipped if that step never ran:
+
+```yaml
+steps:
+  - rest.request:
+      target: idm
+      method: POST
+      path: /users
+      body: { ... }
+      as: created
+cleanup:
+  - rest.request:
+      target: idm
+      method: DELETE
+      path: "/users/${created.body.id}"
+```
+
+A cleanup entry that fails turns the scenario red. A skipped one never does. Each entry's
+outcome is in the JSON report.
+
 ## What the environment must provide
 
 The runner refuses to start, before any scenario runs, when:

@@ -43,6 +43,12 @@ public final class ScenarioValidator {
      */
     private static final Pattern IDENTIFIER = Pattern.compile("[A-Za-z_][A-Za-z0-9_]*");
 
+    /** Builds the located error for one entry, so helpers work for steps and cleanup alike. */
+    @FunctionalInterface
+    private interface Locate {
+        ValidationException at(String message);
+    }
+
     private final Map<String, StepType> registry;
     private final Set<String> generatorNames;
     private final ExpressionEvaluator evaluator;
@@ -98,6 +104,7 @@ public final class ScenarioValidator {
         Set<String> known = new LinkedHashSet<>(scenario.fixtures().keySet());
 
         for (int i = 0; i < scenario.steps().size(); i++) {
+            int index = i;
             StepSpec step = scenario.steps().get(i);
 
             if (SET_STEP.equals(step.type())) {
@@ -106,7 +113,8 @@ public final class ScenarioValidator {
                             "a set: step needs at least one name to bind");
                 }
                 for (Map.Entry<String, Object> entry : step.params().entrySet()) {
-                    requireWellFormedExpressions(entry.getValue(), sourceName, i, step.type());
+                    requireWellFormedExpressions(entry.getValue(),
+                            message -> new ValidationException(sourceName, index, step.type(), message));
                     requireKnownReferences(entry.getValue(), known, sourceName, i, step.type());
                     requireFreshBinding(entry.getKey(), known, sourceName, i, step.type(), "set:");
                     known.add(entry.getKey());   // later entries may read earlier ones
@@ -179,7 +187,8 @@ public final class ScenarioValidator {
                 }
             }
 
-            requireWellFormedExpressions(step.params(), sourceName, i, step.type());
+            requireWellFormedExpressions(step.params(),
+                    message -> new ValidationException(sourceName, index, step.type(), message));
             requireKnownReferences(step.params(), known, sourceName, i, step.type());
 
             Object asRaw = step.params().get("as");
@@ -194,6 +203,11 @@ public final class ScenarioValidator {
                 requireFreshBinding(asName, known, sourceName, i, step.type(), "as:");
                 known.add(asName);
             }
+        }
+
+        // Cleanup runs after everything, so it may reference any name bound anywhere above.
+        for (int i = 0; i < scenario.cleanup().size(); i++) {
+            validateCleanupEntry(scenario.cleanup().get(i), i, known, sourceName);
         }
     }
 
@@ -227,27 +241,25 @@ public final class ScenarioValidator {
      * compute values, they never perform actions, and validating one must not be an action
      * either.
      */
-    private void requireWellFormedExpressions(
-            Object value, String sourceName, int index, String stepType) {
+    private void requireWellFormedExpressions(Object value, Locate locate) {
         if (value instanceof String text) {
             String expression;
             try {
                 expression = Interpolator.expressionBody(text);
             } catch (IllegalArgumentException malformed) {
-                throw new ValidationException(sourceName, index, stepType, malformed.getMessage());
+                throw locate.at(malformed.getMessage());
             }
             if (expression != null) {
                 try {
                     evaluator.validate(expression);
                 } catch (ExpressionException syntaxError) {
-                    throw new ValidationException(
-                            sourceName, index, stepType, syntaxError.getMessage());
+                    throw locate.at(syntaxError.getMessage());
                 }
             }
         } else if (value instanceof Map<?, ?> map) {
-            map.values().forEach(v -> requireWellFormedExpressions(v, sourceName, index, stepType));
+            map.values().forEach(v -> requireWellFormedExpressions(v, locate));
         } else if (value instanceof List<?> list) {
-            list.forEach(v -> requireWellFormedExpressions(v, sourceName, index, stepType));
+            list.forEach(v -> requireWellFormedExpressions(v, locate));
         }
     }
 
@@ -286,5 +298,55 @@ public final class ScenarioValidator {
             return "";
         }
         return " (also supplied but not recognized, possibly a typo: " + unrecognized + ")";
+    }
+
+    /**
+     * A cleanup entry is an action run once after the steps. It cannot wait, capture, bind or
+     * assert, and it may reference any name the scenario binds anywhere.
+     */
+    private void validateCleanupEntry(StepSpec entry, int index, Set<String> known, String sourceName) {
+        Locate locate = message -> ValidationException.forCleanup(sourceName, index, entry.type(), message);
+
+        if (SET_STEP.equals(entry.type())) {
+            throw locate.at("set: is not allowed in cleanup — nothing runs after cleanup to read a binding");
+        }
+
+        StepType type = registry.get(entry.type());
+        if (type == null) {
+            throw locate.at("unknown step type. Available: " + new TreeSet<>(registry.keySet()));
+        }
+        if (type.retryable()) {
+            throw locate.at("cleanup entries must be actions; " + entry.type()
+                    + " is an assertion and tears nothing down");
+        }
+        for (String reserved : List.of("wait", "as")) {
+            if (entry.params().containsKey(reserved)) {
+                throw locate.at("'" + reserved + "' is not allowed on a cleanup entry");
+            }
+        }
+
+        Set<String> accepted = new LinkedHashSet<>(type.acceptedParams());
+        accepted.addAll(type.requiredParams());
+
+        for (String required : new TreeSet<>(type.requiredParams())) {
+            if (!entry.params().containsKey(required)) {
+                throw locate.at("missing required parameter '" + required + "'");
+            }
+        }
+        for (String supplied : entry.params().keySet()) {
+            if (!accepted.contains(supplied)) {
+                throw locate.at("unknown parameter '" + supplied + "'. " + entry.type()
+                        + " accepts: " + new TreeSet<>(accepted));
+            }
+        }
+
+        requireWellFormedExpressions(entry.params(), locate);
+
+        for (String reference : Interpolator.references(entry.params())) {
+            if (!known.contains(reference)) {
+                throw locate.at("references '${" + reference + "...}' but nothing named '" + reference
+                        + "' is declared or bound anywhere in the scenario");
+            }
+        }
     }
 }

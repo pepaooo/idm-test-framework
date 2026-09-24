@@ -18,9 +18,6 @@ steps:
       database: test-db
       statement: "INSERT INTO sap_users (username, status) VALUES (?, ?)"
       params: ["${user.userId}", "ACTIVE"]
-      undo:
-        statement: "DELETE FROM sap_users WHERE username = ?"
-        params: ["${user.userId}"]
 
   - db.verify:
       database: test-db
@@ -43,3 +40,9 @@ steps:
 
   - ldap.delete:
       dn: "cn=${user.userId},ou=users"
+
+cleanup:
+  - db.execute:
+      database: test-db
+      statement: "DELETE FROM sap_users WHERE username = ?"
+      params: ["${user.userId}"]

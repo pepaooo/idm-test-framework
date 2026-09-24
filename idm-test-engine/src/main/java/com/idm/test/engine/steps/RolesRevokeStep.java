@@ -54,7 +54,7 @@ public final class RolesRevokeStep implements StepType {
                     + ": " + result.getMessage());
         }
 
-        return StepOutcome.success("revoked " + assignments, null,
+        return StepOutcome.success("revoked " + assignments,
                 SoapDns.of(result.getData().get().getResult()));
     }
 }

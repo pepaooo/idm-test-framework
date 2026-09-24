@@ -31,3 +31,7 @@ steps:
       wait:
         timeout: 30s
         poll: 2s
+
+cleanup:
+  - ldap.delete:
+      dn: "${created}"

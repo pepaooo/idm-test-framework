@@ -11,6 +11,7 @@ fixtures:
 steps:
   - ldap.create:
       dn: "cn=${user.userId},ou=users"
+      as: createdDn
       attributes:
         cn: "${user.userId}"
         sn: "${user.lastName}"
@@ -36,3 +37,7 @@ steps:
         ou: "Product Management"
         title: "Senior Product Manager"
         telephoneNumber: "+1-555-0187"
+
+cleanup:
+  - ldap.delete:
+      dn: "${createdDn}"

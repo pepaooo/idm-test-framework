@@ -5,34 +5,31 @@ import com.idm.test.engine.expr.ExpressionEvaluator;
 import com.idm.test.engine.model.Scenario;
 import com.idm.test.engine.model.StepSpec;
 import com.idm.test.engine.model.WaitSpec;
+import com.idm.test.engine.result.CleanupResult;
+import com.idm.test.engine.result.CleanupStatus;
 import com.idm.test.engine.result.ScenarioResult;
 import com.idm.test.engine.result.StepResult;
 import com.idm.test.engine.spi.StepOutcome;
 import com.idm.test.engine.spi.StepType;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
-import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.Deque;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeSet;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * Runs a scenario: interpolate each step's parameters, execute in order, retry assertions
- * that declare a wait, stop at the first failure, then unwind cleanup in reverse.
+ * Runs a scenario: interpolate each step's parameters, execute in order, retry assertions that
+ * declare a wait, stop at the first failure, then run the author's cleanup block.
  * <p>
  * Deliberately knows nothing about Spring, JUnit, files or output formats. It takes its
  * dependencies by constructor and returns a result object. That is what lets a CLI reuse it.
  */
 public final class ScenarioEngine {
-
-    private static final Logger log = LoggerFactory.getLogger(ScenarioEngine.class);
 
     /** Reserved: handled here rather than by a registered step type. */
     private static final String SET_STEP = "set";
@@ -64,7 +61,7 @@ public final class ScenarioEngine {
         Map<String, Object> scope = new LinkedHashMap<>();
 
         List<StepResult> results = new ArrayList<>();
-        Deque<Runnable> undos = new ArrayDeque<>();
+        List<CleanupResult> cleanupResults = List.of();
         boolean success = true;
         String failureDetail = null;
 
@@ -87,7 +84,7 @@ public final class ScenarioEngine {
                 long stepStarted = System.currentTimeMillis();
                 StepResult result;
                 try {
-                    result = runStep(step, i, scope, undos);
+                    result = runStep(step, i, scope);
                 } catch (RuntimeException e) {
                     result = new StepResult(i, step.type(), Map.of(), false,
                             System.currentTimeMillis() - stepStarted,
@@ -99,20 +96,19 @@ public final class ScenarioEngine {
                 success = result.success();
             }
         } finally {
-            // Whatever earlier steps created must be torn down even when a step throws
-            // instead of returning a failed outcome, so this always runs. On the fixture
-            // failure path there is nothing to undo yet, but the structure doesn't special
-            // case that — unwind() is a no-op on an empty deque.
-            unwind(undos);
+            // The author's cleanup always runs, whether or not the steps passed.
+            cleanupResults = runCleanup(scenario.cleanup(), scope);
         }
 
-        return new ScenarioResult(scenario.name(), sourceName, success,
-                System.currentTimeMillis() - started, results, failureDetail);
+        boolean cleanupFailed = cleanupResults.stream()
+                .anyMatch(entry -> entry.status() == CleanupStatus.FAILED);
+
+        return new ScenarioResult(scenario.name(), sourceName, success && !cleanupFailed,
+                System.currentTimeMillis() - started, results, cleanupResults, failureDetail);
     }
 
     @SuppressWarnings("unchecked")
-    private StepResult runStep(
-            StepSpec step, int index, Map<String, Object> scope, Deque<Runnable> undos) {
+    private StepResult runStep(StepSpec step, int index, Map<String, Object> scope) {
 
         long started = System.currentTimeMillis();
 
@@ -148,7 +144,6 @@ public final class ScenarioEngine {
 
         if (wait == null) {
             StepOutcome outcome = type.execute(resolved, captureRequested);
-            register(undos, outcome);
             outcome = bind(scope, asName, outcome, step.type());
             return new StepResult(index, step.type(), resolved, outcome.success(),
                     System.currentTimeMillis() - started, outcome.message(), null, null);
@@ -174,9 +169,6 @@ public final class ScenarioEngine {
                         "threw " + e.getClass().getSimpleName() + ": " + e.getMessage());
             }
             last.set(outcome);
-            // Register as each attempt happens, not just the final one, so an undo
-            // returned by an earlier attempt (that later attempts don't repeat) isn't lost.
-            register(undos, outcome);
             return outcome.success();
         }, wait.timeout(), wait.poll());
         long waitedMillis = System.currentTimeMillis() - waitStarted;
@@ -227,8 +219,8 @@ public final class ScenarioEngine {
      * Binds a successful step's value under its {@code as:} name, so later steps can read it.
      * <p>
      * A scenario must never report success on a fabricated value. {@link StepOutcome#value()}
-     * defaults to {@code null} — that is the shape {@code StepOutcome.success(msg)} and
-     * {@code success(msg, undo)} produce, and every future step type gets it for free unless it
+     * defaults to {@code null} — that is the shape {@code StepOutcome.success(msg)} produces,
+     * and every future step type gets it for free unless it
      * opts into capturing something. Binding a null value anyway would let {@code containsKey}
      * report the name as known while {@code String.valueOf(null)} renders the literal text
      * {@code "null"} into scope, which the interpolator would then hand to a later step as if it
@@ -253,23 +245,55 @@ public final class ScenarioEngine {
         return outcome;
     }
 
-    private static void register(Deque<Runnable> undos, StepOutcome outcome) {
-        if (outcome != null && outcome.undo() != null) {
-            undos.push(outcome.undo());
+    /**
+     * Runs every cleanup entry in order, whatever happened before. An entry that references a
+     * name never bound is SKIPPED: what it would tear down never happened. Never throws.
+     */
+    private List<CleanupResult> runCleanup(List<StepSpec> cleanup, Map<String, Object> scope) {
+        List<CleanupResult> results = new ArrayList<>();
+        for (int i = 0; i < cleanup.size(); i++) {
+            StepSpec entry = cleanup.get(i);
+            long started = System.currentTimeMillis();
+            CleanupResult result;
+            try {
+                result = runCleanupEntry(entry, i, scope, started);
+            } catch (RuntimeException e) {
+                result = new CleanupResult(i, entry.type(), Map.of(), CleanupStatus.FAILED,
+                        System.currentTimeMillis() - started,
+                        "cleanup '" + entry.type() + "' threw " + e.getClass().getSimpleName()
+                                + ": " + e.getMessage());
+            }
+            results.add(result);
         }
+        return results;
     }
 
-    /**
-     * Runs every undo in reverse order. A cleanup failure is logged but never replaces the
-     * scenario's own result: what broke matters more than what could not be tidied.
-     */
-    private static void unwind(Deque<Runnable> undos) {
-        while (!undos.isEmpty()) {
-            try {
-                undos.pop().run();
-            } catch (Exception e) {
-                log.warn("Cleanup action failed, continuing: {}", e.getMessage());
-            }
+    @SuppressWarnings("unchecked")
+    private CleanupResult runCleanupEntry(
+            StepSpec entry, int index, Map<String, Object> scope, long started) {
+
+        Set<String> unbound = new TreeSet<>(Interpolator.references(entry.params()));
+        unbound.removeAll(scope.keySet());
+        if (!unbound.isEmpty()) {
+            return new CleanupResult(index, entry.type(), Map.of(), CleanupStatus.SKIPPED,
+                    System.currentTimeMillis() - started,
+                    "skipped: " + unbound + " never bound, so what this would clean up never happened");
         }
+
+        StepType type = registry.get(entry.type());
+        if (type == null) {
+            return new CleanupResult(index, entry.type(), Map.of(), CleanupStatus.FAILED,
+                    System.currentTimeMillis() - started,
+                    "unknown step type '" + entry.type() + "'. Available: " + new TreeSet<>(registry.keySet()));
+        }
+
+        Map<String, Object> resolved =
+                (Map<String, Object>) Interpolator.resolve(entry.params(), scope, evaluator);
+        StepOutcome outcome = type.execute(resolved, false);
+
+        return new CleanupResult(index, entry.type(), resolved,
+                outcome.success() ? CleanupStatus.SUCCEEDED : CleanupStatus.FAILED,
+                System.currentTimeMillis() - started, outcome.message());
     }
+
 }

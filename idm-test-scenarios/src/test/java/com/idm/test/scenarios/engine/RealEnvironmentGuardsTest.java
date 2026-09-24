@@ -321,6 +321,24 @@ class RealEnvironmentGuardsTest {
     }
 
     @Test
+    @DisplayName("Guard 4 also collects REST targets used in cleanup")
+    void testRestTargetsCollectedFromCleanup() {
+        Scenario scenario = scenario("""
+                name: rest in cleanup
+                steps:
+                  - ldap.create:
+                      dn: cn=x,ou=users
+                cleanup:
+                  - rest.request:
+                      target: servicenow
+                      method: DELETE
+                      path: /records/1
+                """);
+
+        assertThat(RealEnvironmentScenarios.restTargets(List.of(scenario))).containsExactly("servicenow");
+    }
+
+    @Test
     @DisplayName("Guard 4 collects a non-string REST target as its String.valueOf form")
     void testNonStringRestTargetCollected() {
         Scenario scenario = scenario("""

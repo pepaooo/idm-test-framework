@@ -10,9 +10,6 @@ steps:
       database: test-db
       statement: "INSERT INTO users (user_id, first_name, last_name, email, active) VALUES (?, ?, ?, ?, ?)"
       params: ["${user.userId}", "${user.firstName}", "${user.lastName}", "${user.email}", true]
-      undo:
-        statement: "DELETE FROM users WHERE user_id = ?"
-        params: ["${user.userId}"]
 
   - db.execute:
       database: test-db
@@ -31,4 +28,10 @@ steps:
   - db.execute:
       database: test-db
       statement: "DELETE FROM users WHERE user_id = ? AND active = false"
+      params: ["${user.userId}"]
+
+cleanup:
+  - db.execute:
+      database: test-db
+      statement: "DELETE FROM users WHERE user_id = ?"
       params: ["${user.userId}"]

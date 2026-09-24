@@ -39,7 +39,7 @@ Simplified editable module view derived from docs/architecture/diagrams/modules.
 
 ### 6. Execution and failure handling
 
-Simplifies the full sequence diagram at docs/architecture/diagrams/scenario-execution.mmd. Files are validated before dynamic test execution. Parameters resolve once per ordinary step. Only assertions with wait are polled; actions run once. The first failure stops later steps. Registered undo actions run in reverse, best effort. Runtime result data is returned to the adapter, which writes JSON and reports JUnit success/failure. Cleanup failures are logged and do not replace the scenario result. Allow two minutes. Sources: docs/reference/specification.md sections 4 and 6; ADR 0004 and 0005.
+Simplifies the full sequence diagram at docs/architecture/diagrams/scenario-execution.mmd. Files are validated before dynamic test execution. Parameters resolve once per ordinary step. Only assertions with wait are polled; actions run once. The first failure stops later steps. Cleanup is an author-written top-level `cleanup:` block, run after the steps whether they passed or failed, with every entry attempted (ITF-19). Runtime result data is returned to the adapter, which writes JSON and reports JUnit success/failure. A failed cleanup entry fails the scenario; a step failure still leads the failure summary. Allow two minutes. Sources: docs/reference/specification.md sections 4 and 6; ADR 0004 and 0005.
 
 ### 7. Local demonstration and results
 

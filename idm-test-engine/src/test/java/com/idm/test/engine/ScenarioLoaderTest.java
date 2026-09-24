@@ -143,4 +143,85 @@ class ScenarioLoaderTest {
     private static InputStream stream(String yaml) {
         return new ByteArrayInputStream(yaml.getBytes(StandardCharsets.UTF_8));
     }
+
+    private static InputStream yaml(String text) {
+        return new ByteArrayInputStream(text.getBytes(StandardCharsets.UTF_8));
+    }
+
+    @Test
+    @DisplayName("Should load a cleanup block after the steps")
+    void testLoadsCleanup() {
+        Scenario scenario = ScenarioLoader.load(yaml("""
+                name: With cleanup
+                steps:
+                  - ldap.create:
+                      dn: cn=x
+                cleanup:
+                  - ldap.delete:
+                      dn: cn=x
+                """), "c.yaml");
+
+        assertThat(scenario.cleanup()).singleElement().satisfies(entry -> {
+            assertThat(entry.type()).isEqualTo("ldap.delete");
+            assertThat(entry.params()).containsEntry("dn", "cn=x");
+        });
+    }
+
+    @Test
+    @DisplayName("Should default to an empty cleanup block")
+    void testCleanupDefaultsToEmpty() {
+        Scenario scenario = ScenarioLoader.load(yaml("""
+                name: No cleanup
+                steps:
+                  - ldap.create:
+                      dn: cn=x
+                """), "c.yaml");
+
+        assertThat(scenario.cleanup()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("Should reject a cleanup block that is not a list, naming the section")
+    void testRejectsNonListCleanup() {
+        assertThatThrownBy(() -> ScenarioLoader.load(yaml("""
+                name: Bad cleanup
+                steps:
+                  - ldap.create:
+                      dn: cn=x
+                cleanup: nope
+                """), "c.yaml"))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("'cleanup' must be a list");
+    }
+
+    @Test
+    @DisplayName("Should reject a cleanup entry that is not a single-key map")
+    void testRejectsCleanupEntryThatIsNotAMap() {
+        assertThatThrownBy(() -> ScenarioLoader.load(yaml("""
+                name: Bad cleanup entry
+                steps:
+                  - ldap.create:
+                      dn: cn=x
+                cleanup:
+                  - just-a-string
+                """), "c.yaml"))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("cleanup entry 1 must be a map");
+    }
+
+    @Test
+    @DisplayName("Should reject a cleanup entry whose parameters are a scalar")
+    void testRejectsCleanupEntryWithScalarParams() {
+        assertThatThrownBy(() -> ScenarioLoader.load(yaml("""
+                name: Bad cleanup params
+                steps:
+                  - ldap.create:
+                      dn: cn=x
+                cleanup:
+                  - ldap.delete: nope
+                """), "c.yaml"))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("cleanup entry 1 (ldap.delete)")
+                .hasMessageContaining("parameters must be a map");
+    }
 }

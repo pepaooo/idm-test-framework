@@ -86,7 +86,7 @@ A value such as `prefix js:{ ... }` is invalid. For an object literal, use paren
 
 | Step | Required parameters | Optional parameters | Behavior |
 |---|---|---|---|
-| `ldap.create` | `dn` | `attributes`, `as` | Create once; register deletion undo |
+| `ldap.create` | `dn` | `attributes`, `as` | Create once; write teardown yourself in `cleanup:` |
 | `ldap.verify` | `dn`, `expect` | `wait`, `as` | Verify attributes; may retry |
 | `set` | One or more name/value entries | — | Bind values without a connector call |
 
@@ -118,7 +118,46 @@ example.yaml, step 2 (ldap.verify): ldap.verify failed for cn=example,ou=users: 
 
 For a timed-out assertion, the summary also reports attempts and waited milliseconds. Read the underlying message to distinguish a missing entry, mismatched attribute, or connection error. Invalid files produce failures with no executed steps; a normal step failure stops later steps.
 
-The engine attempts registered undo actions in reverse order, including after failure. Deletion failures are logged, and do not change an otherwise successful result. This is best-effort cleanup, not a rollback guarantee.
+> **Superseded by ITF-19** (docs/specs/2026-09-24-explicit-cleanup-design.md): steps no longer register undos; teardown is the author's cleanup: block, and a FAILED cleanup entry fails the scenario.
+
+The engine no longer infers teardown. A scenario writes its own top-level `cleanup:` block: a list
+of steps with the same shape as `steps:`, run after the steps, whether they passed or failed. Every
+cleanup entry is attempted, in declaration order, even if an earlier one fails.
+
+The idiom for conditional teardown is to capture with `as:` in `steps:` and reference that capture
+in `cleanup:`:
+
+```yaml
+steps:
+  - ldap.create:
+      dn: "cn=${user.userId},ou=users"
+      attributes: { cn: "${user.userId}", sn: "${user.lastName}" }
+      as: createdDn
+
+cleanup:
+  - ldap.delete:
+      dn: "${createdDn}"
+```
+
+Each cleanup entry ends in exactly one of three outcomes:
+
+- **SUCCEEDED** — the step returned success.
+- **FAILED** — the step returned failure, or resolving its parameters failed for any reason other
+  than an unbound root name (for example, a typo'd field on a bound value). A FAILED cleanup entry
+  fails the scenario, even if every step passed. If a step already failed, that failure leads the
+  summary and any cleanup failures are listed after it.
+- **SKIPPED** — a parameter references a root name that was never bound because the step that
+  would have bound it (via `as:`) never ran, e.g. `${createdDn}` when `ldap.create` never executed.
+  SKIPPED never fails the scenario.
+
+Cleanup entries see the scenario's full scope (fixtures plus every capture bound anywhere in
+`steps:`), not just names bound before them. At load time, `wait:` and `as:` are rejected on
+cleanup entries — they run once, and nothing runs after cleanup to consume a capture — and a
+reference to a name that is bound nowhere in the scenario is a load-time error, not a runtime
+SKIPPED. Cleanup entries must be actions; a retryable `*.verify` step is rejected there.
+
+Cleanup outcomes appear in the JSON report per entry (`ScenarioResult.cleanup()`), each carrying
+its type, resolved parameters (empty for SKIPPED), status and message.
 
 ## 7. When to use Java
 
@@ -138,7 +177,7 @@ assertThat(createResult.isSuccess())
 trackLdapDn(userDn);
 ```
 
-This is a method-body excerpt, not a standalone class. For imports, fixture preparation and the full workflow, use [UserProvisioningWorkflowTest](../../idm-test-scenarios/src/test/java/com/idm/test/scenarios/provisioning/UserProvisioningWorkflowTest.java). Its `BaseIntegrationTest` supplies the connector and tracking helper. Java test cleanup is distinct from the engine's undo stack and currently has incomplete role cleanup.
+This is a method-body excerpt, not a standalone class. For imports, fixture preparation and the full workflow, use [UserProvisioningWorkflowTest](../../idm-test-scenarios/src/test/java/com/idm/test/scenarios/provisioning/UserProvisioningWorkflowTest.java). Its `BaseIntegrationTest` supplies the connector and tracking helper. Java test cleanup is distinct from the YAML engine's `cleanup:` block and currently has incomplete role cleanup.
 
 ## 8. Adding a step as a developer
 
@@ -154,6 +193,6 @@ StepOutcome execute(Map<String, Object> params, boolean captureRequested);
 
 The metadata methods other than `name` have defaults. Declare required and optional fields accurately. Validation adds required keys, `as`, and `wait` for retryable steps to the effective accepted set.
 
-The engine supplies resolved parameters with `as` and `wait` removed. Return an outcome instead of throwing. If capture is requested on success, supply a non-null plain value; return an undo action for reversible mutations. Mark an assertion retryable only when repeated execution is appropriate.
+The engine supplies resolved parameters with `as` and `wait` removed. Return an outcome instead of throwing. If capture is requested on success, supply a non-null plain value. Steps no longer register undo actions; an author who needs teardown writes it explicitly as a `cleanup:` entry. Mark an assertion retryable only when repeated execution is appropriate.
 
 Add the step to [YamlScenarioTest.registry](../../idm-test-scenarios/src/test/java/com/idm/test/scenarios/engine/YamlScenarioTest.java), which supplies the same registry to validation and execution. Add any connector dependency to the engine POM. Test failure, capture, and cleanup behavior against suitable embedded protocol fixtures, then update the supported-step table and capability matrix.

@@ -11,5 +11,15 @@ public record Scenario(
         String name,
         String description,
         Map<String, FixtureSpec> fixtures,
-        List<StepSpec> steps) {
+        List<StepSpec> steps,
+        List<StepSpec> cleanup) {
+
+    public Scenario {
+        cleanup = cleanup == null ? List.of() : cleanup;
+    }
+
+    /** A scenario with no cleanup block. */
+    public Scenario(String name, String description, Map<String, FixtureSpec> fixtures, List<StepSpec> steps) {
+        this(name, description, fixtures, steps, List.of());
+    }
 }

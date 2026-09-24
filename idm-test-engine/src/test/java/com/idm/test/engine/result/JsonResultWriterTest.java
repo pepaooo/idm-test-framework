@@ -38,6 +38,26 @@ class JsonResultWriterTest {
     }
 
     @Test
+    @DisplayName("Should write a cleanup entry's status and type")
+    void testWritesCleanupResults(@TempDir Path dir) throws Exception {
+        CleanupResult cleanup = new CleanupResult(
+                0, "ldap.delete", Map.of(), CleanupStatus.SKIPPED, 0,
+                "skipped: [createdDn] never bound, so what this would clean up never happened");
+        ScenarioResult scenario = new ScenarioResult(
+                "Provision Ada", "user-provisioning.yaml", false, 1600,
+                List.of(), List.of(cleanup), null);
+
+        Path target = dir.resolve("cleanup-results.json");
+        JsonResultWriter.write(List.of(scenario), target);
+
+        String json = Files.readString(target);
+        assertThat(json)
+                .contains("\"cleanup\"")
+                .contains("\"status\" : \"SKIPPED\"")
+                .contains("\"type\" : \"ldap.delete\"");
+    }
+
+    @Test
     @DisplayName("Should create parent directories that do not exist")
     void testCreatesDirectories(@TempDir Path dir) throws Exception {
         Path target = dir.resolve("a/b/c/results.json");

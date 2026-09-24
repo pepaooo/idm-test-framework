@@ -11,6 +11,7 @@ fixtures:
 steps:
   - ldap.create:
       dn: "cn=${user.userId},ou=users"
+      as: createdDn
       attributes:
         cn: "${user.userId}"
         sn: "${user.lastName}"
@@ -35,9 +36,6 @@ steps:
       database: test-db
       statement: "INSERT INTO users (user_id, first_name, last_name, email, department, job_title, active) VALUES (?, ?, ?, ?, ?, ?, ?)"
       params: ["${user.userId}", "${user.firstName}", "${user.lastName}", "${user.email}", "${user.department}", "${user.jobTitle}", true]
-      undo:
-        statement: "DELETE FROM users WHERE user_id = ?"
-        params: ["${user.userId}"]
 
   - db.execute:
       database: test-db
@@ -58,9 +56,6 @@ steps:
       database: test-db
       statement: "INSERT INTO user_access (user_id, system_name, access_level, granted_date) VALUES (?, ?, ?, CURRENT_TIMESTAMP)"
       params: ["${user.userId}", "Intranet", "USER"]
-      undo:
-        statement: "DELETE FROM user_access WHERE user_id = ?"
-        params: ["${user.userId}"]
 
   - db.verify:
       database: test-db
@@ -95,3 +90,17 @@ steps:
 
   - roles.revoke:
       assignments: "${baseRoles}"
+
+cleanup:
+  - db.execute:
+      database: test-db
+      statement: "DELETE FROM user_access WHERE user_id = ?"
+      params: ["${user.userId}"]
+
+  - db.execute:
+      database: test-db
+      statement: "DELETE FROM users WHERE user_id = ?"
+      params: ["${user.userId}"]
+
+  - ldap.delete:
+      dn: "${createdDn}"

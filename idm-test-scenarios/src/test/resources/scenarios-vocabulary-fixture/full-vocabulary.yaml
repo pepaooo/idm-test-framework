@@ -11,6 +11,7 @@ steps:
 
   - ldap.create:
       dn: "cn=${user.userId},ou=users"
+      as: createdDn
       attributes:
         cn: "${user.userId}"
         sn: "${user.lastName}"
@@ -74,3 +75,9 @@ steps:
 
   - ldap.delete:
       dn: "cn=${user.userId},ou=users"
+
+cleanup:
+  - db.execute:
+      database: test-db
+      statement: "DELETE FROM sap_users WHERE username = ?"
+      params: ["${user.userId}"]

@@ -13,7 +13,7 @@ steps:
 
   - ldap.create:
       dn: "cn=${user.userId},ou=users"
-      as: createdDn
+      as: created
       attributes:
         cn: ${user.userId}
         sn: ${user.lastName}
@@ -22,7 +22,7 @@ steps:
         description: ${displayName}
 
   - ldap.verify:
-      dn: "${createdDn}"
+      dn: "${created}"
       expect:
         givenName: ${user.firstName}
         sn: ${user.lastName}
@@ -34,4 +34,4 @@ steps:
 
 cleanup:
   - ldap.delete:
-      dn: "${createdDn}"
+      dn: "${created}"

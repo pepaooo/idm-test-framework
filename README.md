@@ -198,8 +198,11 @@ roughly forty lines around one connector call.
 **It renders nothing.** `run()` returns a `ScenarioResult`; the JSON writer and the JUnit adapter
 are both adapters over that one shape.
 
-`run()` always returns a result rather than throwing, and always unwinds cleanup in reverse — a
-cleanup failure is logged and never replaces the scenario's own error.
+`run()` always returns a result rather than throwing. It infers no teardown of its own: an author
+who needs cleanup writes it explicitly as a top-level `cleanup:` block, which runs after the steps,
+pass or fail, in declaration order. A `FAILED` cleanup entry fails the scenario; a step failure
+still leads the failure summary. See
+[docs/specs/2026-09-24-explicit-cleanup-design.md](docs/specs/2026-09-24-explicit-cleanup-design.md).
 
 ### Test infrastructure
 

@@ -38,7 +38,6 @@ public final class DbExecuteStep implements StepType {
     }
 
     @Override
-    @SuppressWarnings("unchecked")
     public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
         // captureRequested is ignored: the affected-row count comes back from the statement
         // itself, so there is no extra work to skip when nobody asked to capture it.

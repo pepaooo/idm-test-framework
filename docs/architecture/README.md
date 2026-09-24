@@ -37,7 +37,7 @@ YAML and compiled test classes are inputs. JSON and Surefire reports are file ou
 | JUnit adapter | Discover/validate files, construct registry, run dynamic tests, write results | [YamlScenarioTest](../../idm-test-scenarios/src/test/java/com/idm/test/scenarios/engine/YamlScenarioTest.java) |
 | Loader | Parse YAML into scenario records | [ScenarioLoader](../../idm-test-engine/src/main/java/com/idm/test/engine/ScenarioLoader.java) |
 | Validator | Check known steps, parameters, references and expression syntax | [ScenarioValidator](../../idm-test-engine/src/main/java/com/idm/test/engine/ScenarioValidator.java) |
-| Engine | Scope, ordered execution, waiting, capture and undo lifecycle | [ScenarioEngine](../../idm-test-engine/src/main/java/com/idm/test/engine/ScenarioEngine.java) |
+| Engine | Scope, ordered execution, waiting, capture and cleanup lifecycle | [ScenarioEngine](../../idm-test-engine/src/main/java/com/idm/test/engine/ScenarioEngine.java) |
 | Value handling | Fixture generation, interpolation and restricted expression evaluation | [Engine source directory](../../idm-test-engine/src/main/java/com/idm/test/engine/) |
 | Step interface | Declare metadata and execute one operation | [StepType](../../idm-test-engine/src/main/java/com/idm/test/engine/spi/StepType.java) |
 | LDAP steps | Adapt the LDAP connector to YAML | [Step implementations](../../idm-test-engine/src/main/java/com/idm/test/engine/steps/) |
@@ -70,7 +70,7 @@ A scenario gets a fresh scope seeded by fixtures. Literal fixture values overrid
 
 `set` is an engine keyword, not a connector action. It binds entries in declaration order. A later entry can read an earlier entry from the same step. Validation rejects rebinding an existing fixture/variable.
 
-A step returns `StepOutcome(success, message, undo, value)`. The engine registers any undo and binds a non-null value only on success when capture was requested. `ldap.create` returns the new relative DN. `ldap.verify` does an extra read for captures only when requested; its output is a selected attribute map, not a general directory export.
+A step returns `StepOutcome(success, message, value)`. The engine binds a non-null value only on success when capture was requested. No step registers teardown of its own any more; an author who needs it writes an explicit top-level `cleanup:` block (see [ITF-19](../specs/2026-09-24-explicit-cleanup-design.md)). `ldap.create` returns the new relative DN. `ldap.verify` does an extra read for captures only when requested; its output is a selected attribute map, not a general directory export.
 
 ### Waiting and failure
 
@@ -80,9 +80,17 @@ Failed outcomes and handled runtime exceptions stop later steps. A retrying asse
 
 ### Cleanup
 
-Undo actions are attempted in reverse registration order in a `finally` block. This also applies after a handled step failure. LDAP creation supplies deletion as its undo. Failed cleanup is logged and does not replace the original result; therefore a successful scenario can still leave data if cleanup fails.
+> **Superseded by ITF-19** (docs/specs/2026-09-24-explicit-cleanup-design.md): steps no longer register undos; teardown is the author's cleanup: block, and a FAILED cleanup entry fails the scenario.
 
-This is compensation, not a distributed transaction. A step that changes state and throws before returning an undo cannot rely on the engine to reconstruct that undo. Java tests use a separate base-class cleanup mechanism, whose role-removal path is currently a logging placeholder.
+The engine infers no teardown. A scenario may declare a top-level `cleanup:` block: a list of
+action steps, run after `steps:` regardless of pass or fail, in declaration order, with every
+entry attempted even if an earlier one fails. Each entry resolves to `SUCCEEDED`, `FAILED`, or
+`SKIPPED` (a reference to a name that a step which never ran would have bound via `as:`). A
+`FAILED` cleanup entry fails the scenario, but a step failure still leads the failure summary.
+
+This is compensation the author writes, not a distributed transaction and not something the engine
+infers from the steps it ran. Java tests use a separate base-class cleanup mechanism, whose
+role-removal path is currently a logging placeholder.
 
 ## 6. Result model and reporting
 
@@ -114,7 +122,7 @@ The optional Docker Compose file is for manual exploration. It is not a prerequi
 
 ## 9. Extending the architecture
 
-To add a YAML operation, implement `StepType`, declare its required/accepted parameters, choose whether it is retryable, and return an appropriate outcome, capture value and undo. Register it in the adapter and use that same registry for validation and execution. Add the connector dependency to the engine when necessary. A retryable step should observe state rather than repeat a mutation.
+To add a YAML operation, implement `StepType`, declare its required/accepted parameters, choose whether it is retryable, and return an appropriate outcome and capture value. Register it in the adapter and use that same registry for validation and execution. Add the connector dependency to the engine when necessary. A retryable step should observe state rather than repeat a mutation. Steps do not register undo; if teardown is needed, an author writes it as a `cleanup:` entry.
 
 To add a reporting surface, consume the result model outside `ScenarioEngine.run()`. To add a new runner, supply dependencies and default policy at a composition point rather than moving application context creation into the engine.
 

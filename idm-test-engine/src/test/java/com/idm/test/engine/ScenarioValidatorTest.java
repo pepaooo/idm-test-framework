@@ -5,6 +5,7 @@ import com.idm.test.engine.model.Scenario;
 import com.idm.test.engine.model.StepSpec;
 import com.idm.test.engine.spi.StepOutcome;
 import com.idm.test.engine.spi.StepType;
+import com.idm.test.engine.steps.DbExecuteStep;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -530,7 +531,8 @@ class ScenarioValidatorTest {
         assertThatThrownBy(() -> validator.validate(scenarioWithCleanup(CREATE_AS_CREATED,
                 new StepSpec("set", Map.of("x", "1"))), "c.yaml"))
                 .isInstanceOf(ValidationException.class)
-                .hasMessageContaining("cleanup entry 1 (set)");
+                .hasMessageContaining("cleanup entry 1 (set)")
+                .hasMessageContaining("set: is not allowed");
     }
 
     @Test
@@ -545,5 +547,22 @@ class ScenarioValidatorTest {
         assertThatThrownBy(() -> validator.validate(scenarioWithCleanup(CREATE_AS_CREATED,
                 new StepSpec("ldap.create", Map.of("dn", "cn=x", "bogus", 1))), "c.yaml"))
                 .hasMessageContaining("unknown parameter 'bogus'");
+    }
+
+    @Test
+    @DisplayName("Should reject db.execute's removed undo: parameter")
+    void testDbExecuteRejectsUndo() {
+        ScenarioValidator dbValidator = new ScenarioValidator(
+                Map.of("db.execute", new DbExecuteStep(null)),
+                Set.of("random-user"));
+
+        Scenario withUndo = scenario(new StepSpec("db.execute", Map.of(
+                "database", "test-db",
+                "statement", "DELETE FROM users WHERE user_id = ?",
+                "undo", Map.of("statement", "x"))));
+
+        assertThatThrownBy(() -> dbValidator.validate(withUndo, "c.yaml"))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("unknown parameter 'undo'");
     }
 }

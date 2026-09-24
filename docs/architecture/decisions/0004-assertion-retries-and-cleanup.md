@@ -1,5 +1,7 @@
 # 0004 — Assertion retries and registered cleanup
 
+> **Superseded by ITF-19** (docs/specs/2026-09-24-explicit-cleanup-design.md): steps no longer register undos; teardown is the author's cleanup: block, and a FAILED cleanup entry fails the scenario. The retry-polling decision below is unaffected and still stands. This record is kept as-is for history.
+
 **Status:** Accepted design, implemented with the limitations below.
 
 **Recorded:** 2026-09-15, retrospectively from repository sources. This is the documentation date, not an invented original decision date.

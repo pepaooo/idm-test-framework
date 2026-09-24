@@ -612,6 +612,43 @@ class ScenarioEngineTest {
     }
 
     @Test
+    @DisplayName("A capture that never ran because an earlier step failed leaves cleanup SKIPPED")
+    void testCleanupSkipsAfterEarlierStepFailure() {
+        ScenarioEngine engine = engineWith(failingAction("f"), valueProducing("v", "cn=made"), recordingAction("a"));
+
+        ScenarioResult result = engine.run(withCleanup(
+                List.of(new StepSpec("f", Map.of()),
+                        new StepSpec("v", Map.of("dn", "x", "as", "created"))),
+                new StepSpec("a", Map.of("dn", "${created}"))), "t.yaml");
+
+        assertThat(result.cleanup()).singleElement()
+                .satisfies(c -> assertThat(c.status()).isEqualTo(CleanupStatus.SKIPPED));
+        assertThat(events).contains("run:f");
+        assertThat(events).doesNotContain("run:a:cn=made");
+        assertThat(result.success()).isFalse();
+        assertThat(result.failureSummary()).contains("f went wrong");
+        assertThat(result.failureSummary()).doesNotContain("cleanup entry");
+    }
+
+    @Test
+    @DisplayName("A fixture that fails to build still runs cleanup, which SKIPS references to it")
+    void testFixtureFailureStillRunsCleanupAsSkipped() {
+        ScenarioEngine engine = engineWith(recordingAction("a"));
+
+        Scenario badFixture = new Scenario("Test", null,
+                Map.of("user", new FixtureSpec("no-such-generator", Map.of())),
+                List.of(new StepSpec("a", Map.of("dn", "s1"))),
+                List.of(new StepSpec("a", Map.of("dn", "${user.userId}"))));
+
+        ScenarioResult result = engine.run(badFixture, "t.yaml");
+
+        assertThat(result.cleanup()).singleElement()
+                .satisfies(c -> assertThat(c.status()).isEqualTo(CleanupStatus.SKIPPED));
+        assertThat(result.success()).isFalse();
+        assertThat(result.failureSummary()).contains("fixture setup failed");
+    }
+
+    @Test
     @DisplayName("A scenario with no cleanup block reports an empty cleanup list")
     void testNoCleanupMeansEmptyList() {
         ScenarioEngine engine = engineWith(recordingAction("a"));

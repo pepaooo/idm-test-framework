@@ -22,7 +22,7 @@ The checkout initially contained only the untracked documentation plan. This rev
 | Up-front validation | Implemented | Find mistakes before long-running steps | [Validator][validator], [adapter validation tests][adapter-tests] | Compiles expressions without evaluating them; arbitrary JS variable existence and nested parameter types are not fully checked at load |
 | Assertion waiting | Implemented | Retry assertions until success or timeout | [Engine][engine], [WaitSpec][wait], [TestExecutor][executor] | Parameters resolve once before polling; actions cannot declare `wait`. Duration parsing does not enforce positive values |
 | First-failure behavior | Implemented | Stop later steps and return diagnostics | [Engine][engine], [engine tests][engine-tests] | Handles runtime exceptions on normal execution paths; does not promise recovery from JVM termination or all `Error` conditions |
-| YAML cleanup | Implemented | Reverse registered undo actions on exit | [Engine][engine], [Create step][create] | Best effort; cleanup exceptions are logged, not added to structured results. Only operations that supply an undo can be reversed |
+| YAML cleanup | Implemented | Run an author-written top-level `cleanup:` block after `steps:`, pass or fail | [Engine][engine], [ITF-19 design][cleanup-design] | No step registers undo; cleanup is explicit YAML. Each entry is SUCCEEDED, FAILED or SKIPPED (unbound capture); a FAILED entry fails the scenario and is reported in structured results |
 | Java cleanup | Partially implemented | Test base tracks created resources | [Test base][base] | LDAP/database cleanup exists; role cleanup currently logs intent rather than revoking roles. It is not the YAML undo stack |
 | Structured results | Implemented | Separate execution from rendering | [Result model][results], [JSON writer][writer], [adapter][adapter] | JSON includes resolved parameters without redaction; retries expose attempts/time and message rather than a separate last-observation field |
 | JUnit integration | Implemented | IDE/Maven execution and test reports | [Adapter][adapter], [parent POM][pom] | One dynamic test per filename; adapter writes accumulated JSON after each result. Result-file I/O failure can still fail the test |
@@ -50,7 +50,7 @@ The checkout initially contained only the untracked documentation plan. This rev
 5. **REST location and authentication:** the REST connector is implemented in `idm-connector-rest`; automatic OAuth token attachment is an intention rather than delivered wiring.
 6. **Test environment:** missing required connector beans fail setup instead of silently skipping scenarios. Embedded infrastructure replaces old fixed-port assumptions.
 7. **Profiles:** profile templates actually exist, including `IDM_TEST_PROFILE` activation in the YAML. The incorrect implication is that these templates alone move `BaseIntegrationTest` to real services.
-8. **Cleanup:** YAML undo is best effort. Java role cleanup is a placeholder. Neither supports a blanket guarantee that all external side effects are removed.
+8. **Cleanup:** YAML teardown (ITF-19) is an explicit, author-written `cleanup:` block, not inferred undo; a FAILED cleanup entry fails the scenario. Java role cleanup is a placeholder. Neither supports a blanket guarantee that all external side effects are removed.
 
 The maintained [specification](../reference/specification.md) incorporates these findings. The README, configuration and running guide have been updated to use the same baseline. Historical design documents retain their original intent.
 
@@ -120,3 +120,4 @@ All five diagrams rendered from their Mermaid sources. The eight-slide PowerPoin
 [independence]: ../../idm-test-engine/src/test/java/com/idm/test/engine/NoSpringDependencyTest.java
 [design]: ../specs/2026-09-13-declarative-scenario-engine-design.md
 [legacy]: ../history/specification-v2-before-2026-09-15.md
+[cleanup-design]: ../specs/2026-09-24-explicit-cleanup-design.md

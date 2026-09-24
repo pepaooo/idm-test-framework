@@ -193,4 +193,35 @@ class ScenarioLoaderTest {
                 .isInstanceOf(ValidationException.class)
                 .hasMessageContaining("'cleanup' must be a list");
     }
+
+    @Test
+    @DisplayName("Should reject a cleanup entry that is not a single-key map")
+    void testRejectsCleanupEntryThatIsNotAMap() {
+        assertThatThrownBy(() -> ScenarioLoader.load(yaml("""
+                name: Bad cleanup entry
+                steps:
+                  - ldap.create:
+                      dn: cn=x
+                cleanup:
+                  - just-a-string
+                """), "c.yaml"))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("cleanup entry 1 must be a map");
+    }
+
+    @Test
+    @DisplayName("Should reject a cleanup entry whose parameters are a scalar")
+    void testRejectsCleanupEntryWithScalarParams() {
+        assertThatThrownBy(() -> ScenarioLoader.load(yaml("""
+                name: Bad cleanup params
+                steps:
+                  - ldap.create:
+                      dn: cn=x
+                cleanup:
+                  - ldap.delete: nope
+                """), "c.yaml"))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("cleanup entry 1 (ldap.delete)")
+                .hasMessageContaining("parameters must be a map");
+    }
 }

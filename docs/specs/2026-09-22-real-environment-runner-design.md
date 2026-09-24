@@ -73,7 +73,9 @@ tracking lists (`createdLdapDns`, `databaseCleanupTasks`, `assignedRoles`), none
 methods, none of `assertDataPresent`, and neither `setupTest` nor `cleanupTest`.
 
 That machinery exists for the **Java** workflow tests, which track by hand what they create.
-The YAML engine does its own cleanup through the undos each action step registers. So the
+The YAML engine did its own cleanup through the undos each action step registered. (**Superseded
+by ITF-19**, docs/specs/2026-09-24-explicit-cleanup-design.md: steps no longer register undos;
+teardown is the author's cleanup: block, and a FAILED cleanup entry fails the scenario.) So the
 genuinely shared surface between the two is nine field declarations — well below the cost of an
 abstraction, and coupling them would bind two things that change for opposite reasons: the Java
 tests will keep wanting tracking helpers, this runner will never want them.

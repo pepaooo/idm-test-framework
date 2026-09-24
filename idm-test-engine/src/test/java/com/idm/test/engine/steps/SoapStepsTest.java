@@ -140,7 +140,7 @@ class SoapStepsTest {
 
     @Test
     @DisplayName("roles.grant should succeed for a plain grant with no capture requested")
-    void testGrantCapturesItsResult() {
+    void testGrantSucceedsWithNoCaptureRequested() {
         stubAssignmentReturning(ASSIGNMENT_DN);
         RolesGrantStep grant = new RolesGrantStep(roleConnector);
 

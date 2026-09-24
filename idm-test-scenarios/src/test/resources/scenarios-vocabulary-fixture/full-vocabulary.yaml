@@ -77,5 +77,7 @@ steps:
       dn: "cn=${user.userId},ou=users"
 
 cleanup:
-  - ldap.delete:
-      dn: "${createdDn}"
+  - db.execute:
+      database: test-db
+      statement: "DELETE FROM sap_users WHERE username = ?"
+      params: ["${user.userId}"]

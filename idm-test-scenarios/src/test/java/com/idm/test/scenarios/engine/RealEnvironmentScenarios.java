@@ -10,8 +10,11 @@ import com.idm.test.core.config.TestExecutorProperties;
 import com.idm.test.core.engine.TestExecutor;
 import com.idm.test.engine.FixtureFactory;
 import com.idm.test.engine.ScenarioEngine;
+import com.idm.test.engine.ScenarioLoader;
 import com.idm.test.engine.ScenarioValidator;
 import com.idm.test.engine.expr.ExpressionEvaluator;
+import com.idm.test.engine.model.Scenario;
+import com.idm.test.engine.model.StepSpec;
 import com.idm.test.engine.spi.StepType;
 import com.idm.test.utils.data.TestDataGenerator;
 import org.junit.jupiter.api.DisplayName;
@@ -23,10 +26,16 @@ import org.springframework.boot.autoconfigure.ldap.LdapAutoConfiguration;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.core.env.Environment;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.stream.Stream;
 
 /**
@@ -47,7 +56,7 @@ import java.util.stream.Stream;
  * </pre>
  * Add {@code -Dscenario=<file or glob>} to run only matching files, as with
  * {@link YamlScenarioTest}.
- * The guards below run before any scenario. A connection error is loud on its own. The
+ * The four guards below run before any scenario. A connection error is loud on its own. The
  * failure they prevent is the quiet one: a run against the embedded configuration, a
  * placeholder, or an empty directory that reports green.
  */
@@ -60,6 +69,13 @@ public class RealEnvironmentScenarios {
     static final String EMBEDDED_PROFILE = "test";
     static final String LDAP_URL_PLACEHOLDER = "ldap://localhost:389";
     static final String SOAP_URL_PLACEHOLDER = "https://idm.company.com:8543/IDMProv/role/service";
+
+    /** application.yml's fallback base-url for each REST target. Pinned to that file by RealEnvironmentGuardsTest. */
+    static final Map<String, String> REST_URL_PLACEHOLDERS = Map.of(
+            "idm", "https://idm.company.com:8543/IDMProv",
+            "sap", "https://sap.company.com/api/v1",
+            "workday", "https://workday.company.com/api/v1",
+            "servicenow", "https://instance.service-now.com/api");
 
     private static final Path RESULTS = Path.of("target", "real-environment-results.json");
 
@@ -99,6 +115,10 @@ public class RealEnvironmentScenarios {
         requireRealTarget(environment);
         String scenarioDir = scenarioDirectory();
         requireScenarios(YamlScenarioTest.scenarioFiles(scenarioDir), scenarioDir);
+        // After guard 3, so an empty directory gets its README message and only a pattern
+        // that matches nothing gets the filter's message.
+        List<String> selected = YamlScenarioTest.selectedScenarioFiles(scenarioDir);
+        requireRestTargetsIn(scenarioDir, selected, restProperties);
 
         Map<String, StepType> registry = YamlScenarioTest.registry(
                 edirectoryConnector, databaseConnector, roleServiceConnector,
@@ -112,10 +132,7 @@ public class RealEnvironmentScenarios {
                 executorProperties.getDefaultPollInterval(),
                 new ExpressionEvaluator());
 
-        // After guard 3, so an empty directory gets its README message and only a pattern
-        // that matches nothing gets the filter's message.
-        return YamlScenarioTest.buildTests(scenarioDir, YamlScenarioTest.selectedScenarioFiles(scenarioDir),
-                validator, engine, RESULTS).stream();
+        return YamlScenarioTest.buildTests(scenarioDir, selected, validator, engine, RESULTS).stream();
     }
 
     /**
@@ -142,7 +159,10 @@ public class RealEnvironmentScenarios {
     }
 
     private static void requireNamed(Environment environment, String property, String variable, String placeholder) {
-        String value = environment.getProperty(property);
+        requireNamedValue(property, environment.getProperty(property), variable, placeholder);
+    }
+
+    private static void requireNamedValue(String property, String value, String variable, String placeholder) {
         if (value == null || value.isBlank()) {
             throw new IllegalStateException(property + " is not set. Set " + variable
                     + " or activate a profile that defines it.");
@@ -164,5 +184,80 @@ public class RealEnvironmentScenarios {
             throw new IllegalStateException("No .yaml scenarios found in src/test/resources/" + scenarioDir
                     + ". Add a scenario there; see " + DEFAULT_SCENARIO_DIR + "/README.md for what belongs in it.");
         }
+    }
+
+    /**
+     * Guard 4. Refuses a REST target the run is about to use when it is not configured, its
+     * base-url is blank, or it is still application.yml's placeholder. Only targets the
+     * selected scenarios use are checked, so a run with no REST steps makes no REST demand.
+     * Checked in sorted order, so the message is deterministic.
+     */
+    static void requireRestTargets(Set<String> targets, RestProperties properties) {
+        for (String target : new TreeSet<>(targets)) {
+            RestProperties.RestApiConfig config = properties.getRest().get(target);
+            if (config == null) {
+                throw new IllegalStateException("Scenarios use REST target '" + target
+                        + "', which is not configured. Configured targets: "
+                        + new TreeSet<>(properties.getRest().keySet()));
+            }
+            requireNamedValue("idm.test.rest." + target + ".base-url", config.getBaseUrl(),
+                    "IDM_TEST_REST_" + target.toUpperCase(Locale.ROOT).replace("-", "") + "_BASEURL",
+                    REST_URL_PLACEHOLDERS.get(target));
+        }
+    }
+
+    /**
+     * The literal {@code target} of every {@code rest.*} step, sorted. A target containing
+     * {@code ${} is only known at run time, so it is skipped, as is a {@code null} target.
+     * Any other non-null value is converted with {@code String.valueOf}, matching
+     * {@code RestRequestStep}/{@code RestVerifyStep}, so a non-string target such as
+     * {@code target: 1} is still caught here instead of only failing at run time.
+     */
+    static Set<String> restTargets(List<Scenario> scenarios) {
+        Set<String> targets = new TreeSet<>();
+        for (Scenario scenario : scenarios) {
+            for (StepSpec step : scenario.steps()) {
+                if (!step.type().startsWith("rest.")) {
+                    continue;
+                }
+                Object target = step.params().get("target");
+                if (target == null) {
+                    continue;
+                }
+                String value = String.valueOf(target);
+                if (!value.contains("${")) {
+                    targets.add(value);
+                }
+            }
+        }
+        return targets;
+    }
+
+    /**
+     * Guard 4's entry point: loads {@code files} from {@code scenarioDir} and applies
+     * {@link #requireRestTargets(Set, RestProperties)} to the REST targets they use.
+     * Package-private and static so the file-to-guard wiring itself is testable without
+     * building the rest of {@link #scenarios()}.
+     */
+    static void requireRestTargetsIn(String scenarioDir, List<String> files, RestProperties properties) {
+        requireRestTargets(restTargets(loadForGuards(scenarioDir, files)), properties);
+    }
+
+    /**
+     * Loads the selected files for guard 4. A file that fails to load is skipped here on
+     * purpose: {@code buildTests} turns it into its own failing test carrying the real
+     * error, and reporting it twice would only add noise.
+     */
+    private static List<Scenario> loadForGuards(String scenarioDir, List<String> files) {
+        List<Scenario> scenarios = new ArrayList<>();
+        for (String file : files) {
+            try (InputStream in = RealEnvironmentScenarios.class.getClassLoader()
+                    .getResourceAsStream(scenarioDir + "/" + file)) {
+                scenarios.add(ScenarioLoader.load(in, file));
+            } catch (RuntimeException | IOException e) {
+                // Reported by buildTests; see above.
+            }
+        }
+        return scenarios;
     }
 }

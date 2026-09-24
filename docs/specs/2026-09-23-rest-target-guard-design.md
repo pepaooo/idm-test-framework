@@ -72,10 +72,12 @@ the check throws `IllegalStateException` naming the fix:
 environment-variable form, which overrides every profile, and it is the same advice guard 2
 gives.
 
-**The `prod` profile.** `prod` hardcodes all four REST base URLs as exactly the placeholder
-values, just as it does for `soap.url`. So a `prod` run whose scenarios use a REST target is
-refused until that target's `IDM_TEST_REST_<TARGET>_BASEURL` is set. That is consistent with
-guard 2 and is documented, not changed.
+**The `prod` profile.** `prod` hardcodes `idm`, `sap` and `workday`'s REST base URLs as exactly
+their placeholder values, just as it does for `soap.url`. So a `prod` run whose scenarios use
+one of those targets is refused until that target's `IDM_TEST_REST_<TARGET>_BASEURL` is set.
+`prod`'s `servicenow` base-url is `https://company.service-now.com/api`, not its placeholder
+(`https://instance.service-now.com/api`), so a `servicenow` target is not refused. That is
+consistent with guard 2 and is documented, not changed.
 
 ## 4. Code shape
 

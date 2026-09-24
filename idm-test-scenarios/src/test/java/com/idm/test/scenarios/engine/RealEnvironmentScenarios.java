@@ -207,16 +207,19 @@ public class RealEnvironmentScenarios {
     }
 
     /**
-     * The literal {@code target} of every {@code rest.*} step, sorted. A target containing
-     * {@code ${} is only known at run time, so it is skipped, as is a {@code null} target.
-     * Any other non-null value is converted with {@code String.valueOf}, matching
-     * {@code RestRequestStep}/{@code RestVerifyStep}, so a non-string target such as
-     * {@code target: 1} is still caught here instead of only failing at run time.
+     * The literal {@code target} of every {@code rest.*} step in a scenario's {@code steps} or
+     * {@code cleanup}, sorted. A target containing {@code ${} is only known at run time, so it
+     * is skipped, as is a {@code null} target. Any other non-null value is converted with
+     * {@code String.valueOf}, matching {@code RestRequestStep}/{@code RestVerifyStep}, so a
+     * non-string target such as {@code target: 1} is still caught here instead of only failing
+     * at run time.
      */
     static Set<String> restTargets(List<Scenario> scenarios) {
         Set<String> targets = new TreeSet<>();
         for (Scenario scenario : scenarios) {
-            for (StepSpec step : scenario.steps()) {
+            List<StepSpec> entries = new ArrayList<>(scenario.steps());
+            entries.addAll(scenario.cleanup());
+            for (StepSpec step : entries) {
                 if (!step.type().startsWith("rest.")) {
                     continue;
                 }

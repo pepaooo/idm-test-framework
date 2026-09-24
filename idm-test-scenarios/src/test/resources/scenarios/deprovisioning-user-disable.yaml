@@ -8,6 +8,7 @@ fixtures:
 steps:
   - ldap.create:
       dn: "cn=${user.userId},ou=users"
+      as: createdDn
       attributes:
         cn: "${user.userId}"
         sn: "${user.lastName}"
@@ -18,9 +19,6 @@ steps:
       database: test-db
       statement: "INSERT INTO users (user_id, first_name, last_name, email, active) VALUES (?, ?, ?, ?, ?)"
       params: ["${user.userId}", "${user.firstName}", "${user.lastName}", "${user.email}", true]
-      undo:
-        statement: "DELETE FROM users WHERE user_id = ?"
-        params: ["${user.userId}"]
 
   - ldap.update:
       dn: "cn=${user.userId},ou=users"
@@ -40,3 +38,12 @@ steps:
         rowCount: 1
         row:
           active: false
+
+cleanup:
+  - db.execute:
+      database: test-db
+      statement: "DELETE FROM users WHERE user_id = ?"
+      params: ["${user.userId}"]
+
+  - ldap.delete:
+      dn: "${createdDn}"

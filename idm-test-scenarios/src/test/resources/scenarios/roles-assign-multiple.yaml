@@ -8,6 +8,7 @@ fixtures:
 steps:
   - ldap.create:
       dn: "cn=${user.userId},ou=users"
+      as: createdDn
       attributes:
         cn: "${user.userId}"
         sn: "${user.lastName}"
@@ -25,3 +26,7 @@ steps:
 
   - roles.revoke:
       assignments: "${granted}"
+
+cleanup:
+  - ldap.delete:
+      dn: "${createdDn}"

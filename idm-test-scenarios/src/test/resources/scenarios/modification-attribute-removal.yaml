@@ -27,6 +27,7 @@ fixtures:
 steps:
   - ldap.create:
       dn: "cn=${user.userId},ou=users"
+      as: createdDn
       attributes:
         cn: "${user.userId}"
         sn: "${user.lastName}"
@@ -38,3 +39,7 @@ steps:
       dn: "cn=${user.userId},ou=users"
       attributes:
         telephoneNumber: null
+
+cleanup:
+  - ldap.delete:
+      dn: "${createdDn}"

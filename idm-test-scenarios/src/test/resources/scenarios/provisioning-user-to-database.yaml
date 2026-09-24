@@ -20,9 +20,6 @@ steps:
         - "${user.department}"
         - "${user.jobTitle}"
         - true
-      undo:
-        statement: "DELETE FROM users WHERE user_id = ?"
-        params: ["${user.userId}"]
 
   - db.verify:
       database: test-db
@@ -36,3 +33,9 @@ steps:
           email: "${user.email}"
           department: "${user.department}"
       wait: true
+
+cleanup:
+  - db.execute:
+      database: test-db
+      statement: "DELETE FROM users WHERE user_id = ?"
+      params: ["${user.userId}"]

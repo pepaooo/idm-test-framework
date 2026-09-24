@@ -71,7 +71,7 @@ Entries in `set` bind in order; the second entry can use the first. Existing nam
 
 Expressions read scope variables directly: write `user.lastName`, not `${user.lastName}` inside `js:{ ... }`. JavaScript template-literal interpolation is handled by JS itself. Expressions may return plain strings, numbers, booleans, maps or lists, but cannot access Java classes or connectors. There is no custom helper library.
 
-A value such as `prefix js:{ ... }` is invalid. For an object literal, use parentheses: `"js:{ ({label: user.firstName}) }"`. Some regex literals containing braces, quotes or comment delimiters are rejected by the outer parser; ordinary string operations avoid this limitation. Expression syntax is checked up front, but unknown JS variables can still fail at runtime.
+A value such as `prefix js:{ ... }` is invalid. For an object literal, use parentheses: `"js:{ ({label: user.firstName}) }"`. Some regex literals containing braces, quotes or comment delimiters are rejected by the outer parser; ordinary string operations avoid this limitation. Expression syntax is checked up front, but unknown JS variables can still fail at runtime. A result that contains `undefined` anywhere — for example a misspelled property such as `user.userid` — is an error, not a silent `null`; the message names where it sits (`result.dn`, `result[1]`). Write `null` explicitly when no value is intended.
 
 `as` captures a successful operation's value:
 

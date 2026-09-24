@@ -108,13 +108,27 @@ class JsValuesTest {
     }
 
     @Test
-    @DisplayName("Should turn JS undefined and null into Java null")
-    void testUndefinedBecomesNull() {
+    @DisplayName("Should turn JS null and Java null into Java null")
+    void testNullBecomesNull() {
+        inContext((cx, scope) -> {
+            Object jsNull = cx.evaluateString(scope, "null", "t", 1, null);
+
+            assertThat(JsValues.fromJs(jsNull)).isNull();
+            assertThat(JsValues.fromJs(null)).isNull();
+            return null;
+        });
+    }
+
+    @Test
+    @DisplayName("Should refuse JS undefined instead of turning it into null")
+    void testUndefinedIsRefused() {
         inContext((cx, scope) -> {
             Object undefined = cx.evaluateString(scope, "undefined", "t", 1, null);
 
-            assertThat(JsValues.fromJs(undefined)).isNull();
-            assertThat(JsValues.fromJs(null)).isNull();
+            assertThatThrownBy(() -> JsValues.fromJs(undefined))
+                    .isInstanceOf(JsValues.JsConversionException.class)
+                    .hasMessageStartingWith("result is undefined")
+                    .hasMessageContaining("write null if no value is intended");
             return null;
         });
     }

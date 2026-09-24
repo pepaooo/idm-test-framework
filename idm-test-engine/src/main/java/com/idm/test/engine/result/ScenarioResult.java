@@ -1,5 +1,6 @@
 package com.idm.test.engine.result;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -18,15 +19,29 @@ public record ScenarioResult(
         boolean success,
         long durationMillis,
         List<StepResult> steps,
+        List<CleanupResult> cleanup,
         String failureDetail) {
 
+    public ScenarioResult {
+        cleanup = cleanup == null ? List.of() : cleanup;
+    }
+
+    /** A result with no cleanup outcomes. */
+    public ScenarioResult(String name, String sourceName, boolean success, long durationMillis,
+                          List<StepResult> steps, String failureDetail) {
+        this(name, sourceName, success, durationMillis, steps, List.of(), failureDetail);
+    }
+
     /**
-     * @return a message naming the file, the step and what went wrong, or null when successful
+     * @return a message naming the file and what went wrong, or null when successful. The
+     * steps' own failure leads; any FAILED cleanup entries follow it.
      */
     public String failureSummary() {
         if (success) {
             return null;
         }
+
+        List<String> parts = new ArrayList<>();
 
         StepResult failed = null;
         for (int i = steps.size() - 1; i >= 0; i--) {
@@ -35,23 +50,31 @@ public record ScenarioResult(
                 break;
             }
         }
-        if (failed == null) {
-            return failureDetail != null
-                    ? sourceName + ": " + failureDetail
-                    : sourceName + ": scenario failed before any step ran";
+
+        if (failed != null) {
+            StringBuilder step = new StringBuilder()
+                    .append(sourceName)
+                    .append(", step ").append(failed.index() + 1)
+                    .append(" (").append(failed.type()).append("): ")
+                    .append(failed.message());
+            if (failed.attempts() != null) {
+                step.append(" — gave up after ").append(failed.attempts())
+                        .append(" attempts over ").append(failed.waitedMillis()).append("ms");
+            }
+            parts.add(step.toString());
+        } else if (failureDetail != null) {
+            parts.add(sourceName + ": " + failureDetail);
         }
 
-        StringBuilder summary = new StringBuilder()
-                .append(sourceName)
-                .append(", step ").append(failed.index() + 1)
-                .append(" (").append(failed.type()).append("): ")
-                .append(failed.message());
-
-        if (failed.attempts() != null) {
-            summary.append(" — gave up after ").append(failed.attempts())
-                    .append(" attempts over ").append(failed.waitedMillis()).append("ms");
+        for (CleanupResult entry : cleanup) {
+            if (entry.status() == CleanupStatus.FAILED) {
+                parts.add(sourceName + ", cleanup entry " + (entry.index() + 1)
+                        + " (" + entry.type() + "): " + entry.message());
+            }
         }
 
-        return summary.toString();
+        return parts.isEmpty()
+                ? sourceName + ": scenario failed before any step ran"
+                : String.join("; ", parts);
     }
 }

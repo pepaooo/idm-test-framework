@@ -5,6 +5,8 @@ import com.idm.test.engine.expr.ExpressionEvaluator;
 import com.idm.test.engine.model.Scenario;
 import com.idm.test.engine.model.StepSpec;
 import com.idm.test.engine.model.WaitSpec;
+import com.idm.test.engine.result.CleanupResult;
+import com.idm.test.engine.result.CleanupStatus;
 import com.idm.test.engine.result.ScenarioResult;
 import com.idm.test.engine.result.StepResult;
 import com.idm.test.engine.spi.StepOutcome;
@@ -19,13 +21,14 @@ import java.util.Deque;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeSet;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * Runs a scenario: interpolate each step's parameters, execute in order, retry assertions
- * that declare a wait, stop at the first failure, then unwind cleanup in reverse.
+ * Runs a scenario: interpolate each step's parameters, execute in order, retry assertions that
+ * declare a wait, stop at the first failure, then run the author's cleanup block.
  * <p>
  * Deliberately knows nothing about Spring, JUnit, files or output formats. It takes its
  * dependencies by constructor and returns a result object. That is what lets a CLI reuse it.
@@ -64,6 +67,7 @@ public final class ScenarioEngine {
         Map<String, Object> scope = new LinkedHashMap<>();
 
         List<StepResult> results = new ArrayList<>();
+        List<CleanupResult> cleanupResults = List.of();
         Deque<Runnable> undos = new ArrayDeque<>();
         boolean success = true;
         String failureDetail = null;
@@ -99,15 +103,17 @@ public final class ScenarioEngine {
                 success = result.success();
             }
         } finally {
-            // Whatever earlier steps created must be torn down even when a step throws
-            // instead of returning a failed outcome, so this always runs. On the fixture
-            // failure path there is nothing to undo yet, but the structure doesn't special
-            // case that — unwind() is a no-op on an empty deque.
+            // Author-written cleanup first, then the remaining inferred undos (removed in a
+            // later change). Both always run, whether or not the steps passed.
+            cleanupResults = runCleanup(scenario.cleanup(), scope);
             unwind(undos);
         }
 
-        return new ScenarioResult(scenario.name(), sourceName, success,
-                System.currentTimeMillis() - started, results, failureDetail);
+        boolean cleanupFailed = cleanupResults.stream()
+                .anyMatch(entry -> entry.status() == CleanupStatus.FAILED);
+
+        return new ScenarioResult(scenario.name(), sourceName, success && !cleanupFailed,
+                System.currentTimeMillis() - started, results, cleanupResults, failureDetail);
     }
 
     @SuppressWarnings("unchecked")
@@ -257,6 +263,57 @@ public final class ScenarioEngine {
         if (outcome != null && outcome.undo() != null) {
             undos.push(outcome.undo());
         }
+    }
+
+    /**
+     * Runs every cleanup entry in order, whatever happened before. An entry that references a
+     * name never bound is SKIPPED: what it would tear down never happened. Never throws.
+     */
+    private List<CleanupResult> runCleanup(List<StepSpec> cleanup, Map<String, Object> scope) {
+        List<CleanupResult> results = new ArrayList<>();
+        for (int i = 0; i < cleanup.size(); i++) {
+            StepSpec entry = cleanup.get(i);
+            long started = System.currentTimeMillis();
+            CleanupResult result;
+            try {
+                result = runCleanupEntry(entry, i, scope, started);
+            } catch (RuntimeException e) {
+                result = new CleanupResult(i, entry.type(), Map.of(), CleanupStatus.FAILED,
+                        System.currentTimeMillis() - started,
+                        "cleanup '" + entry.type() + "' threw " + e.getClass().getSimpleName()
+                                + ": " + e.getMessage());
+            }
+            results.add(result);
+        }
+        return results;
+    }
+
+    @SuppressWarnings("unchecked")
+    private CleanupResult runCleanupEntry(
+            StepSpec entry, int index, Map<String, Object> scope, long started) {
+
+        Set<String> unbound = new TreeSet<>(Interpolator.references(entry.params()));
+        unbound.removeAll(scope.keySet());
+        if (!unbound.isEmpty()) {
+            return new CleanupResult(index, entry.type(), Map.of(), CleanupStatus.SKIPPED,
+                    System.currentTimeMillis() - started,
+                    "skipped: " + unbound + " never bound, so what this would clean up never happened");
+        }
+
+        StepType type = registry.get(entry.type());
+        if (type == null) {
+            return new CleanupResult(index, entry.type(), Map.of(), CleanupStatus.FAILED,
+                    System.currentTimeMillis() - started,
+                    "unknown step type '" + entry.type() + "'. Available: " + new TreeSet<>(registry.keySet()));
+        }
+
+        Map<String, Object> resolved =
+                (Map<String, Object>) Interpolator.resolve(entry.params(), scope, evaluator);
+        StepOutcome outcome = type.execute(resolved, false);
+
+        return new CleanupResult(index, entry.type(), resolved,
+                outcome.success() ? CleanupStatus.SUCCEEDED : CleanupStatus.FAILED,
+                System.currentTimeMillis() - started, outcome.message());
     }
 
     /**

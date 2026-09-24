@@ -53,7 +53,8 @@ public final class ScenarioLoader {
                 name,
                 asString(root.get("description")),
                 readFixtures(root.get("fixtures"), sourceName),
-                readSteps(root.get("steps"), sourceName));
+                readSteps(root.get("steps"), sourceName, "steps"),
+                readSteps(root.get("cleanup"), sourceName, "cleanup"));
     }
 
     @SuppressWarnings("unchecked")
@@ -91,12 +92,12 @@ public final class ScenarioLoader {
     }
 
     @SuppressWarnings("unchecked")
-    private static List<StepSpec> readSteps(Object raw, String sourceName) {
+    private static List<StepSpec> readSteps(Object raw, String sourceName, String section) {
         if (raw == null) {
             return List.of();
         }
         if (!(raw instanceof List<?> steps)) {
-            throw new ValidationException(sourceName, "'steps' must be a list");
+            throw new ValidationException(sourceName, "'" + section + "' must be a list");
         }
 
         List<StepSpec> result = new ArrayList<>();
@@ -104,7 +105,8 @@ public final class ScenarioLoader {
             Object element = steps.get(i);
             if (!(element instanceof Map<?, ?> step) || step.size() != 1) {
                 throw new ValidationException(sourceName,
-                        "step " + (i + 1) + " must be a map with exactly one step type, "
+                        ("steps".equals(section) ? "step " : "cleanup entry ") + (i + 1)
+                                + " must be a map with exactly one step type, "
                                 + "for example '- ldap.create:'");
             }
 
@@ -117,8 +119,10 @@ public final class ScenarioLoader {
             } else if (params instanceof Map<?, ?>) {
                 paramsMap = (Map<String, Object>) params;
             } else {
-                throw new ValidationException(sourceName, i, stepType,
-                        "parameters must be a map, not a " + params.getClass().getSimpleName());
+                String message = "parameters must be a map, not a " + params.getClass().getSimpleName();
+                throw "steps".equals(section)
+                        ? new ValidationException(sourceName, i, stepType, message)
+                        : ValidationException.forCleanup(sourceName, i, stepType, message);
             }
             result.add(new StepSpec(stepType, paramsMap));
         }

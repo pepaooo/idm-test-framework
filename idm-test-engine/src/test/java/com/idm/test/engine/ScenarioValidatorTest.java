@@ -468,4 +468,82 @@ class ScenarioValidatorTest {
                 .hasMessageContaining("set")
                 .hasMessageContaining("reserved");
     }
+
+    private static Scenario scenarioWithCleanup(List<StepSpec> steps, StepSpec... cleanup) {
+        return new Scenario("Test", null,
+                Map.of("user", new FixtureSpec("random-user", Map.of())),
+                steps, List.of(cleanup));
+    }
+
+    private static final List<StepSpec> CREATE_AS_CREATED = List.of(
+            new StepSpec("ldap.create", Map.of("dn", "cn=${user.userId}", "as", "created")));
+
+    @Test
+    @DisplayName("Cleanup may reference a name bound by any step")
+    void testCleanupReferencesAnyBinding() {
+        assertThatCode(() -> validator.validate(scenarioWithCleanup(CREATE_AS_CREATED,
+                new StepSpec("ldap.create", Map.of("dn", "${created}"))), "c.yaml"))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("Cleanup may not reference a name bound nowhere")
+    void testCleanupRejectsUnknownReference() {
+        assertThatThrownBy(() -> validator.validate(scenarioWithCleanup(CREATE_AS_CREATED,
+                new StepSpec("ldap.create", Map.of("dn", "${nowhere}"))), "c.yaml"))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("cleanup entry 1 (ldap.create)")
+                .hasMessageContaining("nowhere");
+    }
+
+    @Test
+    @DisplayName("Cleanup rejects an assertion")
+    void testCleanupRejectsAssertion() {
+        assertThatThrownBy(() -> validator.validate(scenarioWithCleanup(CREATE_AS_CREATED,
+                new StepSpec("ldap.verify", Map.of("dn", "cn=x", "expect", Map.of()))), "c.yaml"))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("cleanup entry 1 (ldap.verify)")
+                .hasMessageContaining("assertion");
+    }
+
+    @Test
+    @DisplayName("Cleanup rejects wait:")
+    void testCleanupRejectsWait() {
+        assertThatThrownBy(() -> validator.validate(scenarioWithCleanup(CREATE_AS_CREATED,
+                new StepSpec("ldap.create", Map.of("dn", "cn=x", "wait", true))), "c.yaml"))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("'wait' is not allowed on a cleanup entry");
+    }
+
+    @Test
+    @DisplayName("Cleanup rejects as:")
+    void testCleanupRejectsAs() {
+        assertThatThrownBy(() -> validator.validate(scenarioWithCleanup(CREATE_AS_CREATED,
+                new StepSpec("ldap.create", Map.of("dn", "cn=x", "as", "again"))), "c.yaml"))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("'as' is not allowed on a cleanup entry");
+    }
+
+    @Test
+    @DisplayName("Cleanup rejects set:")
+    void testCleanupRejectsSet() {
+        assertThatThrownBy(() -> validator.validate(scenarioWithCleanup(CREATE_AS_CREATED,
+                new StepSpec("set", Map.of("x", "1"))), "c.yaml"))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("cleanup entry 1 (set)");
+    }
+
+    @Test
+    @DisplayName("Cleanup rejects an unknown step type, a missing required parameter and an unknown parameter")
+    void testCleanupRejectsBadEntries() {
+        assertThatThrownBy(() -> validator.validate(scenarioWithCleanup(CREATE_AS_CREATED,
+                new StepSpec("ldap.nope", Map.of())), "c.yaml"))
+                .hasMessageContaining("cleanup entry 1 (ldap.nope)").hasMessageContaining("unknown step type");
+        assertThatThrownBy(() -> validator.validate(scenarioWithCleanup(CREATE_AS_CREATED,
+                new StepSpec("ldap.create", Map.of())), "c.yaml"))
+                .hasMessageContaining("missing required parameter 'dn'");
+        assertThatThrownBy(() -> validator.validate(scenarioWithCleanup(CREATE_AS_CREATED,
+                new StepSpec("ldap.create", Map.of("dn", "cn=x", "bogus", 1))), "c.yaml"))
+                .hasMessageContaining("unknown parameter 'bogus'");
+    }
 }

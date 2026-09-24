@@ -19,4 +19,9 @@ public class ValidationException extends RuntimeException {
     public ValidationException(String sourceName, String message, Throwable cause) {
         super(sourceName + ": " + message, cause);
     }
+
+    /** For a {@code cleanup:} entry: "{source}: cleanup entry N (type): message". */
+    public static ValidationException forCleanup(String sourceName, int index, String stepType, String message) {
+        return new ValidationException(sourceName, "cleanup entry " + (index + 1) + " (" + stepType + "): " + message);
+    }
 }

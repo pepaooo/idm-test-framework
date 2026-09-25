@@ -66,7 +66,9 @@ and headers. They treat 4xx/5xx as data, and return `{status, headers, body}`. B
 - **`Content-Type`:** never inferred from the body. If there is a body and no `Content-Type`
   header (compared case-insensitively), it defaults to `text/plain; charset=UTF-8`, like
   Postman's raw mode.
-- **Nothing is added behind the author's back:** no forced `Accept`, and no serialisation.
+- **Nothing is added behind the author's back:** no serialisation, and no content-specific
+  `Accept`. If the author sets no `Accept` header, the neutral `Accept: */*` is sent. Otherwise
+  Spring would add a value derived from its converters, such as `application/octet-stream`.
 - **The request body** is encoded as UTF-8, unless the `Content-Type` header names another
   charset.
 

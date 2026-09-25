@@ -101,11 +101,26 @@ record TextResponse(int status, Map<String, List<String>> headers, String body)
 - It uses the same Spring `RestClient` bean as `exchange`, and suppresses status handling in the
   same way, so every status arrives as data. It follows CLAUDE.md's rule: Spring's client is used
   directly, and there is no new HTTP code.
-- The body is sent as a `String` (`StringHttpMessageConverter`), and the response is read as a
-  `String`.
-- Header names are lower-cased when the map is built.
+- The body is sent as bytes in the charset its `Content-Type` declares (`text/plain;
+  charset=UTF-8` by default), so no message converter re-encodes it.
+- The response is read raw with `RestClient.exchange(...)`: status, headers and body bytes, with no
+  message converter or media-type parsing that a server's `Content-Type` could make throw. The body
+  is decoded with the response's declared charset, parsed leniently: a missing or unparseable
+  `Content-Type`, or an unsupported charset (for example a 404 with `charset=bogus-cs`), falls back
+  to UTF-8 and never fails the step.
+- Header names are normalised by `HeaderNames.normalize`. Names are lower-cased (`Locale.ROOT`),
+  names that differ only in case are merged in encounter order, and HTTP/2 pseudo-headers such as
+  `:status` (which the JDK client exposes) are dropped.
+- Methods outside `IdmRestConnector.SUPPORTED_METHODS` (`GET/POST/PUT/PATCH/DELETE/HEAD/OPTIONS`)
+  are refused before anything is sent.
 - It never throws. A transport problem becomes a failed `OperationResult`, as in `exchange`.
-- `exchange` and `rest.*` are unchanged.
+- **One HTTP client.** Production and tests share `RestClientConfiguration.requestFactory()`: the
+  JDK `HttpClient` (`JdkClientHttpRequestFactory`), with a 10 s connect timeout and a 30 s read
+  timeout. `HttpURLConnection`, used before, rejects `PATCH` and drops a `GET`'s body. Tests that
+  ran on a different client than production could not see either problem, or test the header
+  lower-casing.
+- `rest.*` (`exchange`) now uses the same header normalisation and method list; otherwise it is
+  unchanged.
 
 ## 6. Engine and registration
 

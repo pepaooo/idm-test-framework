@@ -25,7 +25,7 @@ import java.util.TreeSet;
  */
 public final class HttpRequestStep implements StepType {
 
-    static final Set<String> METHODS = Set.of("GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS");
+    static final Set<String> METHODS = IdmRestConnector.SUPPORTED_METHODS;
 
     private final IdmRestConnector connector;
     private final RestProperties properties;

@@ -4,6 +4,7 @@ import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.client.WireMock;
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
 import com.idm.test.connector.rest.client.IdmRestConnector;
+import com.idm.test.connector.rest.config.RestClientConfiguration;
 import com.idm.test.connector.rest.config.RestProperties;
 import com.idm.test.engine.spi.StepOutcome;
 import org.junit.jupiter.api.AfterAll;
@@ -37,7 +38,8 @@ class RestStepsTest {
     }
 
     private static final IdmRestConnector CONNECTOR =
-            new IdmRestConnector(RestClient.builder().build());
+            new IdmRestConnector(RestClient.builder()
+                    .requestFactory(RestClientConfiguration.requestFactory()).build());
 
     private static final RestProperties PROPERTIES = properties();
 

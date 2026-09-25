@@ -18,11 +18,9 @@ import org.springframework.web.client.RestClient;
 
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * IdM REST API connector using Spring's RestClient.
@@ -37,6 +35,13 @@ import java.util.Map;
 public class IdmRestConnector {
 
     private static final Logger log = LoggerFactory.getLogger(IdmRestConnector.class);
+    /**
+     * The HTTP methods {@link #exchange} and {@link #exchangeText} will send. Anything else is
+     * refused before a request is made: the JDK client would otherwise send any token as a method.
+     */
+    public static final Set<String> SUPPORTED_METHODS =
+            Set.of("GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS");
+
     private static final MediaType DEFAULT_TEXT = new MediaType("text", "plain", StandardCharsets.UTF_8);
 
     private final RestClient restClient;
@@ -314,16 +319,9 @@ public class IdmRestConnector {
 
         log.debug("{} request to: {}", method, url);
 
-        HttpMethod httpMethod;
-        try {
-            httpMethod = HttpMethod.valueOf(method.toUpperCase(Locale.ROOT));
-        } catch (IllegalArgumentException e) {
-            return OperationResult.<RestResponse>builder()
-                    .success(false)
-                    .message("Unsupported HTTP method: " + method)
-                    .errorType(ErrorType.VALIDATION_ERROR)
-                    .throwable(e)
-                    .build();
+        HttpMethod httpMethod = supportedMethod(method);
+        if (httpMethod == null) {
+            return unsupportedMethod(method);
         }
 
         try {
@@ -351,14 +349,11 @@ public class IdmRestConnector {
 
             ResponseEntity<String> entity = responseSpec.toEntity(String.class);
 
-            Map<String, List<String>> plainHeaders = new LinkedHashMap<>();
-            entity.getHeaders().forEach(plainHeaders::put);
-
             return OperationResult.<RestResponse>builder()
                     .success(true)
                     .data(new RestResponse(
                             entity.getStatusCode().value(),
-                            plainHeaders,
+                            HeaderNames.normalize(entity.getHeaders()),
                             parseBody(entity)))
                     .message(httpMethod + " " + url + " returned " + entity.getStatusCode().value())
                     .build();
@@ -395,8 +390,12 @@ public class IdmRestConnector {
 
         log.debug("{} request to: {}", method, url);
 
+        HttpMethod httpMethod = supportedMethod(method);
+        if (httpMethod == null) {
+            return unsupportedMethod(method);
+        }
+
         try {
-            HttpMethod httpMethod = HttpMethod.valueOf(method.toUpperCase(Locale.ROOT));
             RestClient.RequestBodySpec spec = restClient.method(httpMethod).uri(url);
 
             String contentType = null;
@@ -424,30 +423,21 @@ public class IdmRestConnector {
                 spec.header(HttpHeaders.CONTENT_TYPE, contentType);
             }
 
-            ResponseEntity<byte[]> entity = requestSpec
-                    .retrieve()
-                    // Every status, including 4xx and 5xx, must reach us as data.
-                    .onStatus(status -> true, (request, response) -> { })
-                    .toEntity(byte[].class);
-
-            // HTTP header names are case-insensitive; one lower-case spelling lets a scenario
-            // read them without guessing how the server capitalised them.
-            Map<String, List<String>> lowerCased = new LinkedHashMap<>();
-            entity.getHeaders().forEach((name, values) -> lowerCased
-                    .computeIfAbsent(name.toLowerCase(Locale.ROOT), key -> new ArrayList<>())
-                    .addAll(values));
-
-            MediaType responseType = entity.getHeaders().getContentType();
-            Charset responseCharset = responseType != null && responseType.getCharset() != null
-                    ? responseType.getCharset()
-                    : StandardCharsets.UTF_8;
-            byte[] bytes = entity.getBody();
-            String text = bytes == null ? "" : new String(bytes, responseCharset);
+            // Read the response raw: no message converter or media-type parsing runs, so no
+            // Content-Type a server sends can fail the step. Every status, including 4xx and 5xx,
+            // is data.
+            TextResponse response = requestSpec.exchange((request, raw) -> {
+                byte[] bytes = raw.getBody().readAllBytes();
+                return new TextResponse(
+                        raw.getStatusCode().value(),
+                        HeaderNames.normalize(raw.getHeaders()),
+                        new String(bytes, responseCharset(raw.getHeaders().getFirst(HttpHeaders.CONTENT_TYPE))));
+            });
 
             return OperationResult.<TextResponse>builder()
                     .success(true)
-                    .data(new TextResponse(entity.getStatusCode().value(), lowerCased, text))
-                    .message(httpMethod + " " + url + " returned " + entity.getStatusCode().value())
+                    .data(response)
+                    .message(httpMethod + " " + url + " returned " + response.status())
                     .build();
 
         } catch (Exception e) {
@@ -458,6 +448,42 @@ public class IdmRestConnector {
                     .errorType(determineErrorType(e))
                     .throwable(e)
                     .build();
+        }
+    }
+
+    /** The method, upper-cased, if it is in {@link #SUPPORTED_METHODS}; otherwise null. */
+    private static HttpMethod supportedMethod(String method) {
+        if (method == null) {
+            return null;
+        }
+        String upper = method.toUpperCase(Locale.ROOT);
+        return SUPPORTED_METHODS.contains(upper) ? HttpMethod.valueOf(upper) : null;
+    }
+
+    private static <T> OperationResult<T> unsupportedMethod(String method) {
+        return OperationResult.<T>builder()
+                .success(false)
+                .message("Unsupported HTTP method: " + method)
+                .errorType(ErrorType.VALIDATION_ERROR)
+                .build();
+    }
+
+    /**
+     * The charset a response's Content-Type declares, parsed leniently: a missing or unparseable
+     * Content-Type, or a charset this JVM does not support, falls back to UTF-8 rather than
+     * failing a step whose every HTTP status is meant to be data.
+     */
+    private static Charset responseCharset(String contentType) {
+        if (contentType == null) {
+            return StandardCharsets.UTF_8;
+        }
+        try {
+            Charset charset = MediaType.parseMediaType(contentType).getCharset();
+            return charset != null ? charset : StandardCharsets.UTF_8;
+        } catch (RuntimeException e) {
+            log.debug("Response Content-Type '{}' names no usable charset, decoding as UTF-8: {}",
+                    contentType, e.getMessage());
+            return StandardCharsets.UTF_8;
         }
     }
 

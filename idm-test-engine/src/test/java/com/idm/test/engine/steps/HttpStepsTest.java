@@ -3,7 +3,9 @@ package com.idm.test.engine.steps;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.client.WireMock;
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
+import com.github.tomakehurst.wiremock.verification.LoggedRequest;
 import com.idm.test.connector.rest.client.IdmRestConnector;
+import com.idm.test.connector.rest.config.RestClientConfiguration;
 import com.idm.test.connector.rest.config.RestProperties;
 import com.idm.test.engine.ScenarioValidator;
 import com.idm.test.engine.ValidationException;
@@ -41,7 +43,8 @@ class HttpStepsTest {
     }
 
     private static final IdmRestConnector CONNECTOR =
-            new IdmRestConnector(RestClient.builder().build());
+            new IdmRestConnector(RestClient.builder()
+                    .requestFactory(RestClientConfiguration.requestFactory()).build());
 
     private static final RestProperties PROPERTIES = properties();
 
@@ -140,8 +143,10 @@ class HttpStepsTest {
     void testDefaultContentTypeAndAccept() {
         stubFor(post(urlEqualTo("/echo")).willReturn(aResponse().withStatus(200)));
 
-        STEP.execute(params("target", "mock", "method", "POST", "path", "/echo", "body", "héllo"), true);
+        StepOutcome outcome =
+                STEP.execute(params("target", "mock", "method", "POST", "path", "/echo", "body", "héllo"), true);
 
+        assertThat(outcome.success()).isTrue();
         verify(postRequestedFor(urlEqualTo("/echo"))
                 .withHeader("Content-Type", containing("text/plain"))
                 .withHeader("Content-Type", containing("UTF-8"))
@@ -194,6 +199,63 @@ class HttpStepsTest {
         StepOutcome outcome = STEP.execute(params("target", "mock", "method", "GET", "path", "/latin"), true);
 
         assertThat(capture(outcome).get("body")).isEqualTo("café");
+    }
+
+    @Test
+    @DisplayName("Sends PATCH with its body on the production HTTP client")
+    void testPatchSupported() {
+        stubFor(patch(urlEqualTo("/users/7")).willReturn(aResponse().withStatus(200).withBody("ok")));
+
+        StepOutcome outcome = STEP.execute(params(
+                "target", "mock", "method", "PATCH", "path", "/users/7",
+                "headers", Map.of("Content-Type", "application/json"),
+                "body", "{\"mail\":\"j@x\"}"), true);
+
+        assertThat(outcome.success()).isTrue();
+        assertThat(capture(outcome)).containsEntry("status", 200).containsEntry("body", "ok");
+        verify(patchRequestedFor(urlEqualTo("/users/7")).withRequestBody(equalTo("{\"mail\":\"j@x\"}")));
+    }
+
+    @Test
+    @DisplayName("Encodes the request body in the charset its Content-Type declares")
+    void testRequestCharsetFromContentType() {
+        stubFor(post(urlEqualTo("/latin")).willReturn(aResponse().withStatus(200)));
+
+        StepOutcome outcome = STEP.execute(params(
+                "target", "mock", "method", "POST", "path", "/latin",
+                "headers", Map.of("Content-Type", "text/plain; charset=ISO-8859-1"),
+                "body", "café"), true);
+
+        assertThat(outcome.success()).isTrue();
+        List<LoggedRequest> requests = findAll(postRequestedFor(urlEqualTo("/latin")));
+        assertThat(requests).hasSize(1);
+        assertThat(requests.get(0).getBody()).containsExactly(99, 97, 102, -23);
+    }
+
+    @Test
+    @DisplayName("Falls back to UTF-8 for an unsupported response charset, and still succeeds")
+    void testUnsupportedResponseCharsetFallsBack() {
+        stubFor(get(urlEqualTo("/bogus")).willReturn(aResponse().withStatus(404)
+                .withHeader("Content-Type", "text/plain; charset=bogus-cs")
+                .withBody("oops")));
+
+        StepOutcome outcome = STEP.execute(params("target", "mock", "method", "GET", "path", "/bogus"), true);
+
+        assertThat(outcome.success()).isTrue();
+        assertThat(capture(outcome)).containsEntry("status", 404).containsEntry("body", "oops");
+    }
+
+    @Test
+    @DisplayName("Drops HTTP/2 pseudo-headers such as :status from the captured headers")
+    @SuppressWarnings("unchecked")
+    void testPseudoHeadersDropped() {
+        stubFor(get(urlEqualTo("/h")).willReturn(aResponse().withStatus(200).withHeader("X-Custom-Header", "v")));
+
+        StepOutcome outcome = STEP.execute(params("target", "mock", "method", "GET", "path", "/h"), true);
+
+        Map<String, List<String>> headers = (Map<String, List<String>>) capture(outcome).get("headers");
+        assertThat(headers).isNotEmpty();
+        assertThat(headers.keySet()).noneMatch(name -> name.startsWith(":"));
     }
 
     @Test

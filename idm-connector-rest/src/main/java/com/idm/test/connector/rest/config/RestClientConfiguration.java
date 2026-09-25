@@ -6,9 +6,10 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.client.ClientHttpRequestFactory;
-import org.springframework.http.client.SimpleClientHttpRequestFactory;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 
+import java.net.http.HttpClient;
 import java.time.Duration;
 
 /**
@@ -38,10 +39,8 @@ public class RestClientConfiguration {
     public RestClient restClient() {
         log.info("Configuring RestClient with default settings");
 
-        ClientHttpRequestFactory requestFactory = createRequestFactory();
-
         RestClient client = RestClient.builder()
-                .requestFactory(requestFactory)
+                .requestFactory(requestFactory())
                 .build();
 
         log.info("RestClient configured successfully");
@@ -49,15 +48,25 @@ public class RestClientConfiguration {
     }
 
     /**
-     * Creates HTTP request factory with timeout settings.
+     * The HTTP request factory every REST step runs on, in production and in tests alike, so
+     * that tests exercise exactly the client a real run uses.
+     * <p>
+     * It is the JDK {@link HttpClient} rather than {@code HttpURLConnection}
+     * ({@code SimpleClientHttpRequestFactory}): {@code HttpURLConnection} rejects {@code PATCH}
+     * outright and silently drops the body of a {@code GET}, while the JDK client sends any
+     * method with a body. The JDK client also lower-cases response header names and may expose
+     * HTTP/2 pseudo-headers such as {@code :status}; callers that surface headers normalise them
+     * (see {@code HeaderNames}).
      *
-     * @return configured request factory
+     * @return a new request factory with the connection and read timeouts
      */
-    private ClientHttpRequestFactory createRequestFactory() {
-        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+    public static ClientHttpRequestFactory requestFactory() {
+        HttpClient httpClient = HttpClient.newBuilder()
+                // Connection timeout: 10 seconds
+                .connectTimeout(Duration.ofSeconds(10))
+                .build();
 
-        // Connection timeout: 10 seconds
-        factory.setConnectTimeout(Duration.ofSeconds(10));
+        JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(httpClient);
 
         // Read timeout: 30 seconds
         factory.setReadTimeout(Duration.ofSeconds(30));

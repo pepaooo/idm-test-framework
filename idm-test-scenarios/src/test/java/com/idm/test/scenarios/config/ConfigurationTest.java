@@ -2,9 +2,11 @@ package com.idm.test.scenarios.config;
 
 import com.idm.test.connector.database.config.DatabaseProperties;
 import com.idm.test.connector.ldap.config.LdapProperties;
+import com.idm.test.connector.rest.client.RestAuthenticator;
 import com.idm.test.connector.rest.config.RestProperties;
 import com.idm.test.connector.soap.config.SoapProperties;
 import com.idm.test.core.config.TestExecutorProperties;
+import com.idm.test.core.model.OperationResult;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -58,6 +60,9 @@ class ConfigurationTest {
 
     @Autowired(required = false)
     private TestExecutorProperties executorProperties;
+
+    @Autowired
+    private RestAuthenticator restAuthenticator;
 
     @Test
     @DisplayName("Should load LDAP configuration properties")
@@ -160,5 +165,17 @@ class ConfigurationTest {
             assertThat(config.isUseOAuth()).as(target).isTrue();
             assertThat(config.getOauthClientName()).as(target).isEqualTo(target);
         }
+    }
+
+    @Test
+    @DisplayName("OAuth targets reach Spring's token client in the application context")
+    void testOAuthReachesSpringTokenClient() {
+        OperationResult<String> result = restAuthenticator.authorization("sap", restProperties.getRest().get("sap"));
+
+        assertThat(result.isFailure()).isTrue();
+        assertThat(result.getMessage())
+                .contains("'sap'")
+                .doesNotContain("no OAuth2 client registrations")
+                .doesNotContain("not configured");
     }
 }

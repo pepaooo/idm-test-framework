@@ -192,7 +192,7 @@ class RestAuthenticatorTest {
         // default handling as-is, so we assert on what it actually reports here: the target, the
         // registration and the status, not the parsed OAuth2 error code.
         assertThat(result.getMessage())
-                .contains("'svc'").contains("'api'").contains("401")
+                .contains("'svc'").contains("'api'").contains("401").contains("invalid_token_response")
                 .doesNotContain("svc-secret-value");
     }
 

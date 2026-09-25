@@ -10,7 +10,6 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
-import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @DisplayName("SOAP basic authentication")
@@ -78,6 +77,17 @@ class SoapCredentialsTest {
 
         wiremock.verify(postRequestedFor(urlPathEqualTo("/IDMProv/resource/service"))
                 .withHeader("Authorization", equalTo("Basic c3ZjOnMzY3JldA==")));
+    }
+
+    @Test
+    @DisplayName("Without credentials, the resource service sends no Authorization header")
+    void testResourceServiceSendsNoHeaderWithoutCredentials() {
+        wiremock.stubFor(post(urlPathEqualTo("/IDMProv/resource/service"))
+                .willReturn(aResponse().withStatus(500).withBody("")));
+
+        new ResourceServiceConnector(properties(null, null)).grantResource("cn=jdoe,ou=users", "cn=res,ou=resources", "test");
+
+        wiremock.verify(postRequestedFor(urlPathEqualTo("/IDMProv/resource/service")).withoutHeader("Authorization"));
     }
 
     @Test

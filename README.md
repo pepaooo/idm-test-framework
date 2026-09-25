@@ -88,8 +88,9 @@ ports, creates an H2 schema, runs 591 tests, and tears everything down.
 Two further runners take the same YAML scenarios elsewhere; neither is part of the default suite
 (see [Running against containers or a real lab](#running-against-containers-or-a-real-lab)).
 
-Sibling modules are not installed to the local repository, so `-pl <module>` needs `-am`
-alongside it.
+Sibling modules are not installed to the local repository by default, so `-pl <module>` needs
+`-am` alongside it. To skip rebuilding them while you work only on scenarios, see
+[running tests](docs/reference/running-tests.md#skipping-the-upstream-build).
 
 ---
 

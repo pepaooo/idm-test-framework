@@ -20,9 +20,16 @@ It includes `YamlScenarioTest`, which runs the 20 YAML scenarios in
 
 ## Narrowing a run
 
-Sibling modules are not installed to the local repository, so always pair `-pl` with `-am`. With
-`-am`, add `-Dsurefire.failIfNoSpecifiedTests=false` when naming a test, because the sibling
-modules have no test by that name.
+A module depends on its siblings (the scenarios module needs core, utils, the engine and every
+connector), and Maven must find their jars somewhere. `-am` ("also make") builds them in the same
+run, so pair `-pl` with `-am` unless you have installed them (see
+[Skipping the upstream build](#skipping-the-upstream-build)). With `-am`, add
+`-Dsurefire.failIfNoSpecifiedTests=false` when naming a test, because the sibling modules have no
+test by that name.
+
+`-am` compiles the upstream modules but runs none of their tests when `-Dtest` names a class they
+don't have, so a single-scenario run still reports `Tests run: 1`. Most of its time is the Spring
+context the scenario starts, which any run pays.
 
 ```bash
 # One module
@@ -42,6 +49,23 @@ modules have no test by that name.
 
 `-Dscenario` matches file names with or without `.yaml`. A blank value, an invalid glob, or a
 pattern that matches nothing fails the run instead of running zero scenarios.
+
+### Skipping the upstream build
+
+When you are only editing scenario YAML or the scenarios module's own tests, install the other
+modules once and then build the scenarios module alone:
+
+```bash
+./mvnw install -DskipTests
+./mvnw -pl idm-test-scenarios test -Dtest=YamlScenarioTest -Dscenario=provisioning-user-to-ldap.yaml
+```
+
+Without `-am` only `idm-test-scenarios` is built, and `-Dsurefire.failIfNoSpecifiedTests=false`
+is no longer needed.
+
+The installed jars are a snapshot in `~/.m2`. After you change the engine, a connector, core or
+utils, or pull such a change, run `./mvnw install -DskipTests` again. Otherwise the scenarios
+module keeps testing the old code, and nothing tells you so. When in doubt, use `-am`.
 
 ## Against containers (optional, needs Docker)
 

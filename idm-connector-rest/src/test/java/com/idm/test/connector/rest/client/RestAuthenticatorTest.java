@@ -186,6 +186,28 @@ class RestAuthenticatorTest {
 
         assertThat(result.isFailure()).isTrue();
         assertThat(result.getErrorType()).contains(ErrorType.AUTHENTICATION_ERROR);
+        // Spring's default OAuth2 error handling only parses the {"error": ...} body on a 400
+        // response; a 401 (also valid per RFC 6749 §5.2) falls back to a generic
+        // "[invalid_token_response] ... 401 Unauthorized: [no body]" message. We use Spring's
+        // default handling as-is, so we assert on what it actually reports here: the target, the
+        // registration and the status, not the parsed OAuth2 error code.
+        assertThat(result.getMessage())
+                .contains("'svc'").contains("'api'").contains("401")
+                .doesNotContain("svc-secret-value");
+    }
+
+    @Test
+    @DisplayName("A 400 token rejection surfaces the parsed OAuth2 error")
+    void testTokenRejectedWith400() {
+        wiremock.stubFor(post(urlEqualTo("/oauth/token")).willReturn(aResponse()
+                .withStatus(400)
+                .withHeader("Content-Type", "application/json")
+                .withBody("{\"error\":\"invalid_client\",\"error_description\":\"bad client\"}")));
+
+        OperationResult<String> result = withRegistration("svc").authorization("api", oauth("svc"));
+
+        assertThat(result.isFailure()).isTrue();
+        assertThat(result.getErrorType()).contains(ErrorType.AUTHENTICATION_ERROR);
         assertThat(result.getMessage())
                 .contains("'svc'").contains("'api'").contains("invalid_client")
                 .doesNotContain("svc-secret-value");

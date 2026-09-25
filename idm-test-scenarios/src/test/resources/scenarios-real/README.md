@@ -67,6 +67,18 @@ The runner refuses to start, before any scenario runs, when:
 - a scenario about to run uses a REST `target:` that is not configured, or whose `base-url` is
   blank or still its `application.yml` placeholder. Only targets the selected scenarios use are
   checked: a run with no `rest.*` steps is never asked for REST addresses.
+- the credentials a scenario about to run needs are still `application.yml`'s placeholders, or
+  only half given (guard 5):
+  - **for each REST target used:**
+    - a `username`/`password` still equal to `idmadmin`/`idmpass`, or only one of them set
+    - `use-oauth` with no `oauth-client-name`, or a registration with no `client-id`/`client-secret`
+    - `client-id`/`client-secret` still at their placeholders, e.g. `sap-test-client`/`sap-test-secret`
+  - **for SOAP, only when `roles.*` or `resources.*` are used:** the same checks on
+    `idm.test.soap.username`/`password`
+
+  An unauthenticated target (no credentials at all) passes. Messages name the variable to set,
+  for example `IDM_TEST_REST_IDM_PASSWORD`, `IDM_TEST_SOAP_USERNAME` or
+  `SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_SAP_CLIENTSECRET`, and never the value.
 
 A real directory genuinely reachable at `ldap://localhost:389` is refused too, because that is
 the placeholder value — point it at `ldap://127.0.0.1:389` instead (or any other address) to
@@ -116,7 +128,13 @@ The Spring context will not start unless the following are also true:
 Credentials come from the environment variables `application.yml` already references:
 `IDM_LDAP_URL`, `IDM_LDAP_USER_DN`, `IDM_LDAP_PASSWORD`, `IDM_SOAP_URL`, `IDM_SOAP_USER`,
 `IDM_SOAP_PASSWORD`, `IDM_REST_URL`, `IDM_REST_USER`, `IDM_REST_PASSWORD`, `SAP_DB_*`,
-`HR_DB_*` and `WORKDAY_DB_*`.
+`HR_DB_*`, `WORKDAY_DB_*`, and the OAuth2 clients' `SAP_CLIENT_ID`/`SAP_CLIENT_SECRET`,
+`WORKDAY_CLIENT_ID`/`WORKDAY_CLIENT_SECRET` and `SERVICENOW_CLIENT_ID`/`SERVICENOW_CLIENT_SECRET`
+(with `*_TOKEN_URI` for each token endpoint). The relaxed-binding names in guard 5's messages
+work too, under any profile.
+
+The `sap`, `workday` and `servicenow` REST targets authenticate with OAuth2 client credentials;
+`idm` with basic authentication. A target you add with only a `base-url` is unauthenticated.
 
 Scenarios name their database by its key: `sap`, `oracle-hr` or `workday`. `test-db` is the
 embedded H2.

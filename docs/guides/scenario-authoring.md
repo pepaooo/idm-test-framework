@@ -125,6 +125,33 @@ Use a nonempty `expect` map to check meaningful state. The validator checks that
   - `resp.body` is always text, `""` when empty. Read JSON with `js:{ JSON.parse(resp.body).id }`.
 - **Any HTTP status is a successful step.** The status appears in the step message and the report. Checking it, and reading XML responses from JavaScript, are planned separately.
 
+### Authentication
+
+`rest.request`, `rest.verify` and `http.request` authenticate with their target's settings. Nothing goes in the scenario:
+
+| Target settings (`idm.test.rest.<target>.*`) | Header sent |
+|---|---|
+| `use-oauth: true`, `oauth-client-name: <registration>` | `Authorization: Bearer <token>`, a client-credentials token from `spring.security.oauth2.client.registration.<registration>`, cached and renewed by Spring Security |
+| `username` and `password` | `Authorization: Basic ...` |
+| neither | none |
+
+- **Configuration errors:** a username without a password, the reverse, or `use-oauth` naming an unknown registration fails the step before anything is sent.
+- **The step's own header wins:** a step that sets `Authorization` itself, in any letter case, sends exactly that header, and the target's credentials are not used. Use this for negative tests:
+
+  ```yaml
+  - http.request:
+      target: idm
+      method: GET
+      path: /users
+      headers:
+        Authorization: "Basic bm9ib2R5Ondyb25n"
+      as: denied
+  ```
+
+- **Keep secrets in target settings, not in YAML:** a header written in a scenario is a resolved parameter and is written to the results file unredacted, while the header added from target settings never is.
+
+`roles.*` and `resources.*` send HTTP basic authentication when `idm.test.soap.username` and `password` are both set.
+
 Database, role, resource and `rest.*` steps also exist; a complete reference is tracked as
 ITF-10. `http.request` is described above.
 

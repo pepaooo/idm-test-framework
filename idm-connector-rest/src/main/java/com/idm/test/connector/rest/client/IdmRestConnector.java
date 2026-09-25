@@ -3,10 +3,12 @@ package com.idm.test.connector.rest.client;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.idm.test.connector.rest.model.IdmUser;
 import com.idm.test.connector.rest.model.RestResponse;
+import com.idm.test.connector.rest.model.TextResponse;
 import com.idm.test.core.model.ErrorType;
 import com.idm.test.core.model.OperationResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
@@ -14,6 +16,9 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -32,6 +37,7 @@ import java.util.Map;
 public class IdmRestConnector {
 
     private static final Logger log = LoggerFactory.getLogger(IdmRestConnector.class);
+    private static final MediaType DEFAULT_TEXT = new MediaType("text", "plain", StandardCharsets.UTF_8);
 
     private final RestClient restClient;
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -360,6 +366,93 @@ public class IdmRestConnector {
         } catch (Exception e) {
             log.error("{} request failed for URL '{}': {}", method, url, e.getMessage());
             return OperationResult.<RestResponse>builder()
+                    .success(false)
+                    .message("Request failed: " + e.getMessage())
+                    .errorType(determineErrorType(e))
+                    .throwable(e)
+                    .build();
+        }
+    }
+
+    /**
+     * Performs one HTTP request with a raw text body and returns the raw text response.
+     * <p>
+     * The counterpart of {@link #exchange} for callers that write the body themselves — XML,
+     * SOAP envelopes, JSON as text. Nothing is serialized or parsed: the body is sent as bytes in
+     * the charset its Content-Type names (UTF-8 by default), and the response is decoded with the
+     * charset it declares (UTF-8 by default). As with exchange, every HTTP status is data; only a
+     * transport-level problem is an operation failure.
+     *
+     * @param method  the HTTP method
+     * @param url     the absolute URL
+     * @param body    the request body, sent as-is, or null for none
+     * @param headers request headers; Content-Type defaults to text/plain; charset=UTF-8 when there
+     *                is a body, and Accept to *&#47;* when none is given
+     * @return the response, or a failure result; never throws
+     */
+    public OperationResult<TextResponse> exchangeText(
+            String method, String url, String body, Map<String, String> headers) {
+
+        log.debug("{} request to: {}", method, url);
+
+        try {
+            HttpMethod httpMethod = HttpMethod.valueOf(method.toUpperCase(Locale.ROOT));
+            RestClient.RequestBodySpec spec = restClient.method(httpMethod).uri(url);
+
+            String contentType = null;
+            boolean acceptGiven = false;
+            if (headers != null) {
+                for (Map.Entry<String, String> header : headers.entrySet()) {
+                    if (header.getKey().equalsIgnoreCase(HttpHeaders.CONTENT_TYPE)) {
+                        contentType = header.getValue();
+                    } else {
+                        acceptGiven |= header.getKey().equalsIgnoreCase(HttpHeaders.ACCEPT);
+                        spec.header(header.getKey(), header.getValue());
+                    }
+                }
+            }
+            if (!acceptGiven) {
+                spec.accept(MediaType.ALL);
+            }
+
+            RestClient.RequestHeadersSpec<?> requestSpec = spec;
+            if (body != null) {
+                MediaType mediaType = contentType != null ? MediaType.parseMediaType(contentType) : DEFAULT_TEXT;
+                Charset charset = mediaType.getCharset() != null ? mediaType.getCharset() : StandardCharsets.UTF_8;
+                requestSpec = spec.contentType(mediaType).body(body.getBytes(charset));
+            } else if (contentType != null) {
+                spec.header(HttpHeaders.CONTENT_TYPE, contentType);
+            }
+
+            ResponseEntity<byte[]> entity = requestSpec
+                    .retrieve()
+                    // Every status, including 4xx and 5xx, must reach us as data.
+                    .onStatus(status -> true, (request, response) -> { })
+                    .toEntity(byte[].class);
+
+            // HTTP header names are case-insensitive; one lower-case spelling lets a scenario
+            // read them without guessing how the server capitalised them.
+            Map<String, List<String>> lowerCased = new LinkedHashMap<>();
+            entity.getHeaders().forEach((name, values) -> lowerCased
+                    .computeIfAbsent(name.toLowerCase(Locale.ROOT), key -> new ArrayList<>())
+                    .addAll(values));
+
+            MediaType responseType = entity.getHeaders().getContentType();
+            Charset responseCharset = responseType != null && responseType.getCharset() != null
+                    ? responseType.getCharset()
+                    : StandardCharsets.UTF_8;
+            byte[] bytes = entity.getBody();
+            String text = bytes == null ? "" : new String(bytes, responseCharset);
+
+            return OperationResult.<TextResponse>builder()
+                    .success(true)
+                    .data(new TextResponse(entity.getStatusCode().value(), lowerCased, text))
+                    .message(httpMethod + " " + url + " returned " + entity.getStatusCode().value())
+                    .build();
+
+        } catch (Exception e) {
+            log.error("{} request failed for URL '{}': {}", method, url, e.getMessage());
+            return OperationResult.<TextResponse>builder()
                     .success(false)
                     .message("Request failed: " + e.getMessage())
                     .errorType(determineErrorType(e))

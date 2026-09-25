@@ -78,4 +78,38 @@ class JsReferencesTest {
         assertThat(JsReferences.freeNames("")).isEmpty();
         assertThat(JsReferences.freeNames("   ")).isEmpty();
     }
+
+    @Test
+    @DisplayName("Treats plain assignment targets as local, since sloppy mode creates them")
+    void testAssignmentTargetsAreLocal() {
+        assertThat(JsReferences.freeNames("total = user.a; total")).containsExactly("user");
+        assertThat(JsReferences.freeNames("[x, y] = [1, 2]; x + y")).isEmpty();
+        assertThat(JsReferences.freeNames("a = b = 1; a + b")).isEmpty();
+        assertThat(JsReferences.freeNames("o.p = 1")).containsExactly("o");
+    }
+
+    @Test
+    @DisplayName("Still reports a compound assignment target, which is a real ReferenceError")
+    void testCompoundAssignmentStillReported() {
+        assertThat(JsReferences.freeNames("x += 1")).containsExactly("x");
+    }
+
+    @Test
+    @DisplayName("Treats a for-in variable without var as local")
+    void testForInVariableIsLocal() {
+        assertThat(JsReferences.freeNames("for (k in user) { n = k }")).containsExactly("user");
+    }
+
+    @Test
+    @DisplayName("Ignores break and continue labels")
+    void testLabelsIgnored() {
+        assertThat(JsReferences.freeNames("lbl: for (var i = 0; i < 1; i++) { break lbl; }")).isEmpty();
+        assertThat(JsReferences.freeNames("lbl: for (var i = 0; i < 1; i++) { continue lbl; }")).isEmpty();
+    }
+
+    @Test
+    @DisplayName("Ignores a generator method's key")
+    void testGeneratorMethodKeyIgnored() {
+        assertThat(JsReferences.freeNames("({ *gen() { yield 1; } })")).isEmpty();
+    }
 }

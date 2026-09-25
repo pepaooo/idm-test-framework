@@ -165,6 +165,7 @@ class InterpolatorTest {
         assertThat(Interpolator.references("js:{ `${ 1 + 1 }` }")).isEmpty();
         assertThat(Interpolator.references("js:{ `hello ${user.firstName}` }")).containsExactly("user");
         assertThat(Interpolator.references("js:{ user.lastName.toUpperCase() }")).containsExactly("user");
+        assertThat(Interpolator.references("js:{ '${user.x}' }")).isEmpty();
     }
 
     @Test

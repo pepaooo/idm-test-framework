@@ -1,6 +1,7 @@
 package com.idm.test.engine.steps;
 
 import com.idm.test.connector.rest.client.IdmRestConnector;
+import com.idm.test.connector.rest.client.RestAuthenticator;
 import com.idm.test.connector.rest.config.RestProperties;
 import com.idm.test.connector.rest.model.RestResponse;
 import com.idm.test.core.model.OperationResult;
@@ -22,10 +23,12 @@ public final class RestRequestStep implements StepType {
 
     private final IdmRestConnector connector;
     private final RestProperties properties;
+    private final RestAuthenticator authenticator;
 
-    public RestRequestStep(IdmRestConnector connector, RestProperties properties) {
+    public RestRequestStep(IdmRestConnector connector, RestProperties properties, RestAuthenticator authenticator) {
         this.connector = connector;
         this.properties = properties;
+        this.authenticator = authenticator;
     }
 
     @Override
@@ -67,6 +70,11 @@ public final class RestRequestStep implements StepType {
         Map<String, String> headers = new LinkedHashMap<>();
         StepValues.toMap(params.get("headers"))
                 .forEach((key, value) -> headers.put(key, String.valueOf(value)));
+
+        String authError = RestAuthorization.apply("rest.request", target, properties, authenticator, headers);
+        if (authError != null) {
+            return StepOutcome.failure(authError);
+        }
 
         OperationResult<RestResponse> result = connector.exchange(
                 String.valueOf(params.get("method")), url, body, headers);

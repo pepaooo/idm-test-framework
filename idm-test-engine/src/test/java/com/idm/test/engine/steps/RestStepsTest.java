@@ -4,6 +4,7 @@ import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.client.WireMock;
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
 import com.idm.test.connector.rest.client.IdmRestConnector;
+import com.idm.test.connector.rest.client.RestAuthenticator;
 import com.idm.test.connector.rest.config.RestClientConfiguration;
 import com.idm.test.connector.rest.config.RestProperties;
 import com.idm.test.engine.spi.StepOutcome;
@@ -72,7 +73,7 @@ class RestStepsTest {
                 .withHeader("Content-Type", "application/json")
                 .withBody("{\"id\":1,\"userId\":\"jdoe\"}")));
 
-        StepOutcome outcome = new RestRequestStep(CONNECTOR, PROPERTIES).execute(Map.of(
+        StepOutcome outcome = new RestRequestStep(CONNECTOR, PROPERTIES, RestAuthenticator.withoutOAuth()).execute(Map.of(
                 "target", "idm", "method", "GET", "path", "/users/1"), true);
 
         assertThat(outcome.success()).isTrue();
@@ -96,7 +97,7 @@ class RestStepsTest {
 
         // Task 2 makes "${user}" resolve to the map itself; before that it arrived as
         // Java's Map.toString and could never have been sent as JSON.
-        StepOutcome outcome = new RestRequestStep(CONNECTOR, PROPERTIES).execute(Map.of(
+        StepOutcome outcome = new RestRequestStep(CONNECTOR, PROPERTIES, RestAuthenticator.withoutOAuth()).execute(Map.of(
                 "target", "idm", "method", "POST", "path", "/users",
                 "bodyFrom", Map.of("userId", "jdoe", "department", "Engineering")), false);
 
@@ -114,7 +115,7 @@ class RestStepsTest {
 
         // The request was made and answered; 404 is the answer. Only a transport failure is
         // a step failure.
-        StepOutcome outcome = new RestRequestStep(CONNECTOR, PROPERTIES).execute(Map.of(
+        StepOutcome outcome = new RestRequestStep(CONNECTOR, PROPERTIES, RestAuthenticator.withoutOAuth()).execute(Map.of(
                 "target", "idm", "method", "GET", "path", "/users/missing"), true);
 
         assertThat(outcome.success()).isTrue();
@@ -125,7 +126,7 @@ class RestStepsTest {
     @Test
     @DisplayName("rest.request should fail for an unknown target")
     void testRequestUnknownTargetFails() {
-        StepOutcome outcome = new RestRequestStep(CONNECTOR, PROPERTIES).execute(Map.of(
+        StepOutcome outcome = new RestRequestStep(CONNECTOR, PROPERTIES, RestAuthenticator.withoutOAuth()).execute(Map.of(
                 "target", "nope", "method", "GET", "path", "/users/1"), false);
 
         assertThat(outcome.success()).isFalse();
@@ -139,7 +140,7 @@ class RestStepsTest {
         RestProperties noBaseUrl = new RestProperties();
         noBaseUrl.getRest().put("idm", new RestProperties.RestApiConfig());
 
-        StepOutcome outcome = new RestRequestStep(CONNECTOR, noBaseUrl).execute(Map.of(
+        StepOutcome outcome = new RestRequestStep(CONNECTOR, noBaseUrl, RestAuthenticator.withoutOAuth()).execute(Map.of(
                 "target", "idm", "method", "GET", "path", "/users/1"), false);
 
         assertThat(outcome.success()).isFalse();
@@ -153,7 +154,7 @@ class RestStepsTest {
     @Test
     @DisplayName("rest.request should reject body and bodyFrom together")
     void testRequestRejectsBothBodyForms() {
-        StepOutcome outcome = new RestRequestStep(CONNECTOR, PROPERTIES).execute(Map.of(
+        StepOutcome outcome = new RestRequestStep(CONNECTOR, PROPERTIES, RestAuthenticator.withoutOAuth()).execute(Map.of(
                 "target", "idm", "method", "POST", "path", "/users",
                 "body", Map.of("a", 1),
                 "bodyFrom", Map.of("b", 2)), false);
@@ -168,7 +169,7 @@ class RestStepsTest {
     void testRequestSendsHeaders() {
         stubFor(get(urlEqualTo("/users/1")).willReturn(aResponse().withStatus(200)));
 
-        new RestRequestStep(CONNECTOR, PROPERTIES).execute(Map.of(
+        new RestRequestStep(CONNECTOR, PROPERTIES, RestAuthenticator.withoutOAuth()).execute(Map.of(
                 "target", "idm", "method", "GET", "path", "/users/1",
                 "headers", Map.of("X-Correlation-Id", "corr-9")), false);
 
@@ -184,7 +185,7 @@ class RestStepsTest {
         config.setBaseUrl("http://localhost:1");
         dead.getRest().put("idm", config);
 
-        StepOutcome outcome = new RestRequestStep(CONNECTOR, dead).execute(Map.of(
+        StepOutcome outcome = new RestRequestStep(CONNECTOR, dead, RestAuthenticator.withoutOAuth()).execute(Map.of(
                 "target", "idm", "method", "GET", "path", "/users/1"), false);
 
         assertThat(outcome.success()).isFalse();
@@ -198,7 +199,7 @@ class RestStepsTest {
                 .withHeader("Content-Type", "application/json")
                 .withBody("{\"userId\":\"jdoe\",\"department\":\"Engineering\"}")));
 
-        StepOutcome outcome = new RestVerifyStep(CONNECTOR, PROPERTIES).execute(Map.of(
+        StepOutcome outcome = new RestVerifyStep(CONNECTOR, PROPERTIES, RestAuthenticator.withoutOAuth()).execute(Map.of(
                 "target", "idm", "path", "/users/jdoe",
                 "expect", Map.of("status", 200,
                         "body", Map.of("department", "Engineering"))), false);
@@ -215,7 +216,7 @@ class RestStepsTest {
                 .withBody("{\"userId\":\"jdoe\",\"department\":\"Engineering\",\"extra\":1}")));
 
         // A scenario should not have to restate a whole payload to assert one field.
-        StepOutcome outcome = new RestVerifyStep(CONNECTOR, PROPERTIES).execute(Map.of(
+        StepOutcome outcome = new RestVerifyStep(CONNECTOR, PROPERTIES, RestAuthenticator.withoutOAuth()).execute(Map.of(
                 "target", "idm", "path", "/users/jdoe",
                 "expect", Map.of("body", Map.of("userId", "jdoe"))), false);
 
@@ -228,7 +229,7 @@ class RestStepsTest {
         stubFor(get(urlEqualTo("/users/gone")).willReturn(aResponse().withStatus(404)));
 
         // The pattern this whole task exists for: after a deprovision, the account is gone.
-        StepOutcome outcome = new RestVerifyStep(CONNECTOR, PROPERTIES).execute(Map.of(
+        StepOutcome outcome = new RestVerifyStep(CONNECTOR, PROPERTIES, RestAuthenticator.withoutOAuth()).execute(Map.of(
                 "target", "idm", "path", "/users/gone",
                 "expect", Map.of("status", 404)), false);
 
@@ -240,7 +241,7 @@ class RestStepsTest {
     void testVerifyStatusMismatchFails() {
         stubFor(get(urlEqualTo("/users/jdoe")).willReturn(aResponse().withStatus(500)));
 
-        StepOutcome outcome = new RestVerifyStep(CONNECTOR, PROPERTIES).execute(Map.of(
+        StepOutcome outcome = new RestVerifyStep(CONNECTOR, PROPERTIES, RestAuthenticator.withoutOAuth()).execute(Map.of(
                 "target", "idm", "path", "/users/jdoe",
                 "expect", Map.of("status", 200)), false);
 
@@ -256,7 +257,7 @@ class RestStepsTest {
                 .withHeader("Content-Type", "application/json")
                 .withBody("{\"department\":\"Sales\"}")));
 
-        StepOutcome outcome = new RestVerifyStep(CONNECTOR, PROPERTIES).execute(Map.of(
+        StepOutcome outcome = new RestVerifyStep(CONNECTOR, PROPERTIES, RestAuthenticator.withoutOAuth()).execute(Map.of(
                 "target", "idm", "path", "/users/jdoe",
                 "expect", Map.of("body", Map.of("department", "Engineering"))), false);
 
@@ -268,7 +269,7 @@ class RestStepsTest {
     @Test
     @DisplayName("rest.verify should reject an expect block that asserts nothing")
     void testVerifyRejectsEmptyExpect() {
-        StepOutcome outcome = new RestVerifyStep(CONNECTOR, PROPERTIES).execute(Map.of(
+        StepOutcome outcome = new RestVerifyStep(CONNECTOR, PROPERTIES, RestAuthenticator.withoutOAuth()).execute(Map.of(
                 "target", "idm", "path", "/users/jdoe",
                 "expect", Map.of()), false);
 
@@ -279,7 +280,7 @@ class RestStepsTest {
     @Test
     @DisplayName("rest.verify should reject an unknown key inside expect")
     void testVerifyRejectsUnknownExpectKey() {
-        StepOutcome outcome = new RestVerifyStep(CONNECTOR, PROPERTIES).execute(Map.of(
+        StepOutcome outcome = new RestVerifyStep(CONNECTOR, PROPERTIES, RestAuthenticator.withoutOAuth()).execute(Map.of(
                 "target", "idm", "path", "/users/jdoe",
                 "expect", Map.of("staus", 200)), false);
 
@@ -299,7 +300,7 @@ class RestStepsTest {
                 .withHeader("Content-Type", "application/json")
                 .withBody("{\"department\":\"Sales\"}")));
 
-        StepOutcome outcome = new RestVerifyStep(CONNECTOR, PROPERTIES).execute(Map.of(
+        StepOutcome outcome = new RestVerifyStep(CONNECTOR, PROPERTIES, RestAuthenticator.withoutOAuth()).execute(Map.of(
                 "target", "idm", "path", "/users/jdoe",
                 "expect", Map.of("body", "Engineering")), false);
 
@@ -318,7 +319,7 @@ class RestStepsTest {
                 .withHeader("Content-Type", "application/json")
                 .withBody("{\"department\":\"Sales\"}")));
 
-        StepOutcome outcome = new RestVerifyStep(CONNECTOR, PROPERTIES).execute(Map.of(
+        StepOutcome outcome = new RestVerifyStep(CONNECTOR, PROPERTIES, RestAuthenticator.withoutOAuth()).execute(Map.of(
                 "target", "idm", "path", "/users/jdoe",
                 "expect", Map.of("body", Map.of())), false);
 
@@ -343,7 +344,7 @@ class RestStepsTest {
         Map<String, Object> expect = new HashMap<>();
         expect.put("body", null);
 
-        StepOutcome outcome = new RestVerifyStep(CONNECTOR, PROPERTIES).execute(Map.of(
+        StepOutcome outcome = new RestVerifyStep(CONNECTOR, PROPERTIES, RestAuthenticator.withoutOAuth()).execute(Map.of(
                 "target", "idm", "path", "/users/jdoe",
                 "expect", expect), false);
 
@@ -364,7 +365,7 @@ class RestStepsTest {
         Map<String, Object> body = new HashMap<>();
         body.put("staus", null);
 
-        StepOutcome outcome = new RestVerifyStep(CONNECTOR, PROPERTIES).execute(Map.of(
+        StepOutcome outcome = new RestVerifyStep(CONNECTOR, PROPERTIES, RestAuthenticator.withoutOAuth()).execute(Map.of(
                 "target", "idm", "path", "/users/jdoe",
                 "expect", Map.of("body", body)), false);
 
@@ -381,7 +382,7 @@ class RestStepsTest {
         // already rejected at the top level, one level further in. mismatchIn recursed into
         // this with no emptiness check, so the subset comparison would iterate zero fields and
         // pass against any object at all.
-        StepOutcome outcome = new RestVerifyStep(CONNECTOR, PROPERTIES).execute(Map.of(
+        StepOutcome outcome = new RestVerifyStep(CONNECTOR, PROPERTIES, RestAuthenticator.withoutOAuth()).execute(Map.of(
                 "target", "idm", "path", "/users/jdoe",
                 "expect", Map.of("body", Map.of("profile", Map.of()))), false);
 
@@ -396,7 +397,7 @@ class RestStepsTest {
         RestProperties noBaseUrl = new RestProperties();
         noBaseUrl.getRest().put("idm", new RestProperties.RestApiConfig());
 
-        StepOutcome outcome = new RestVerifyStep(CONNECTOR, noBaseUrl).execute(Map.of(
+        StepOutcome outcome = new RestVerifyStep(CONNECTOR, noBaseUrl, RestAuthenticator.withoutOAuth()).execute(Map.of(
                 "target", "idm", "path", "/users/1",
                 "expect", Map.of("status", 200)), false);
 
@@ -418,7 +419,7 @@ class RestStepsTest {
                 .withHeader("Content-Type", "application/json")
                 .withBody("{\"score\":1.0}")));
 
-        StepOutcome outcome = new RestVerifyStep(CONNECTOR, PROPERTIES).execute(Map.of(
+        StepOutcome outcome = new RestVerifyStep(CONNECTOR, PROPERTIES, RestAuthenticator.withoutOAuth()).execute(Map.of(
                 "target", "idm", "path", "/users/jdoe",
                 "expect", Map.of("body", Map.of("score", 1))), false);
 
@@ -433,7 +434,7 @@ class RestStepsTest {
         // must still match "200".
         stubFor(get(urlEqualTo("/users/jdoe")).willReturn(aResponse().withStatus(200)));
 
-        StepOutcome outcome = new RestVerifyStep(CONNECTOR, PROPERTIES).execute(Map.of(
+        StepOutcome outcome = new RestVerifyStep(CONNECTOR, PROPERTIES, RestAuthenticator.withoutOAuth()).execute(Map.of(
                 "target", "idm", "path", "/users/jdoe",
                 "expect", Map.of("status", "200")), false);
 
@@ -446,7 +447,7 @@ class RestStepsTest {
         // params.get("expect") is an unchecked cast inside execute(); a scenario writing
         // `expect: something` (a scalar) must not turn into a ClassCastException — a
         // StepType.execute implementation must never throw.
-        StepOutcome outcome = new RestVerifyStep(CONNECTOR, PROPERTIES).execute(Map.of(
+        StepOutcome outcome = new RestVerifyStep(CONNECTOR, PROPERTIES, RestAuthenticator.withoutOAuth()).execute(Map.of(
                 "target", "idm", "path", "/users/jdoe",
                 "expect", "something"), false);
 
@@ -457,7 +458,7 @@ class RestStepsTest {
     @Test
     @DisplayName("rest.verify should be retryable so the engine can wait on provisioning")
     void testVerifyIsRetryable() {
-        assertThat(new RestVerifyStep(CONNECTOR, PROPERTIES).retryable()).isTrue();
+        assertThat(new RestVerifyStep(CONNECTOR, PROPERTIES, RestAuthenticator.withoutOAuth()).retryable()).isTrue();
     }
 
     @Test
@@ -465,7 +466,7 @@ class RestStepsTest {
     void testVerifyDefaultsToGet() {
         stubFor(get(urlEqualTo("/users/jdoe")).willReturn(aResponse().withStatus(200)));
 
-        StepOutcome outcome = new RestVerifyStep(CONNECTOR, PROPERTIES).execute(Map.of(
+        StepOutcome outcome = new RestVerifyStep(CONNECTOR, PROPERTIES, RestAuthenticator.withoutOAuth()).execute(Map.of(
                 "target", "idm", "path", "/users/jdoe",
                 "expect", Map.of("status", 200)), false);
 

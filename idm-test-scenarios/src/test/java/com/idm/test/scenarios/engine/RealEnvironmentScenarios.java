@@ -3,9 +3,11 @@ package com.idm.test.scenarios.engine;
 import com.idm.test.connector.database.client.MultiDatabaseConnector;
 import com.idm.test.connector.ldap.client.EdirectoryConnector;
 import com.idm.test.connector.rest.client.IdmRestConnector;
+import com.idm.test.connector.rest.client.RestAuthenticator;
 import com.idm.test.connector.rest.config.RestProperties;
 import com.idm.test.connector.soap.client.ResourceServiceConnector;
 import com.idm.test.connector.soap.client.RoleServiceConnector;
+import com.idm.test.connector.soap.config.SoapProperties;
 import com.idm.test.core.config.TestExecutorProperties;
 import com.idm.test.core.engine.TestExecutor;
 import com.idm.test.engine.FixtureFactory;
@@ -56,7 +58,7 @@ import java.util.stream.Stream;
  * </pre>
  * Add {@code -Dscenario=<file or glob>} to run only matching files, as with
  * {@link YamlScenarioTest}.
- * The four guards below run before any scenario. A connection error is loud on its own. The
+ * The five guards below run before any scenario. A connection error is loud on its own. The
  * failure they prevent is the quiet one: a run against the embedded configuration, a
  * placeholder, or an empty directory that reports green.
  */
@@ -76,6 +78,25 @@ public class RealEnvironmentScenarios {
             "sap", "https://sap.company.com/api/v1",
             "workday", "https://workday.company.com/api/v1",
             "servicenow", "https://instance.service-now.com/api");
+
+    /** A username/password pair, or an OAuth client id/secret pair. */
+    record Credentials(String username, String password) {
+    }
+
+    /** application.yml's fallback credentials per REST target. Pinned to that file by RealEnvironmentGuardsTest. */
+    static final Map<String, Credentials> REST_CREDENTIAL_PLACEHOLDERS = Map.of(
+            "idm", new Credentials("idmadmin", "idmpass"));
+
+    /** application.yml's fallback SOAP credentials. Pinned to that file by RealEnvironmentGuardsTest. */
+    static final Credentials SOAP_CREDENTIAL_PLACEHOLDER = new Credentials("idmadmin", "idmpass");
+
+    /** application.yml's fallback client id and secret per OAuth2 registration. Pinned by RealEnvironmentGuardsTest. */
+    static final Map<String, Credentials> OAUTH_CLIENT_PLACEHOLDERS = Map.of(
+            "sap", new Credentials("sap-test-client", "sap-test-secret"),
+            "workday", new Credentials("workday-client", "workday-secret"),
+            "servicenow", new Credentials("snow-client", "snow-secret"));
+
+    private static final String REGISTRATION = "spring.security.oauth2.client.registration.";
 
     private static final Path RESULTS = Path.of("target", "real-environment-results.json");
 
@@ -101,6 +122,12 @@ public class RealEnvironmentScenarios {
     private RestProperties restProperties;
 
     @Autowired
+    private RestAuthenticator restAuthenticator;
+
+    @Autowired
+    private SoapProperties soapProperties;
+
+    @Autowired
     private TestExecutor testExecutor;
 
     @Autowired
@@ -119,10 +146,11 @@ public class RealEnvironmentScenarios {
         // that matches nothing gets the filter's message.
         List<String> selected = YamlScenarioTest.selectedScenarioFiles(scenarioDir);
         requireRestTargetsIn(scenarioDir, selected, restProperties);
+        requireCredentialsIn(scenarioDir, selected, restProperties, soapProperties, environment);
 
         Map<String, StepType> registry = YamlScenarioTest.registry(
                 edirectoryConnector, databaseConnector, roleServiceConnector,
-                resourceServiceConnector, idmRestConnector, restProperties);
+                resourceServiceConnector, idmRestConnector, restProperties, restAuthenticator);
         ScenarioValidator validator = new ScenarioValidator(registry, FixtureFactory.SUPPORTED_GENERATORS);
         ScenarioEngine engine = new ScenarioEngine(
                 registry,
@@ -247,7 +275,117 @@ public class RealEnvironmentScenarios {
     }
 
     /**
-     * Loads the selected files for guard 4. A file that fails to load is skipped here on
+     * Guard 5. Refuses credentials the run is about to use when they are still application.yml's
+     * placeholders or only half given: for each REST target the selected scenarios use, and for
+     * SOAP when they use roles.* or resources.*. An unauthenticated target (nothing set) passes.
+     * Messages name the property and the variable that sets it in every profile, never a value.
+     * Runs after guard 4, so every target here is configured.
+     */
+    static void requireCredentials(Set<String> restTargets, boolean usesSoap, RestProperties rest,
+                                   SoapProperties soap, Environment environment) {
+        for (String target : new TreeSet<>(restTargets)) {
+            RestProperties.RestApiConfig config = rest.getRest().get(target);
+            if (config == null) {
+                continue;
+            }
+            String prefix = "idm.test.rest." + target + ".";
+            if (config.isUseOAuth()) {
+                requireOAuthClient(target, config.getOauthClientName(), environment);
+            } else {
+                requirePair(prefix + "username", config.getUsername(), prefix + "password", config.getPassword(),
+                        REST_CREDENTIAL_PLACEHOLDERS.get(target));
+            }
+        }
+        if (usesSoap) {
+            requirePair("idm.test.soap.username", soap.getUsername(), "idm.test.soap.password", soap.getPassword(),
+                    SOAP_CREDENTIAL_PLACEHOLDER);
+        }
+    }
+
+    /** Guard 5's entry point: loads {@code files} and checks the credentials they need. */
+    static void requireCredentialsIn(String scenarioDir, List<String> files, RestProperties rest,
+                                     SoapProperties soap, Environment environment) {
+        List<Scenario> scenarios = loadForGuards(scenarioDir, files);
+        requireCredentials(restTargets(scenarios), usesSoap(scenarios), rest, soap, environment);
+    }
+
+    /** Whether any scenario has a roles.* or resources.* step, in steps or cleanup. */
+    static boolean usesSoap(List<Scenario> scenarios) {
+        for (Scenario scenario : scenarios) {
+            List<StepSpec> entries = new ArrayList<>(scenario.steps());
+            entries.addAll(scenario.cleanup());
+            for (StepSpec step : entries) {
+                if (step.type().startsWith("roles.") || step.type().startsWith("resources.")) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * The environment variable that sets {@code property} in every profile, by Spring's relaxed
+     * binding: upper case, dashes removed, dots to underscores.
+     */
+    static String variableFor(String property) {
+        return property.toUpperCase(Locale.ROOT).replace("-", "").replace('.', '_');
+    }
+
+    private static void requirePair(String userProperty, String user, String passwordProperty, String password,
+                                    Credentials placeholder) {
+        boolean hasUser = user != null && !user.isBlank();
+        boolean hasPassword = password != null && !password.isBlank();
+        if (hasUser != hasPassword) {
+            String present = hasUser ? userProperty : passwordProperty;
+            String missing = hasUser ? passwordProperty : userProperty;
+            throw new IllegalStateException(present + " is set but " + missing + " is not. Set "
+                    + variableFor(missing) + " as well, or give neither for an unauthenticated target.");
+        }
+        if (placeholder == null) {
+            return;
+        }
+        if (hasUser && user.equals(placeholder.username())) {
+            refusePlaceholder(userProperty);
+        }
+        if (hasPassword && password.equals(placeholder.password())) {
+            refusePlaceholder(passwordProperty);
+        }
+    }
+
+    private static void requireOAuthClient(String target, String name, Environment environment) {
+        String nameProperty = "idm.test.rest." + target + ".oauth-client-name";
+        if (name == null || name.isBlank()) {
+            throw new IllegalStateException("idm.test.rest." + target + ".use-oauth is true but " + nameProperty
+                    + " is not set. Set " + variableFor(nameProperty) + " to a " + REGISTRATION + "<name> entry.");
+        }
+        String idProperty = REGISTRATION + name + ".client-id";
+        String secretProperty = REGISTRATION + name + ".client-secret";
+        String clientId = environment.getProperty(idProperty);
+        String secret = environment.getProperty(secretProperty);
+        if (clientId == null || clientId.isBlank()) {
+            throw new IllegalStateException("REST target '" + target + "' uses OAuth2 registration '" + name
+                    + "', which is not configured: " + idProperty + " is not set. Set " + variableFor(idProperty) + ".");
+        }
+        if (secret == null || secret.isBlank()) {
+            throw new IllegalStateException("REST target '" + target + "' uses OAuth2 registration '" + name
+                    + "', but " + secretProperty + " is not set. Set " + variableFor(secretProperty) + ".");
+        }
+        Credentials placeholder = OAUTH_CLIENT_PLACEHOLDERS.get(name);
+        if (placeholder != null && clientId.equals(placeholder.username())) {
+            refusePlaceholder(idProperty);
+        }
+        if (placeholder != null && secret.equals(placeholder.password())) {
+            refusePlaceholder(secretProperty);
+        }
+    }
+
+    private static void refusePlaceholder(String property) {
+        throw new IllegalStateException(property + " is still application.yml's placeholder, so no real credential"
+                + " was given. Set " + variableFor(property) + ".");
+    }
+
+    /**
+     * Loads the selected files for guards 4 and 5. A file that fails to load is skipped here on
      * purpose: {@code buildTests} turns it into its own failing test carrying the real
      * error, and reporting it twice would only add noise.
      */

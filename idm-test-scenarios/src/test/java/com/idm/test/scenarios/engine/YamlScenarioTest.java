@@ -3,6 +3,7 @@ package com.idm.test.scenarios.engine;
 import com.idm.test.connector.database.client.MultiDatabaseConnector;
 import com.idm.test.connector.ldap.client.EdirectoryConnector;
 import com.idm.test.connector.rest.client.IdmRestConnector;
+import com.idm.test.connector.rest.client.RestAuthenticator;
 import com.idm.test.connector.rest.config.RestProperties;
 import com.idm.test.connector.soap.client.ResourceServiceConnector;
 import com.idm.test.connector.soap.client.RoleServiceConnector;
@@ -73,7 +74,7 @@ class YamlScenarioTest extends BaseIntegrationTest {
     Stream<DynamicTest> scenarios() throws Exception {
         Map<String, StepType> registry = registry(
                 edirectoryConnector, databaseConnector, roleServiceConnector,
-                resourceServiceConnector, idmRestConnector, restProperties);
+                resourceServiceConnector, idmRestConnector, restProperties, restAuthenticator);
         ScenarioValidator validator = new ScenarioValidator(registry, FixtureFactory.SUPPORTED_GENERATORS);
         ScenarioEngine engine = new ScenarioEngine(
                 registry,
@@ -204,7 +205,8 @@ class YamlScenarioTest extends BaseIntegrationTest {
             RoleServiceConnector roleServiceConnector,
             ResourceServiceConnector resourceServiceConnector,
             IdmRestConnector restConnector,
-            RestProperties restProperties) {
+            RestProperties restProperties,
+            RestAuthenticator restAuthenticator) {
         Map<String, StepType> registry = new LinkedHashMap<>();
         for (StepType type : List.of(
                 new LdapCreateStep(edirectoryConnector),
@@ -217,9 +219,9 @@ class YamlScenarioTest extends BaseIntegrationTest {
                 new RolesRevokeStep(roleServiceConnector),
                 new ResourcesGrantStep(resourceServiceConnector),
                 new ResourcesRevokeStep(resourceServiceConnector),
-                new RestRequestStep(restConnector, restProperties),
-                new RestVerifyStep(restConnector, restProperties),
-                new HttpRequestStep(restConnector, restProperties))) {
+                new RestRequestStep(restConnector, restProperties, restAuthenticator),
+                new RestVerifyStep(restConnector, restProperties, restAuthenticator),
+                new HttpRequestStep(restConnector, restProperties, restAuthenticator))) {
             registry.put(type.name(), type);
         }
         return registry;

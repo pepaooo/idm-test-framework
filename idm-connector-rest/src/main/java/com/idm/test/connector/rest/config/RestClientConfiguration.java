@@ -1,12 +1,16 @@
 package com.idm.test.connector.rest.config;
 
+import com.idm.test.connector.rest.client.RestAuthenticator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.client.ClientHttpRequestFactory;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
+import org.springframework.security.oauth2.client.OAuth2AuthorizedClientService;
+import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
 import org.springframework.web.client.RestClient;
 
 import java.net.http.HttpClient;
@@ -45,6 +49,19 @@ public class RestClientConfiguration {
 
         log.info("RestClient configured successfully");
         return client;
+    }
+
+    /**
+     * The authenticator every REST step asks for its target's {@code Authorization} header.
+     * Spring Boot's OAuth2 client auto-configuration supplies the registration repository and
+     * authorized-client service when {@code spring.security.oauth2.client.registration} has
+     * entries; without them, only basic and unauthenticated targets work.
+     */
+    @Bean
+    public RestAuthenticator restAuthenticator(
+            ObjectProvider<ClientRegistrationRepository> registrations,
+            ObjectProvider<OAuth2AuthorizedClientService> clients) {
+        return new RestAuthenticator(registrations.getIfAvailable(), clients.getIfAvailable());
     }
 
     /**

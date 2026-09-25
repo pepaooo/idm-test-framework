@@ -194,6 +194,7 @@ record TextResponse(int status, Map<String, List<String>> headers, String body)
 1. **Authentication** from target settings (basic and OAuth). `RestProperties` has `username`,
    `password` and OAuth fields, but nothing wires them into `RestClient` today. Until then, a
    scenario can send its own `Authorization` header.
+   *Done in ITF-23: `docs/specs/2026-09-25-http-auth-design.md`.*
 2. **JavaScript assertions against a response,** evaluated on each attempt and retryable with
    `wait:`. This is the Postman/Karate "check" half.
 3. **Reading XML from JavaScript.** Rhino 1.8.0 has no E4X, and the sandbox blocks Java classes, so

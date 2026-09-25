@@ -157,6 +157,8 @@ idm:
       sap:
         base-url: ${SAP_REST_URL:https://sap.company.com/api/v1}
         # Uses OAuth2 configuration from spring.security.oauth2.client
+        use-oauth: true
+        oauth-client-name: sap
         connect-timeout: 15000
         read-timeout: 45000
 
@@ -164,6 +166,8 @@ idm:
       workday:
         base-url: ${WORKDAY_REST_URL:https://workday.company.com/api/v1}
         # Uses OAuth2 configuration from spring.security.oauth2.client
+        use-oauth: true
+        oauth-client-name: workday
         connect-timeout: 15000
         read-timeout: 60000
 
@@ -171,6 +175,8 @@ idm:
       servicenow:
         base-url: ${SERVICENOW_REST_URL:https://instance.service-now.com/api}
         # Uses OAuth2 configuration from spring.security.oauth2.client
+        use-oauth: true
+        oauth-client-name: servicenow
         connect-timeout: 10000
         read-timeout: 30000
 

@@ -1,6 +1,7 @@
 package com.idm.test.scenarios.engine;
 
 import com.idm.test.connector.rest.config.RestProperties;
+import com.idm.test.connector.soap.config.SoapProperties;
 import com.idm.test.engine.ScenarioLoader;
 import com.idm.test.engine.model.Scenario;
 
@@ -17,6 +18,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Consumer;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
@@ -389,5 +391,171 @@ class RealEnvironmentGuardsTest {
                 .containsExactlyInAnyOrderElementsOf(restVariables.keySet());
         RealEnvironmentScenarios.REST_URL_PLACEHOLDERS.forEach((target, placeholder) ->
                 assertThat(yaml).contains("${" + restVariables.get(target) + ":" + placeholder + "}"));
+    }
+
+    private static RestProperties credentialed(String target, Consumer<RestProperties.RestApiConfig> settings) {
+        RestProperties properties = restTarget(target, "https://api.example.org");
+        settings.accept(properties.getRest().get(target));
+        return properties;
+    }
+
+    private static SoapProperties soap(String username, String password) {
+        SoapProperties soap = new SoapProperties();
+        soap.setUsername(username);
+        soap.setPassword(password);
+        return soap;
+    }
+
+    private static final SoapProperties NO_SOAP = soap(null, null);
+
+    private static MockEnvironment registration(String name, String clientId, String secret) {
+        MockEnvironment environment = new MockEnvironment();
+        String prefix = "spring.security.oauth2.client.registration." + name + ".";
+        if (clientId != null) {
+            environment.setProperty(prefix + "client-id", clientId);
+        }
+        if (secret != null) {
+            environment.setProperty(prefix + "client-secret", secret);
+        }
+        return environment;
+    }
+
+    private static void refuses(Runnable guard, String... fragments) {
+        assertThatThrownBy(guard::run).isInstanceOf(IllegalStateException.class)
+                .satisfies(e -> assertThat(e.getMessage()).contains(fragments));
+    }
+
+    @Test
+    @DisplayName("Guard 5 lets real basic credentials, an unauthenticated target, and a real OAuth client through")
+    void testRealCredentialsPass() {
+        assertThatCode(() -> RealEnvironmentScenarios.requireCredentials(Set.of("idm"), false,
+                credentialed("idm", c -> { c.setUsername("svc-real"); c.setPassword("real-pass"); }),
+                NO_SOAP, new MockEnvironment())).doesNotThrowAnyException();
+        assertThatCode(() -> RealEnvironmentScenarios.requireCredentials(Set.of("open"), false,
+                credentialed("open", c -> { }), NO_SOAP, new MockEnvironment())).doesNotThrowAnyException();
+        assertThatCode(() -> RealEnvironmentScenarios.requireCredentials(Set.of("sap"), false,
+                credentialed("sap", c -> { c.setUseOAuth(true); c.setOauthClientName("sap"); }),
+                NO_SOAP, registration("sap", "real-id", "real-secret"))).doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("Guard 5 refuses the REST credential placeholders, naming the variable and not the value")
+    void testRestCredentialPlaceholdersRefused() {
+        RealEnvironmentScenarios.Credentials placeholder = RealEnvironmentScenarios.REST_CREDENTIAL_PLACEHOLDERS.get("idm");
+
+        refuses(() -> RealEnvironmentScenarios.requireCredentials(Set.of("idm"), false,
+                        credentialed("idm", c -> { c.setUsername(placeholder.username()); c.setPassword("real-pass"); }),
+                        NO_SOAP, new MockEnvironment()),
+                "idm.test.rest.idm.username", "IDM_TEST_REST_IDM_USERNAME");
+        assertThatThrownBy(() -> RealEnvironmentScenarios.requireCredentials(Set.of("idm"), false,
+                credentialed("idm", c -> { c.setUsername("svc-real"); c.setPassword(placeholder.password()); }),
+                NO_SOAP, new MockEnvironment()))
+                .hasMessageContaining("IDM_TEST_REST_IDM_PASSWORD")
+                .hasMessageNotContaining(placeholder.password());
+    }
+
+    @Test
+    @DisplayName("Guard 5 refuses a REST username without a password and the reverse, without the value")
+    void testRestHalfCredentialsRefused() {
+        refuses(() -> RealEnvironmentScenarios.requireCredentials(Set.of("idm"), false,
+                        credentialed("idm", c -> c.setUsername("svc-real")), NO_SOAP, new MockEnvironment()),
+                "IDM_TEST_REST_IDM_PASSWORD");
+        assertThatThrownBy(() -> RealEnvironmentScenarios.requireCredentials(Set.of("idm"), false,
+                credentialed("idm", c -> c.setPassword("real-pass")), NO_SOAP, new MockEnvironment()))
+                .hasMessageContaining("IDM_TEST_REST_IDM_USERNAME")
+                .hasMessageNotContaining("real-pass");
+    }
+
+    @Test
+    @DisplayName("Guard 5 refuses use-oauth without a name, or naming an unknown registration")
+    void testOAuthRegistrationRefused() {
+        refuses(() -> RealEnvironmentScenarios.requireCredentials(Set.of("sap"), false,
+                        credentialed("sap", c -> c.setUseOAuth(true)), NO_SOAP, new MockEnvironment()),
+                "idm.test.rest.sap.oauth-client-name", "IDM_TEST_REST_SAP_OAUTHCLIENTNAME");
+        refuses(() -> RealEnvironmentScenarios.requireCredentials(Set.of("sap"), false,
+                        credentialed("sap", c -> { c.setUseOAuth(true); c.setOauthClientName("nope"); }),
+                        NO_SOAP, new MockEnvironment()),
+                "'nope'", "SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_NOPE_CLIENTID");
+    }
+
+    @Test
+    @DisplayName("Guard 5 refuses each OAuth client placeholder")
+    void testOAuthPlaceholdersRefused() {
+        assertThat(RealEnvironmentScenarios.OAUTH_CLIENT_PLACEHOLDERS).containsOnlyKeys("sap", "workday", "servicenow");
+        RealEnvironmentScenarios.OAUTH_CLIENT_PLACEHOLDERS.forEach((name, placeholder) -> {
+            String variable = "SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_" + name.toUpperCase(Locale.ROOT);
+            RestProperties target = credentialed(name, c -> { c.setUseOAuth(true); c.setOauthClientName(name); });
+            refuses(() -> RealEnvironmentScenarios.requireCredentials(Set.of(name), false, target, NO_SOAP,
+                    registration(name, placeholder.username(), "real-secret")), variable + "_CLIENTID");
+            assertThatThrownBy(() -> RealEnvironmentScenarios.requireCredentials(Set.of(name), false, target, NO_SOAP,
+                    registration(name, "real-id", placeholder.password())))
+                    .hasMessageContaining(variable + "_CLIENTSECRET")
+                    .hasMessageNotContaining(placeholder.password());
+        });
+    }
+
+    @Test
+    @DisplayName("Guard 5 checks SOAP credentials only when roles.* or resources.* are used")
+    void testSoapCredentialsOnlyWhenUsed() {
+        RealEnvironmentScenarios.Credentials placeholder = RealEnvironmentScenarios.SOAP_CREDENTIAL_PLACEHOLDER;
+        SoapProperties placeholders = soap(placeholder.username(), placeholder.password());
+
+        assertThatCode(() -> RealEnvironmentScenarios.requireCredentials(Set.of(), false,
+                new RestProperties(), placeholders, new MockEnvironment())).doesNotThrowAnyException();
+        refuses(() -> RealEnvironmentScenarios.requireCredentials(Set.of(), true,
+                        new RestProperties(), placeholders, new MockEnvironment()),
+                "IDM_TEST_SOAP_USERNAME");
+        refuses(() -> RealEnvironmentScenarios.requireCredentials(Set.of(), true,
+                        new RestProperties(), soap("svc-real", null), new MockEnvironment()),
+                "IDM_TEST_SOAP_PASSWORD");
+        assertThatCode(() -> RealEnvironmentScenarios.requireCredentials(Set.of(), true,
+                new RestProperties(), soap("svc-real", "real-pass"), new MockEnvironment())).doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("usesSoap sees roles.* and resources.* in steps and in cleanup, and nothing else")
+    void testUsesSoap() {
+        assertThat(RealEnvironmentScenarios.usesSoap(List.of(scenario("""
+                name: ldap only
+                steps:
+                  - ldap.delete:
+                      dn: cn=x,ou=users
+                """)))).isFalse();
+        assertThat(RealEnvironmentScenarios.usesSoap(List.of(scenario("""
+                name: grant
+                steps:
+                  - roles.grant:
+                      user: cn=x,ou=users
+                      roles: [cn=r,ou=roles]
+                """)))).isTrue();
+        assertThat(RealEnvironmentScenarios.usesSoap(List.of(scenario("""
+                name: cleanup revoke
+                steps:
+                  - ldap.delete:
+                      dn: cn=x,ou=users
+                cleanup:
+                  - resources.revoke:
+                      user: cn=x,ou=users
+                      resource: cn=res,ou=resources
+                """)))).isTrue();
+    }
+
+    @Test
+    @DisplayName("The credential placeholders match the fallbacks application.yml declares")
+    void testCredentialPlaceholdersMatchApplicationYml() throws IOException {
+        String yaml = Files.readString(Path.of("src/test/resources/application.yml"));
+        RealEnvironmentScenarios.Credentials rest = RealEnvironmentScenarios.REST_CREDENTIAL_PLACEHOLDERS.get("idm");
+        RealEnvironmentScenarios.Credentials soap = RealEnvironmentScenarios.SOAP_CREDENTIAL_PLACEHOLDER;
+
+        assertThat(RealEnvironmentScenarios.REST_CREDENTIAL_PLACEHOLDERS).containsOnlyKeys("idm");
+        assertThat(yaml)
+                .contains("${IDM_REST_USER:" + rest.username() + "}")
+                .contains("${IDM_REST_PASSWORD:" + rest.password() + "}")
+                .contains("${IDM_SOAP_USER:" + soap.username() + "}")
+                .contains("${IDM_SOAP_PASSWORD:" + soap.password() + "}");
+        Map<String, String> prefixes = Map.of("sap", "SAP", "workday", "WORKDAY", "servicenow", "SERVICENOW");
+        RealEnvironmentScenarios.OAUTH_CLIENT_PLACEHOLDERS.forEach((name, placeholder) -> assertThat(yaml)
+                .contains("${" + prefixes.get(name) + "_CLIENT_ID:" + placeholder.username() + "}")
+                .contains("${" + prefixes.get(name) + "_CLIENT_SECRET:" + placeholder.password() + "}"));
     }
 }

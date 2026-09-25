@@ -47,7 +47,7 @@ class YamlScenarioValidationTest extends BaseIntegrationTest {
     void testFactoryHandlesMixOfValidAndInvalidFiles(@TempDir Path tempDir) throws Exception {
         Map<String, StepType> registry = YamlScenarioTest.registry(
                 edirectoryConnector, databaseConnector, roleServiceConnector,
-                resourceServiceConnector, idmRestConnector, restProperties);
+                resourceServiceConnector, idmRestConnector, restProperties, restAuthenticator);
         ScenarioValidator validator = new ScenarioValidator(registry, FixtureFactory.SUPPORTED_GENERATORS);
         ScenarioEngine engine = new ScenarioEngine(
                 registry,
@@ -99,7 +99,7 @@ class YamlScenarioValidationTest extends BaseIntegrationTest {
     void testFullVocabularyValidates() {
         Map<String, StepType> registry = YamlScenarioTest.registry(
                 edirectoryConnector, databaseConnector, roleServiceConnector,
-                resourceServiceConnector, idmRestConnector, restProperties);
+                resourceServiceConnector, idmRestConnector, restProperties, restAuthenticator);
         ScenarioValidator validator =
                 new ScenarioValidator(registry, FixtureFactory.SUPPORTED_GENERATORS);
 

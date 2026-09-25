@@ -48,6 +48,7 @@ public class RoleServiceConnector {
             BindingProvider.ENDPOINT_ADDRESS_PROPERTY,
             serviceUrl
         );
+        SoapCredentials.apply(bindingProvider, soapProperties);
 
         log.info("RoleServiceConnector initialized with endpoint: {}", serviceUrl);
     }

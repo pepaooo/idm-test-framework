@@ -5,6 +5,7 @@ import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
 import com.idm.test.connector.database.client.MultiDatabaseConnector;
 import com.idm.test.connector.ldap.client.EdirectoryConnector;
 import com.idm.test.connector.rest.client.IdmRestConnector;
+import com.idm.test.connector.rest.client.RestAuthenticator;
 import com.idm.test.connector.rest.config.RestProperties;
 import com.idm.test.connector.soap.client.ResourceServiceConnector;
 import com.idm.test.connector.soap.client.RoleServiceConnector;
@@ -144,6 +145,9 @@ public abstract class BaseIntegrationTest {
 
     @Autowired
     protected RestProperties restProperties;
+
+    @Autowired
+    protected RestAuthenticator restAuthenticator;
 
     @Autowired
     protected TestExecutor testExecutor;

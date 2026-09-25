@@ -214,6 +214,10 @@ public class ContainerScenarios extends RealEnvironmentScenarios {
         set("idm.test.ldap.password", LDAP_ADMIN_PASSWORD);
         set("idm.test.soap.url", wiremockBase + "/IDMProv/role/service");
         set("idm.test.soap.resource-url", wiremockBase + "/IDMProv/resource/service");
+        // Guard 5 refuses application.yml's placeholder SOAP credentials, and the corpus uses
+        // roles.*/resources.*. The WireMock SOAP stubs ignore authentication.
+        set("idm.test.soap.username", "container-user");
+        set("idm.test.soap.password", "container-password");
 
         for (String database : DATABASES) {
             String prefix = "idm.test.databases." + database + ".";

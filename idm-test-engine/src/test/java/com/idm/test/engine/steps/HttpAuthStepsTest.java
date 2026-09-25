@@ -1,0 +1,218 @@
+package com.idm.test.engine.steps;
+
+import com.github.tomakehurst.wiremock.WireMockServer;
+import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
+import com.idm.test.connector.rest.client.IdmRestConnector;
+import com.idm.test.connector.rest.client.RestAuthenticator;
+import com.idm.test.connector.rest.config.RestClientConfiguration;
+import com.idm.test.connector.rest.config.RestProperties;
+import com.idm.test.engine.spi.StepOutcome;
+import com.idm.test.engine.spi.StepType;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.springframework.security.oauth2.client.registration.ClientRegistration;
+import org.springframework.security.oauth2.client.registration.InMemoryClientRegistrationRepository;
+import org.springframework.security.oauth2.core.AuthorizationGrantType;
+import org.springframework.web.client.RestClient;
+
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+import static com.github.tomakehurst.wiremock.client.WireMock.*;
+import static org.assertj.core.api.Assertions.assertThat;
+
+/**
+ * The three HTTP steps send the Authorization header their target's settings call for, unless
+ * the step writes its own.
+ */
+@DisplayName("HTTP steps: target authentication")
+class HttpAuthStepsTest {
+
+    private static final WireMockServer WIREMOCK =
+            new WireMockServer(WireMockConfiguration.options().dynamicPort());
+
+    static {
+        WIREMOCK.start();
+    }
+
+    private static final String PASSWORD = "s3cret";
+    /** base64("svc:s3cret") */
+    private static final String BASIC = "Basic c3ZjOnMzY3JldA==";
+    private static final String CLIENT_SECRET = "client-secret-value";
+
+    private static final IdmRestConnector CONNECTOR = new IdmRestConnector(
+            RestClient.builder().requestFactory(RestClientConfiguration.requestFactory()).build());
+
+    private static final RestProperties PROPERTIES = properties();
+
+    private static RestProperties properties() {
+        RestProperties properties = new RestProperties();
+        String base = WIREMOCK.baseUrl();
+
+        RestProperties.RestApiConfig basic = new RestProperties.RestApiConfig();
+        basic.setBaseUrl(base);
+        basic.setUsername("svc");
+        basic.setPassword(PASSWORD);
+        properties.getRest().put("basic", basic);
+
+        RestProperties.RestApiConfig oauth = new RestProperties.RestApiConfig();
+        oauth.setBaseUrl(base);
+        oauth.setUseOAuth(true);
+        oauth.setOauthClientName("svc");
+        properties.getRest().put("oauth", oauth);
+
+        RestProperties.RestApiConfig open = new RestProperties.RestApiConfig();
+        open.setBaseUrl(base);
+        properties.getRest().put("open", open);
+
+        RestProperties.RestApiConfig half = new RestProperties.RestApiConfig();
+        half.setBaseUrl(base);
+        half.setPassword(PASSWORD);
+        properties.getRest().put("half", half);
+        return properties;
+    }
+
+    /**
+     * A new authenticator with an empty token cache, so a test that counts token requests is not
+     * fooled by a token another test already fetched.
+     */
+    private static RestAuthenticator freshAuthenticator() {
+        return new RestAuthenticator(
+                new InMemoryClientRegistrationRepository(ClientRegistration.withRegistrationId("svc")
+                        .clientId("svc-client")
+                        .clientSecret(CLIENT_SECRET)
+                        .authorizationGrantType(AuthorizationGrantType.CLIENT_CREDENTIALS)
+                        .tokenUri(WIREMOCK.baseUrl() + "/oauth/token")
+                        .build()),
+                null);
+    }
+
+    private static List<StepType> steps(RestAuthenticator authenticator) {
+        return List.of(
+                new RestRequestStep(CONNECTOR, PROPERTIES, authenticator),
+                new RestVerifyStep(CONNECTOR, PROPERTIES, authenticator),
+                new HttpRequestStep(CONNECTOR, PROPERTIES, authenticator));
+    }
+
+    /** Parameters that make each step send GET /thing to the target. */
+    private static Map<String, Object> params(StepType step, String target, Map<String, Object> headers) {
+        Map<String, Object> params = new LinkedHashMap<>();
+        params.put("target", target);
+        params.put("method", "GET");
+        params.put("path", "/thing");
+        if (headers != null) {
+            params.put("headers", headers);
+        }
+        if (step.name().equals("rest.verify")) {
+            params.put("expect", Map.of("status", 200));
+        }
+        return params;
+    }
+
+    @AfterAll
+    static void stopWireMock() {
+        WIREMOCK.stop();
+    }
+
+    @BeforeEach
+    void reset() {
+        WIREMOCK.resetAll();
+        WIREMOCK.stubFor(get(urlEqualTo("/thing")).willReturn(aResponse().withStatus(200)
+                .withHeader("Content-Type", "application/json").withBody("{}")));
+        WIREMOCK.stubFor(post(urlEqualTo("/oauth/token")).willReturn(aResponse().withStatus(200)
+                .withHeader("Content-Type", "application/json")
+                .withBody("{\"access_token\":\"tok-1\",\"token_type\":\"Bearer\",\"expires_in\":3600}")));
+    }
+
+    @Test
+    @DisplayName("A basic-auth target's requests carry its Basic header, and nothing reports the secret")
+    void testBasicSent() {
+        for (StepType step : steps(freshAuthenticator())) {
+            WIREMOCK.resetRequests();
+
+            StepOutcome outcome = step.execute(params(step, "basic", null), true);
+
+            assertThat(outcome.success()).as(step.name() + ": " + outcome.message()).isTrue();
+            WIREMOCK.verify(getRequestedFor(urlEqualTo("/thing")).withHeader("Authorization", equalTo(BASIC)));
+            assertThat(outcome.message() + outcome.value()).as(step.name())
+                    .doesNotContain(PASSWORD).doesNotContain(BASIC).doesNotContain("c3ZjOnMzY3JldA");
+        }
+    }
+
+    @Test
+    @DisplayName("An OAuth target's requests carry a Bearer token")
+    void testBearerSent() {
+        for (StepType step : steps(freshAuthenticator())) {
+            WIREMOCK.resetRequests();
+
+            StepOutcome outcome = step.execute(params(step, "oauth", null), true);
+
+            assertThat(outcome.success()).as(step.name() + ": " + outcome.message()).isTrue();
+            WIREMOCK.verify(getRequestedFor(urlEqualTo("/thing")).withHeader("Authorization", equalTo("Bearer tok-1")));
+            assertThat(outcome.message() + outcome.value()).as(step.name()).doesNotContain("tok-1");
+        }
+    }
+
+    @Test
+    @DisplayName("A step's own Authorization header, in any case, is sent alone and no token is fetched")
+    void testAuthorWins() {
+        for (StepType step : steps(freshAuthenticator())) {
+            WIREMOCK.resetRequests();
+
+            StepOutcome outcome = step.execute(
+                    params(step, "oauth", Map.of("authorization", "Basic bad")), true);
+
+            assertThat(outcome.success()).as(step.name() + ": " + outcome.message()).isTrue();
+            WIREMOCK.verify(getRequestedFor(urlEqualTo("/thing")).withHeader("Authorization", equalTo("Basic bad")));
+            assertThat(WIREMOCK.findAll(getRequestedFor(urlEqualTo("/thing"))).get(0)
+                    .getHeaders().getHeader("Authorization").values()).containsExactly("Basic bad");
+            WIREMOCK.verify(0, postRequestedFor(urlEqualTo("/oauth/token")));
+        }
+    }
+
+    @Test
+    @DisplayName("An unauthenticated target's requests carry no Authorization header")
+    void testNoneSent() {
+        for (StepType step : steps(freshAuthenticator())) {
+            WIREMOCK.resetRequests();
+
+            StepOutcome outcome = step.execute(params(step, "open", null), true);
+
+            assertThat(outcome.success()).as(step.name() + ": " + outcome.message()).isTrue();
+            WIREMOCK.verify(getRequestedFor(urlEqualTo("/thing")).withoutHeader("Authorization"));
+        }
+    }
+
+    @Test
+    @DisplayName("A half-configured target fails the step before sending, without the secret")
+    void testConfigurationErrorFails() {
+        for (StepType step : steps(freshAuthenticator())) {
+            WIREMOCK.resetRequests();
+
+            StepOutcome outcome = step.execute(params(step, "half", null), true);
+
+            assertThat(outcome.success()).as(step.name()).isFalse();
+            assertThat(outcome.message()).startsWith(step.name())
+                    .contains("'half'").contains("password but no username").doesNotContain(PASSWORD);
+            WIREMOCK.verify(0, getRequestedFor(urlEqualTo("/thing")));
+        }
+    }
+
+    @Test
+    @DisplayName("A rejected token request fails the step without the client secret")
+    void testTokenRejectedFails() {
+        WIREMOCK.stubFor(post(urlEqualTo("/oauth/token")).willReturn(aResponse().withStatus(400)
+                .withHeader("Content-Type", "application/json")
+                .withBody("{\"error\":\"invalid_client\"}")));
+        HttpRequestStep step = new HttpRequestStep(CONNECTOR, PROPERTIES, freshAuthenticator());
+
+        StepOutcome outcome = step.execute(params(step, "oauth", null), true);
+
+        assertThat(outcome.success()).isFalse();
+        assertThat(outcome.message()).contains("invalid_client").doesNotContain(CLIENT_SECRET);
+        WIREMOCK.verify(0, getRequestedFor(urlEqualTo("/thing")));
+    }
+}

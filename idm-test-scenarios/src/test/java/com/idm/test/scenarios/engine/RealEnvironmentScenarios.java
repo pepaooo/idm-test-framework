@@ -3,6 +3,7 @@ package com.idm.test.scenarios.engine;
 import com.idm.test.connector.database.client.MultiDatabaseConnector;
 import com.idm.test.connector.ldap.client.EdirectoryConnector;
 import com.idm.test.connector.rest.client.IdmRestConnector;
+import com.idm.test.connector.rest.client.RestAuthenticator;
 import com.idm.test.connector.rest.config.RestProperties;
 import com.idm.test.connector.soap.client.ResourceServiceConnector;
 import com.idm.test.connector.soap.client.RoleServiceConnector;
@@ -101,6 +102,9 @@ public class RealEnvironmentScenarios {
     private RestProperties restProperties;
 
     @Autowired
+    private RestAuthenticator restAuthenticator;
+
+    @Autowired
     private TestExecutor testExecutor;
 
     @Autowired
@@ -122,7 +126,7 @@ public class RealEnvironmentScenarios {
 
         Map<String, StepType> registry = YamlScenarioTest.registry(
                 edirectoryConnector, databaseConnector, roleServiceConnector,
-                resourceServiceConnector, idmRestConnector, restProperties);
+                resourceServiceConnector, idmRestConnector, restProperties, restAuthenticator);
         ScenarioValidator validator = new ScenarioValidator(registry, FixtureFactory.SUPPORTED_GENERATORS);
         ScenarioEngine engine = new ScenarioEngine(
                 registry,

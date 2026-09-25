@@ -5,6 +5,7 @@ import com.github.tomakehurst.wiremock.client.WireMock;
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
 import com.github.tomakehurst.wiremock.verification.LoggedRequest;
 import com.idm.test.connector.rest.client.IdmRestConnector;
+import com.idm.test.connector.rest.client.RestAuthenticator;
 import com.idm.test.connector.rest.config.RestClientConfiguration;
 import com.idm.test.connector.rest.config.RestProperties;
 import com.idm.test.connector.rest.model.TextResponse;
@@ -64,7 +65,7 @@ class HttpStepsTest {
         return properties;
     }
 
-    private static final HttpRequestStep STEP = new HttpRequestStep(CONNECTOR, PROPERTIES);
+    private static final HttpRequestStep STEP = new HttpRequestStep(CONNECTOR, PROPERTIES, RestAuthenticator.withoutOAuth());
 
     @AfterAll
     static void stopWireMock() {

@@ -1,6 +1,7 @@
 package com.idm.test.engine;
 
 import com.idm.test.engine.expr.ExpressionEvaluator;
+import com.idm.test.engine.expr.JsReferences;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -259,7 +260,9 @@ public final class Interpolator {
     }
 
     /**
-     * @return the root name of every reference found, for example "user" in "${user.email}"
+     * @return the root name of every reference found, for example "user" in "${user.email}", and
+     * the free names a js:{ } expression reads, for example "user" in
+     * "js:{ user.email.toLowerCase() }"
      */
     public static Set<String> references(Object value) {
         Set<String> roots = new LinkedHashSet<>();
@@ -270,10 +273,14 @@ public final class Interpolator {
     private static void collectReferences(Object value, Set<String> roots) {
         if (value instanceof String text) {
             if (isWholeValueExpression(text)) {
-                // An expression is JavaScript, not a scenario reference — a template literal's
-                // own ${...} substitutions must not be mistaken for ${path} references. A
-                // malformed expression is reported by resolve(), not here: references() is a
-                // query and must not throw.
+                // An expression is JavaScript, not ${path} syntax: a template literal's own
+                // ${...} is never read as a scenario reference. Its free JS names are, because
+                // the scenario scope must supply them. A malformed expression contributes nothing
+                // and is reported by resolve(), not here: references() is a query and must not throw.
+                String body = expressionBodyOrNull(text);
+                if (body != null) {
+                    roots.addAll(JsReferences.freeNames(body));
+                }
                 return;
             }
             Matcher matcher = REFERENCE.matcher(text);
@@ -292,6 +299,14 @@ public final class Interpolator {
             return expressionIn(text) != null;
         } catch (IllegalArgumentException malformed) {
             return true;
+        }
+    }
+
+    private static String expressionBodyOrNull(String text) {
+        try {
+            return expressionIn(text);
+        } catch (IllegalArgumentException malformed) {
+            return null;
         }
     }
 

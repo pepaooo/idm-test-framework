@@ -16,6 +16,8 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
 
+import java.util.List;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
@@ -148,5 +150,15 @@ class ConfigurationTest {
     @DisplayName("Should have configuration for all required REST APIs")
     void testRequiredRestApis() {
         assertThat(restProperties.getRest()).containsKeys("idm", "sap", "workday", "servicenow");
+    }
+
+    @Test
+    @DisplayName("The OAuth REST targets name their own client registration")
+    void testOAuthTargetsWired() {
+        for (String target : List.of("sap", "workday", "servicenow")) {
+            RestProperties.RestApiConfig config = restProperties.getRest().get(target);
+            assertThat(config.isUseOAuth()).as(target).isTrue();
+            assertThat(config.getOauthClientName()).as(target).isEqualTo(target);
+        }
     }
 }

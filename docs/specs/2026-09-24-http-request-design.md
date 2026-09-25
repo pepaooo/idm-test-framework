@@ -27,12 +27,18 @@ and headers. They treat 4xx/5xx as data, and return `{status, headers, body}`. B
 
 1. **A new `http.request` step.** `rest.request` and `rest.verify` remain the JSON convenience
    steps, and no corpus scenario breaks. A later decision by jangulo, made in review, moved `rest.*` onto the same
-   HTTP client as `http.request` (§5), with three visible effects:
+   HTTP client as `http.request` (§5); visible effects include:
    - response header names are normalised the same way: lower-cased, with pseudo-headers dropped
    - methods outside the same list (`GET/POST/PUT/PATCH/DELETE/HEAD/OPTIONS`) are refused before
      anything is sent
    - redirects are no longer followed. This is the JDK client's `Redirect.NEVER` default, so a
      `rest.*` GET that meets a 3xx returns it as data, consistent with "every status is data".
+   - the new failure-message format, naming the method and URL and never ending in a bare `null`
+   - the read timeout now acts as an overall deadline, from sending the request until the body is
+     read, not an idle timeout between reads
+   - `PATCH` now works for `rest.*`; `HttpURLConnection`, used before, rejected it
+   - a `GET` with a body is now sent as a `GET` with that body; `HttpURLConnection` either dropped
+     the body or turned the request into a `POST`
 2. **Named `target` + `path` only.** There is no absolute `url:`. Base URLs live in configuration
    per environment (`idm.test.rest.<target>.base-url`), the same scenario runs in dev, QA or prod,
    and guard 4 checks every target a run uses. A SOAP service is simply another target.
@@ -104,9 +110,9 @@ OperationResult<TextResponse> exchangeText(
 record TextResponse(int status, Map<String, List<String>> headers, String body)
 ```
 
-- It uses the same Spring `RestClient` bean as `exchange`, and suppresses status handling in the
-  same way, so every status arrives as data. It follows CLAUDE.md's rule: Spring's client is used
-  directly, and there is no new HTTP code.
+- It uses the same Spring `RestClient` bean as `exchange`. It reads the response through
+  `RestClient.exchange(...)`, which runs no status handlers, so every status arrives as data. It
+  follows CLAUDE.md's rule: Spring's client is used directly, and there is no new HTTP code.
 - The body is sent as bytes in the charset its `Content-Type` declares (`text/plain;
   charset=UTF-8` by default), so no message converter re-encodes it.
 - The response is read raw with `RestClient.exchange(...)`: status, headers and body bytes, with no

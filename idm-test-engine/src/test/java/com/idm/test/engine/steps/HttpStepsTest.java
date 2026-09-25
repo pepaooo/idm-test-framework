@@ -27,6 +27,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -250,21 +251,6 @@ class HttpStepsTest {
     }
 
     @Test
-    @DisplayName("Drops HTTP/2 pseudo-headers such as :status from the captured headers")
-    @SuppressWarnings("unchecked")
-    void testPseudoHeadersDropped() {
-        // Over HTTP/1.1 no pseudo-headers arrive, so this only guards the end-to-end capture;
-        // HeaderNamesTest.testDropsPseudoHeaders is what proves they are dropped.
-        stubFor(get(urlEqualTo("/h")).willReturn(aResponse().withStatus(200).withHeader("X-Custom-Header", "v")));
-
-        StepOutcome outcome = STEP.execute(params("target", "mock", "method", "GET", "path", "/h"), true);
-
-        Map<String, List<String>> headers = (Map<String, List<String>>) capture(outcome).get("headers");
-        assertThat(headers).isNotEmpty();
-        assertThat(headers.keySet()).noneMatch(name -> name.startsWith(":"));
-    }
-
-    @Test
     @DisplayName("Captures an empty response body as an empty string, never null")
     void testEmptyBodyIsEmptyString() {
         stubFor(delete(urlEqualTo("/gone")).willReturn(aResponse().withStatus(204)));
@@ -281,7 +267,8 @@ class HttpStepsTest {
         StepOutcome outcome = STEP.execute(params("target", "mock", "method", "FETCH", "path", "/x"), true);
 
         assertThat(outcome.success()).isFalse();
-        assertThat(outcome.message()).contains("FETCH");
+        assertThat(outcome.message()).isEqualTo(
+                "http.request method 'FETCH' is not one of " + new TreeSet<>(IdmRestConnector.SUPPORTED_METHODS));
         verify(0, anyRequestedFor(anyUrl()));
     }
 

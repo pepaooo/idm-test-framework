@@ -306,7 +306,8 @@ class IdmRestConnectorTest {
         // Names are normalised: lower-case whatever the server sent, and no HTTP/2 pseudo-headers.
         assertThat(response.headers()).containsEntry("x-request-id", java.util.List.of("abc123"))
                 .doesNotContainKey("X-Request-Id");
-        assertThat(response.headers().keySet()).noneMatch(name -> name.startsWith(":"));
+        // Pseudo-header dropping itself is guarded by HeaderNamesTest.testDropsPseudoHeaders;
+        // over HTTP/1.1 no pseudo-headers ever arrive here, so that assertion couldn't fail.
         assertThat(response.body()).isInstanceOf(Map.class);
         @SuppressWarnings("unchecked")
         Map<String, Object> bodyMap = (Map<String, Object>) response.body();

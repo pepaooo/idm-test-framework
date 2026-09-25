@@ -125,7 +125,8 @@ Use a nonempty `expect` map to check meaningful state. The validator checks that
   - `resp.body` is always text, `""` when empty. Read JSON with `js:{ JSON.parse(resp.body).id }`.
 - **Any HTTP status is a successful step.** The status appears in the step message and the report. Checking it, and reading XML responses from JavaScript, are planned separately.
 
-Database, role, resource and REST YAML steps are [approved target work](../architecture/capabilities.md), not available vocabulary. Use Java connectors for those operations today.
+Database, role, resource and `rest.*` steps also exist; a complete reference is tracked as
+ITF-10. `http.request` is described above.
 
 ## 5. Waiting
 

@@ -41,9 +41,9 @@ Backend-focused **integration testing framework** using JUnit 5, with no front-e
 ### Repository Connectors
 - **LDAP**: Spring LDAP 3.2.x + UnboundID LDAP SDK 7.0.x
 - **Database**: Spring JDBC (JdbcTemplate) - **NO JPA/Hibernate for test queries**
-- **REST**: Spring RestClient 6.2.x (modern) + RestTemplate (fallback)
-- **SOAP**: Spring Web Services 4.0.x + JAXB 4.0.x
-- **OAuth**: Spring Security OAuth2 Client 6.2.x
+- **REST**: Spring RestClient 6.2.x on the JDK `HttpClient` (HTTP/1.1)
+- **SOAP**: generated JAX-WS ports + JAXB 4.0.x (not Spring Web Services' `WebServiceTemplate`)
+- **OAuth**: Spring Security OAuth2 Client 6.5.x (client credentials, via `RestAuthenticator`)
 
 ### Supporting Libraries
 - **Logging**: SLF4J 2.0.x + Logback 1.5.x

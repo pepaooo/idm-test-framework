@@ -4,7 +4,7 @@
 
 [![Java](https://img.shields.io/badge/Java-21-orange.svg)](https://openjdk.org/)
 [![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.5.6-brightgreen.svg)](https://spring.io/projects/spring-boot)
-[![Tests](https://img.shields.io/badge/tests-235%20passing-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-591%20passing-brightgreen.svg)]()
 [![Docker](https://img.shields.io/badge/Docker-not%20required-lightgrey.svg)]()
 
 Tests provisioning workflows across LDAP, databases, REST APIs and SOAP services. Built on
@@ -68,7 +68,7 @@ Both tiers use the same connectors underneath, so a fix in a connector reaches b
 ```
 
 The suite starts an embedded UnboundID LDAP directory and a WireMock SOAP server on ephemeral
-ports, creates an H2 schema, runs 235 tests, and tears everything down.
+ports, creates an H2 schema, runs 591 tests, and tears everything down.
 
 ```bash
 # One module
@@ -77,9 +77,16 @@ ports, creates an H2 schema, runs 235 tests, and tears everything down.
 # One test class (-am needs this flag, since sibling modules have no matching test)
 ./mvnw -pl idm-test-scenarios -am test -Dtest=YamlScenarioTest -Dsurefire.failIfNoSpecifiedTests=false
 
+# One YAML scenario, or a glob-selected group (quote patterns containing * or braces)
+./mvnw -pl idm-test-scenarios -am test -Dtest=YamlScenarioTest -Dsurefire.failIfNoSpecifiedTests=false \
+  -Dscenario='provisioning-*'
+
 # Debug logging
 ./mvnw test -Dlogging.level.com.idm.test=DEBUG
 ```
+
+Two further runners take the same YAML scenarios elsewhere; neither is part of the default suite
+(see [Running against containers or a real lab](#running-against-containers-or-a-real-lab)).
 
 Sibling modules are not installed to the local repository, so `-pl <module>` needs `-am`
 alongside it.
@@ -99,6 +106,7 @@ discovers it and runs it as its own test.
 | `description` | Optional |
 | `fixtures` | Named test data. `generate: random-user` plus optional literal `values` that override it |
 | `steps` | An ordered list. Each entry is a single-key map: the step type, then its parameters |
+| `cleanup` | Optional. Steps with the same shape, run after `steps` whether they passed or failed; each entry is SUCCEEDED, FAILED or SKIPPED |
 
 ### Step vocabulary
 
@@ -107,11 +115,24 @@ Actions change state; assertions check it and may retry.
 | Step | Kind | Required | Also accepts |
 |---|---|---|---|
 | `ldap.create` | action | `dn` | `attributes` |
-| `ldap.verify` | assertion | `dn`, `expect` | `wait` |
+| `ldap.update` | action | `dn`, `attributes` | — |
+| `ldap.delete` | action | `dn` | — |
+| `ldap.verify` | assertion | `dn`, and exactly one of `expect` or `exists` | `wait` |
+| `db.execute` | action | `database`, `statement` | `params` |
+| `db.verify` | assertion | `database`, `query`, `expect` | `params`, `wait` |
+| `roles.grant` | action | `user`, `roles` | `reason` |
+| `roles.revoke` | action | `assignments` | — |
+| `resources.grant` | action | `user`, `resource` | `reason` |
+| `resources.revoke` | action | `user`, `resource` | `reason` |
+| `rest.request` | action | `target`, `method`, `path` | `body`, `bodyFrom`, `headers` |
+| `rest.verify` | assertion | `target`, `path`, `expect` | `method`, `headers`, `wait` |
+| `http.request` | action | `target`, `method`, `path` | `headers`, `body` (a raw string: JSON, XML, a SOAP envelope) |
 
-Ten more step types — `ldap.update`, `ldap.delete`, `db.execute`, `db.verify`, `roles.grant`,
-`roles.revoke`, `resources.grant`, `resources.revoke`, `rest.request`, `rest.verify` — are
-tracked as ITF-8 and ITF-9.
+Every step also accepts `as:` to capture its result. `rest.*` and `http.request` address a named
+target (`idm.test.rest.<target>.base-url`) and authenticate with that target's settings — basic,
+OAuth2 client credentials, or none — unless the step writes its own `Authorization` header. The
+[authoring guide](docs/guides/scenario-authoring.md) has the details; a full per-step reference is
+tracked as ITF-10.
 
 ### Waiting
 
@@ -123,12 +144,16 @@ wait: { timeout: 30s, poll: 2s }   # explicit — durations take s, m or h
 wait: true                          # use the configured defaults
 ```
 
-### Interpolation
+### Interpolation, expressions and captures
 
-`${path}` resolves against fixtures. Property paths only — no arithmetic, conditionals or
-function calls. That limit is deliberate: it keeps every value representable in a form, which
-matters if a UI is ever built. When a scenario needs computation, that is the signal it belongs
-in the Java tier.
+`${path}` resolves against fixtures, `set:` variables and `as:` captures. Property paths only —
+no arithmetic, conditionals or function calls.
+
+When a value needs computing, a whole value can be a sandboxed JavaScript expression:
+`"js:{ user.firstName.toUpperCase() }"`. It reads scope names directly, cannot reach Java classes
+or connectors, and a result containing `undefined` anywhere is an error rather than a silent
+`null`. `set:` binds such values to names; `as:` captures a step's result. When a scenario needs
+real logic — branching, loops, an operation the vocabulary lacks — it belongs in the Java tier.
 
 `random-user` produces `userId`, `firstName`, `lastName`, `email`, `department`, `jobTitle`,
 `phoneNumber` and `employeeId`.
@@ -138,8 +163,8 @@ in the Java tier.
 Every scenario file is parsed and validated before the first step executes, because a scenario
 can spend minutes waiting for provisioning and discovering a typo afterwards is expensive. A
 scenario is rejected at load for an unknown step type, a missing required parameter, an unknown
-parameter, a reference to an undeclared fixture, an unknown `generate:` value, or a malformed
-`wait:`. Every message names the file and the step.
+parameter, a reference to a name that is never bound (in `${...}` or inside `js:{...}`), an
+unknown `generate:` value, a `js:{...}` that does not compile, or a malformed `wait:`. Every message names the file and the step.
 
 That last point matters more than it sounds. Because steps declare their parameter names, a
 misspelled `expct:` fails at load rather than producing a green test that verified nothing.
@@ -162,7 +187,7 @@ idm-test-framework/
 ├── idm-test-engine/         YAML scenario engine — loader, validator, executor, step SPI
 ├── idm-connector-ldap/      eDirectory/LDAP connector
 ├── idm-connector-database/  Multi-database JDBC connector (raw SQL)
-├── idm-connector-rest/      REST client configuration
+├── idm-connector-rest/      REST connector, JDK HTTP client, target authentication (basic, OAuth2)
 ├── idm-connector-soap/      Role and Resource service connectors (NetIQ SOAP)
 ├── idm-connector-idm/       Placeholder — no sources yet
 ├── idm-test-scenarios/      Java scenario tests, YAML scenarios, the JUnit adapter
@@ -176,7 +201,8 @@ idm-test-framework/
 
 ### Principles
 
-- **Spring's built-in clients** — RestClient, JdbcTemplate, WebServiceTemplate. No custom wrappers.
+- **Spring's built-in clients** — RestClient, JdbcTemplate, Spring Security's OAuth2 client; generated
+  JAX-WS ports for SOAP. No custom wrappers and no custom token handling.
 - **Raw SQL for database validation** — no JPA or Hibernate entities.
 - **Integration-first** — tests exercise real protocol implementations, not mocks of our own code.
 - **Two tiers, one set of connectors** — the engine is a consumer of the connectors, exactly as a
@@ -210,42 +236,64 @@ still leads the failure summary. See
 |---|---|
 | LDAP directory | Embedded UnboundID, ephemeral port, standard schema extended with eDirectory's `startDate`, `loginDisabled` and `c` |
 | Databases | H2 in-memory, schema created at context startup |
-| SOAP services | WireMock on a dynamic port, stubs under `src/test/resources/wiremock/` |
+| SOAP and REST services | WireMock on a dynamic port, stubs under `src/test/resources/wiremock/` |
 
 ---
 
 ## What exists today
 
+Verified on 2026-09-25 with `./mvnw clean test` at `fb35547`:
+
 | Module | Tests |
 |---|---|
 | idm-test-core | 34 |
 | idm-test-utils | 51 |
-| idm-test-engine | 61 |
-| idm-connector-ldap | 14 |
+| idm-test-engine | 302 |
+| idm-connector-ldap | 18 |
 | idm-connector-database | 21 |
-| idm-connector-rest | 12 |
-| idm-connector-soap | 13 |
-| idm-test-scenarios | 29 |
-| **Total** | **235** |
+| idm-connector-rest | 36 |
+| idm-connector-soap | 18 |
+| idm-test-scenarios | 111 |
+| **Total** | **591** |
 
-The scenarios module holds 27 Java workflow tests covering provisioning, role assignment,
-modification, deprovisioning and multi-system flows, plus the YAML scenario and its validation
-test.
+The scenarios module holds the Java workflow tests (provisioning, role assignment, modification,
+deprovisioning and multi-system flows), a corpus of 20 YAML scenarios converted from them, and the
+tests of the runners and their guards.
 
-**Worth being explicit about:** those Java scenarios *simulate* IdM. They write directly to the
-embedded LDAP and H2 and assert the result, so they exercise the framework end to end but
-validate no real Identity Manager. Pointing the framework at a real environment is separate
-work, and the connection details are already externalised so it is a configuration change rather
-than a code change.
+**Worth being explicit about:** the default suite *simulates* IdM. The Java and YAML scenarios
+write directly to the embedded LDAP, H2 and WireMock and assert the result, so they exercise the
+framework end to end but validate no real Identity Manager. The runners below are how the same
+scenarios reach real systems.
+
+### Running against containers or a real lab
+
+| Runner | Runs | Needs |
+|---|---|---|
+| `YamlScenarioTest` | the corpus in `scenarios/`, embedded | nothing — part of the default suite |
+| `ContainerScenarios` | the same corpus against OpenLDAP, PostgreSQL and WireMock | Docker; optional, not in the default suite |
+| `RealEnvironmentScenarios` | your scenarios in `scenarios-real/` against a real lab | a profile and credentials for your environment |
+
+```bash
+./mvnw test -pl idm-test-scenarios -am -Dtest=ContainerScenarios -Dsurefire.failIfNoSpecifiedTests=false
+./mvnw test -pl idm-test-scenarios -am -Dtest=RealEnvironmentScenarios -Dsurefire.failIfNoSpecifiedTests=false
+```
+
+Both accept `-Dscenario=<glob>`. The real-environment runner refuses to start, before any scenario
+runs, when it would test nothing real: the embedded profile, placeholder LDAP/SOAP URLs, an empty
+directory, placeholder REST base URLs, or placeholder or half-given credentials for the targets
+the selected scenarios use. See
+[scenarios-real/README.md](idm-test-scenarios/src/test/resources/scenarios-real/README.md).
 
 ### Next
 
 | Ticket | Work |
 |---|---|
-| ITF-7 | Expressions — a sandboxed `js:{ }` escape hatch, the `set:` step, `as:` capture |
-| ITF-8 | `ldap.update`, `ldap.delete`, `db.execute`, `db.verify` |
-| ITF-9 | `roles.grant`/`revoke`, `resources.grant`/`revoke`, `rest.request`, `rest.verify` |
-| ITF-5 | Convert the Java scenarios to YAML; amend the specification |
+| ITF-24 | JavaScript assertions against an HTTP response, retryable with `wait:` |
+| ITF-25 | Reading XML (SOAP responses) from `js:{}` expressions |
+| ITF-10 | Authoring reference for the YAML tier |
+| ITF-16 | Oracle-compatible connection test query for database pools |
+| ITF-17 | Stop the runners starting embedded LDAP and WireMock as a side effect |
+| ITF-18 | Check ContainerScenarios' "Docker is not available" message without Docker |
 
 ---
 
@@ -285,6 +333,7 @@ Organised by how much you should trust it.
 **Specs and plans** — design documents for in-flight work:
 - [Declarative scenario engine](docs/specs/2026-09-13-declarative-scenario-engine-design.md)
 - [Green test baseline](docs/specs/2026-09-11-suite-green-baseline-design.md)
+- [docs/specs/](docs/specs/) — one design per ticket since ITF-12, e.g. [explicit cleanup](docs/specs/2026-09-24-explicit-cleanup-design.md), [http.request](docs/specs/2026-09-24-http-request-design.md), [HTTP authentication](docs/specs/2026-09-25-http-auth-design.md)
 - [docs/plans/](docs/plans/) — task breakdowns
 
 **History** — frozen, partly inaccurate, kept for the record:
@@ -303,6 +352,9 @@ Organised by how much you should trust it.
 | Database | Spring JDBC, H2 | 2.3.232 |
 | SOAP | JAX-WS, JAXB | — |
 | YAML/JSON | Jackson | 2.19.2 |
+| Expressions | Mozilla Rhino | 1.8.0 |
+| HTTP | JDK HttpClient via Spring RestClient; Spring Security OAuth2 client | — |
+| Containers (optional runner) | Testcontainers | 1.21.4 |
 | Mocking | WireMock | 3.10.0 |
 
 No Lombok — Java records instead.

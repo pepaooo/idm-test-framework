@@ -1,269 +1,94 @@
-# Running the Integration Tests
+# Running the tests
 
-## Quick Start - What Works Now
+Everything below runs from the repository root with Java 21 and the Maven wrapper. The default
+suite needs nothing else: no Docker, no external services.
 
-### 1. Configuration Test (Works Immediately)
-This test validates that all configuration properties load correctly. It doesn't require any external services.
-
-```bash
-cd idm-test-scenarios
-mvn test -Dtest=ConfigurationTest
-```
-
-**Expected Result**: ✅ All 7 tests pass
-- Validates LDAP, Database, REST, SOAP, and TestExecutor configurations load correctly
-- Uses H2 in-memory databases (automatic)
-- No external services required
-
----
-
-## Integration Tests - What They Need
-
-The integration test scenarios (`UserProvisioningWorkflowTest`, `RoleAssignmentWorkflowTest`, etc.) are **designed to gracefully skip** if connectors aren't available.
-
-### Current Behavior
-
-When you run any integration test (e.g., `UserDeprovisioningWorkflowTest`):
+## The default suite
 
 ```bash
-mvn test -Dtest=UserDeprovisioningWorkflowTest
+./mvnw clean test
 ```
 
-**What happens:**
-1. ✅ Tests compile and start
-2. ⚠️ Tests check for connector availability
-3. ℹ️ If connectors are missing, tests **skip automatically** with message:
-   ```
-   org.opentest4j.TestAbortedException: Assumption failed:
-   EdirectoryConnector not available in test environment
-   ```
+This starts an embedded UnboundID directory and a WireMock server on ephemeral ports, creates an
+H2 schema, and runs every module's tests: 591 on 2026-09-25. Every test runs; none is skipped
+for a missing service. A connector the context cannot build fails the context, so a broken
+environment is red, never quietly green.
 
-This is **by design** - tests won't fail if services aren't running.
+It includes `YamlScenarioTest`, which runs the 20 YAML scenarios in
+`idm-test-scenarios/src/test/resources/scenarios/` against the embedded services and writes
+`idm-test-scenarios/target/scenario-results.json`.
 
----
+## Narrowing a run
 
-## What Each Test Needs
-
-### Tests That Work Now (with H2)
-
-#### ✅ ConfigurationTest
-- **Requires**: Nothing (Spring Boot auto-configuration)
-- **Status**: Works immediately
-
-#### ✅ Database-Only Tests
-- **Requires**: H2 (automatic via `application.yml` test profile)
-- **Status**: Works immediately
-- **Tests**:
-  - `UserProvisioningWorkflowTest.testUserProvisioningToDatabase()`
-  - All tests that only use `databaseConnector`
-
-### Tests That Need LDAP Server
-
-#### ⏳ LDAP Tests (Currently Skip)
-- **Requires**: LDAP server at `ldap://localhost:10389`
-- **Current Status**: Tests skip with "EdirectoryConnector not available"
-- **Tests**:
-  - `UserProvisioningWorkflowTest.testUserProvisioningToLdap()`
-  - `UserModificationWorkflowTest` (all tests)
-  - `UserDeprovisioningWorkflowTest` (disable/delete tests)
-
-**Options to run these:**
-1. **Use Testcontainers** (Phase 10) - Automatic embedded LDAP
-2. **Install Apache Directory Studio** - Local LDAP server
-3. **Use Docker** - `docker run -p 10389:10389 osixia/openldap`
-
-### Tests That Need SOAP Service
-
-#### ⏳ SOAP/Role Tests (Currently Skip)
-- **Requires**: SOAP service at `http://localhost:8090/IDMProv/role/service`
-- **Current Status**: Tests skip with "RoleServiceConnector not available"
-- **Tests**:
-  - `RoleAssignmentWorkflowTest` (all tests)
-  - `MultiSystemIntegrationTest` (role assignment steps)
-
-**Options to run these:**
-1. **Use WireMock** (Phase 10) - Mock SOAP service
-2. **Real IdM Environment** - Actual NetIQ Identity Manager
-
----
-
-## Running Tests Step-by-Step
-
-### Option 1: Just See The Tests Run (Current State)
+Sibling modules are not installed to the local repository, so always pair `-pl` with `-am`. With
+`-am`, add `-Dsurefire.failIfNoSpecifiedTests=false` when naming a test, because the sibling
+modules have no test by that name.
 
 ```bash
-# Run all tests - they will skip gracefully
-cd idm-test-scenarios
-mvn test
+# One module
+./mvnw -pl idm-connector-rest -am test
 
-# Result:
-# - ConfigurationTest: ✅ 7 tests pass
-# - Integration tests: ⏭️ Tests skipped (connectors not available)
+# One test class, or one method
+./mvnw -pl idm-test-scenarios -am test -Dtest=UserProvisioningWorkflowTest -Dsurefire.failIfNoSpecifiedTests=false
+./mvnw -pl idm-test-scenarios -am test -Dtest='UserProvisioningWorkflowTest#testUserProvisioningToLdap' -Dsurefire.failIfNoSpecifiedTests=false
+
+# One YAML scenario, or a glob-selected group (quote patterns containing * or braces)
+./mvnw -pl idm-test-scenarios -am test -Dtest=YamlScenarioTest -Dsurefire.failIfNoSpecifiedTests=false -Dscenario=provisioning-user-to-ldap.yaml
+./mvnw -pl idm-test-scenarios -am test -Dtest=YamlScenarioTest -Dsurefire.failIfNoSpecifiedTests=false -Dscenario='provisioning-*'
+
+# Debug logging
+./mvnw test -Dlogging.level.com.idm.test=DEBUG
 ```
 
-### Option 2: Run Database Tests Only
+`-Dscenario` matches file names with or without `.yaml`. A blank value, an invalid glob, or a
+pattern that matches nothing fails the run instead of running zero scenarios.
 
-These tests work immediately because they use H2:
+## Against containers (optional, needs Docker)
 
 ```bash
-# Filter for tests that don't require LDAP/SOAP
-mvn test -Dtest=UserProvisioningWorkflowTest#testUserProvisioningToDatabase
-mvn test -Dtest=UserProvisioningWorkflowTest#testProvisioningTimeout
+./mvnw -pl idm-test-scenarios -am test -Dtest=ContainerScenarios -Dsurefire.failIfNoSpecifiedTests=false
 ```
 
-### Option 3: Set Up Full Test Environment (Phase 10)
+`ContainerScenarios` runs the same 20 scenarios against OpenLDAP, PostgreSQL and WireMock started
+by Testcontainers. It has no `Test` suffix, so the default suite never runs it, and a machine
+without Docker is never asked for one. It accepts `-Dscenario` too.
 
-**Phase 10 will automate this**, but you can set up manually:
+## Against a real lab
 
-#### Start LDAP Server (Docker)
 ```bash
-docker run -d --name test-ldap \
-  -p 10389:389 \
-  -e LDAP_ADMIN_PASSWORD=test \
-  osixia/openldap:latest
+IDM_TEST_PROFILE=dev ./mvnw -pl idm-test-scenarios -am test -Dtest=RealEnvironmentScenarios -Dsurefire.failIfNoSpecifiedTests=false
 ```
 
-#### Start WireMock SOAP Mock
+`RealEnvironmentScenarios` runs the scenarios you put in
+`idm-test-scenarios/src/test/resources/scenarios-real/` against the environment your profile and
+environment variables name. Before any scenario runs, it refuses:
+
+1. the embedded `test` profile
+2. placeholder LDAP or SOAP URLs
+3. an empty scenario directory
+4. placeholder or unconfigured REST targets that the selected scenarios use
+5. placeholder or half-given credentials for the REST targets and SOAP services they use
+
+[scenarios-real/README.md](../../idm-test-scenarios/src/test/resources/scenarios-real/README.md)
+lists the variables to set and explains why profile values need the `IDM_TEST_*` form.
+
+## Reading the results
+
+- Surefire reports: each module's `target/surefire-reports/`.
+- YAML results: `idm-test-scenarios/target/scenario-results.json` for the embedded run, or
+  `idm-test-scenarios/target/real-environment-results.json` for container and real-lab runs. Each record has the scenario's status,
+  duration, every step with its resolved parameters, retry attempts, and every `cleanup:` entry.
+  Parameters are not redacted; keep secrets in target settings, not in scenario YAML.
+
+To total the tests across modules:
+
 ```bash
-docker run -d --name test-wiremock \
-  -p 8090:8080 \
-  wiremock/wiremock:latest
+grep -h "tests=" */target/surefire-reports/TEST-*.xml | sed -E 's/.*tests="([0-9]+)".*/\1/' | paste -sd+ - | bc
 ```
 
-#### Run Tests
-```bash
-mvn test -Dtest=UserProvisioningWorkflowTest
-# Now LDAP tests will run instead of skip
-```
+## Troubleshooting
 
----
-
-## Understanding Test Output
-
-### When Tests Skip
-
-```
-[INFO] Running User Provisioning Workflow Tests
-================================================================================
-Starting test: ...UserProvisioningWorkflowTest.testUserProvisioningToLdap
-================================================================================
-Connector Availability:
-  EdirectoryConnector: NOT AVAILABLE
-  MultiDatabaseConnector: AVAILABLE
-  ...
-
-[WARNING] Skipping test - EdirectoryConnector not available
-
-org.opentest4j.TestAbortedException: Assumption failed:
-EdirectoryConnector not available in test environment
-```
-
-**This is normal!** Tests gracefully skip when infrastructure isn't available.
-
-### When Tests Run Successfully
-
-```
-[INFO] Running User Provisioning Workflow Tests
-================================================================================
-Starting test: ...UserProvisioningWorkflowTest.testUserProvisioningToLdap
-================================================================================
-
-[STEP 1] Generating test user data...
-Generated user: UserTestData{userId='test.user.1729188234567.1234', ...}
-
-[STEP 2] Creating user in LDAP...
-User DN: cn=test.user.1729188234567.1234,ou=users,dc=test,dc=com
-✓ User created in eDirectory
-
-[STEP 3] Waiting for LDAP provisioning...
-✓ LDAP provisioning complete
-
-[STEP 4] Verifying user attributes...
-✓ All user attributes verified successfully
-
-[TEST COMPLETE] User provisioning to LDAP successful!
-```
-
----
-
-## Test Scenarios Available
-
-### ✅ Ready to Run Now
-1. **ConfigurationTest** - All 7 tests
-2. **Database provisioning tests** - H2 auto-configured
-
-### ⏳ Need LDAP Server
-1. **UserProvisioningWorkflowTest** (4 tests)
-2. **UserModificationWorkflowTest** (4 tests)
-3. **UserDeprovisioningWorkflowTest** (5 tests)
-
-### ⏳ Need LDAP + SOAP
-1. **RoleAssignmentWorkflowTest** (4 tests)
-2. **MultiSystemIntegrationTest** (3 tests)
-
-**Total**: 20+ integration test scenarios
-
----
-
-## What's Next - Phase 10
-
-Phase 10 will automate all of this:
-
-1. **Testcontainers Integration**
-   - Automatic LDAP server (ApacheDS/OpenLDAP)
-   - Automatic H2 (already working)
-   - Tests start/stop services automatically
-
-2. **WireMock for SOAP**
-   - Mock NetIQ SOAP services
-   - Pre-configured responses
-   - No real IdM needed for testing
-
-3. **Docker Compose**
-   - Single command to start all test infrastructure
-   - `docker-compose up` → everything ready
-
-4. **CI/CD Pipeline**
-   - GitHub Actions
-   - Automatic test runs on every commit
-   - Test reports and coverage
-
----
-
-## Quick Reference
-
-### Run Configuration Test (Always Works)
-```bash
-cd idm-test-scenarios
-mvn test -Dtest=ConfigurationTest
-```
-
-### Run Specific Test Class
-```bash
-mvn test -Dtest=UserDeprovisioningWorkflowTest
-```
-
-### Run Specific Test Method
-```bash
-mvn test -Dtest=UserDeprovisioningWorkflowTest#testUserDisableWorkflow
-```
-
-### Run All Tests
-```bash
-mvn test
-```
-
-### See Detailed Logs
-```bash
-mvn test -Dtest=ConfigurationTest -X
-```
-
----
-
-## Summary
-
-✅ **What works now**: Configuration tests, database-only tests
-⏳ **What needs setup**: LDAP tests, SOAP tests
-🎯 **Phase 10 goal**: Automate all test infrastructure
-
-The tests are **production-ready** and will work perfectly once Phase 10 adds Testcontainers for automatic LDAP/SOAP setup!
+- **"Unresolved compilation problems" at run time:** an IDE wrote stale `.class` files into
+  `target/`. Run `./mvnw clean test`.
+- **Mockito/Byte Buddy agent attachment fails:** seen only in sandboxed environments; the same
+  command outside the sandbox passes.

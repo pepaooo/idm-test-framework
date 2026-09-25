@@ -34,25 +34,26 @@ YAML and compiled test classes are inputs. JSON and Surefire reports are file ou
 
 | Building block | Responsibility | Source |
 |---|---|---|
-| JUnit adapter | Discover/validate files, construct registry, run dynamic tests, write results | [YamlScenarioTest](../../idm-test-scenarios/src/test/java/com/idm/test/scenarios/engine/YamlScenarioTest.java) |
+| JUnit adapter | Discover/validate files, select them with `-Dscenario`, construct registry, run dynamic tests, write results | [YamlScenarioTest](../../idm-test-scenarios/src/test/java/com/idm/test/scenarios/engine/YamlScenarioTest.java) |
+| Other runners | The same adapter against containers, or against a real lab behind five guards | [ContainerScenarios](../../idm-test-scenarios/src/test/java/com/idm/test/scenarios/engine/ContainerScenarios.java), [RealEnvironmentScenarios](../../idm-test-scenarios/src/test/java/com/idm/test/scenarios/engine/RealEnvironmentScenarios.java) |
 | Loader | Parse YAML into scenario records | [ScenarioLoader](../../idm-test-engine/src/main/java/com/idm/test/engine/ScenarioLoader.java) |
 | Validator | Check known steps, parameters, references and expression syntax | [ScenarioValidator](../../idm-test-engine/src/main/java/com/idm/test/engine/ScenarioValidator.java) |
 | Engine | Scope, ordered execution, waiting, capture and cleanup lifecycle | [ScenarioEngine](../../idm-test-engine/src/main/java/com/idm/test/engine/ScenarioEngine.java) |
 | Value handling | Fixture generation, interpolation and restricted expression evaluation | [Engine source directory](../../idm-test-engine/src/main/java/com/idm/test/engine/) |
 | Step interface | Declare metadata and execute one operation | [StepType](../../idm-test-engine/src/main/java/com/idm/test/engine/spi/StepType.java) |
-| LDAP steps | Adapt the LDAP connector to YAML | [Step implementations](../../idm-test-engine/src/main/java/com/idm/test/engine/steps/) |
+| Steps | Adapt the LDAP, database, SOAP and REST/HTTP connectors to YAML (13 step types) | [Step implementations](../../idm-test-engine/src/main/java/com/idm/test/engine/steps/) |
 | Core | Shared operation result/error model and polling utility | [Core sources](../../idm-test-core/src/main/java/com/idm/test/core/) |
 | Results | Scenario/step data and JSON serialization | [Result sources](../../idm-test-engine/src/main/java/com/idm/test/engine/result/) |
 
-The engine currently depends on core, utils and the LDAP connector. Adding approved database/REST/SOAP step implementations will require corresponding dependencies and registration. Connectors share core types; they do not depend on the engine. The placeholder `idm-connector-idm` module should not be drawn as an implemented IdM service.
+The engine depends on core, utils and the LDAP, database, SOAP and REST connectors; it still imports no Spring type itself. Connectors share core types; they do not depend on the engine. The placeholder `idm-connector-idm` module should not be drawn as an implemented IdM service.
 
 ### Protocol implementations
 
 LDAP uses Spring `LdapTemplate` and configured context sources. JDBC uses a named map of `JdbcTemplate` objects, each backed by a Hikari pool. Queries are raw SQL; there is no domain entity persistence layer.
 
-The REST module includes both the configured Spring `RestClient` and `IdmRestConnector`. The provided client has 10-second connect and 30-second read timeouts. It does not automatically install OAuth or apply the per-endpoint `RestProperties` values.
+The REST module includes the configured Spring `RestClient`, `IdmRestConnector` and `RestAuthenticator`. The client runs on the JDK `HttpClient` pinned to HTTP/1.1, with a 10-second connect timeout and a 30-second overall read deadline; per-target timeouts are not applied. `RestAuthenticator` turns a target's settings into its `Authorization` header: basic, or an OAuth2 client-credentials token from Spring Security's authorized-client manager, or none.
 
-SOAP role and resource connectors use WSDL-generated JAX-WS ports. Constructors set endpoint addresses; declared credentials/timeouts are not applied to those ports. The resource connector is conditional on `idm.test.soap.resource-url`, absent from the default scenario configuration. These distinctions matter when assessing real-environment readiness.
+SOAP role and resource connectors use WSDL-generated JAX-WS ports. Constructors set endpoint addresses and, when `idm.test.soap.username`/`password` are set, HTTP basic authentication; declared timeouts are not applied. The resource connector is conditional on `idm.test.soap.resource-url`, absent from the default scenario configuration. These distinctions matter when assessing real-environment readiness.
 
 ## 5. Execution flow
 
@@ -118,7 +119,9 @@ The bundled scenario base activates `test`, starts UnboundID and WireMock, and s
 
 The optional Docker Compose file is for manual exploration. It is not a prerequisite for the current suite. Selected eDirectory-like schema additions and SOAP stubs give useful framework checks without establishing vendor compatibility.
 
-`dev`, `test` and `prod` configuration documents exist, but the embedded overrides remain in the scenario base. A real environment requires separate wiring, auth configuration, test identities and workflow-specific cleanup. See [configuration](../reference/configuration.md) and [running tests](../reference/running-tests.md).
+Two runners take the YAML scenarios beyond the embedded base. `ContainerScenarios` (optional, needs Docker) runs the corpus against OpenLDAP, PostgreSQL and WireMock via Testcontainers. `RealEnvironmentScenarios` runs the scenarios in `scenarios-real/` under the profile and credentials you supply; five guards refuse the embedded profile, placeholder URLs, an empty directory, placeholder REST targets and placeholder or half-given credentials before anything runs. The diagram above predates both runners.
+
+`dev`, `test` and `prod` configuration documents exist; the embedded overrides stay in the scenario base, so a real environment goes through `RealEnvironmentScenarios`, with test identities and `cleanup:` blocks written for that environment. See [configuration](../reference/configuration.md) and [running tests](../reference/running-tests.md).
 
 ## 9. Extending the architecture
 

@@ -173,6 +173,19 @@ idm:
         read-timeout: 45000
 ```
 
+**Authentication.** `rest.request`, `rest.verify` and `http.request` authenticate with the
+target's settings, and nothing is written in the scenario:
+
+| Target settings | Header sent |
+|---|---|
+| `use-oauth: true` and `oauth-client-name: <registration>` | `Authorization: Bearer <token>`, a client-credentials token from that `spring.security.oauth2.client.registration` entry, cached and renewed by Spring Security |
+| `username` and `password` | `Authorization: Basic ...` |
+| neither | none |
+
+Only one of `username`/`password`, or `use-oauth` naming an unknown registration, fails the step
+before anything is sent. A step that sets its own `Authorization` header sends exactly that. In
+`application.yml`, `idm` uses basic authentication and `sap`, `workday` and `servicenow` use OAuth2.
+
 **Basic Auth Environment Variables:**
 - `<API>_REST_URL` - REST API base URL
 - `<API>_REST_USER` - Username (if using basic auth)
@@ -335,20 +348,30 @@ idm:
         read-timeout: 30000
 ```
 
-2. Use in tests:
+Give `username` and `password` for basic authentication, `use-oauth: true` with
+`oauth-client-name` for OAuth2, or neither for an unauthenticated API. `connect-timeout` and
+`read-timeout` are accepted but not yet applied; the shared client uses 10 s and 30 s.
 
-```java
-RestProperties.RestApiConfig apiConfig = restProperties.getApiConfig("my-api");
-// Create RestClient with this configuration
+2. Use it from a scenario by name. Nothing else needs wiring: the steps resolve the base URL and
+   add the `Authorization` header from these settings.
+
+```yaml
+- rest.request:
+    target: my-api
+    method: GET
+    path: /users/${user.userId}
+    as: found
 ```
+
+A real-environment run checks the target before starting (guards 4 and 5); see
+[scenarios-real/README.md](../../idm-test-scenarios/src/test/resources/scenarios-real/README.md).
 
 ## Validation
 
 Test your configuration:
 
 ```bash
-cd idm-test-scenarios
-mvn test -Dtest=ConfigurationTest
+./mvnw -pl idm-test-scenarios -am test -Dtest=ConfigurationTest -Dsurefire.failIfNoSpecifiedTests=false
 ```
 
 This will verify all properties load correctly.

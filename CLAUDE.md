@@ -35,10 +35,10 @@ This is an **integration testing framework** for Identity Management (IdM) syste
 ./mvnw test
 
 # Run specific test class
-./mvnw test -Dtest=UserProvisioningTest
+./mvnw test -Dtest=UserProvisioningWorkflowTest
 
 # Run specific test method
-./mvnw test -Dtest=UserProvisioningTest#testCompleteProvisioningWorkflow
+./mvnw test -Dtest=UserProvisioningWorkflowTest#testUserProvisioningToLdap
 
 # Run one YAML scenario, or a glob-selected group (quote patterns containing * or braces)
 ./mvnw test -pl idm-test-scenarios -am -Dtest=YamlScenarioTest -Dsurefire.failIfNoSpecifiedTests=false -Dscenario=provisioning-user-to-ldap.yaml
@@ -64,33 +64,27 @@ This is an **integration testing framework** for Identity Management (IdM) syste
 # Tests are automatically discovered and runnable from Test Explorer
 ```
 
-## Project Structure (Current & Target)
+## Project Structure
 
 ```
 idm-test-framework/
-├── pom.xml                          # Maven parent POM (currently single module)
-├── docs/reference/specification.md  # Complete architecture spec (READ THIS!)
-├── CLAUDE.md                        # This file
-│
-├── src/main/java/com/idm/test/
-│   └── IdmTestFrameworkApplication.java  # Spring Boot entry point
-│
-└── src/test/java/com/idm/test/
-    └── IdmTestFrameworkApplicationTests.java  # Basic context test
-
-# Target structure (to be implemented):
-idm-test-core/                       # Test execution engine
-idm-test-connectors/                 # Repository connectors
-│   ├── idm-connector-ldap/          # eDirectory/LDAP
-│   ├── idm-connector-database/      # Multi-DB JDBC
-│   ├── idm-connector-rest/          # REST clients
-│   ├── idm-connector-soap/          # SOAP/Role Service
-│   └── idm-connector-idm/           # IdM REST/SOAP
-idm-test-scenarios/                  # Test implementations
-└── idm-test-utils/                  # Shared utilities
+├── pom.xml                  # Maven parent POM (multi-module)
+├── idm-test-core/           # TestExecutor (waitUntil, executeWithRetry), OperationResult, ErrorType
+├── idm-test-utils/          # Test data generators, assertions, EmbeddedLdapServer
+├── idm-test-engine/         # YAML scenario engine: loader, validator, engine, 13 step types (Spring-free)
+├── idm-connector-ldap/      # eDirectory/LDAP (EdirectoryConnector)
+├── idm-connector-database/  # Multi-DB raw SQL (MultiDatabaseConnector)
+├── idm-connector-rest/      # IdmRestConnector, RestAuthenticator (basic/OAuth2), JDK HTTP client
+├── idm-connector-soap/      # Role and Resource service connectors (JAX-WS)
+├── idm-connector-idm/       # Placeholder, no sources
+├── idm-test-scenarios/      # Java workflow tests; YAML corpus (scenarios/, scenarios-real/);
+│                            # runners: YamlScenarioTest, ContainerScenarios, RealEnvironmentScenarios
+└── docs/                    # reference/, guides/, architecture/, specs/ and plans/ per ticket
 ```
 
-## Key Components to Implement
+Specs live in `docs/specs/YYYY-MM-DD-*-design.md` and plans in `docs/plans/YYYY-MM-DD-*.md`.
+
+## Key Components
 
 ### 1. TestExecutor (Core Utility)
 Location: `idm-test-core/src/main/java/com/idm/test/core/engine/TestExecutor.java`
@@ -102,7 +96,8 @@ Each connector does ONE thing:
 - **EdirectoryConnector**: LDAP CRUD operations
 - **MultiDatabaseConnector**: Execute raw SQL on any configured database
 - **IdmRestConnector**: Thin wrapper around Spring's RestClient
-- **RoleServiceConnector**: SOAP client for NetIQ Role Service
+- **RestAuthenticator**: Authorization header from a REST target's settings (basic, or OAuth2 client credentials via Spring Security)
+- **RoleServiceConnector** / **ResourceServiceConnector**: SOAP clients for the NetIQ Role and Resource services
 
 ### 3. Test Scenarios (Explicit Workflows)
 Tests orchestrate their own flows step-by-step:
@@ -161,9 +156,9 @@ spring:
             authorization-grant-type: client_credentials
 ```
 
-## Dependencies to Add
+## Dependencies
 
-When implementing modules, add these dependencies to pom.xml:
+These are in place; add others only when a module needs them:
 
 ### Core Testing
 - spring-boot-starter-test (already present)
@@ -251,22 +246,10 @@ boolean provisioned = testExecutor.waitUntil(
 
 ## Development Workflow
 
-1. **Start with docs/reference/specification.md**: Understand the full architecture
-2. **Implement core utilities first**: TestExecutor, OperationResult
-3. **Build connectors one at a time**: Start with LDAP, then database, then REST
-4. **Write integration tests alongside connectors**: Validate each connector works
-5. **Create test scenarios last**: Compose connectors into full workflows
-
-## Migration Path
-
-Current state: Single module Spring Boot scaffold
-Target state: Multi-module Maven project
-
-When ready to modularize:
-1. Create parent POM with modules
-2. Extract core, connectors, scenarios, utils as separate modules
-3. Each module has its own pom.xml
-4. Keep dependencies clean (connectors don't depend on each other)
+1. **Start with docs/reference/specification.md** and `docs/architecture/capabilities.md` for what exists
+2. **One ticket at a time**: design in `docs/specs/`, plan in `docs/plans/`, implementation on a feature branch
+3. **Write integration tests alongside the change**: against embedded services or WireMock, never mocks of our own code
+4. **Keep the docs honest**: update the authoring guide, capability matrix and README when behaviour changes
 
 ## Important Notes
 

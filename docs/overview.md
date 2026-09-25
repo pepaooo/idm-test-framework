@@ -62,19 +62,20 @@ Failures identify the file and step. A waiting assertion records the attempt cou
 
 ## What is available today?
 
-- YAML `ldap.create` and `ldap.verify`, fixtures, `${path}` references, restricted JavaScript expressions, `set` variables and `as` captures.
+- 13 YAML step types across LDAP, databases, SOAP roles and resources, REST and raw HTTP; fixtures, `${path}` references, restricted JavaScript expressions, `set` variables, `as` captures and an explicit `cleanup:` block.
 - Java connectors for LDAP, raw SQL databases, REST, and SOAP role/resource operations.
-- JUnit execution and JSON results; embedded local test infrastructure without Docker.
+- JUnit execution and JSON results; embedded local test infrastructure without Docker; optional runners for containers and for a real lab.
+- Authentication from configuration: basic or OAuth2 client credentials for REST targets, basic for SOAP.
 
-**The Java connector vocabulary is broader than the YAML vocabulary.** Database, REST and SOAP YAML steps are approved work that is not yet registered. CLI, frontend and HTML reporting are deferred.
+Checking HTTP responses in JavaScript and reading XML responses are planned (ITF-24, ITF-25). CLI, frontend and HTML reporting are deferred.
 
-The [capability matrix](architecture/capabilities.md) records exact status and source evidence. Its 2026-09-15 baseline ran 320 tests successfully on Java 21. That count is a dated snapshot, not a promise about later revisions.
+The [capability matrix](architecture/capabilities.md) records exact status and source evidence. Its 2026-09-25 review ran 591 tests successfully. That count is a dated snapshot, not a promise about later revisions.
 
 ## What does the demonstration prove?
 
 It demonstrates framework execution: protocol operations against local fixtures, assertions, error paths, waiting, expressions and cleanup behavior. It does **not** demonstrate real IdM provisioning. The test base overrides LDAP and role SOAP endpoints, so changing a profile alone does not turn the bundled suite into a real-environment validator.
 
-Real-system execution needs suitable test wiring, authentication, endpoints and workflow-specific cleanup. Current REST OAuth wiring and SOAP authentication settings need attention before that claim can be made. Cleanup is best effort rather than a transaction; the [architecture guide](architecture/README.md) explains its limits.
+The real-environment runner supplies the wiring, and it refuses to start on placeholder endpoints or credentials. It has not yet been run against a real Identity Manager, so that claim is still unproven. Cleanup is best effort rather than a transaction; the [architecture guide](architecture/README.md) explains its limits.
 
 ## Start here
 

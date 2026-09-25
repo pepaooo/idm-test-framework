@@ -7,6 +7,9 @@ import com.github.tomakehurst.wiremock.verification.LoggedRequest;
 import com.idm.test.connector.rest.client.IdmRestConnector;
 import com.idm.test.connector.rest.config.RestClientConfiguration;
 import com.idm.test.connector.rest.config.RestProperties;
+import com.idm.test.connector.rest.model.TextResponse;
+import com.idm.test.core.model.ErrorType;
+import com.idm.test.core.model.OperationResult;
 import com.idm.test.engine.ScenarioValidator;
 import com.idm.test.engine.ValidationException;
 import com.idm.test.engine.model.Scenario;
@@ -19,6 +22,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.web.client.RestClient;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -249,6 +253,8 @@ class HttpStepsTest {
     @DisplayName("Drops HTTP/2 pseudo-headers such as :status from the captured headers")
     @SuppressWarnings("unchecked")
     void testPseudoHeadersDropped() {
+        // Over HTTP/1.1 no pseudo-headers arrive, so this only guards the end-to-end capture;
+        // HeaderNamesTest.testDropsPseudoHeaders is what proves they are dropped.
         stubFor(get(urlEqualTo("/h")).willReturn(aResponse().withStatus(200).withHeader("X-Custom-Header", "v")));
 
         StepOutcome outcome = STEP.execute(params("target", "mock", "method", "GET", "path", "/h"), true);
@@ -286,6 +292,55 @@ class HttpStepsTest {
 
         assertThat(outcome.success()).isFalse();
         assertThat(outcome.message()).startsWith("http.request failed for http://localhost:1/x");
+        // The JDK client's ConnectException has a null message; the failure must still say what
+        // went wrong rather than end in "null".
+        assertThat(outcome.message()).doesNotEndWith("null")
+                .containsAnyOf("ConnectException", "Connection refused");
+    }
+
+    @Test
+    @DisplayName("Reports a read timeout as TIMEOUT with a real message")
+    void testReadTimeout() {
+        stubFor(get(urlEqualTo("/slow")).willReturn(aResponse().withStatus(200).withBody("late")
+                .withFixedDelay(3000)));
+        IdmRestConnector impatient = new IdmRestConnector(RestClient.builder()
+                .requestFactory(RestClientConfiguration.requestFactory(Duration.ofSeconds(1))).build());
+
+        OperationResult<TextResponse> result = impatient.exchangeText(
+                "GET", "http://localhost:" + WIREMOCK.port() + "/slow", null, null);
+
+        assertThat(result.isSuccess()).isFalse();
+        assertThat(result.getErrorType()).contains(ErrorType.TIMEOUT);
+        assertThat(result.getMessage()).doesNotEndWith("null").contains("Timeout");
+    }
+
+    @Test
+    @DisplayName("Speaks HTTP/1.1: no h2c upgrade headers are sent")
+    void testNoHttp2Upgrade() {
+        stubFor(get(urlEqualTo("/plain")).willReturn(aResponse().withStatus(200)));
+
+        STEP.execute(params("target", "mock", "method", "GET", "path", "/plain"), true);
+
+        verify(getRequestedFor(urlEqualTo("/plain"))
+                .withoutHeader("Upgrade")
+                .withoutHeader("HTTP2-Settings"));
+        // WireMock serves an accepted h2c upgrade as HTTP/2 and does not log the upgrade headers,
+        // so the protocol it served is the check that actually discriminates.
+        LoggedRequest request = findAll(getRequestedFor(urlEqualTo("/plain"))).get(0);
+        assertThat(request.getProtocol()).isEqualTo("HTTP/1.1");
+        assertThat(request.getAllHeaderKeys())
+                .noneMatch(key -> key.equalsIgnoreCase("Upgrade") || key.equalsIgnoreCase("HTTP2-Settings"));
+    }
+
+    @Test
+    @DisplayName("Captures a HEAD response with an empty body")
+    void testHeadHasEmptyBody() {
+        stubFor(head(urlEqualTo("/head")).willReturn(aResponse().withStatus(200).withBody("ok")));
+
+        StepOutcome outcome = STEP.execute(params("target", "mock", "method", "HEAD", "path", "/head"), true);
+
+        assertThat(outcome.success()).isTrue();
+        assertThat(capture(outcome)).containsEntry("status", 200).containsEntry("body", "");
     }
 
     @Test

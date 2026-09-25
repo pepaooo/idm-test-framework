@@ -54,23 +54,42 @@ public class RestClientConfiguration {
      * It is the JDK {@link HttpClient} rather than {@code HttpURLConnection}
      * ({@code SimpleClientHttpRequestFactory}): {@code HttpURLConnection} rejects {@code PATCH}
      * outright and silently drops the body of a {@code GET}, while the JDK client sends any
-     * method with a body. The JDK client also lower-cases response header names and may expose
-     * HTTP/2 pseudo-headers such as {@code :status}; callers that surface headers normalise them
-     * (see {@code HeaderNames}).
+     * method with a body. The JDK client also lower-cases response header names; callers that
+     * surface headers normalise them (see {@code HeaderNames}). Like the JDK client's default
+     * ({@code Redirect.NEVER}), redirects are not followed: a 3xx is returned as data.
+     * <p>
+     * The client is pinned to HTTP/1.1. By default it prefers HTTP/2 and, on {@code http://},
+     * sends {@code Upgrade: h2c}; a server that accepts (WireMock does) then speaks HTTP/2 while
+     * the IdM servers under test speak HTTP/1.1, and the two differ in visible ways (a
+     * {@code HEAD} came back with a body over h2c). Pinning keeps tests and real runs on the
+     * same protocol.
      *
-     * @return a new request factory with the connection and read timeouts
+     * @return a new request factory with a 10 s connect timeout and a 30 s read timeout
      */
     public static ClientHttpRequestFactory requestFactory() {
+        // Read timeout: 30 seconds
+        return requestFactory(Duration.ofSeconds(30));
+    }
+
+    /**
+     * {@link #requestFactory()} with a different read timeout, for tests that need one to expire.
+     * <p>
+     * With the JDK factory the read timeout is an overall deadline, from sending the request
+     * until the response body is read (Spring cancels the exchange or closes the body stream when
+     * it expires), not an idle timeout between reads as with {@code HttpURLConnection}.
+     *
+     * @param readTimeout the overall response deadline
+     * @return a new request factory
+     */
+    public static ClientHttpRequestFactory requestFactory(Duration readTimeout) {
         HttpClient httpClient = HttpClient.newBuilder()
+                .version(HttpClient.Version.HTTP_1_1)
                 // Connection timeout: 10 seconds
                 .connectTimeout(Duration.ofSeconds(10))
                 .build();
 
         JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(httpClient);
-
-        // Read timeout: 30 seconds
-        factory.setReadTimeout(Duration.ofSeconds(30));
-
+        factory.setReadTimeout(readTimeout);
         return factory;
     }
 }

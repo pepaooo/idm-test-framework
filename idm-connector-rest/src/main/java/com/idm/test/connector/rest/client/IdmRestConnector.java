@@ -8,6 +8,7 @@ import com.idm.test.core.model.ErrorType;
 import com.idm.test.core.model.OperationResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.core.NestedExceptionUtils;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatusCode;
@@ -16,6 +17,10 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
+import java.net.ConnectException;
+import java.net.SocketTimeoutException;
+import java.net.UnknownHostException;
+import java.net.http.HttpTimeoutException;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.util.Locale;
@@ -88,10 +93,11 @@ public class IdmRestConnector {
                     .build();
 
         } catch (Exception e) {
-            log.error("GET request failed for URL '{}': {}", url, e.getMessage());
+            String failure = failureMessage("GET", url, e);
+            log.error("{} request failed for URL '{}': {}", "GET", url, failure);
             return OperationResult.<T>builder()
                     .success(false)
-                    .message("Request failed: " + e.getMessage())
+                    .message(failure)
                     .errorType(determineErrorType(e))
                     .throwable(e)
                     .build();
@@ -138,10 +144,11 @@ public class IdmRestConnector {
                     .build();
 
         } catch (Exception e) {
-            log.error("POST request failed for URL '{}': {}", url, e.getMessage());
+            String failure = failureMessage("POST", url, e);
+            log.error("{} request failed for URL '{}': {}", "POST", url, failure);
             return OperationResult.<T>builder()
                     .success(false)
-                    .message("Request failed: " + e.getMessage())
+                    .message(failure)
                     .errorType(determineErrorType(e))
                     .throwable(e)
                     .build();
@@ -188,10 +195,11 @@ public class IdmRestConnector {
                     .build();
 
         } catch (Exception e) {
-            log.error("PUT request failed for URL '{}': {}", url, e.getMessage());
+            String failure = failureMessage("PUT", url, e);
+            log.error("{} request failed for URL '{}': {}", "PUT", url, failure);
             return OperationResult.<T>builder()
                     .success(false)
-                    .message("Request failed: " + e.getMessage())
+                    .message(failure)
                     .errorType(determineErrorType(e))
                     .throwable(e)
                     .build();
@@ -231,10 +239,11 @@ public class IdmRestConnector {
                     .build();
 
         } catch (Exception e) {
-            log.error("DELETE request failed for URL '{}': {}", url, e.getMessage());
+            String failure = failureMessage("DELETE", url, e);
+            log.error("{} request failed for URL '{}': {}", "DELETE", url, failure);
             return OperationResult.<Void>builder()
                     .success(false)
-                    .message("Request failed: " + e.getMessage())
+                    .message(failure)
                     .errorType(determineErrorType(e))
                     .throwable(e)
                     .build();
@@ -359,10 +368,11 @@ public class IdmRestConnector {
                     .build();
 
         } catch (Exception e) {
-            log.error("{} request failed for URL '{}': {}", method, url, e.getMessage());
+            String failure = failureMessage(method, url, e);
+            log.error("{} request failed for URL '{}': {}", method, url, failure);
             return OperationResult.<RestResponse>builder()
                     .success(false)
-                    .message("Request failed: " + e.getMessage())
+                    .message(failure)
                     .errorType(determineErrorType(e))
                     .throwable(e)
                     .build();
@@ -441,10 +451,11 @@ public class IdmRestConnector {
                     .build();
 
         } catch (Exception e) {
-            log.error("{} request failed for URL '{}': {}", method, url, e.getMessage());
+            String failure = failureMessage(method, url, e);
+            log.error("{} request failed for URL '{}': {}", method, url, failure);
             return OperationResult.<TextResponse>builder()
                     .success(false)
-                    .message("Request failed: " + e.getMessage())
+                    .message(failure)
                     .errorType(determineErrorType(e))
                     .throwable(e)
                     .build();
@@ -519,12 +530,74 @@ public class IdmRestConnector {
     }
 
     /**
-     * Determines ErrorType based on exception.
+     * The failure message: {@code Request failed: } and the most telling cause. A wrapped
+     * transport failure is reported as {@code Request failed: GET <url>: <cause>}, naming a
+     * connect or timeout exception by its type, because the JDK HTTP client often leaves their
+     * message null ({@code ConnectException}) or vague ({@code HttpTimeoutException: Request
+     * cancelled}). An exception with no cause, such as the status errors {@link #get} raises,
+     * keeps its own message.
+     */
+    private static String failureMessage(String method, String url, Exception e) {
+        Throwable cause = reportableCause(e);
+        if (cause == e) {
+            return "Request failed: " + describe(e);
+        }
+        return "Request failed: " + method + " " + url + ": " + describe(cause);
+    }
+
+    /** A connect or timeout exception in the chain if there is one, else the most specific cause. */
+    private static Throwable reportableCause(Throwable e) {
+        for (Throwable t = e; t != null; t = t.getCause()) {
+            if (isConnectFailure(t) || isTimeout(t)) {
+                return t;
+            }
+            if (t.getCause() == t) {
+                break;
+            }
+        }
+        return NestedExceptionUtils.getMostSpecificCause(e);
+    }
+
+    private static String describe(Throwable t) {
+        String message = t.getMessage();
+        if (isConnectFailure(t) || isTimeout(t)) {
+            String type = t.getClass().getSimpleName();
+            return message == null ? type : type + ": " + message;
+        }
+        return message != null ? message : t.getClass().getSimpleName();
+    }
+
+    private static boolean isConnectFailure(Throwable t) {
+        return t instanceof ConnectException || t instanceof UnknownHostException;
+    }
+
+    private static boolean isTimeout(Throwable t) {
+        // HttpTimeoutException is what the JDK request factory throws when its read timeout
+        // expires before the response headers arrive (its message is "Request cancelled").
+        return t instanceof HttpTimeoutException || t instanceof SocketTimeoutException;
+    }
+
+    /**
+     * Determines the ErrorType: by exception type anywhere in the cause chain first (connect
+     * and timeout failures), then by message for the status errors {@link #get} and friends
+     * raise.
      *
      * @param e the exception
      * @return the error type
      */
     private ErrorType determineErrorType(Exception e) {
+        for (Throwable t = e; t != null; t = t.getCause()) {
+            if (isConnectFailure(t)) {
+                return ErrorType.NETWORK_ERROR;
+            }
+            if (isTimeout(t)) {
+                return ErrorType.TIMEOUT;
+            }
+            if (t.getCause() == t) {
+                break;
+            }
+        }
+
         String message = e.getMessage();
 
         if (message != null) {

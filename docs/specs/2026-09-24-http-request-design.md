@@ -25,8 +25,14 @@ and headers. They treat 4xx/5xx as data, and return `{status, headers, body}`. B
 
 ## 3. Decisions (jangulo)
 
-1. **A new `http.request` step.** `rest.request` and `rest.verify` stay exactly as they are, as
-   the JSON convenience steps. No scenario breaks.
+1. **A new `http.request` step.** `rest.request` and `rest.verify` remain the JSON convenience
+   steps, and no corpus scenario breaks. A later decision by jangulo, made in review, moved `rest.*` onto the same
+   HTTP client as `http.request` (§5), with three visible effects:
+   - response header names are normalised the same way: lower-cased, with pseudo-headers dropped
+   - methods outside the same list (`GET/POST/PUT/PATCH/DELETE/HEAD/OPTIONS`) are refused before
+     anything is sent
+   - redirects are no longer followed. This is the JDK client's `Redirect.NEVER` default, so a
+     `rest.*` GET that meets a 3xx returns it as data, consistent with "every status is data".
 2. **Named `target` + `path` only.** There is no absolute `url:`. Base URLs live in configuration
    per environment (`idm.test.rest.<target>.base-url`), the same scenario runs in dev, QA or prod,
    and guard 4 checks every target a run uses. A SOAP service is simply another target.
@@ -113,14 +119,24 @@ record TextResponse(int status, Map<String, List<String>> headers, String body)
   `:status` (which the JDK client exposes) are dropped.
 - Methods outside `IdmRestConnector.SUPPORTED_METHODS` (`GET/POST/PUT/PATCH/DELETE/HEAD/OPTIONS`)
   are refused before anything is sent.
-- It never throws. A transport problem becomes a failed `OperationResult`, as in `exchange`.
+- It never throws. A transport problem becomes a failed `OperationResult`, as in `exchange`. Its
+  message comes from the most telling cause, `Request failed: GET <url>: ConnectException`, because the
+  JDK client leaves a refused connection's message null. A `ConnectException` or
+  `UnknownHostException` in the cause chain is `NETWORK_ERROR`. An `HttpTimeoutException` or
+  `SocketTimeoutException` is `TIMEOUT`.
 - **One HTTP client.** Production and tests share `RestClientConfiguration.requestFactory()`: the
-  JDK `HttpClient` (`JdkClientHttpRequestFactory`), with a 10 s connect timeout and a 30 s read
-  timeout. `HttpURLConnection`, used before, rejects `PATCH` and drops a `GET`'s body. Tests that
-  ran on a different client than production could not see either problem, or test the header
-  lower-casing.
-- `rest.*` (`exchange`) now uses the same header normalisation and method list; otherwise it is
-  unchanged.
+  JDK `HttpClient` (`JdkClientHttpRequestFactory`), pinned to HTTP/1.1, with a 10 s connect
+  timeout and a 30 s read timeout. `HttpURLConnection`, used before, rejects `PATCH` and drops a
+  `GET`'s body. Tests that ran on a different client than production could not see either problem,
+  or test the header lower-casing. Without the pin the client offers `Upgrade: h2c` on `http://`,
+  and WireMock accepts it, so tests would speak HTTP/2 while real IdM servers speak HTTP/1.1.
+- **The read timeout is an overall deadline**, from sending the request until the body is read,
+  not an idle timeout between reads. If it expires before the response headers arrive, the result is
+  `HttpTimeoutException`, which is classified as `TIMEOUT`. If it expires while the body is still arriving, Spring
+  closes the stream, and the failure is an `IOException` chain (`closed` … `subscription cancelled`)
+  classified as `UNKNOWN_ERROR`, because nothing in that chain identifies it as a timeout.
+- `rest.*` (`exchange`) now uses the same client, header normalisation, method list, failure
+  messages and no-redirect behaviour (§3, decision 1). Its JSON body handling is unchanged.
 
 ## 6. Engine and registration
 

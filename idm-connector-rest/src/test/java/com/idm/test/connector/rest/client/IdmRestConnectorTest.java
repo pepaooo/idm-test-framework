@@ -282,9 +282,9 @@ class IdmRestConnectorTest {
         OperationResult<IdmUser> result = connector.get(invalidUrl, IdmUser.class);
 
         assertThat(result.isSuccess()).isFalse();
-        assertThat(result.getErrorType()).isPresent();
-        // Should be NETWORK_ERROR or UNKNOWN_ERROR
-        assertThat(result.getErrorType().get()).isIn(ErrorType.NETWORK_ERROR, ErrorType.UNKNOWN_ERROR);
+        // A refused connection is a network error, and says so rather than ending in "null".
+        assertThat(result.getErrorType()).contains(ErrorType.NETWORK_ERROR);
+        assertThat(result.getMessage()).doesNotEndWith("null").contains("ConnectException");
     }
 
     @Test

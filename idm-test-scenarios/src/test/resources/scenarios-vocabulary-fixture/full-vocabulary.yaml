@@ -73,6 +73,17 @@ steps:
           userId: "${user.userId}"
       wait: { timeout: 30s, poll: 2s }
 
+  - http.request:
+      target: idm
+      method: POST
+      path: /soap/echo
+      headers:
+        Content-Type: "text/xml; charset=UTF-8"
+        SOAPAction: "urn:echo"
+      body: |
+        <Envelope><Body><echo>${user.userId}</echo></Body></Envelope>
+      as: soapResponse
+
   - ldap.delete:
       dn: "cn=${user.userId},ou=users"
 

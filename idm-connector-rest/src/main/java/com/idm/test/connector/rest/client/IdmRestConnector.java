@@ -3,10 +3,13 @@ package com.idm.test.connector.rest.client;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.idm.test.connector.rest.model.IdmUser;
 import com.idm.test.connector.rest.model.RestResponse;
+import com.idm.test.connector.rest.model.TextResponse;
 import com.idm.test.core.model.ErrorType;
 import com.idm.test.core.model.OperationResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.core.NestedExceptionUtils;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
@@ -14,10 +17,15 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
-import java.util.LinkedHashMap;
-import java.util.List;
+import java.net.ConnectException;
+import java.net.SocketTimeoutException;
+import java.net.UnknownHostException;
+import java.net.http.HttpTimeoutException;
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * IdM REST API connector using Spring's RestClient.
@@ -32,6 +40,14 @@ import java.util.Map;
 public class IdmRestConnector {
 
     private static final Logger log = LoggerFactory.getLogger(IdmRestConnector.class);
+    /**
+     * The HTTP methods {@link #exchange} and {@link #exchangeText} will send. Anything else is
+     * refused before a request is made: the JDK client would otherwise send any token as a method.
+     */
+    public static final Set<String> SUPPORTED_METHODS =
+            Set.of("GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS");
+
+    private static final MediaType DEFAULT_TEXT = new MediaType("text", "plain", StandardCharsets.UTF_8);
 
     private final RestClient restClient;
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -77,10 +93,11 @@ public class IdmRestConnector {
                     .build();
 
         } catch (Exception e) {
-            log.error("GET request failed for URL '{}': {}", url, e.getMessage());
+            String failure = failureMessage("GET", url, e);
+            log.error("{} request failed for URL '{}': {}", "GET", url, failure);
             return OperationResult.<T>builder()
                     .success(false)
-                    .message("Request failed: " + e.getMessage())
+                    .message(failure)
                     .errorType(determineErrorType(e))
                     .throwable(e)
                     .build();
@@ -127,10 +144,11 @@ public class IdmRestConnector {
                     .build();
 
         } catch (Exception e) {
-            log.error("POST request failed for URL '{}': {}", url, e.getMessage());
+            String failure = failureMessage("POST", url, e);
+            log.error("{} request failed for URL '{}': {}", "POST", url, failure);
             return OperationResult.<T>builder()
                     .success(false)
-                    .message("Request failed: " + e.getMessage())
+                    .message(failure)
                     .errorType(determineErrorType(e))
                     .throwable(e)
                     .build();
@@ -177,10 +195,11 @@ public class IdmRestConnector {
                     .build();
 
         } catch (Exception e) {
-            log.error("PUT request failed for URL '{}': {}", url, e.getMessage());
+            String failure = failureMessage("PUT", url, e);
+            log.error("{} request failed for URL '{}': {}", "PUT", url, failure);
             return OperationResult.<T>builder()
                     .success(false)
-                    .message("Request failed: " + e.getMessage())
+                    .message(failure)
                     .errorType(determineErrorType(e))
                     .throwable(e)
                     .build();
@@ -220,10 +239,11 @@ public class IdmRestConnector {
                     .build();
 
         } catch (Exception e) {
-            log.error("DELETE request failed for URL '{}': {}", url, e.getMessage());
+            String failure = failureMessage("DELETE", url, e);
+            log.error("{} request failed for URL '{}': {}", "DELETE", url, failure);
             return OperationResult.<Void>builder()
                     .success(false)
-                    .message("Request failed: " + e.getMessage())
+                    .message(failure)
                     .errorType(determineErrorType(e))
                     .throwable(e)
                     .build();
@@ -308,16 +328,9 @@ public class IdmRestConnector {
 
         log.debug("{} request to: {}", method, url);
 
-        HttpMethod httpMethod;
-        try {
-            httpMethod = HttpMethod.valueOf(method.toUpperCase(Locale.ROOT));
-        } catch (IllegalArgumentException e) {
-            return OperationResult.<RestResponse>builder()
-                    .success(false)
-                    .message("Unsupported HTTP method: " + method)
-                    .errorType(ErrorType.VALIDATION_ERROR)
-                    .throwable(e)
-                    .build();
+        HttpMethod httpMethod = supportedMethod(method);
+        if (httpMethod == null) {
+            return unsupportedMethod(method);
         }
 
         try {
@@ -345,26 +358,143 @@ public class IdmRestConnector {
 
             ResponseEntity<String> entity = responseSpec.toEntity(String.class);
 
-            Map<String, List<String>> plainHeaders = new LinkedHashMap<>();
-            entity.getHeaders().forEach(plainHeaders::put);
-
             return OperationResult.<RestResponse>builder()
                     .success(true)
                     .data(new RestResponse(
                             entity.getStatusCode().value(),
-                            plainHeaders,
+                            HeaderNames.normalize(entity.getHeaders()),
                             parseBody(entity)))
                     .message(httpMethod + " " + url + " returned " + entity.getStatusCode().value())
                     .build();
 
         } catch (Exception e) {
-            log.error("{} request failed for URL '{}': {}", method, url, e.getMessage());
+            String failure = failureMessage(method, url, e);
+            log.error("{} request failed for URL '{}': {}", method, url, failure);
             return OperationResult.<RestResponse>builder()
                     .success(false)
-                    .message("Request failed: " + e.getMessage())
+                    .message(failure)
                     .errorType(determineErrorType(e))
                     .throwable(e)
                     .build();
+        }
+    }
+
+    /**
+     * Performs one HTTP request with a raw text body and returns the raw text response.
+     * <p>
+     * The counterpart of {@link #exchange} for callers that write the body themselves — XML,
+     * SOAP envelopes, JSON as text. Nothing is serialized or parsed: the body is sent as bytes in
+     * the charset its Content-Type names (UTF-8 by default), and the response is decoded with the
+     * charset it declares (UTF-8 by default). As with exchange, every HTTP status is data; only a
+     * transport-level problem is an operation failure.
+     *
+     * @param method  the HTTP method
+     * @param url     the absolute URL
+     * @param body    the request body, sent as-is, or null for none
+     * @param headers request headers; Content-Type defaults to text/plain; charset=UTF-8 when there
+     *                is a body, and Accept to *&#47;* when none is given
+     * @return the response, or a failure result; never throws
+     */
+    public OperationResult<TextResponse> exchangeText(
+            String method, String url, String body, Map<String, String> headers) {
+
+        log.debug("{} request to: {}", method, url);
+
+        HttpMethod httpMethod = supportedMethod(method);
+        if (httpMethod == null) {
+            return unsupportedMethod(method);
+        }
+
+        try {
+            RestClient.RequestBodySpec spec = restClient.method(httpMethod).uri(url);
+
+            String contentType = null;
+            boolean acceptGiven = false;
+            if (headers != null) {
+                for (Map.Entry<String, String> header : headers.entrySet()) {
+                    if (header.getKey().equalsIgnoreCase(HttpHeaders.CONTENT_TYPE)) {
+                        contentType = header.getValue();
+                    } else {
+                        acceptGiven |= header.getKey().equalsIgnoreCase(HttpHeaders.ACCEPT);
+                        spec.header(header.getKey(), header.getValue());
+                    }
+                }
+            }
+            if (!acceptGiven) {
+                spec.accept(MediaType.ALL);
+            }
+
+            RestClient.RequestHeadersSpec<?> requestSpec = spec;
+            if (body != null) {
+                MediaType mediaType = contentType != null ? MediaType.parseMediaType(contentType) : DEFAULT_TEXT;
+                Charset charset = mediaType.getCharset() != null ? mediaType.getCharset() : StandardCharsets.UTF_8;
+                requestSpec = spec.contentType(mediaType).body(body.getBytes(charset));
+            } else if (contentType != null) {
+                spec.header(HttpHeaders.CONTENT_TYPE, contentType);
+            }
+
+            // Read the response raw: no message converter or media-type parsing runs, so no
+            // Content-Type a server sends can fail the step. Every status, including 4xx and 5xx,
+            // is data.
+            TextResponse response = requestSpec.exchange((request, raw) -> {
+                byte[] bytes = raw.getBody().readAllBytes();
+                return new TextResponse(
+                        raw.getStatusCode().value(),
+                        HeaderNames.normalize(raw.getHeaders()),
+                        new String(bytes, responseCharset(raw.getHeaders().getFirst(HttpHeaders.CONTENT_TYPE))));
+            });
+
+            return OperationResult.<TextResponse>builder()
+                    .success(true)
+                    .data(response)
+                    .message(httpMethod + " " + url + " returned " + response.status())
+                    .build();
+
+        } catch (Exception e) {
+            String failure = failureMessage(method, url, e);
+            log.error("{} request failed for URL '{}': {}", method, url, failure);
+            return OperationResult.<TextResponse>builder()
+                    .success(false)
+                    .message(failure)
+                    .errorType(determineErrorType(e))
+                    .throwable(e)
+                    .build();
+        }
+    }
+
+    /** The method, upper-cased, if it is in {@link #SUPPORTED_METHODS}; otherwise null. */
+    private static HttpMethod supportedMethod(String method) {
+        if (method == null) {
+            return null;
+        }
+        String upper = method.toUpperCase(Locale.ROOT);
+        return SUPPORTED_METHODS.contains(upper) ? HttpMethod.valueOf(upper) : null;
+    }
+
+    private static <T> OperationResult<T> unsupportedMethod(String method) {
+        return OperationResult.<T>builder()
+                .success(false)
+                .message("Unsupported HTTP method: " + method)
+                .errorType(ErrorType.VALIDATION_ERROR)
+                .build();
+    }
+
+    /**
+     * The charset a response's Content-Type declares, parsed leniently: a missing or unparseable
+     * Content-Type, or a charset this JVM does not support, falls back to UTF-8 rather than
+     * failing a step whose every HTTP status is meant to be data.
+     */
+    private static Charset responseCharset(String contentType) {
+        if (contentType == null) {
+            return StandardCharsets.UTF_8;
+        }
+        try {
+            Charset charset = MediaType.parseMediaType(contentType).getCharset();
+            return charset != null ? charset : StandardCharsets.UTF_8;
+        } catch (RuntimeException e) {
+            log.debug("Response Content-Type '{}' names no usable charset, decoding as UTF-8: {}",
+                    contentType, e.getMessage());
+            return StandardCharsets.UTF_8;
         }
     }
 
@@ -400,12 +530,74 @@ public class IdmRestConnector {
     }
 
     /**
-     * Determines ErrorType based on exception.
+     * The failure message: {@code Request failed: } and the most telling cause. A wrapped
+     * transport failure is reported as {@code Request failed: GET <url>: <cause>}, naming a
+     * connect or timeout exception by its type, because the JDK HTTP client often leaves their
+     * message null ({@code ConnectException}) or vague ({@code HttpTimeoutException: Request
+     * cancelled}). An exception with no cause, such as the status errors {@link #get} raises,
+     * keeps its own message.
+     */
+    private static String failureMessage(String method, String url, Exception e) {
+        Throwable cause = reportableCause(e);
+        if (cause == e) {
+            return "Request failed: " + describe(e);
+        }
+        return "Request failed: " + method + " " + url + ": " + describe(cause);
+    }
+
+    /** A connect or timeout exception in the chain if there is one, else the most specific cause. */
+    private static Throwable reportableCause(Throwable e) {
+        for (Throwable t = e; t != null; t = t.getCause()) {
+            if (isConnectFailure(t) || isTimeout(t)) {
+                return t;
+            }
+            if (t.getCause() == t) {
+                break;
+            }
+        }
+        return NestedExceptionUtils.getMostSpecificCause(e);
+    }
+
+    private static String describe(Throwable t) {
+        String message = t.getMessage();
+        if (isConnectFailure(t) || isTimeout(t)) {
+            String type = t.getClass().getSimpleName();
+            return message == null ? type : type + ": " + message;
+        }
+        return message != null ? message : t.getClass().getSimpleName();
+    }
+
+    private static boolean isConnectFailure(Throwable t) {
+        return t instanceof ConnectException || t instanceof UnknownHostException;
+    }
+
+    private static boolean isTimeout(Throwable t) {
+        // HttpTimeoutException is what the JDK request factory throws when its read timeout
+        // expires before the response headers arrive (its message is "Request cancelled").
+        return t instanceof HttpTimeoutException || t instanceof SocketTimeoutException;
+    }
+
+    /**
+     * Determines the ErrorType: by exception type anywhere in the cause chain first (connect
+     * and timeout failures), then by message for the status errors {@link #get} and friends
+     * raise.
      *
      * @param e the exception
      * @return the error type
      */
     private ErrorType determineErrorType(Exception e) {
+        for (Throwable t = e; t != null; t = t.getCause()) {
+            if (isConnectFailure(t)) {
+                return ErrorType.NETWORK_ERROR;
+            }
+            if (isTimeout(t)) {
+                return ErrorType.TIMEOUT;
+            }
+            if (t.getCause() == t) {
+                break;
+            }
+        }
+
         String message = e.getMessage();
 
         if (message != null) {

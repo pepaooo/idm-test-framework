@@ -339,6 +339,22 @@ class RealEnvironmentGuardsTest {
     }
 
     @Test
+    @DisplayName("Guard 4 also collects http.request targets")
+    void testHttpTargetsCollected() {
+        Scenario scenario = scenario("""
+                name: http target
+                steps:
+                  - http.request:
+                      target: roleservice
+                      method: POST
+                      path: /IDMProv/role/service
+                      body: "<Envelope/>"
+                """);
+
+        assertThat(RealEnvironmentScenarios.restTargets(List.of(scenario))).containsExactly("roleservice");
+    }
+
+    @Test
     @DisplayName("Guard 4 collects a non-string REST target as its String.valueOf form")
     void testNonStringRestTargetCollected() {
         Scenario scenario = scenario("""

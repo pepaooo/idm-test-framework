@@ -17,6 +17,7 @@ import com.idm.test.engine.result.ScenarioResult;
 import com.idm.test.engine.spi.StepType;
 import com.idm.test.engine.steps.DbExecuteStep;
 import com.idm.test.engine.steps.DbVerifyStep;
+import com.idm.test.engine.steps.HttpRequestStep;
 import com.idm.test.engine.steps.LdapCreateStep;
 import com.idm.test.engine.steps.LdapDeleteStep;
 import com.idm.test.engine.steps.LdapUpdateStep;
@@ -217,7 +218,8 @@ class YamlScenarioTest extends BaseIntegrationTest {
                 new ResourcesGrantStep(resourceServiceConnector),
                 new ResourcesRevokeStep(resourceServiceConnector),
                 new RestRequestStep(restConnector, restProperties),
-                new RestVerifyStep(restConnector, restProperties))) {
+                new RestVerifyStep(restConnector, restProperties),
+                new HttpRequestStep(restConnector, restProperties))) {
             registry.put(type.name(), type);
         }
         return registry;

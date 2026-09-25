@@ -114,7 +114,7 @@ class YamlScenarioValidationTest extends BaseIntegrationTest {
 
         // Proves the authoring contract: every step name is registered, every parameter is
         // accepted, and every ${...} reference resolves in order. The SOAP and REST steps are
-        // exercised for real against WireMock in SoapStepsTest and RestStepsTest.
+        // exercised for real against WireMock in SoapStepsTest, RestStepsTest and HttpStepsTest.
         assertThatCode(() -> validator.validate(scenario, "full-vocabulary.yaml"))
                 .doesNotThrowAnyException();
     }

@@ -121,6 +121,10 @@ Credentials come from the environment variables `application.yml` already refere
 Scenarios name their database by its key: `sap`, `oracle-hr` or `workday`. `test-db` is the
 embedded H2.
 
+A SOAP service or any other API called with `http.request` is a target too: configure its base
+URL as `idm.test.rest.<name>.base-url`, or with `IDM_TEST_REST_<NAME>_BASEURL`. Guard 4 checks it
+like any REST target.
+
 ## Running against containers
 
 `ContainerScenarios` runs the embedded corpus (`../scenarios/`) through this same runner,

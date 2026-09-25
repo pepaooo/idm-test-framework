@@ -25,8 +25,20 @@ and headers. They treat 4xx/5xx as data, and return `{status, headers, body}`. B
 
 ## 3. Decisions (jangulo)
 
-1. **A new `http.request` step.** `rest.request` and `rest.verify` stay exactly as they are, as
-   the JSON convenience steps. No scenario breaks.
+1. **A new `http.request` step.** `rest.request` and `rest.verify` remain the JSON convenience
+   steps, and no corpus scenario breaks. A later decision by jangulo, made in review, moved `rest.*` onto the same
+   HTTP client as `http.request` (§5); visible effects include:
+   - response header names are normalised the same way: lower-cased, with pseudo-headers dropped
+   - methods outside the same list (`GET/POST/PUT/PATCH/DELETE/HEAD/OPTIONS`) are refused before
+     anything is sent
+   - redirects are no longer followed. This is the JDK client's `Redirect.NEVER` default, so a
+     `rest.*` GET that meets a 3xx returns it as data, consistent with "every status is data".
+   - the new failure-message format, naming the method and URL and never ending in a bare `null`
+   - the read timeout now acts as an overall deadline, from sending the request until the body is
+     read, not an idle timeout between reads
+   - `PATCH` now works for `rest.*`; `HttpURLConnection`, used before, rejected it
+   - a `GET` with a body is now sent as a `GET` with that body; `HttpURLConnection` either dropped
+     the body or turned the request into a `POST`
 2. **Named `target` + `path` only.** There is no absolute `url:`. Base URLs live in configuration
    per environment (`idm.test.rest.<target>.base-url`), the same scenario runs in dev, QA or prod,
    and guard 4 checks every target a run uses. A SOAP service is simply another target.
@@ -98,14 +110,39 @@ OperationResult<TextResponse> exchangeText(
 record TextResponse(int status, Map<String, List<String>> headers, String body)
 ```
 
-- It uses the same Spring `RestClient` bean as `exchange`, and suppresses status handling in the
-  same way, so every status arrives as data. It follows CLAUDE.md's rule: Spring's client is used
-  directly, and there is no new HTTP code.
-- The body is sent as a `String` (`StringHttpMessageConverter`), and the response is read as a
-  `String`.
-- Header names are lower-cased when the map is built.
-- It never throws. A transport problem becomes a failed `OperationResult`, as in `exchange`.
-- `exchange` and `rest.*` are unchanged.
+- It uses the same Spring `RestClient` bean as `exchange`. It reads the response through
+  `RestClient.exchange(...)`, which runs no status handlers, so every status arrives as data. It
+  follows CLAUDE.md's rule: Spring's client is used directly, and there is no new HTTP code.
+- The body is sent as bytes in the charset its `Content-Type` declares (`text/plain;
+  charset=UTF-8` by default), so no message converter re-encodes it.
+- The response is read raw with `RestClient.exchange(...)`: status, headers and body bytes, with no
+  message converter or media-type parsing that a server's `Content-Type` could make throw. The body
+  is decoded with the response's declared charset, parsed leniently: a missing or unparseable
+  `Content-Type`, or an unsupported charset (for example a 404 with `charset=bogus-cs`), falls back
+  to UTF-8 and never fails the step.
+- Header names are normalised by `HeaderNames.normalize`. Names are lower-cased (`Locale.ROOT`),
+  names that differ only in case are merged in encounter order, and HTTP/2 pseudo-headers such as
+  `:status` (which the JDK client exposes) are dropped.
+- Methods outside `IdmRestConnector.SUPPORTED_METHODS` (`GET/POST/PUT/PATCH/DELETE/HEAD/OPTIONS`)
+  are refused before anything is sent.
+- It never throws. A transport problem becomes a failed `OperationResult`, as in `exchange`. Its
+  message comes from the most telling cause, `Request failed: GET <url>: ConnectException`, because the
+  JDK client leaves a refused connection's message null. A `ConnectException` or
+  `UnknownHostException` in the cause chain is `NETWORK_ERROR`. An `HttpTimeoutException` or
+  `SocketTimeoutException` is `TIMEOUT`.
+- **One HTTP client.** Production and tests share `RestClientConfiguration.requestFactory()`: the
+  JDK `HttpClient` (`JdkClientHttpRequestFactory`), pinned to HTTP/1.1, with a 10 s connect
+  timeout and a 30 s read timeout. `HttpURLConnection`, used before, rejects `PATCH` and drops a
+  `GET`'s body. Tests that ran on a different client than production could not see either problem,
+  or test the header lower-casing. Without the pin the client offers `Upgrade: h2c` on `http://`,
+  and WireMock accepts it, so tests would speak HTTP/2 while real IdM servers speak HTTP/1.1.
+- **The read timeout is an overall deadline**, from sending the request until the body is read,
+  not an idle timeout between reads. If it expires before the response headers arrive, the result is
+  `HttpTimeoutException`, which is classified as `TIMEOUT`. If it expires while the body is still arriving, Spring
+  closes the stream, and the failure is an `IOException` chain (`closed` … `subscription cancelled`)
+  classified as `UNKNOWN_ERROR`, because nothing in that chain identifies it as a timeout.
+- `rest.*` (`exchange`) now uses the same client, header normalisation, method list, failure
+  messages and no-redirect behaviour (§3, decision 1). Its JSON body handling is unchanged.
 
 ## 6. Engine and registration
 

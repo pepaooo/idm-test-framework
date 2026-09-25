@@ -282,9 +282,9 @@ class IdmRestConnectorTest {
         OperationResult<IdmUser> result = connector.get(invalidUrl, IdmUser.class);
 
         assertThat(result.isSuccess()).isFalse();
-        assertThat(result.getErrorType()).isPresent();
-        // Should be NETWORK_ERROR or UNKNOWN_ERROR
-        assertThat(result.getErrorType().get()).isIn(ErrorType.NETWORK_ERROR, ErrorType.UNKNOWN_ERROR);
+        // A refused connection is a network error, and says so rather than ending in "null".
+        assertThat(result.getErrorType()).contains(ErrorType.NETWORK_ERROR);
+        assertThat(result.getMessage()).doesNotEndWith("null").contains("ConnectException");
     }
 
     @Test
@@ -303,8 +303,11 @@ class IdmRestConnectorTest {
         assertThat(result.isSuccess()).isTrue();
         RestResponse response = result.getData().orElseThrow();
         assertThat(response.status()).isEqualTo(200);
-        assertThat(response.headers()).containsKey("X-Request-Id");
-        assertThat(response.headers().get("X-Request-Id")).containsExactly("abc123");
+        // Names are normalised: lower-case whatever the server sent, and no HTTP/2 pseudo-headers.
+        assertThat(response.headers()).containsEntry("x-request-id", java.util.List.of("abc123"))
+                .doesNotContainKey("X-Request-Id");
+        // Pseudo-header dropping itself is guarded by HeaderNamesTest.testDropsPseudoHeaders;
+        // over HTTP/1.1 no pseudo-headers ever arrive here, so that assertion couldn't fail.
         assertThat(response.body()).isInstanceOf(Map.class);
         @SuppressWarnings("unchecked")
         Map<String, Object> bodyMap = (Map<String, Object>) response.body();
@@ -403,13 +406,18 @@ class IdmRestConnectorTest {
     }
 
     @Test
-    @DisplayName("exchange should reject an unsupported HTTP method rather than throw")
+    @DisplayName("exchange should refuse a method outside the allow-list without sending anything")
     void testExchangeRejectsBadMethod() {
+        // Any method would be answered, so only the allow-list can make this fail.
+        stubFor(any(urlEqualTo("/api/users/1")).willReturn(aResponse().withStatus(200)));
+
         OperationResult<RestResponse> result =
                 connector.exchange("FETCH", baseUrl + "/api/users/1", null, null);
 
         assertThat(result.isSuccess()).isFalse();
-        assertThat(result.getMessage()).contains("FETCH");
+        assertThat(result.getMessage()).isEqualTo("Unsupported HTTP method: FETCH");
+        assertThat(result.getErrorType()).contains(ErrorType.VALIDATION_ERROR);
+        verify(0, anyRequestedFor(anyUrl()));
     }
 
     /**

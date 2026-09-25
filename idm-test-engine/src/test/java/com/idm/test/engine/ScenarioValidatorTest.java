@@ -565,4 +565,41 @@ class ScenarioValidatorTest {
                 .isInstanceOf(ValidationException.class)
                 .hasMessageContaining("unknown parameter 'undo'");
     }
+
+    @Test
+    @DisplayName("Should reject a misspelled root inside js:{} at load time")
+    void testRejectsUnknownRootInsideExpression() {
+        assertThatThrownBy(() -> validator.validate(scenario(
+                new StepSpec("ldap.create", Map.of("dn", "js:{ usr.userId }"))), "t.yaml"))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("usr");
+    }
+
+    @Test
+    @DisplayName("Should reject a js:{} read of a name bound only by a later step")
+    void testRejectsForwardReferenceInsideExpression() {
+        assertThatThrownBy(() -> validator.validate(scenario(
+                new StepSpec("ldap.create", Map.of("dn", "js:{ created + ',ou=users' }")),
+                new StepSpec("ldap.create", Map.of("dn", "cn=x", "as", "created"))), "t.yaml"))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("created");
+    }
+
+    @Test
+    @DisplayName("Cleanup js:{} may read a name bound by any step")
+    void testCleanupExpressionReadsAnyBinding() {
+        assertThatCode(() -> validator.validate(scenarioWithCleanup(CREATE_AS_CREATED,
+                new StepSpec("ldap.create", Map.of("dn", "js:{ created + ',x' }"))), "c.yaml"))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("Cleanup js:{} may not read a name bound nowhere")
+    void testCleanupExpressionRejectsUnknownRoot() {
+        assertThatThrownBy(() -> validator.validate(scenarioWithCleanup(CREATE_AS_CREATED,
+                new StepSpec("ldap.create", Map.of("dn", "js:{ nowhere.dn }"))), "c.yaml"))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("cleanup entry 1")
+                .hasMessageContaining("nowhere");
+    }
 }

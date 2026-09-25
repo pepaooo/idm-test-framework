@@ -160,10 +160,11 @@ class InterpolatorTest {
     }
 
     @Test
-    @DisplayName("Should not mistake a template literal substitution inside an expression for a reference")
-    void testDoesNotCollectReferencesInsideExpressionTemplateLiteral() {
+    @DisplayName("Should report free JS names in an expression, but never read a template literal's ${...} as a scenario reference")
+    void testCollectsFreeNamesInsideExpression() {
         assertThat(Interpolator.references("js:{ `${ 1 + 1 }` }")).isEmpty();
-        assertThat(Interpolator.references("js:{ `hello ${user.firstName}` }")).isEmpty();
+        assertThat(Interpolator.references("js:{ `hello ${user.firstName}` }")).containsExactly("user");
+        assertThat(Interpolator.references("js:{ user.lastName.toUpperCase() }")).containsExactly("user");
     }
 
     @Test

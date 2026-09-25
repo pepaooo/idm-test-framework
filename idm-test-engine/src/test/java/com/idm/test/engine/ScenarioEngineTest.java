@@ -689,4 +689,24 @@ class ScenarioEngineTest {
         assertThat(result.success()).isFalse();
         assertThat(result.failureSummary()).contains("userid").contains("undefined");
     }
+
+    @Test
+    @DisplayName("A cleanup js:{} reading a capture that was never bound is SKIPPED")
+    void testCleanupExpressionOnUnboundCaptureSkips() {
+        ScenarioEngine engine = engineWith(
+                failingAction("f"), valueProducing("v", "cn=made"), recordingAction("a"));
+
+        ScenarioResult result = engine.run(withCleanup(
+                List.of(new StepSpec("f", Map.of()),
+                        new StepSpec("v", Map.of("dn", "x", "as", "created"))),
+                new StepSpec("a", Map.of("dn", "js:{ created + ',ou=users' }"))), "t.yaml");
+
+        assertThat(events).containsExactly("run:f");
+        assertThat(result.cleanup()).singleElement().satisfies(c -> {
+            assertThat(c.status()).isEqualTo(CleanupStatus.SKIPPED);
+            assertThat(c.message()).contains("created");
+        });
+        assertThat(result.success()).isFalse();
+        assertThat(result.failureSummary()).contains("f went wrong").doesNotContain("cleanup entry");
+    }
 }

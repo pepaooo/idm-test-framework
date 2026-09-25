@@ -61,7 +61,8 @@ cleanup:
 - **Each entry ends in exactly one of three outcomes:**
   - **SKIPPED:** its parameters reference a *root name* that is not bound in scope, because the
     step that would have bound it (with `as:`) never ran. This is the conditional-cleanup idiom:
-    capture with `as:`, and reference the capture in cleanup.
+    capture with `as:`, and reference the capture in cleanup. (Since ITF-21 this also covers names
+    read inside a `js:{ ... }` expression.)
   - **SUCCEEDED:** the step returned success.
   - **FAILED:** the step returned failure, or resolving its parameters failed for any reason
     *other than* an unbound root name. For example, `${user.noSuchField}` on a bound `user` is a

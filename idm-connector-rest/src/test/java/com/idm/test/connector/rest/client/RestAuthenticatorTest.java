@@ -356,7 +356,8 @@ class RestAuthenticatorTest {
         assertThat(result.getMessage())
                 .doesNotContain("Az~secret+val/ue=")
                 .doesNotContain("Az%7Esecret%2Bval%2Fue%3D")
-                .doesNotContainPattern("Basic [A-Za-z0-9+/=]{8,}");
+                .doesNotContainPattern("Basic [A-Za-z0-9+/=]{8,}")
+                .contains("client_secret=****");
         wiremock.verify(1, postRequestedFor(urlEqualTo("/oauth/token")));
     }
 
@@ -375,7 +376,8 @@ class RestAuthenticatorTest {
         assertThat(result.getMessage())
                 .doesNotContain("Az~secret+val/ue=")
                 .doesNotContain("Az%7Esecret%2Bval%2Fue%3D")
-                .doesNotContainPattern("Basic [A-Za-z0-9+/=]{8,}");
+                .doesNotContainPattern("Basic [A-Za-z0-9+/=]{8,}")
+                .contains("Basic ****");
         wiremock.verify(1, postRequestedFor(urlEqualTo("/oauth/token")));
     }
 

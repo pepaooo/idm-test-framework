@@ -256,4 +256,79 @@ class RestAuthenticatorTest {
                 new ResourceAccessException("down", new java.net.ConnectException("refused"))))
                 .isEqualTo(ErrorType.NETWORK_ERROR);
     }
+
+    @Test
+    @DisplayName("A malformed or non-http token-uri is a configuration error, caught before any request")
+    void testInvalidTokenUri() {
+        for (String uri : new String[] {"not-a-url", "ftp://example.org/token", "http://bad host/token"}) {
+            OperationResult<String> result = withTokenUri(uri).authorization("api", oauth("svc"));
+
+            assertThat(result.isFailure()).as(uri).isTrue();
+            assertThat(result.getErrorType()).as(uri).contains(ErrorType.CONFIGURATION_ERROR);
+            assertThat(result.getMessage()).as(uri)
+                    .startsWith("OAuth2 registration 'svc' (target 'api') has a token-uri that is not an absolute http(s) URL: '")
+                    .endsWith("'. Fix its provider's token-uri (spring.security.oauth2.client.provider.<name>.token-uri).")
+                    .doesNotContain("failed:");
+        }
+    }
+
+    @Test
+    @DisplayName("Credentials in an invalid token-uri are masked in the message")
+    void testInvalidTokenUriMasksUserInfo() {
+        OperationResult<String> result = withTokenUri("ftp://user:pa55@example.org/token")
+                .authorization("api", oauth("svc"));
+
+        assertThat(result.getErrorType()).contains(ErrorType.CONFIGURATION_ERROR);
+        assertThat(result.getMessage()).contains("ftp://****@example.org/token").doesNotContain("pa55");
+    }
+
+    @Test
+    @DisplayName("isHttpUrl accepts absolute http(s) URLs with a host, in any scheme case")
+    void testIsHttpUrl() {
+        assertThat(RestAuthenticator.isHttpUrl("https://idp.example/oauth/token")).isTrue();
+        assertThat(RestAuthenticator.isHttpUrl("HTTP://localhost:8080/token")).isTrue();
+        assertThat(RestAuthenticator.isHttpUrl(null)).isFalse();
+        assertThat(RestAuthenticator.isHttpUrl(" ")).isFalse();
+        assertThat(RestAuthenticator.isHttpUrl("/relative/token")).isFalse();
+        assertThat(RestAuthenticator.isHttpUrl("http:///no-host")).isFalse();
+    }
+
+    @Test
+    @DisplayName("A token server echoing the client secret never gets it into the message")
+    void testEchoedSecretMasked() {
+        wiremock.stubFor(post(urlEqualTo("/oauth/token")).willReturn(aResponse()
+                .withStatus(403)
+                .withHeader("Content-Type", "text/plain")
+                .withBody("forbidden for client_secret=svc-secret-value")));
+
+        OperationResult<String> result = withRegistration("svc").authorization("api", oauth("svc"));
+
+        assertThat(result.isFailure()).isTrue();
+        assertThat(result.getMessage()).doesNotContain("svc-secret-value").contains("****");
+    }
+
+    @Test
+    @DisplayName("Credentials in an unreachable token URL never reach the message")
+    void testUnreachableUserInfoMasked() {
+        OperationResult<String> result = withTokenUri("https://user:pa55@no-such-host.invalid/token")
+                .authorization("api", oauth("svc"));
+
+        assertThat(result.isFailure()).isTrue();
+        assertThat(result.getMessage()).doesNotContain("pa55");
+    }
+
+    @Test
+    @DisplayName("A long error body is capped")
+    void testLongBodyCapped() {
+        wiremock.stubFor(post(urlEqualTo("/oauth/token")).willReturn(aResponse()
+                .withStatus(405)
+                .withHeader("Content-Type", "text/html")
+                .withBody("<html>" + "x".repeat(2000) + "</html>")));
+
+        OperationResult<String> result = withRegistration("svc").authorization("api", oauth("svc"));
+
+        assertThat(result.isFailure()).isTrue();
+        assertThat(result.getMessage()).endsWith("…");
+        assertThat(result.getMessage().length()).isLessThan(450);
+    }
 }

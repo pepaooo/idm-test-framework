@@ -34,6 +34,8 @@ public final class ScenarioEngine {
     /** Reserved: handled here rather than by a registered step type. */
     private static final String SET_STEP = "set";
 
+    private static final String NOT_RETRIED = " (not retried: waiting cannot change this)";
+
     private final Map<String, StepType> registry;
     private final FixtureFactory fixtures;
     private final TestExecutor executor;
@@ -169,7 +171,8 @@ public final class ScenarioEngine {
                         "threw " + e.getClass().getSimpleName() + ": " + e.getMessage());
             }
             last.set(outcome);
-            return outcome.success();
+            // A final failure ends the wait: polling it again cannot change the answer.
+            return outcome.success() || outcome.isFinal();
         }, wait.timeout(), wait.poll());
         long waitedMillis = System.currentTimeMillis() - waitStarted;
 
@@ -183,6 +186,8 @@ public final class ScenarioEngine {
             // when waitUntil's loop condition never even entered — the timeout was already
             // spent. A null outcome here really does mean the condition never ran.
             message = "wait timed out before the assertion ran once";
+        } else if (outcome.isFinal()) {
+            message = outcome.message() + NOT_RETRIED;
         } else if (passed) {
             // Covers both the ordinary passing case and the one bind() just downgraded: the
             // assertion itself passed on this attempt, so its own message (success or, on a

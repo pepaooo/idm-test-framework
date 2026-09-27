@@ -14,6 +14,8 @@ import java.util.Set;
  * Grants one or more roles to a user. Registers nothing. A scenario that needs cleanup writes
  * an explicit {@code roles.revoke} in its {@code cleanup:} block, using the DNs captured here
  * through {@code as:}.
+ *
+ * @param connector the SOAP connector, or null when the service is not configured; execute then fails without calling anything
  */
 public final class RolesGrantStep implements StepType {
 
@@ -40,6 +42,10 @@ public final class RolesGrantStep implements StepType {
 
     @Override
     public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
+        if (connector == null) {
+            return StepOutcome.finalFailure(
+                    "roles.grant cannot run: no Role service is configured (idm.test.soap.url)");
+        }
         // captureRequested is ignored: the assignment DNs come back from the call itself, so
         // there is no extra work to skip when nobody asked to capture them.
         String user = String.valueOf(params.get("user"));

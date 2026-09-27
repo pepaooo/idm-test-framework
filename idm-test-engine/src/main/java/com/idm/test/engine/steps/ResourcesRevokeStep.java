@@ -12,6 +12,8 @@ import java.util.Set;
 /**
  * Revokes a resource from a user. Registers nothing. A scenario that wants the resource back
  * grants it again explicitly.
+ *
+ * @param connector the SOAP connector, or null when the service is not configured; execute then fails without calling anything
  */
 public final class ResourcesRevokeStep implements StepType {
 
@@ -38,6 +40,10 @@ public final class ResourcesRevokeStep implements StepType {
 
     @Override
     public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
+        if (connector == null) {
+            return StepOutcome.finalFailure(
+                    "resources.revoke cannot run: no Resource service is configured (idm.test.soap.resource-url)");
+        }
         String user = String.valueOf(params.get("user"));
         String resource = String.valueOf(params.get("resource"));
         Object rawReason = params.get("reason");

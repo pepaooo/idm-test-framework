@@ -12,6 +12,8 @@ import java.util.Set;
 /**
  * Grants a resource to a user. Registers nothing. To revoke afterwards, write
  * {@code resources.revoke} in the scenario's {@code cleanup:} block.
+ *
+ * @param connector the SOAP connector, or null when the service is not configured; execute then fails without calling anything
  */
 public final class ResourcesGrantStep implements StepType {
 
@@ -38,6 +40,10 @@ public final class ResourcesGrantStep implements StepType {
 
     @Override
     public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
+        if (connector == null) {
+            return StepOutcome.finalFailure(
+                    "resources.grant cannot run: no Resource service is configured (idm.test.soap.resource-url)");
+        }
         // captureRequested is ignored: the request identifier comes back from the call
         // itself, so there is no extra work to skip.
         String user = String.valueOf(params.get("user"));

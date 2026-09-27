@@ -17,6 +17,8 @@ import java.util.Set;
  * {@code removeRoles} operation consumes and nothing in the role service maps a role
  * definition DN back to an assignment DN. Capture them from {@code roles.grant} with
  * {@code as:} and pass them here.
+ *
+ * @param connector the SOAP connector, or null when the service is not configured; execute then fails without calling anything
  */
 public final class RolesRevokeStep implements StepType {
 
@@ -38,6 +40,10 @@ public final class RolesRevokeStep implements StepType {
 
     @Override
     public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
+        if (connector == null) {
+            return StepOutcome.finalFailure(
+                    "roles.revoke cannot run: no Role service is configured (idm.test.soap.url)");
+        }
         List<String> assignments = StepValues.toStringList(params.get("assignments"));
 
         if (assignments.isEmpty()) {

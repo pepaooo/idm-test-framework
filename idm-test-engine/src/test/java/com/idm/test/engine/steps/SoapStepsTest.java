@@ -299,4 +299,32 @@ class SoapStepsTest {
 
         assertThat(outcome.success()).isTrue();
     }
+
+    @Test
+    @DisplayName("A SOAP step built without its connector fails finally, naming the property to set")
+    void testAbsentConnectorIsFinalFailure() {
+        Map<String, Object> grantParams = Map.of("user", "cn=u,ou=users", "roles", List.of("cn=r,ou=roles"));
+        StepOutcome roleGrant = new RolesGrantStep(null).execute(grantParams, false);
+        assertThat(roleGrant.success()).isFalse();
+        assertThat(roleGrant.isFinal()).isTrue();
+        assertThat(roleGrant.message())
+                .isEqualTo("roles.grant cannot run: no Role service is configured (idm.test.soap.url)");
+
+        StepOutcome roleRevoke = new RolesRevokeStep(null).execute(
+                Map.of("assignments", List.of("cn=a")), false);
+        assertThat(roleRevoke.isFinal()).isTrue();
+        assertThat(roleRevoke.message())
+                .isEqualTo("roles.revoke cannot run: no Role service is configured (idm.test.soap.url)");
+
+        Map<String, Object> resourceParams = Map.of("user", "cn=u,ou=users", "resource", "cn=res");
+        StepOutcome resourceGrant = new ResourcesGrantStep(null).execute(resourceParams, false);
+        assertThat(resourceGrant.isFinal()).isTrue();
+        assertThat(resourceGrant.message()).isEqualTo(
+                "resources.grant cannot run: no Resource service is configured (idm.test.soap.resource-url)");
+
+        StepOutcome resourceRevoke = new ResourcesRevokeStep(null).execute(resourceParams, false);
+        assertThat(resourceRevoke.isFinal()).isTrue();
+        assertThat(resourceRevoke.message()).isEqualTo(
+                "resources.revoke cannot run: no Resource service is configured (idm.test.soap.resource-url)");
+    }
 }

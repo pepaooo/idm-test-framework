@@ -1,6 +1,7 @@
 package com.idm.test.scenarios.engine;
 
 import com.idm.test.connector.database.client.MultiDatabaseConnector;
+import com.idm.test.connector.database.config.DatabaseProperties;
 import com.idm.test.connector.ldap.client.EdirectoryConnector;
 import com.idm.test.connector.rest.client.IdmRestConnector;
 import com.idm.test.connector.rest.client.RestAuthenticator;
@@ -16,12 +17,12 @@ import com.idm.test.engine.ScenarioLoader;
 import com.idm.test.engine.ScenarioValidator;
 import com.idm.test.engine.expr.ExpressionEvaluator;
 import com.idm.test.engine.model.Scenario;
-import com.idm.test.engine.model.StepSpec;
 import com.idm.test.engine.spi.StepType;
 import com.idm.test.utils.data.TestDataGenerator;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.TestFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.autoconfigure.ldap.LdapAutoConfiguration;
@@ -58,9 +59,12 @@ import java.util.stream.Stream;
  * </pre>
  * Add {@code -Dscenario=<file or glob>} to run only matching files, as with
  * {@link YamlScenarioTest}.
- * The five guards below run before any scenario. A connection error is loud on its own. The
+ * The guards below run before any scenario. A connection error is loud on its own. The
  * failure they prevent is the quiet one: a run against the embedded configuration, a
- * placeholder, or an empty directory that reports green.
+ * placeholder, or an empty directory that reports green. Guards 2, 4 and 5, and the database
+ * guard, check only what the selected scenarios actually use ({@link ScenarioNeeds}):
+ * an unused LDAP, SOAP, database or REST repository is never required to be configured, and
+ * is never contacted.
  */
 @SpringBootTest
 @EnableAutoConfiguration(exclude = {LdapAutoConfiguration.class})
@@ -96,6 +100,15 @@ public class RealEnvironmentScenarios {
             "workday", new Credentials("workday-client", "workday-secret"),
             "servicenow", new Credentials("snow-client", "snow-secret"));
 
+    /** application.yml's fallback URL and credentials per database. Pinned by RealEnvironmentGuardsTest. */
+    record DatabasePlaceholder(String jdbcUrl, String username, String password) {
+    }
+
+    static final Map<String, DatabasePlaceholder> DATABASE_PLACEHOLDERS = Map.of(
+            "sap", new DatabasePlaceholder("jdbc:postgresql://localhost:5432/sap", "sapuser", "sappass"),
+            "oracle-hr", new DatabasePlaceholder("jdbc:oracle:thin:@localhost:1521:HRDB", "hruser", "hrpass"),
+            "workday", new DatabasePlaceholder("jdbc:postgresql://localhost:5432/workday", "wdayuser", "wdaypass"));
+
     private static final String REGISTRATION = "spring.security.oauth2.client.registration.";
 
     private static final Path RESULTS = Path.of("target", "real-environment-results.json");
@@ -110,10 +123,13 @@ public class RealEnvironmentScenarios {
     private MultiDatabaseConnector databaseConnector;
 
     @Autowired
-    private RoleServiceConnector roleServiceConnector;
+    private ObjectProvider<RoleServiceConnector> roleServiceConnector;
 
     @Autowired
-    private ResourceServiceConnector resourceServiceConnector;
+    private ObjectProvider<ResourceServiceConnector> resourceServiceConnector;
+
+    @Autowired
+    private DatabaseProperties databaseProperties;
 
     @Autowired
     private IdmRestConnector idmRestConnector;
@@ -139,18 +155,22 @@ public class RealEnvironmentScenarios {
     @TestFactory
     @DisplayName("Each real-environment scenario file runs as its own test")
     Stream<DynamicTest> scenarios() throws Exception {
-        requireRealTarget(environment);
+        requireNotEmbedded(environment);
         String scenarioDir = scenarioDirectory();
         requireScenarios(YamlScenarioTest.scenarioFiles(scenarioDir), scenarioDir);
         // After guard 3, so an empty directory gets its README message and only a pattern
         // that matches nothing gets the filter's message.
         List<String> selected = YamlScenarioTest.selectedScenarioFiles(scenarioDir);
-        requireRestTargetsIn(scenarioDir, selected, restProperties);
-        requireCredentialsIn(scenarioDir, selected, restProperties, soapProperties, environment);
+        // Everything below checks only what the selected scenarios use.
+        ScenarioNeeds needs = ScenarioNeeds.of(loadForGuards(scenarioDir, selected));
+        requireEndpoints(environment, needs);
+        requireRestTargets(needs.restTargets(), restProperties);
+        requireDatabases(needs.databases(), databaseProperties);
+        requireCredentials(needs.restTargets(), needs.soap(), restProperties, soapProperties, environment);
 
         Map<String, StepType> registry = YamlScenarioTest.registry(
-                edirectoryConnector, databaseConnector, roleServiceConnector,
-                resourceServiceConnector, idmRestConnector, restProperties, restAuthenticator);
+                edirectoryConnector, databaseConnector, roleServiceConnector.getIfAvailable(),
+                resourceServiceConnector.getIfAvailable(), idmRestConnector, restProperties, restAuthenticator);
         ScenarioValidator validator = new ScenarioValidator(registry, FixtureFactory.SUPPORTED_GENERATORS);
         ScenarioEngine engine = new ScenarioEngine(
                 registry,
@@ -172,18 +192,38 @@ public class RealEnvironmentScenarios {
         return DEFAULT_SCENARIO_DIR;
     }
 
-    /**
-     * Guards 1 and 2. Refuses the embedded profile, and refuses a directory or role-service
-     * URL that nobody actually named.
-     */
-    static void requireRealTarget(Environment environment) {
+    /** Guards 1 and 2 together, as the guard tests use them. */
+    static void requireRealTarget(Environment environment, ScenarioNeeds needs) {
+        requireNotEmbedded(environment);
+        requireEndpoints(environment, needs);
+    }
+
+    /** Guard 1. The embedded test configuration is never a real target. */
+    static void requireNotEmbedded(Environment environment) {
         if (Arrays.asList(environment.getActiveProfiles()).contains(EMBEDDED_PROFILE)) {
             throw new IllegalStateException("Active profiles " + Arrays.toString(environment.getActiveProfiles())
                     + " include '" + EMBEDDED_PROFILE + "', the embedded test configuration. Set IDM_TEST_PROFILE"
                     + " to the profile that names your real environment, for example IDM_TEST_PROFILE=dev.");
         }
-        requireNamed(environment, "idm.test.ldap.url", "IDM_TEST_LDAP_URL", LDAP_URL_PLACEHOLDER);
-        requireNamed(environment, "idm.test.soap.url", "IDM_TEST_SOAP_URL", SOAP_URL_PLACEHOLDER);
+    }
+
+    /**
+     * Guard 2. Refuses an LDAP or SOAP endpoint that the selected scenarios use but nobody
+     * named: the LDAP URL when ldap.* is used, the Role service URL when roles.* is, and a
+     * Resource service URL when resources.* is. application.yml has no placeholder for the
+     * resource URL, so there it is only required to be set. Endpoints no scenario uses are
+     * not checked.
+     */
+    static void requireEndpoints(Environment environment, ScenarioNeeds needs) {
+        if (needs.ldap()) {
+            requireNamed(environment, "idm.test.ldap.url", "IDM_TEST_LDAP_URL", LDAP_URL_PLACEHOLDER);
+        }
+        if (needs.roles()) {
+            requireNamed(environment, "idm.test.soap.url", "IDM_TEST_SOAP_URL", SOAP_URL_PLACEHOLDER);
+        }
+        if (needs.resources()) {
+            requireNamed(environment, "idm.test.soap.resource-url", "IDM_TEST_SOAP_RESOURCEURL", null);
+        }
     }
 
     private static void requireNamed(Environment environment, String property, String variable, String placeholder) {
@@ -234,34 +274,9 @@ public class RealEnvironmentScenarios {
         }
     }
 
-    /**
-     * The literal {@code target} of every {@code rest.*} or {@code http.*} step in a scenario's
-     * {@code steps} or {@code cleanup}, sorted. A target containing {@code ${} is only known at
-     * run time, so it is skipped, as is a {@code null} target. Any other non-null value is
-     * converted with {@code String.valueOf}, matching {@code RestRequestStep}/{@code
-     * RestVerifyStep}/{@code HttpRequestStep}, so a non-string target such as {@code target: 1}
-     * is still caught here instead of only failing at run time.
-     */
+    /** The REST targets the given scenarios use, in {@code steps} or {@code cleanup}. Delegates to {@link ScenarioNeeds}. */
     static Set<String> restTargets(List<Scenario> scenarios) {
-        Set<String> targets = new TreeSet<>();
-        for (Scenario scenario : scenarios) {
-            List<StepSpec> entries = new ArrayList<>(scenario.steps());
-            entries.addAll(scenario.cleanup());
-            for (StepSpec step : entries) {
-                if (!step.type().startsWith("rest.") && !step.type().startsWith("http.")) {
-                    continue;
-                }
-                Object target = step.params().get("target");
-                if (target == null) {
-                    continue;
-                }
-                String value = String.valueOf(target);
-                if (!value.contains("${")) {
-                    targets.add(value);
-                }
-            }
-        }
-        return targets;
+        return ScenarioNeeds.of(scenarios).restTargets();
     }
 
     /**
@@ -272,6 +287,33 @@ public class RealEnvironmentScenarios {
      */
     static void requireRestTargetsIn(String scenarioDir, List<String> files, RestProperties properties) {
         requireRestTargets(restTargets(loadForGuards(scenarioDir, files)), properties);
+    }
+
+    /**
+     * Guard DB. For each database the selected scenarios use, refuses one that is not
+     * configured, and one whose jdbc-url, username or password is still application.yml's
+     * placeholder. Databases no scenario uses are not checked, and are never contacted, because
+     * their pools open on first use. Messages name properties and variables, never a value.
+     */
+    static void requireDatabases(Set<String> databases, DatabaseProperties properties) {
+        for (String name : new TreeSet<>(databases)) {
+            DatabaseProperties.DatabaseConfig config = properties.getDatabases().get(name);
+            if (config == null) {
+                throw new IllegalStateException("Scenarios use database '" + name
+                        + "', which is not configured under idm.test.databases. Configured databases: "
+                        + new TreeSet<>(properties.getDatabases().keySet()));
+            }
+            String prefix = "idm.test.databases." + name + ".";
+            DatabasePlaceholder placeholder = DATABASE_PLACEHOLDERS.get(name);
+            requireNamedValue(prefix + "jdbc-url", config.getJdbcUrl(), variableFor(prefix + "jdbc-url"),
+                    placeholder == null ? null : placeholder.jdbcUrl());
+            if (placeholder != null && placeholder.username().equals(config.getUsername())) {
+                refusePlaceholder(prefix + "username");
+            }
+            if (placeholder != null && placeholder.password().equals(config.getPassword())) {
+                refusePlaceholder(prefix + "password");
+            }
+        }
     }
 
     /**
@@ -305,22 +347,13 @@ public class RealEnvironmentScenarios {
     /** Guard 5's entry point: loads {@code files} and checks the credentials they need. */
     static void requireCredentialsIn(String scenarioDir, List<String> files, RestProperties rest,
                                      SoapProperties soap, Environment environment) {
-        List<Scenario> scenarios = loadForGuards(scenarioDir, files);
-        requireCredentials(restTargets(scenarios), usesSoap(scenarios), rest, soap, environment);
+        ScenarioNeeds needs = ScenarioNeeds.of(loadForGuards(scenarioDir, files));
+        requireCredentials(needs.restTargets(), needs.soap(), rest, soap, environment);
     }
 
-    /** Whether any scenario has a roles.* or resources.* step, in steps or cleanup. */
+    /** Whether any scenario has a roles.* or resources.* step, in steps or cleanup. Delegates to {@link ScenarioNeeds}. */
     static boolean usesSoap(List<Scenario> scenarios) {
-        for (Scenario scenario : scenarios) {
-            List<StepSpec> entries = new ArrayList<>(scenario.steps());
-            entries.addAll(scenario.cleanup());
-            for (StepSpec step : entries) {
-                if (step.type().startsWith("roles.") || step.type().startsWith("resources.")) {
-                    return true;
-                }
-            }
-        }
-        return false;
+        return ScenarioNeeds.of(scenarios).soap();
     }
 
     /**
@@ -385,9 +418,10 @@ public class RealEnvironmentScenarios {
     }
 
     /**
-     * Loads the selected files for guards 4 and 5. A file that fails to load is skipped here on
-     * purpose: {@code buildTests} turns it into its own failing test carrying the real
-     * error, and reporting it twice would only add noise.
+     * Loads the selected files to compute {@link ScenarioNeeds} and drive guards 2, 4, 5 and the
+     * database guard, so each checks only what the selected scenarios use. A file that fails to
+     * load is skipped here on purpose: {@code buildTests} turns it into its own failing test
+     * carrying the real error, and reporting it twice would only add noise.
      */
     private static List<Scenario> loadForGuards(String scenarioDir, List<String> files) {
         List<Scenario> scenarios = new ArrayList<>();

@@ -165,6 +165,17 @@ wait: { timeout: 30s, poll: 2s }
 
 Use positive integer durations with `s`, `m` or `h`. The test profile defaults to 60 seconds and a 1-second poll interval. Actions reject `wait`. Waiting repeats the assertion with already resolved parameters; it does not recompute expressions on every attempt or impose a hard deadline on a blocking protocol call.
 
+Some failures cannot change by waiting, and they end the wait at once instead of polling until the timeout. The step's message ends with `(not retried: waiting cannot change this)`. They are:
+
+- **a malformed assertion:** an empty or misspelled `expect`, or both or neither of `expect`/`exists`
+- **a name that isn't configured:** an unknown REST target or database
+- **bad credentials:**
+  - credentials that are only half configured
+  - an OAuth registration that doesn't exist
+  - a token request the token server rejected
+
+Everything else retries until the timeout. That includes a missing entry, row or table; a connection error; a token server that is down; and an API answering 401 or 403, because access often appears once a role grant has propagated.
+
 ## 6. Results and cleanup
 
 The adapter writes `idm-test-scenarios/target/scenario-results.json`. Each record contains the source, status, duration and executed steps. Retry records include attempts and elapsed waiting. Surefire reports appear in each module's `target/surefire-reports/`.

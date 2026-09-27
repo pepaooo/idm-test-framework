@@ -1,6 +1,6 @@
 # A real-environment run requires only what its scenarios use — design
 
-**Ticket:** not yet filed (jangulo's request, 2026-09-27). It extends ITF-12's guards and ITF-15's
+**Ticket:** ITF-30 (subtask of ITF-4), requested by jangulo on 2026-09-27. It extends ITF-12's guards and ITF-15's
 "only targets used" rule to every repository.
 
 ## 1. The problem

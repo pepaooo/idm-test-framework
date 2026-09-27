@@ -81,6 +81,14 @@ order:
 6. **Length:** if the result is longer than `MAX_LENGTH = 300` characters, it is cut to the first
    300 and `…` (U+2026) is appended.
 
+**Known limits,** accepted because none can occur on Spring's real request path:
+- The Authorization rule also masks ordinary words after `Basic`/`Bearer` (`Basic **** is
+  required`). It over-masks, and never leaks.
+- A `Bearer` value with characters outside RFC 6750's token grammar is not masked. No bearer token
+  exists during a token request.
+- A server that re-encodes the secret differently from `URLEncoder` (`%20` for a space, lowercase
+  `%7e`) is not caught. Spring sends only the `URLEncoder` form.
+
 The URL and Authorization rules run before the secret is replaced. A trivial secret that is a
 substring of a scheme (`s` inside `https`) would otherwise break the URL rule. `safe(...)` never
 throws. Nothing else about the text changes.

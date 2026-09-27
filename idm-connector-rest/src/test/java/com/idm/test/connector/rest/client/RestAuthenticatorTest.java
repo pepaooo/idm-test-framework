@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.security.oauth2.client.registration.ClientRegistration;
 import org.springframework.security.oauth2.client.registration.InMemoryClientRegistrationRepository;
 import org.springframework.security.oauth2.core.AuthorizationGrantType;
+import org.springframework.security.oauth2.core.ClientAuthenticationMethod;
 import org.springframework.web.client.ResourceAccessException;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
@@ -25,7 +26,7 @@ class RestAuthenticatorTest {
 
     @BeforeAll
     static void start() {
-        wiremock = new WireMockServer(WireMockConfiguration.options().dynamicPort());
+        wiremock = new WireMockServer(WireMockConfiguration.options().dynamicPort().globalTemplating(true));
         wiremock.start();
     }
 
@@ -59,6 +60,17 @@ class RestAuthenticatorTest {
         ClientRegistration registration = ClientRegistration.withRegistrationId(id)
                 .clientId("svc-client")
                 .clientSecret("svc-secret-value")
+                .authorizationGrantType(AuthorizationGrantType.CLIENT_CREDENTIALS)
+                .tokenUri(wiremock.baseUrl() + "/oauth/token")
+                .build();
+        return new RestAuthenticator(new InMemoryClientRegistrationRepository(registration), null);
+    }
+
+    private static RestAuthenticator withRegistration(String id, String secret, ClientAuthenticationMethod method) {
+        ClientRegistration registration = ClientRegistration.withRegistrationId(id)
+                .clientId("svc-client")
+                .clientSecret(secret)
+                .clientAuthenticationMethod(method)
                 .authorizationGrantType(AuthorizationGrantType.CLIENT_CREDENTIALS)
                 .tokenUri(wiremock.baseUrl() + "/oauth/token")
                 .build();
@@ -273,6 +285,18 @@ class RestAuthenticatorTest {
     }
 
     @Test
+    @DisplayName("An invalid-scheme token-uri pointing at WireMock never sends a request")
+    void testInvalidTokenUriNeverRequestsWireMock() {
+        String invalidUri = wiremock.baseUrl().replace("http://", "ftp://") + "/oauth/token";
+
+        OperationResult<String> result = withTokenUri(invalidUri).authorization("api", oauth("svc"));
+
+        assertThat(result.isFailure()).isTrue();
+        assertThat(result.getErrorType()).contains(ErrorType.CONFIGURATION_ERROR);
+        wiremock.verify(0, anyRequestedFor(anyUrl()));
+    }
+
+    @Test
     @DisplayName("Credentials in an invalid token-uri are masked in the message")
     void testInvalidTokenUriMasksUserInfo() {
         OperationResult<String> result = withTokenUri("ftp://user:pa55@example.org/token")
@@ -314,7 +338,45 @@ class RestAuthenticatorTest {
                 .authorization("api", oauth("svc"));
 
         assertThat(result.isFailure()).isTrue();
-        assertThat(result.getMessage()).doesNotContain("pa55");
+        assertThat(result.getMessage()).doesNotContain("pa55").contains("https://****@no-such-host.invalid");
+    }
+
+    @Test
+    @DisplayName("An echoed request body masks the URL-encoded secret (client_secret_post)")
+    void testEchoedSecretPostMasked() {
+        wiremock.stubFor(post(urlEqualTo("/oauth/token")).willReturn(aResponse()
+                .withStatus(403)
+                .withHeader("Content-Type", "text/plain")
+                .withBody("echo {{request.body}} auth {{request.headers.Authorization}}")));
+
+        OperationResult<String> result = withRegistration("svc", "Az~secret+val/ue=",
+                ClientAuthenticationMethod.CLIENT_SECRET_POST).authorization("api", oauth("svc"));
+
+        assertThat(result.isFailure()).isTrue();
+        assertThat(result.getMessage())
+                .doesNotContain("Az~secret+val/ue=")
+                .doesNotContain("Az%7Esecret%2Bval%2Fue%3D")
+                .doesNotContainPattern("Basic [A-Za-z0-9+/=]{8,}");
+        wiremock.verify(1, postRequestedFor(urlEqualTo("/oauth/token")));
+    }
+
+    @Test
+    @DisplayName("An echoed Authorization header masks the client secret (client_secret_basic)")
+    void testEchoedSecretBasicMasked() {
+        wiremock.stubFor(post(urlEqualTo("/oauth/token")).willReturn(aResponse()
+                .withStatus(403)
+                .withHeader("Content-Type", "text/plain")
+                .withBody("echo {{request.body}} auth {{request.headers.Authorization}}")));
+
+        OperationResult<String> result = withRegistration("svc", "Az~secret+val/ue=",
+                ClientAuthenticationMethod.CLIENT_SECRET_BASIC).authorization("api", oauth("svc"));
+
+        assertThat(result.isFailure()).isTrue();
+        assertThat(result.getMessage())
+                .doesNotContain("Az~secret+val/ue=")
+                .doesNotContain("Az%7Esecret%2Bval%2Fue%3D")
+                .doesNotContainPattern("Basic [A-Za-z0-9+/=]{8,}");
+        wiremock.verify(1, postRequestedFor(urlEqualTo("/oauth/token")));
     }
 
     @Test

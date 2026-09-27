@@ -36,7 +36,9 @@ import java.util.Base64;
  * token server is not: it may succeed on a later try.
  * <p>
  * Never throws, and never puts a password, secret, token or header value in a message or log:
- * messages name the target and the registration only.
+ * messages name the target and the registration, and may also quote Spring's own cause text
+ * after {@link TokenFailureText#safe} has masked secrets and URL credentials in it and capped
+ * its length.
  */
 public class RestAuthenticator {
 

@@ -71,9 +71,9 @@ public final class RestRequestStep implements StepType {
         StepValues.toMap(params.get("headers"))
                 .forEach((key, value) -> headers.put(key, String.valueOf(value)));
 
-        String authError = RestAuthorization.apply("rest.request", target, properties, authenticator, headers);
-        if (authError != null) {
-            return StepOutcome.failure(authError);
+        StepOutcome authFailure = RestAuthorization.apply("rest.request", target, properties, authenticator, headers);
+        if (authFailure != null) {
+            return authFailure;
         }
 
         OperationResult<RestResponse> result = connector.exchange(

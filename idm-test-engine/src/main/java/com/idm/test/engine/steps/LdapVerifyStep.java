@@ -129,25 +129,25 @@ public final class LdapVerifyStep implements StepType {
         boolean hasExists = params.containsKey("exists");
 
         if (hasExpect && hasExists) {
-            return StepOutcome.failure("ldap.verify for " + dn + " supplies both 'expect' and "
+            return StepOutcome.finalFailure("ldap.verify for " + dn + " supplies both 'expect' and "
                     + "'exists'; expect already implies the entry exists, so give only one");
         }
         if (!hasExpect && !hasExists) {
-            return StepOutcome.failure("ldap.verify for " + dn + " supplies neither 'expect' "
+            return StepOutcome.finalFailure("ldap.verify for " + dn + " supplies neither 'expect' "
                     + "nor 'exists' — it would verify nothing. Assert attributes with expect:, "
                     + "or presence with exists:");
         }
         if (hasExists && !(params.get("exists") instanceof Boolean)) {
-            return StepOutcome.failure("ldap.verify for " + dn + " has an 'exists' that is not "
+            return StepOutcome.finalFailure("ldap.verify for " + dn + " has an 'exists' that is not "
                     + "true or false");
         }
         if (hasExpect) {
             if (!(params.get("expect") instanceof Map<?, ?> expect)) {
-                return StepOutcome.failure("ldap.verify for " + dn
+                return StepOutcome.finalFailure("ldap.verify for " + dn
                         + " has an expect that is not a map of attribute names to expected values");
             }
             if (expect.isEmpty()) {
-                return StepOutcome.failure("ldap.verify for " + dn
+                return StepOutcome.finalFailure("ldap.verify for " + dn
                         + " has an empty expect: block — it would verify nothing");
             }
 
@@ -160,7 +160,7 @@ public final class LdapVerifyStep implements StepType {
             // eighth time in this project.
             for (Map.Entry<?, ?> attribute : expect.entrySet()) {
                 if (attribute.getValue() == null) {
-                    return StepOutcome.failure("ldap.verify for " + dn
+                    return StepOutcome.finalFailure("ldap.verify for " + dn
                             + " has a null expected value for attribute '" + attribute.getKey()
                             + "' — a missing or misspelled attribute name parses the same way "
                             + "and would verify nothing. Check for a typo, or assert exists: "

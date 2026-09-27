@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.security.oauth2.client.registration.ClientRegistration;
 import org.springframework.security.oauth2.client.registration.InMemoryClientRegistrationRepository;
 import org.springframework.security.oauth2.core.AuthorizationGrantType;
+import org.springframework.web.client.ResourceAccessException;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -60,6 +61,16 @@ class RestAuthenticatorTest {
                 .clientSecret("svc-secret-value")
                 .authorizationGrantType(AuthorizationGrantType.CLIENT_CREDENTIALS)
                 .tokenUri(wiremock.baseUrl() + "/oauth/token")
+                .build();
+        return new RestAuthenticator(new InMemoryClientRegistrationRepository(registration), null);
+    }
+
+    private static RestAuthenticator withTokenUri(String tokenUri) {
+        ClientRegistration registration = ClientRegistration.withRegistrationId("svc")
+                .clientId("svc-client")
+                .clientSecret("svc-secret-value")
+                .authorizationGrantType(AuthorizationGrantType.CLIENT_CREDENTIALS)
+                .tokenUri(tokenUri)
                 .build();
         return new RestAuthenticator(new InMemoryClientRegistrationRepository(registration), null);
     }
@@ -211,5 +222,38 @@ class RestAuthenticatorTest {
         assertThat(result.getMessage())
                 .contains("'svc'").contains("'api'").contains("invalid_client")
                 .doesNotContain("svc-secret-value");
+    }
+
+    @Test
+    @DisplayName("A 5xx from the token server is a SERVER_ERROR, which may pass later")
+    void testTokenServerError() {
+        wiremock.stubFor(post(urlEqualTo("/oauth/token")).willReturn(aResponse().withStatus(503)));
+
+        OperationResult<String> result = withRegistration("svc").authorization("api", oauth("svc"));
+
+        assertThat(result.isFailure()).isTrue();
+        assertThat(result.getErrorType()).contains(ErrorType.SERVER_ERROR);
+        assertThat(result.getMessage()).contains("'svc'").doesNotContain("svc-secret-value");
+    }
+
+    @Test
+    @DisplayName("An unreachable token server is a NETWORK_ERROR, which may pass later")
+    void testTokenServerUnreachable() {
+        OperationResult<String> result = withTokenUri("http://localhost:1/oauth/token")
+                .authorization("api", oauth("svc"));
+
+        assertThat(result.isFailure()).isTrue();
+        assertThat(result.getErrorType()).contains(ErrorType.NETWORK_ERROR);
+    }
+
+    @Test
+    @DisplayName("A timeout wrapped in a ResourceAccessException is a TIMEOUT, not a NETWORK_ERROR")
+    void testTokenFailureTypeTimeout() {
+        assertThat(RestAuthenticator.tokenFailureType(
+                new ResourceAccessException("slow", new java.net.SocketTimeoutException("read timed out"))))
+                .isEqualTo(ErrorType.TIMEOUT);
+        assertThat(RestAuthenticator.tokenFailureType(
+                new ResourceAccessException("down", new java.net.ConnectException("refused"))))
+                .isEqualTo(ErrorType.NETWORK_ERROR);
     }
 }

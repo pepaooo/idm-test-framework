@@ -471,4 +471,20 @@ class LdapStepsTest {
 
         connector.delete(dn);   // tidy the shared directory; nothing else will
     }
+
+    @Test
+    @DisplayName("A malformed ldap.verify is a final failure; a missing entry is not")
+    void testLdapVerifyFinalFailures() {
+        LdapVerifyStep verify = new LdapVerifyStep(connector);
+
+        assertThat(verify.execute(Map.of("dn", "cn=x,ou=users", "expect", Map.of("cn", "x"), "exists", true), false)
+                .isFinal()).isTrue();
+        assertThat(verify.execute(Map.of("dn", "cn=x,ou=users"), false).isFinal()).isTrue();
+        assertThat(verify.execute(Map.of("dn", "cn=x,ou=users", "exists", "yes"), false).isFinal()).isTrue();
+        assertThat(verify.execute(Map.of("dn", "cn=x,ou=users", "expect", Map.of()), false).isFinal()).isTrue();
+
+        StepOutcome missing = verify.execute(Map.of("dn", "cn=nobody-itf26,ou=users", "exists", true), false);
+        assertThat(missing.success()).isFalse();
+        assertThat(missing.isFinal()).isFalse();
+    }
 }

@@ -473,4 +473,21 @@ class RestStepsTest {
         assertThat(outcome.success()).isTrue();
         verify(getRequestedFor(urlEqualTo("/users/jdoe")));
     }
+
+    @Test
+    @DisplayName("A malformed rest.verify or unknown target is final; a status mismatch, even 401, is not")
+    void testRestVerifyFinalFailures() {
+        RestVerifyStep verify = new RestVerifyStep(CONNECTOR, PROPERTIES, RestAuthenticator.withoutOAuth());
+
+        assertThat(verify.execute(Map.of("target", "idm", "path", "/x", "expect", Map.of()), false)
+                .isFinal()).isTrue();
+        assertThat(verify.execute(Map.of("target", "nope", "path", "/x", "expect", Map.of("status", 200)), false)
+                .isFinal()).isTrue();
+
+        stubFor(get(urlEqualTo("/locked")).willReturn(aResponse().withStatus(401)));
+        StepOutcome refused = verify.execute(Map.of("target", "idm", "path", "/locked",
+                "expect", Map.of("status", 200)), false);
+        assertThat(refused.success()).isFalse();
+        assertThat(refused.isFinal()).isFalse();
+    }
 }

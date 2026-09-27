@@ -67,6 +67,19 @@ class ScenarioEngineTest {
         };
     }
 
+    /** Fails with ordinary failures {@code ordinary} times, then with a final failure. */
+    private StepType finallyFailing(String name, int ordinary, AtomicInteger calls) {
+        return new StepType() {
+            public String name() { return name; }
+            public boolean retryable() { return true; }
+            public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
+                return calls.getAndIncrement() < ordinary
+                        ? StepOutcome.failure("not yet")
+                        : StepOutcome.finalFailure("cannot ever pass");
+            }
+        };
+    }
+
     private ScenarioEngine engineWith(StepType... types) {
         Map<String, StepType> registry = new java.util.LinkedHashMap<>();
         for (StepType type : types) {
@@ -144,6 +157,80 @@ class ScenarioEngineTest {
         assertThat(result.steps().get(0).attempts()).isGreaterThan(0);
         assertThat(result.steps().get(0).waitedMillis()).isNotNull();
         assertThat(result.failureSummary()).contains("not yet");
+    }
+
+    @Test
+    @DisplayName("A final failure under wait stops after one attempt and says it was not retried")
+    void testFinalFailureStopsWait() {
+        AtomicInteger calls = new AtomicInteger();
+        ScenarioEngine engine = engineWith(finallyFailing("check", 0, calls));
+
+        ScenarioResult result = engine.run(scenario(
+                new StepSpec("check", Map.of("dn", "x", "wait",
+                        Map.of("timeout", "10s", "poll", "1s")))), "t.yaml");
+
+        assertThat(result.success()).isFalse();
+        assertThat(calls.get()).isEqualTo(1);
+        assertThat(result.steps().get(0).attempts()).isEqualTo(1);
+        assertThat(result.steps().get(0).waitedMillis()).isLessThan(5_000L);
+        assertThat(result.steps().get(0).message())
+                .isEqualTo("cannot ever pass (not retried: waiting cannot change this)");
+    }
+
+    @Test
+    @DisplayName("A final failure after ordinary failures stops at that attempt")
+    void testFinalFailureAfterOrdinaryFailures() {
+        AtomicInteger calls = new AtomicInteger();
+        ScenarioEngine engine = engineWith(finallyFailing("check", 2, calls));
+
+        ScenarioResult result = engine.run(scenario(
+                new StepSpec("check", Map.of("dn", "x", "wait", Boolean.TRUE))), "t.yaml");
+
+        assertThat(result.success()).isFalse();
+        assertThat(calls.get()).isEqualTo(3);
+        assertThat(result.steps().get(0).attempts()).isEqualTo(3);
+        assertThat(result.steps().get(0).message()).endsWith("(not retried: waiting cannot change this)");
+    }
+
+    @Test
+    @DisplayName("An ordinary failure under wait keeps polling and keeps the retry suffix")
+    void testOrdinaryFailureStillPolls() {
+        ScenarioEngine engine = engineWith(eventuallyPassing("check", Integer.MAX_VALUE));
+
+        ScenarioResult result = engine.run(scenario(
+                new StepSpec("check", Map.of("dn", "x", "wait",
+                        Map.of("timeout", "2s", "poll", "1s")))), "t.yaml");
+
+        assertThat(result.success()).isFalse();
+        assertThat(result.steps().get(0).attempts()).isGreaterThan(1);
+        assertThat(result.steps().get(0).message()).endsWith("(last observed value after retrying)");
+    }
+
+    @Test
+    @DisplayName("A final failure without wait is an ordinary failed step")
+    void testFinalFailureWithoutWait() {
+        AtomicInteger calls = new AtomicInteger();
+        ScenarioEngine engine = engineWith(finallyFailing("check", 0, calls));
+
+        ScenarioResult result = engine.run(scenario(
+                new StepSpec("check", Map.of("dn", "x"))), "t.yaml");
+
+        assertThat(result.success()).isFalse();
+        assertThat(result.steps().get(0).message()).isEqualTo("cannot ever pass");
+        assertThat(result.steps().get(0).attempts()).isNull();
+    }
+
+    @Test
+    @DisplayName("Only finalFailure is final")
+    void testOnlyFinalFailureIsFinal() {
+        assertThat(StepOutcome.success("ok").isFinal()).isFalse();
+        assertThat(StepOutcome.success("ok", 1).isFinal()).isFalse();
+        assertThat(StepOutcome.failure("no").isFinal()).isFalse();
+        assertThat(new StepOutcome(false, "no", null).isFinal()).isFalse();
+        StepOutcome terminal = StepOutcome.finalFailure("never");
+        assertThat(terminal.success()).isFalse();
+        assertThat(terminal.value()).isNull();
+        assertThat(terminal.isFinal()).isTrue();
     }
 
     @Test

@@ -384,4 +384,22 @@ class DbStepsTest {
 
         assertThat(outcome.success()).isFalse();
     }
+
+    @Test
+    @DisplayName("A malformed db.verify or unknown database is final; a missing table is not")
+    void testDbVerifyFinalFailures() {
+        DbVerifyStep verify = new DbVerifyStep(connector);
+
+        assertThat(verify.execute(Map.of("database", DB, "query", "SELECT 1", "expect", Map.of()), false)
+                .isFinal()).isTrue();
+        assertThat(verify.execute(Map.of("database", DB, "query", "SELECT 1", "expect", Map.of("bogus", 1)), false)
+                .isFinal()).isTrue();
+        assertThat(verify.execute(Map.of("database", "no-such-db", "query", "SELECT 1",
+                "expect", Map.of("rowCount", 1)), false).isFinal()).isTrue();
+
+        StepOutcome missingTable = verify.execute(Map.of("database", DB,
+                "query", "SELECT * FROM not_created_yet", "expect", Map.of("rowCount", 1)), false);
+        assertThat(missingTable.success()).isFalse();
+        assertThat(missingTable.isFinal()).isFalse();
+    }
 }

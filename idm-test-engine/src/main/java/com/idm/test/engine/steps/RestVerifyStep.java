@@ -74,7 +74,7 @@ public final class RestVerifyStep implements StepType {
 
         RestTargets.Resolution resolution = RestTargets.resolveBaseUrl("rest.verify", target, properties);
         if (resolution.isFailure()) {
-            return StepOutcome.failure(resolution.error());
+            return StepOutcome.finalFailure(resolution.error());
         }
 
         String url = resolution.baseUrl() + String.valueOf(params.get("path"));
@@ -85,9 +85,9 @@ public final class RestVerifyStep implements StepType {
         StepValues.toMap(params.get("headers"))
                 .forEach((key, value) -> headers.put(key, String.valueOf(value)));
 
-        String authError = RestAuthorization.apply("rest.verify", target, properties, authenticator, headers);
-        if (authError != null) {
-            return StepOutcome.failure(authError);
+        StepOutcome authFailure = RestAuthorization.apply("rest.verify", target, properties, authenticator, headers);
+        if (authFailure != null) {
+            return authFailure;
         }
 
         OperationResult<RestResponse> result =
@@ -178,14 +178,14 @@ public final class RestVerifyStep implements StepType {
     @SuppressWarnings("unchecked")
     private static StepOutcome rejectMalformedExpect(Object rawExpect, String target) {
         if (rawExpect != null && !(rawExpect instanceof Map)) {
-            return StepOutcome.failure("rest.verify on '" + target
+            return StepOutcome.finalFailure("rest.verify on '" + target
                     + "' has an expect that is not a map of assertions (" + STATUS + ", " + BODY
                     + ")");
         }
 
         Map<String, Object> expect = (Map<String, Object>) rawExpect;
         if (expect == null || expect.isEmpty()) {
-            return StepOutcome.failure("rest.verify on '" + target
+            return StepOutcome.finalFailure("rest.verify on '" + target
                     + "' has an empty expect: block. Assert " + STATUS + ", " + BODY
                     + ", or both — an empty expect would verify nothing.");
         }
@@ -193,7 +193,7 @@ public final class RestVerifyStep implements StepType {
         Set<String> unknown = new TreeSet<>(expect.keySet());
         unknown.removeAll(EXPECT_KEYS);
         if (!unknown.isEmpty()) {
-            return StepOutcome.failure("rest.verify on '" + target
+            return StepOutcome.finalFailure("rest.verify on '" + target
                     + "' has unknown key(s) in expect: " + unknown + ". expect accepts: "
                     + new TreeSet<>(EXPECT_KEYS));
         }
@@ -204,7 +204,7 @@ public final class RestVerifyStep implements StepType {
         // both — containsKey agrees with execute() about what "present" means.
         if (expect.containsKey(BODY)
                 && !(expect.get(BODY) instanceof Map<?, ?> bodyMap && !bodyMap.isEmpty())) {
-            return StepOutcome.failure("rest.verify on '" + target + "' has a " + BODY
+            return StepOutcome.finalFailure("rest.verify on '" + target + "' has a " + BODY
                     + " that must be a map of field names to expected values with at least "
                     + "one entry — a missing, null, non-map, or empty " + BODY
                     + " would verify nothing");
@@ -215,7 +215,7 @@ public final class RestVerifyStep implements StepType {
             Map<String, Object> bodyMap = (Map<String, Object>) expect.get(BODY);
             String vacuous = rejectVacuousField(bodyMap, "");
             if (vacuous != null) {
-                return StepOutcome.failure("rest.verify on '" + target + "' " + vacuous);
+                return StepOutcome.finalFailure("rest.verify on '" + target + "' " + vacuous);
             }
         }
 

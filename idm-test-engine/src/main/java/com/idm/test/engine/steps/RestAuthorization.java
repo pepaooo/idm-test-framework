@@ -2,7 +2,9 @@ package com.idm.test.engine.steps;
 
 import com.idm.test.connector.rest.client.RestAuthenticator;
 import com.idm.test.connector.rest.config.RestProperties;
+import com.idm.test.core.model.ErrorType;
 import com.idm.test.core.model.OperationResult;
+import com.idm.test.engine.spi.StepOutcome;
 
 import java.util.Map;
 
@@ -25,16 +27,21 @@ final class RestAuthorization {
     /**
      * Call only after {@link RestTargets#resolveBaseUrl} succeeded, so the target exists.
      *
-     * @return null when {@code headers} is ready to send, or a failure message naming the step
+     * @return null when {@code headers} is ready to send; otherwise a failure naming the step,
+     * final when waiting cannot change it (misconfigured or rejected credentials)
      */
-    static String apply(String stepName, String target, RestProperties properties,
-                        RestAuthenticator authenticator, Map<String, String> headers) {
+    static StepOutcome apply(String stepName, String target, RestProperties properties,
+                             RestAuthenticator authenticator, Map<String, String> headers) {
         if (headers.keySet().stream().anyMatch(AUTHORIZATION::equalsIgnoreCase)) {
             return null;
         }
         OperationResult<String> result = authenticator.authorization(target, properties.getRest().get(target));
         if (result.isFailure()) {
-            return stepName + " could not authenticate: " + result.getMessage();
+            String message = stepName + " could not authenticate: " + result.getMessage();
+            ErrorType type = result.getErrorType().orElse(ErrorType.UNKNOWN_ERROR);
+            return type == ErrorType.CONFIGURATION_ERROR || type == ErrorType.AUTHENTICATION_ERROR
+                    ? StepOutcome.finalFailure(message)
+                    : StepOutcome.failure(message);
         }
         result.getData().ifPresent(value -> headers.put(AUTHORIZATION, value));
         return null;

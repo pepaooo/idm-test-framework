@@ -2,6 +2,7 @@ package com.idm.test.engine.steps;
 
 import com.idm.test.connector.database.client.MultiDatabaseConnector;
 import com.idm.test.connector.database.client.ValueComparison;
+import com.idm.test.core.model.ErrorType;
 import com.idm.test.core.model.OperationResult;
 import com.idm.test.engine.spi.StepOutcome;
 import com.idm.test.engine.spi.StepType;
@@ -71,8 +72,12 @@ public final class DbVerifyStep implements StepType {
                 connector.executeQuery(database, query, arguments);
 
         if (!result.isSuccess()) {
-            return StepOutcome.failure(
-                    "db.verify failed on '" + database + "': " + result.getMessage());
+            String message = "db.verify failed on '" + database + "': " + result.getMessage();
+            // An unknown database never becomes known by waiting; a SQL error might (a table or
+            // row that provisioning has not created yet), so only configuration errors are final.
+            return result.getErrorType().filter(ErrorType.CONFIGURATION_ERROR::equals).isPresent()
+                    ? StepOutcome.finalFailure(message)
+                    : StepOutcome.failure(message);
         }
 
         List<Map<String, Object>> rows = result.getData().orElse(List.of());
@@ -131,14 +136,14 @@ public final class DbVerifyStep implements StepType {
     @SuppressWarnings("unchecked")
     private static StepOutcome rejectMalformedExpect(Object rawExpect, String database) {
         if (rawExpect != null && !(rawExpect instanceof Map)) {
-            return StepOutcome.failure("db.verify on '" + database
+            return StepOutcome.finalFailure("db.verify on '" + database
                     + "' has an expect that is not a map of assertions (" + ROW_COUNT + ", " + ROW
                     + ")");
         }
 
         Map<String, Object> expect = (Map<String, Object>) rawExpect;
         if (expect == null || expect.isEmpty()) {
-            return StepOutcome.failure("db.verify on '" + database
+            return StepOutcome.finalFailure("db.verify on '" + database
                     + "' has an empty expect: block. Assert " + ROW_COUNT + ", " + ROW
                     + ", or both — an empty expect would verify nothing.");
         }
@@ -146,7 +151,7 @@ public final class DbVerifyStep implements StepType {
         Set<String> unknown = new TreeSet<>(expect.keySet());
         unknown.removeAll(EXPECT_KEYS);
         if (!unknown.isEmpty()) {
-            return StepOutcome.failure("db.verify on '" + database
+            return StepOutcome.finalFailure("db.verify on '" + database
                     + "' has unknown key(s) in expect: " + unknown + ". expect accepts: "
                     + new TreeSet<>(EXPECT_KEYS));
         }
@@ -157,7 +162,7 @@ public final class DbVerifyStep implements StepType {
         // both — containsKey agrees with execute() about what "present" means.
         if (expect.containsKey(ROW)
                 && !(expect.get(ROW) instanceof Map<?, ?> rowMap && !rowMap.isEmpty())) {
-            return StepOutcome.failure("db.verify on '" + database + "' has a " + ROW
+            return StepOutcome.finalFailure("db.verify on '" + database + "' has a " + ROW
                     + " that must be a map of column names to expected values with at least "
                     + "one entry — a missing, null, non-map, or empty " + ROW
                     + " would verify nothing");
@@ -170,7 +175,7 @@ public final class DbVerifyStep implements StepType {
         if (expect.containsKey(ROW)) {
             for (Map.Entry<?, ?> column : ((Map<?, ?>) expect.get(ROW)).entrySet()) {
                 if (column.getValue() == null) {
-                    return StepOutcome.failure("db.verify on '" + database
+                    return StepOutcome.finalFailure("db.verify on '" + database
                             + "' has a null expected value for row column '" + column.getKey()
                             + "' — a missing or misspelled column name parses the same way and "
                             + "would verify nothing. Check for a typo, or assert rowCount to "

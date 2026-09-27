@@ -6,8 +6,16 @@ import com.idm.test.connector.rest.client.IdmRestConnector;
 import com.idm.test.connector.rest.client.RestAuthenticator;
 import com.idm.test.connector.rest.config.RestClientConfiguration;
 import com.idm.test.connector.rest.config.RestProperties;
+import com.idm.test.core.engine.TestExecutor;
+import com.idm.test.engine.FixtureFactory;
+import com.idm.test.engine.ScenarioEngine;
+import com.idm.test.engine.expr.ExpressionEvaluator;
+import com.idm.test.engine.model.Scenario;
+import com.idm.test.engine.model.StepSpec;
+import com.idm.test.engine.result.ScenarioResult;
 import com.idm.test.engine.spi.StepOutcome;
 import com.idm.test.engine.spi.StepType;
+import com.idm.test.utils.data.TestDataGenerator;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -17,6 +25,7 @@ import org.springframework.security.oauth2.client.registration.InMemoryClientReg
 import org.springframework.security.oauth2.core.AuthorizationGrantType;
 import org.springframework.web.client.RestClient;
 
+import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -214,5 +223,55 @@ class HttpAuthStepsTest {
         assertThat(outcome.success()).isFalse();
         assertThat(outcome.message()).contains("invalid_client").doesNotContain(CLIENT_SECRET);
         WIREMOCK.verify(0, getRequestedFor(urlEqualTo("/thing")));
+    }
+
+    private static ScenarioResult runVerifyUnderWait(RestAuthenticator authenticator) {
+        RestVerifyStep verify = new RestVerifyStep(CONNECTOR, PROPERTIES, authenticator);
+        ScenarioEngine engine = new ScenarioEngine(Map.of(verify.name(), verify),
+                new FixtureFactory(new TestDataGenerator()), new TestExecutor(),
+                Duration.ofSeconds(2), Duration.ofMillis(200), new ExpressionEvaluator());
+        return engine.run(new Scenario("wait", null, Map.of(), List.of(new StepSpec("rest.verify",
+                Map.of("target", "oauth", "path", "/thing", "expect", Map.of("status", 200),
+                        "wait", Map.of("timeout", "2s", "poll", "1s"))))), "wait.yaml");
+    }
+
+    @Test
+    @DisplayName("Under wait, a rejected token request stops after one attempt and one token request")
+    void testRejectedTokenStopsWait() {
+        WIREMOCK.stubFor(post(urlEqualTo("/oauth/token")).willReturn(aResponse().withStatus(401)));
+
+        ScenarioResult result = runVerifyUnderWait(freshAuthenticator());
+
+        assertThat(result.success()).isFalse();
+        assertThat(result.steps().get(0).attempts()).isEqualTo(1);
+        assertThat(result.steps().get(0).message())
+                .endsWith("(not retried: waiting cannot change this)")
+                .doesNotContain(CLIENT_SECRET);
+        WIREMOCK.verify(1, postRequestedFor(urlEqualTo("/oauth/token")));
+        WIREMOCK.verify(0, getRequestedFor(urlEqualTo("/thing")));
+    }
+
+    @Test
+    @DisplayName("Under wait, a token server returning 503 is retried")
+    void testTokenServerErrorRetried() {
+        WIREMOCK.stubFor(post(urlEqualTo("/oauth/token")).willReturn(aResponse().withStatus(503)));
+
+        ScenarioResult result = runVerifyUnderWait(freshAuthenticator());
+
+        assertThat(result.success()).isFalse();
+        assertThat(result.steps().get(0).attempts()).isGreaterThan(1);
+        assertThat(result.steps().get(0).message()).endsWith("(last observed value after retrying)");
+    }
+
+    @Test
+    @DisplayName("A half-configured target is a final failure in rest.verify")
+    void testHalfConfiguredIsFinal() {
+        RestVerifyStep verify = new RestVerifyStep(CONNECTOR, PROPERTIES, freshAuthenticator());
+
+        StepOutcome outcome = verify.execute(Map.of("target", "half", "path", "/thing",
+                "expect", Map.of("status", 200)), false);
+
+        assertThat(outcome.success()).isFalse();
+        assertThat(outcome.isFinal()).isTrue();
     }
 }

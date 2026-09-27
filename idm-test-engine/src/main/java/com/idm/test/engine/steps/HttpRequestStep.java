@@ -84,9 +84,9 @@ public final class HttpRequestStep implements StepType {
             map.forEach((key, value) -> headers.put(String.valueOf(key), String.valueOf(value)));
         }
 
-        String authError = RestAuthorization.apply("http.request", target, properties, authenticator, headers);
-        if (authError != null) {
-            return StepOutcome.failure(authError);
+        StepOutcome authFailure = RestAuthorization.apply("http.request", target, properties, authenticator, headers);
+        if (authFailure != null) {
+            return authFailure;
         }
 
         OperationResult<TextResponse> result = connector.exchangeText(method, url, (String) rawBody, headers);

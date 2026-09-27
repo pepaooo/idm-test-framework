@@ -64,15 +64,30 @@ with one static method, `static String safe(String text, String clientSecret)`, 
 order:
 
 1. **A null text** becomes `""`.
-2. **The client secret:** when `clientSecret` is non-null and non-empty, every occurrence of it
-   is replaced with `****`. The replacement is literal text, not a regex.
-3. **Credentials in URLs:** every `scheme://userinfo@` becomes `scheme://****@`. The regex is
-   `(?i)\b([a-z][a-z0-9+.-]*://)[^/\s@"'<>]+@`, replaced with `$1****@`.
-4. **Whitespace:** each run of whitespace becomes a single space, and the result is trimmed.
-5. **Length:** if the result is longer than `MAX_LENGTH = 300` characters, it is cut to the first
+2. **Credentials in URLs:** every `scheme://userinfo@` becomes `scheme://****@`. The regex is
+   `(?i)\b([a-z][a-z0-9+.-]*://)[^/\s"'<>]+@`, replaced with `$1****@`. `@` is not excluded from
+   the class, so a greedy match runs to the **last** `@` before the first `/`, whitespace or quote,
+   and a userinfo that itself contains a raw `@` (`https://svc@corp.com:pw@idp/token`) is masked
+   whole. A raw `/` inside a password is not masked, but such a URL is invalid anyway (a documented
+   limit).
+3. **Authorization values:** `(?i)\b(Basic|Bearer)\s+[A-Za-z0-9+/=._~-]{8,}` becomes `$1 ****`.
+   A token server that echoes the request would otherwise show the Basic header, which Spring
+   builds from the URL-encoded id and secret, so the secret is recoverable.
+4. **The client secret:** when `clientSecret` is non-null and non-empty, every literal occurrence
+   of it is replaced with `****`, and so is every occurrence of its
+   `URLEncoder.encode(clientSecret, UTF_8)` form when that differs. Spring URL-encodes the secret
+   in both the Basic header and a `client_secret_post` form body.
+5. **Whitespace:** each run of whitespace becomes a single space, and the result is trimmed.
+6. **Length:** if the result is longer than `MAX_LENGTH = 300` characters, it is cut to the first
    300 and `…` (U+2026) is appended.
 
-`safe(...)` never throws. Nothing else about the text changes.
+The URL and Authorization rules run before the secret is replaced. A trivial secret that is a
+substring of a scheme (`s` inside `https`) would otherwise break the URL rule. `safe(...)` never
+throws. Nothing else about the text changes.
+
+*Amended 2026-09-27 after final review (jangulo's decision). The first version masked only the
+raw secret, and stopped at the first `@`. Probes showed a secret leaking in URL-encoded form and
+inside an echoed Basic header, and a password leaking after a raw `@` in userinfo.*
 
 ## 5. Where `safe(...)` is applied
 
@@ -94,8 +109,10 @@ order:
 
 **`TokenFailureTextTest`** (unit tests, package-private access):
 - a null text gives `""`
-- the secret is replaced everywhere, including when it occurs more than once and when it sits
-  inside a longer word
+- the secret is replaced everywhere, including when it occurs more than once, when it sits
+  inside a longer word, and in its URL-encoded form (`Az~s+/=` → `Az%7Es%2B%2F%3D`)
+- `Basic <base64>` and `Bearer <token>` values become `Basic ****` / `Bearer ****`
+- `https://svc@corp.com:pw@idp/token` becomes `https://****@idp/token`
 - a null or empty secret leaves the text alone
 - `https://user:pa55@host/x` becomes `https://****@host/x`; a URL with no userinfo is unchanged
 - an email-like `a@b.c` with no scheme is unchanged
@@ -106,7 +123,10 @@ order:
 - **Validation:** `not-a-url`, `ftp://example.org/token` and `http://bad host/token` each give
   `CONFIGURATION_ERROR`, a message containing `token-uri`, and WireMock receives no request. A
   token URI `ftp://user:pa55@example.org/token` gives a message without `pa55`.
-- **Scrubbing on the Spring path:**
+- **Scrubbing on the Spring path, including a token server that echoes the request:**
+  - a WireMock response template echoing `{{request.body}}` and the `Authorization` header, with a
+    secret containing `~ + / =`, for both `client_secret_basic` and `client_secret_post`, gives a
+    message containing neither the raw nor the encoded secret, nor the Basic value
   - a 403 response whose body contains the client secret gives a message without the secret
     that contains `****`
   - `https://user:pa55@no-such-host.invalid/token` gives a message without `pa55`

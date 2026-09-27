@@ -9,6 +9,7 @@ import org.springframework.security.oauth2.client.OAuth2AuthorizeRequest;
 import org.springframework.security.oauth2.client.OAuth2AuthorizedClient;
 import org.springframework.security.oauth2.client.OAuth2AuthorizedClientProviderBuilder;
 import org.springframework.security.oauth2.client.OAuth2AuthorizedClientService;
+import org.springframework.security.oauth2.client.registration.ClientRegistration;
 import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
 import org.springframework.security.oauth2.core.OAuth2AuthorizationException;
 import org.springframework.security.oauth2.core.OAuth2Error;
@@ -17,6 +18,7 @@ import org.springframework.web.client.ResourceAccessException;
 
 import java.net.ConnectException;
 import java.net.SocketTimeoutException;
+import java.net.URI;
 import java.net.UnknownHostException;
 import java.net.http.HttpTimeoutException;
 import java.nio.charset.StandardCharsets;
@@ -34,7 +36,9 @@ import java.util.Base64;
  * token server is not: it may succeed on a later try.
  * <p>
  * Never throws, and never puts a password, secret, token or header value in a message or log:
- * messages name the target and the registration only.
+ * messages name the target and the registration, and may also quote Spring's own cause text
+ * after {@link TokenFailureText#safe} has masked secrets and URL credentials in it and capped
+ * its length.
  */
 public class RestAuthenticator {
 
@@ -102,9 +106,20 @@ public class RestAuthenticator {
                     + "', but no OAuth2 client registrations are configured (spring.security.oauth2.client.registration)",
                     ErrorType.CONFIGURATION_ERROR);
         }
-        if (registrations.findByRegistrationId(registrationId) == null) {
+        ClientRegistration registration = registrations.findByRegistrationId(registrationId);
+        if (registration == null) {
             return OperationResult.failure("REST target '" + target + "' names OAuth2 client registration '"
                     + registrationId + "', which is not configured under spring.security.oauth2.client.registration",
+                    ErrorType.CONFIGURATION_ERROR);
+        }
+
+        String clientSecret = registration.getClientSecret();
+        String tokenUri = registration.getProviderDetails().getTokenUri();
+        if (!isHttpUrl(tokenUri)) {
+            return OperationResult.failure("OAuth2 registration '" + registrationId + "' (target '" + target
+                    + "') has a token-uri that is not an absolute http(s) URL: '"
+                    + TokenFailureText.safe(tokenUri, clientSecret)
+                    + "'. Fix its provider's token-uri (spring.security.oauth2.client.provider.<name>.token-uri).",
                     ErrorType.CONFIGURATION_ERROR);
         }
 
@@ -121,11 +136,32 @@ public class RestAuthenticator {
                     "REST target '" + target + "' uses OAuth2 registration '" + registrationId + "'");
         } catch (OAuth2AuthorizationException e) {
             OAuth2Error error = e.getError();
-            String description = error.getDescription() == null ? "" : " " + error.getDescription();
-            return OperationResult.failure(failed + "[" + error.getErrorCode() + "]" + description,
-                    tokenFailureType(e));
+            String description = TokenFailureText.safe(error.getDescription(), clientSecret);
+            return OperationResult.failure(failed + "[" + error.getErrorCode() + "]"
+                    + (description.isEmpty() ? "" : " " + description), tokenFailureType(e));
         } catch (RuntimeException e) {
-            return OperationResult.failure(failed + e.getClass().getSimpleName(), tokenFailureType(e));
+            String cause = TokenFailureText.safe(e.getMessage(), clientSecret);
+            return OperationResult.failure(failed + e.getClass().getSimpleName()
+                    + (cause.isEmpty() ? "" : ": " + cause), tokenFailureType(e));
+        }
+    }
+
+    /**
+     * Whether a token URI can be sent to: absolute, http or https in any letter case, with a
+     * host. Anything else fails in Spring before a request is made, with a bare exception, so
+     * it is caught here as a configuration error instead.
+     */
+    static boolean isHttpUrl(String value) {
+        if (value == null || value.isBlank()) {
+            return false;
+        }
+        try {
+            URI uri = URI.create(value);
+            String scheme = uri.getScheme();
+            return uri.isAbsolute() && uri.getHost() != null && scheme != null
+                    && (scheme.equalsIgnoreCase("http") || scheme.equalsIgnoreCase("https"));
+        } catch (IllegalArgumentException e) {
+            return false;
         }
     }
 

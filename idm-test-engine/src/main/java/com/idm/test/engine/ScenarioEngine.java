@@ -155,7 +155,9 @@ public final class ScenarioEngine {
         AtomicReference<StepOutcome> last = new AtomicReference<>();
 
         long waitStarted = System.currentTimeMillis();
-        boolean passed = executor.waitUntil(() -> {
+        // True when the assertion passed or a final failure ended the wait early; either way
+        // waitUntil's loop condition was satisfied. Success itself always comes from `outcome`.
+        boolean stopped = executor.waitUntil(() -> {
             attempts.incrementAndGet();
             StepOutcome outcome;
             try {
@@ -188,7 +190,7 @@ public final class ScenarioEngine {
             message = "wait timed out before the assertion ran once";
         } else if (outcome.isFinal()) {
             message = outcome.message() + NOT_RETRIED;
-        } else if (passed) {
+        } else if (stopped) {
             // Covers both the ordinary passing case and the one bind() just downgraded: the
             // assertion itself passed on this attempt, so its own message (success or, on a
             // missing capture, bind()'s failure message) is what belongs here — never the

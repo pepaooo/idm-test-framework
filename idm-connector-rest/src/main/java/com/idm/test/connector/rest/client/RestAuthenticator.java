@@ -137,6 +137,8 @@ public class RestAuthenticator {
      * rejection, so an unknown failure ends a wait rather than hammering the token server.
      */
     static ErrorType tokenFailureType(Throwable failure) {
+        // Timeout check runs first: a SocketTimeoutException wrapped in a ResourceAccessException
+        // must classify as TIMEOUT, not NETWORK_ERROR from the second loop below.
         for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
             if (cause instanceof HttpTimeoutException || cause instanceof SocketTimeoutException) {
                 return ErrorType.TIMEOUT;

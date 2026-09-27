@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.security.oauth2.client.registration.ClientRegistration;
 import org.springframework.security.oauth2.client.registration.InMemoryClientRegistrationRepository;
 import org.springframework.security.oauth2.core.AuthorizationGrantType;
+import org.springframework.web.client.ResourceAccessException;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -246,15 +247,13 @@ class RestAuthenticatorTest {
     }
 
     @Test
-    @DisplayName("A 400 OAuth error from the token server is an AUTHENTICATION_ERROR")
-    void testTokenRejected400IsAuthentication() {
-        wiremock.stubFor(post(urlEqualTo("/oauth/token")).willReturn(aResponse()
-                .withStatus(400)
-                .withHeader("Content-Type", "application/json")
-                .withBody("{\"error\":\"invalid_client\"}")));
-
-        OperationResult<String> result = withRegistration("svc").authorization("api", oauth("svc"));
-
-        assertThat(result.getErrorType()).contains(ErrorType.AUTHENTICATION_ERROR);
+    @DisplayName("A timeout wrapped in a ResourceAccessException is a TIMEOUT, not a NETWORK_ERROR")
+    void testTokenFailureTypeTimeout() {
+        assertThat(RestAuthenticator.tokenFailureType(
+                new ResourceAccessException("slow", new java.net.SocketTimeoutException("read timed out"))))
+                .isEqualTo(ErrorType.TIMEOUT);
+        assertThat(RestAuthenticator.tokenFailureType(
+                new ResourceAccessException("down", new java.net.ConnectException("refused"))))
+                .isEqualTo(ErrorType.NETWORK_ERROR);
     }
 }

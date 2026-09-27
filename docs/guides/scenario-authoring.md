@@ -168,7 +168,7 @@ Use positive integer durations with `s`, `m` or `h`. The test profile defaults t
 Some failures cannot change by waiting, and they end the wait at once instead of polling until the timeout. The step's message ends with `(not retried: waiting cannot change this)`. They are:
 
 - **a malformed assertion:** an empty or misspelled `expect`, or both or neither of `expect`/`exists`
-- **a name that isn't configured:** an unknown REST target or database
+- **a name that isn't configured:** an unknown REST target or database, or a REST target with no `base-url`
 - **bad credentials:**
   - credentials that are only half configured
   - an OAuth registration that doesn't exist

@@ -12,7 +12,13 @@ import org.springframework.security.oauth2.client.OAuth2AuthorizedClientService;
 import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
 import org.springframework.security.oauth2.core.OAuth2AuthorizationException;
 import org.springframework.security.oauth2.core.OAuth2Error;
+import org.springframework.web.client.HttpServerErrorException;
+import org.springframework.web.client.ResourceAccessException;
 
+import java.net.ConnectException;
+import java.net.SocketTimeoutException;
+import java.net.UnknownHostException;
+import java.net.http.HttpTimeoutException;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 
@@ -23,7 +29,9 @@ import java.util.Base64;
  * cached and renewed by Spring Security's own authorized-client manager (no custom token code).
  * Otherwise a username and password give HTTP basic authentication, and a target with neither
  * is unauthenticated. Anything half-configured is a failure, so a request is never sent with
- * credentials the author did not fully give.
+ * credentials the author did not fully give. A rejection from the token server and a
+ * configuration error are final: retrying cannot change them. A server error or an unreachable
+ * token server is not: it may succeed on a later try.
  * <p>
  * Never throws, and never puts a password, secret, token or header value in a message or log:
  * messages name the target and the registration only.
@@ -115,10 +123,36 @@ public class RestAuthenticator {
             OAuth2Error error = e.getError();
             String description = error.getDescription() == null ? "" : " " + error.getDescription();
             return OperationResult.failure(failed + "[" + error.getErrorCode() + "]" + description,
-                    ErrorType.AUTHENTICATION_ERROR);
+                    tokenFailureType(e));
         } catch (RuntimeException e) {
-            return OperationResult.failure(failed + e.getClass().getSimpleName(), ErrorType.AUTHENTICATION_ERROR);
+            return OperationResult.failure(failed + e.getClass().getSimpleName(), tokenFailureType(e));
         }
+    }
+
+    /**
+     * Whether a failed token request may succeed if tried again. A token server that answered
+     * with a rejection (any 4xx, including a 400 OAuth error Spring parsed itself) will answer
+     * the same way next time: AUTHENTICATION_ERROR. A server error or an unreachable server may
+     * recover: SERVER_ERROR, TIMEOUT or NETWORK_ERROR. Anything unidentified counts as a
+     * rejection, so an unknown failure ends a wait rather than hammering the token server.
+     */
+    static ErrorType tokenFailureType(Throwable failure) {
+        for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
+            if (cause instanceof HttpTimeoutException || cause instanceof SocketTimeoutException) {
+                return ErrorType.TIMEOUT;
+            }
+        }
+        for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
+            if (cause instanceof HttpServerErrorException) {
+                return ErrorType.SERVER_ERROR;
+            }
+            if (cause instanceof ResourceAccessException
+                    || cause instanceof ConnectException
+                    || cause instanceof UnknownHostException) {
+                return ErrorType.NETWORK_ERROR;
+            }
+        }
+        return ErrorType.AUTHENTICATION_ERROR;
     }
 
     private static boolean present(String value) {

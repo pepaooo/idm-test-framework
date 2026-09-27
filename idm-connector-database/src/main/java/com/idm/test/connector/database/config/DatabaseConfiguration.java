@@ -15,7 +15,8 @@ import java.util.Map;
 
 /**
  * Configures JdbcTemplate beans for each configured database.
- * Creates a HikariCP connection pool for each database.
+ * Creates a HikariCP connection pool for each database, lazily: each pool is
+ * created on first use, not at startup.
  */
 @Configuration
 @EnableConfigurationProperties(DatabaseProperties.class)
@@ -86,6 +87,12 @@ public class DatabaseConfiguration {
         hikariConfig.setValidationTimeout(5000);
         hikariConfig.setLeakDetectionThreshold(60000);
 
-        return new HikariDataSource(hikariConfig);
+        // Lazy on purpose: the no-arg HikariDataSource starts its pool on the first
+        // getConnection(), so a database no scenario uses is never contacted, not even by the
+        // min-idle housekeeper. A used database that is unreachable fails its first query, as a
+        // DATABASE_ERROR, instead of stopping the whole context.
+        HikariDataSource dataSource = new HikariDataSource();
+        hikariConfig.copyStateTo(dataSource);
+        return dataSource;
     }
 }

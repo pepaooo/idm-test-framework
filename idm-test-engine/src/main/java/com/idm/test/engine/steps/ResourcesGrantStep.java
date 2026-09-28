@@ -12,13 +12,14 @@ import java.util.Set;
 /**
  * Grants a resource to a user. Registers nothing. To revoke afterwards, write
  * {@code resources.revoke} in the scenario's {@code cleanup:} block.
- *
- * @param connector the SOAP connector, or null when the service is not configured; execute then fails without calling anything
  */
 public final class ResourcesGrantStep implements StepType {
 
     private final ResourceServiceConnector connector;
 
+    /**
+     * @param connector the SOAP connector, or null when the service is not configured; execute then fails without calling anything
+     */
     public ResourcesGrantStep(ResourceServiceConnector connector) {
         this.connector = connector;
     }

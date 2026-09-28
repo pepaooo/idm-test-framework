@@ -64,7 +64,10 @@ import java.util.stream.Stream;
  * placeholder, or an empty directory that reports green. Guards 2, 4 and 5, and the database
  * guard, check only what the selected scenarios actually use ({@link ScenarioNeeds}):
  * an unused LDAP, SOAP, database or REST repository is never required to be configured, and
- * is never contacted.
+ * is never contacted. The one exception is the embedded {@code test-db} (in-memory H2 by
+ * default): it is always opened at startup, because the scenarios module's
+ * {@code TestSchemaInitializer} recreates its schema there — never point {@code test-db}
+ * at a real database.
  */
 @SpringBootTest
 @EnableAutoConfiguration(exclude = {LdapAutoConfiguration.class})

@@ -23,9 +23,11 @@ import java.util.stream.Stream;
  * (Test suffix) to keep "only what the scenarios use" true.
  * <p>
  * Like ContainerScenarios, it sets system properties before the Spring context loads, restores
- * them afterwards, and dirties the context so no other class reuses it. Running the whole suite
- * with {@code -Dscenario} makes this class fail, because its one file won't match: pair
- * {@code -Dscenario} with {@code -Dtest}, as the docs say.
+ * them afterwards, and dirties the context so no other class reuses it. It ignores {@code
+ * -Dscenario}, because it always runs its own single scenario file regardless of that property.
+ * Like every default-suite run, it writes {@code target/real-environment-results.json}. An
+ * exported {@code IDM_TEST_PROFILE=test} makes it fail at guard 1 by design, since the class
+ * under test refuses to run under the embedded profile.
  */
 @DirtiesContext(classMode = DirtiesContext.ClassMode.BEFORE_CLASS)
 @DisplayName("Real-environment runner with only LDAP configured")
@@ -51,6 +53,13 @@ class RealEnvironmentLdapOnlyTest extends RealEnvironmentScenarios {
         set("idm.test.ldap.base-dn", BASE_DN);
         set("idm.test.ldap.user-dn", BIND_DN);
         set("idm.test.ldap.password", BIND_PASSWORD);
+        // The default profile's 5-minute wait would make a regression in this test hang.
+        set("idm.test.executor.default-timeout-seconds", "60");
+        set("idm.test.executor.default-poll-interval-seconds", "1");
+        // This class always runs its own single scenario file; a suite-wide -Dscenario must not
+        // make it try to filter to a different one.
+        PREVIOUS.put("scenario", System.getProperty("scenario"));
+        System.clearProperty("scenario");
     }
 
     @AfterAll
@@ -71,6 +80,7 @@ class RealEnvironmentLdapOnlyTest extends RealEnvironmentScenarios {
     @TestFactory
     @Override
     @DisplayName("The LDAP-only scenario runs with nothing else configured")
+    @DirtiesContext
     Stream<DynamicTest> scenarios() throws Exception {
         ContainerScenarios.requireBoundTo(ldapProperties.getUrl(), System.getProperty("idm.test.ldap.url"));
         return super.scenarios();

@@ -279,10 +279,10 @@ scenarios reach real systems.
 ./mvnw test -pl idm-test-scenarios -am -Dtest=RealEnvironmentScenarios -Dsurefire.failIfNoSpecifiedTests=false
 ```
 
-Both accept `-Dscenario=<glob>`. The real-environment runner refuses to start, before any scenario
-runs, when it would test nothing real: the embedded profile, placeholder LDAP/SOAP URLs, an empty
-directory, placeholder REST base URLs, or placeholder or half-given credentials for the targets
-the selected scenarios use. See
+Both accept `-Dscenario=<glob>`. The real-environment runner checks only what the selected
+scenarios use, and refuses to start, before any scenario runs, when it would test nothing real:
+the embedded profile, an empty directory, or — for repositories the scenarios use — an unset or
+placeholder LDAP/SOAP URL, REST target, database, or credentials. See
 [scenarios-real/README.md](idm-test-scenarios/src/test/resources/scenarios-real/README.md).
 
 ### Next

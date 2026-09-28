@@ -14,13 +14,14 @@ import java.util.Set;
  * Grants one or more roles to a user. Registers nothing. A scenario that needs cleanup writes
  * an explicit {@code roles.revoke} in its {@code cleanup:} block, using the DNs captured here
  * through {@code as:}.
- *
- * @param connector the SOAP connector, or null when the service is not configured; execute then fails without calling anything
  */
 public final class RolesGrantStep implements StepType {
 
     private final RoleServiceConnector connector;
 
+    /**
+     * @param connector the SOAP connector, or null when the service is not configured; execute then fails without calling anything
+     */
     public RolesGrantStep(RoleServiceConnector connector) {
         this.connector = connector;
     }

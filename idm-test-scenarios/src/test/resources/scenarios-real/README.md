@@ -117,15 +117,18 @@ Usernames and passwords still come from the `IDM_*`, `SAP_DB_*`, `HR_DB_*` and `
 variables listed below, since neither `dev` nor `prod` overrides those keys.
 
 The runner checks, and connects to, **only what the selected scenarios use**. A repository no
-scenario touches can stay as `application.yml`'s placeholder, and it is never contacted.
+scenario touches can stay as `application.yml`'s placeholder, and it is never contacted. The one
+exception is the embedded `test-db` (in-memory H2 by default): it is always opened at startup,
+because the scenarios module's schema initializer recreates its schema there, so never point
+`test-db` at a real database.
 
 | Your scenarios use | You must configure (and not leave as the placeholder) |
 |---|---|
-| `ldap.*` | `idm.test.ldap.url` (`IDM_TEST_LDAP_URL`), plus the bind DN and password |
+| `ldap.*` | `idm.test.ldap.url` (`IDM_TEST_LDAP_URL`) checked against its placeholder; the bind DN and password must also be set but are not placeholder-checked |
 | `db.*` with `database: <name>` | `idm.test.databases.<name>.jdbc-url`, `username`, `password` |
 | `roles.*` | `idm.test.soap.url` (`IDM_TEST_SOAP_URL`) and SOAP credentials |
 | `resources.*` | `idm.test.soap.resource-url` (`IDM_TEST_SOAP_RESOURCEURL`) and SOAP credentials |
-| `rest.*` / `http.request` with `target: <name>` | `idm.test.rest.<name>.base-url` and its credentials |
+| `rest.*` / `http.request` with `target: <name>` | `idm.test.rest.<name>.base-url`, and credentials only if the target requires authentication |
 
 Database placeholders refused: `sap` `jdbc:postgresql://localhost:5432/sap` (`sapuser`/`sappass`),
 `oracle-hr` `jdbc:oracle:thin:@localhost:1521:HRDB` (`hruser`/`hrpass`), `workday`

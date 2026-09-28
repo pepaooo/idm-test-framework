@@ -17,13 +17,14 @@ import java.util.Set;
  * {@code removeRoles} operation consumes and nothing in the role service maps a role
  * definition DN back to an assignment DN. Capture them from {@code roles.grant} with
  * {@code as:} and pass them here.
- *
- * @param connector the SOAP connector, or null when the service is not configured; execute then fails without calling anything
  */
 public final class RolesRevokeStep implements StepType {
 
     private final RoleServiceConnector connector;
 
+    /**
+     * @param connector the SOAP connector, or null when the service is not configured; execute then fails without calling anything
+     */
     public RolesRevokeStep(RoleServiceConnector connector) {
         this.connector = connector;
     }

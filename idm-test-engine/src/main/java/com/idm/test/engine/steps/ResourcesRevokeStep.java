@@ -12,13 +12,14 @@ import java.util.Set;
 /**
  * Revokes a resource from a user. Registers nothing. A scenario that wants the resource back
  * grants it again explicitly.
- *
- * @param connector the SOAP connector, or null when the service is not configured; execute then fails without calling anything
  */
 public final class ResourcesRevokeStep implements StepType {
 
     private final ResourceServiceConnector connector;
 
+    /**
+     * @param connector the SOAP connector, or null when the service is not configured; execute then fails without calling anything
+     */
     public ResourcesRevokeStep(ResourceServiceConnector connector) {
         this.connector = connector;
     }

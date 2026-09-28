@@ -87,11 +87,11 @@ IDM_TEST_PROFILE=dev ./mvnw -pl idm-test-scenarios -am test -Dtest=RealEnvironme
 `idm-test-scenarios/src/test/resources/scenarios-real/` against the environment your profile and
 environment variables name. Before any scenario runs, it refuses:
 
-1. the embedded `test` profile
-2. an empty scenario directory
-3. for the LDAP and SOAP services the selected scenarios use: a URL that is unset or still the placeholder
-4. for the REST targets and databases they use: one that is unconfigured, or still the placeholder
-5. placeholder or half-given credentials for the REST targets and SOAP services they use
+- the embedded `test` profile
+- an empty scenario directory
+- for the LDAP and SOAP services the selected scenarios use: a URL that is unset or still the placeholder
+- for the REST targets and databases they use: one that is unconfigured, or still the placeholder
+- placeholder or half-given credentials for the REST targets and SOAP services they use
 
 Nothing the selected scenarios don't use is checked or contacted.
 

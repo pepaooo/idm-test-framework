@@ -163,6 +163,22 @@ A SOAP service or any other API called with `http.request` is a target too: conf
 URL as `idm.test.rest.<name>.base-url`, or with `IDM_TEST_REST_<NAME>_BASEURL`. The REST-target
 check treats it like any other REST target.
 
+### TLS certificates for LDAPS and HTTPS
+
+A real lab usually uses internal certificates. The connectors (LDAP over `ldaps://`, REST,
+`http.request`, OAuth2 token requests and SOAP over `https://`) all trust whatever the **test
+JVM's truststore** trusts. The framework has no TLS settings of its own. Put the CA certificate
+that signed your servers into a truststore file and pass it on the command line:
+
+```bash
+./mvnw -pl idm-test-scenarios -am test -Dtest=RealEnvironmentScenarios -Dsurefire.failIfNoSpecifiedTests=false -Djavax.net.ssl.trustStore=/path/to/idm-truststore.p12 -Djavax.net.ssl.trustStorePassword=changeit -Djavax.net.ssl.trustStoreType=PKCS12
+```
+
+That file replaces the JDK's default truststore, so it must also hold the CAs of any public
+endpoints you call. The hostname in each URL must match the server's certificate. See
+[configuration: TLS certificates](../../../../../docs/reference/configuration.md#tls-certificates-ldaps-https)
+for creating the truststore, hostname checks, mutual TLS and diagnosing handshake failures.
+
 ## Running against containers
 
 `ContainerScenarios` runs the embedded corpus (`../scenarios/`) through this same runner,

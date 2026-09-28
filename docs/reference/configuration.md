@@ -233,6 +233,72 @@ idm:
       rest-provision-timeout-seconds: 300
 ```
 
+## TLS certificates (LDAPS, HTTPS)
+
+The framework has no TLS settings of its own. Every connector uses the **test JVM's default
+truststore**:
+
+| Connector | TLS used for |
+|---|---|
+| LDAP (`EdirectoryConnector`, via Spring LDAP / JNDI) | `ldaps://` URLs |
+| REST and `http.request` (JDK `HttpClient`) | `https://` targets, and OAuth2 token requests |
+| SOAP role and resource services (JAX-WS) | `https://` service URLs |
+
+A server whose certificate is signed by a public CA the JDK already trusts needs nothing. For a
+server with an internal or self-signed certificate, give the JVM a truststore that contains the
+**CA certificate** that signed it (preferred, because it survives a server-certificate renewal) or
+the server certificate itself.
+
+**1. Create a truststore file.** Keep it outside the repository.
+
+```bash
+keytool -importcert -alias edirectory-ca -file edirectory-ca.pem -keystore idm-truststore.p12 -storetype PKCS12 -storepass changeit -noprompt
+```
+
+Repeat `-importcert` with another `-alias` for each further CA (another directory, an internal
+REST or SOAP server, a token server).
+
+**2. Point the test JVM at it.** Surefire passes `-D` properties from the Maven command line to the
+forked test JVM:
+
+```bash
+./mvnw -pl idm-test-scenarios -am test -Dtest=RealEnvironmentScenarios -Dsurefire.failIfNoSpecifiedTests=false -Djavax.net.ssl.trustStore=/path/to/idm-truststore.p12 -Djavax.net.ssl.trustStorePassword=changeit -Djavax.net.ssl.trustStoreType=PKCS12
+```
+
+In an IDE, add the same three `-Djavax.net.ssl.*` options to the run configuration's VM options.
+
+**Things to know:**
+
+- **`javax.net.ssl.trustStore` replaces the JDK's default truststore; it does not add to it.**
+  The JVM then trusts only what is in your file, for LDAP, REST, SOAP and OAuth alike. If any
+  endpoint uses a public certificate (for example a SaaS REST API or its token server), either
+  import that CA too, or start from a copy of the JDK's `cacerts` and add your CA to it:
+
+  ```bash
+  cp "$JAVA_HOME/lib/security/cacerts" idm-truststore.p12
+  ```
+
+  ```bash
+  keytool -importcert -alias edirectory-ca -file edirectory-ca.pem -keystore idm-truststore.p12 -storepass changeit -noprompt
+  ```
+
+- **The hostname must match the certificate.** Java checks the LDAPS server's hostname against
+  the certificate's subject alternative names. Use a name the certificate covers, for example
+  `ldaps://edir.company.com:636`, not an IP address it doesn't list.
+- **Use `ldaps://` (port 636).** StartTLS (`ldap://` upgraded to TLS) is not configured on the
+  LDAP context source.
+- **Importing into the JDK's own `cacerts`** also works, but it affects every Java program on the
+  machine, usually needs administrator rights, and is lost when the JDK is upgraded. A separate
+  file passed with `-D` is preferred.
+- **Mutual TLS:** only if a server requires a client certificate, also pass
+  `-Djavax.net.ssl.keyStore=…`, `-Djavax.net.ssl.keyStorePassword=…` and
+  `-Djavax.net.ssl.keyStoreType=PKCS12`. Username/password binds and basic or OAuth2
+  authentication don't need it.
+- **Diagnosing a handshake failure:** add `-Djavax.net.debug=ssl:handshake` to see which
+  certificate the server sent and why it was rejected. `PKIX path building failed` means the
+  signing CA is not in the truststore; `No subject alternative names matching` means the hostname
+  does not match.
+
 ## Profile Examples
 
 ### Local Development (default)
@@ -401,7 +467,7 @@ This will verify all properties load correctly.
 
 - Check firewall allows LDAP port (389 or 636)
 - Verify DN syntax (must be valid LDAP DN)
-- For LDAPS (secure), ensure certificates are trusted
+- For LDAPS (secure), the server's CA must be in the test JVM's truststore; see [TLS certificates](#tls-certificates-ldaps-https)
 
 ## Best Practices
 

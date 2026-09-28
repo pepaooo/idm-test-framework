@@ -61,8 +61,6 @@ outcome is in the JSON report.
 The runner refuses to start, before any scenario runs, when:
 
 - the active profile is `test` (the embedded configuration)
-- `idm.test.ldap.url` or `idm.test.soap.url` is blank or still the `application.yml` placeholder
-  (`ldap://localhost:389`, `https://idm.company.com:8543/IDMProv/role/service`)
 - this directory contains no `.yaml`
 - a scenario about to run uses a REST `target:` that is not configured, or whose `base-url` is
   blank or still its `application.yml` placeholder. Only targets the selected scenarios use are
@@ -116,14 +114,25 @@ scenarios use one of those targets is refused until that target's
 Usernames and passwords still come from the `IDM_*`, `SAP_DB_*`, `HR_DB_*` and `WORKDAY_DB_*`
 variables listed below, since neither `dev` nor `prod` overrides those keys.
 
-The Spring context will not start unless the following are also true:
+The runner checks, and connects to, **only what the selected scenarios use**. A repository no
+scenario touches can stay as `application.yml`'s placeholder, and it is never contacted.
 
-- **Every database configured under `idm.test.databases` accepts a connection.** That means
-  `sap`, `oracle-hr` and `workday`, not only the ones your scenarios use. Each pool connects
-  when it is created (`new HikariDataSource(config)` in `DatabaseConfiguration`).
-- **`idm.test.soap.resource-url` is set** (for example with the environment variable
-  `IDM_TEST_SOAP_RESOURCEURL`). Without it, the `ResourceServiceConnector` bean is not created
-  and the context fails.
+| Your scenarios use | You must configure (and not leave as the placeholder) |
+|---|---|
+| `ldap.*` | `idm.test.ldap.url` (`IDM_TEST_LDAP_URL`), plus the bind DN and password |
+| `db.*` with `database: <name>` | `idm.test.databases.<name>.jdbc-url`, `username`, `password` |
+| `roles.*` | `idm.test.soap.url` (`IDM_TEST_SOAP_URL`) and SOAP credentials |
+| `resources.*` | `idm.test.soap.resource-url` (`IDM_TEST_SOAP_RESOURCEURL`) and SOAP credentials |
+| `rest.*` / `http.request` with `target: <name>` | `idm.test.rest.<name>.base-url` and its credentials |
+
+Database placeholders refused: `sap` `jdbc:postgresql://localhost:5432/sap` (`sapuser`/`sappass`),
+`oracle-hr` `jdbc:oracle:thin:@localhost:1521:HRDB` (`hruser`/`hrpass`), `workday`
+`jdbc:postgresql://localhost:5432/workday` (`wdayuser`/`wdaypass`). A database really at that
+exact localhost URL must be named another way (for example `127.0.0.1`).
+
+Database pools open on first use: a used database that cannot be reached fails the first step
+that touches it, not the whole run. A name written as `${...}` is only known at run time and is
+not checked in advance.
 
 Credentials come from the environment variables `application.yml` already references:
 `IDM_LDAP_URL`, `IDM_LDAP_USER_DN`, `IDM_LDAP_PASSWORD`, `IDM_SOAP_URL`, `IDM_SOAP_USER`,

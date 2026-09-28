@@ -42,6 +42,7 @@ class RealEnvironmentGuardsTest {
     /** What the existing guard-2 tests assumed: LDAP and the Role service are used. */
     private static final ScenarioNeeds LDAP_AND_ROLES = new ScenarioNeeds(true, Set.of(), true, false, Set.of());
     private static final ScenarioNeeds NOTHING = new ScenarioNeeds(false, Set.of(), false, false, Set.of());
+    private static final ScenarioNeeds LDAP_ONLY = new ScenarioNeeds(true, Set.of(), false, false, Set.of());
 
     private static MockEnvironment target(String ldapUrl, String soapUrl, String... profiles) {
         MockEnvironment environment = new MockEnvironment();
@@ -51,6 +52,17 @@ class RealEnvironmentGuardsTest {
         }
         if (soapUrl != null) {
             environment.setProperty("idm.test.soap.url", soapUrl);
+        }
+        return environment;
+    }
+
+    private static MockEnvironment ldapTarget(String userDn, String password) {
+        MockEnvironment environment = target(REAL_LDAP, null, "dev");
+        if (userDn != null) {
+            environment.setProperty("idm.test.ldap.user-dn", userDn);
+        }
+        if (password != null) {
+            environment.setProperty("idm.test.ldap.password", password);
         }
         return environment;
     }
@@ -227,6 +239,85 @@ class RealEnvironmentGuardsTest {
         assertThatCode(() -> RealEnvironmentScenarios.requireDatabases(Set.of("sap"),
                 databases("sap", "jdbc:postgresql://db.example.org/sap", "svc", "real")))
                 .doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("The DB guard refuses each in-memory database a scenario uses, naming the prefix but never the URL")
+    void testInMemoryDatabasesRefused() {
+        Map<String, String> urls = Map.of(
+                "jdbc:h2:mem:x", "jdbc:h2:mem:",
+                "JDBC:H2:MEM:x", "jdbc:h2:mem:",
+                "jdbc:hsqldb:mem:x", "jdbc:hsqldb:mem:",
+                "jdbc:derby:memory:x;create=true", "jdbc:derby:memory:");
+        urls.forEach((url, prefix) -> assertThatThrownBy(() -> RealEnvironmentScenarios.requireDatabases(
+                Set.of("hr"), databases("hr", url, "svc", "real")))
+                .as(url)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("idm.test.databases.hr.jdbc-url points at an in-memory database (" + prefix
+                        + "), which exists only inside this test run, so nothing another system provisioned"
+                        + " could be checked there. Point it at a real database: set IDM_TEST_DATABASES_HR_JDBCURL."));
+    }
+
+    @Test
+    @DisplayName("An in-memory URL's own password parameter never reaches the message")
+    void testInMemoryUrlNotEchoed() {
+        assertThatThrownBy(() -> RealEnvironmentScenarios.requireDatabases(Set.of("hr"),
+                databases("hr", "jdbc:h2:mem:x;PASSWORD=hunter2", "svc", "real")))
+                .hasMessageNotContaining("hunter2")
+                .hasMessageNotContaining("jdbc:h2:mem:x");
+    }
+
+    @Test
+    @DisplayName("File-based, networked and real database URLs pass; an unused in-memory database passes")
+    void testNonMemoryDatabasesPass() {
+        for (String url : List.of("jdbc:h2:file:/tmp/x", "jdbc:h2:tcp://db.example.org/x",
+                "jdbc:postgresql://db.example.org:5432/hr")) {
+            assertThatCode(() -> RealEnvironmentScenarios.requireDatabases(Set.of("hr"),
+                    databases("hr", url, "svc", "real"))).as(url).doesNotThrowAnyException();
+        }
+        assertThatCode(() -> RealEnvironmentScenarios.requireDatabases(Set.of(),
+                databases("test-db", "jdbc:h2:mem:testdb", "sa", ""))).doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("When ldap.* is used, the placeholder bind DN and password are refused, never echoing the password")
+    void testLdapBindPlaceholdersRefused() {
+        assertThatThrownBy(() -> RealEnvironmentScenarios.requireRealTarget(
+                ldapTarget(RealEnvironmentScenarios.LDAP_USER_DN_PLACEHOLDER, "real-pass"), LDAP_ONLY))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("idm.test.ldap.user-dn")
+                .hasMessageContaining("IDM_TEST_LDAP_USERDN");
+        assertThatThrownBy(() -> RealEnvironmentScenarios.requireRealTarget(
+                ldapTarget("cn=svc,dc=example,dc=org", RealEnvironmentScenarios.LDAP_PASSWORD_PLACEHOLDER), LDAP_ONLY))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("idm.test.ldap.password")
+                .hasMessageContaining("IDM_TEST_LDAP_PASSWORD")
+                .hasMessageNotContaining(RealEnvironmentScenarios.LDAP_PASSWORD_PLACEHOLDER);
+    }
+
+    @Test
+    @DisplayName("LDAP bind placeholders pass when ldap.* is not used; blank or unset ones pass when it is")
+    void testLdapBindChecksConditional() {
+        MockEnvironment placeholders = ldapTarget(RealEnvironmentScenarios.LDAP_USER_DN_PLACEHOLDER,
+                RealEnvironmentScenarios.LDAP_PASSWORD_PLACEHOLDER);
+        assertThatCode(() -> RealEnvironmentScenarios.requireRealTarget(placeholders, NOTHING))
+                .doesNotThrowAnyException();
+        assertThatCode(() -> RealEnvironmentScenarios.requireRealTarget(ldapTarget(null, null), LDAP_ONLY))
+                .doesNotThrowAnyException();
+        assertThatCode(() -> RealEnvironmentScenarios.requireRealTarget(ldapTarget("", ""), LDAP_ONLY))
+                .doesNotThrowAnyException();
+        assertThatCode(() -> RealEnvironmentScenarios.requireRealTarget(
+                ldapTarget("cn=svc,dc=example,dc=org", "real-pass"), LDAP_ONLY))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("The LDAP bind placeholders match the fallbacks application.yml declares")
+    void testLdapBindPlaceholdersMatchApplicationYml() throws IOException {
+        String yaml = Files.readString(Path.of("src/test/resources/application.yml"));
+        assertThat(yaml)
+                .contains("${IDM_LDAP_USER_DN:" + RealEnvironmentScenarios.LDAP_USER_DN_PLACEHOLDER + "}")
+                .contains("${IDM_LDAP_PASSWORD:" + RealEnvironmentScenarios.LDAP_PASSWORD_PLACEHOLDER + "}");
     }
 
     @Test

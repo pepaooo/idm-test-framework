@@ -79,6 +79,17 @@ public class RealEnvironmentScenarios {
     static final String LDAP_URL_PLACEHOLDER = "ldap://localhost:389";
     static final String SOAP_URL_PLACEHOLDER = "https://idm.company.com:8543/IDMProv/role/service";
 
+    /** application.yml's fallback LDAP bind DN and password. Pinned by RealEnvironmentGuardsTest. */
+    static final String LDAP_USER_DN_PLACEHOLDER = "cn=admin,dc=company,dc=com";
+    static final String LDAP_PASSWORD_PLACEHOLDER = "secret";
+
+    /**
+     * JDBC URL prefixes of databases that live only inside the test JVM. Nothing another system
+     * provisioned can be in them, so a real run refuses them. File-based and networked embedded
+     * databases are left alone: someone may run one on purpose.
+     */
+    static final List<String> IN_MEMORY_JDBC_PREFIXES = List.of("jdbc:h2:mem:", "jdbc:hsqldb:mem:", "jdbc:derby:memory:");
+
     /** application.yml's fallback base-url for each REST target. Pinned to that file by RealEnvironmentGuardsTest. */
     static final Map<String, String> REST_URL_PLACEHOLDERS = Map.of(
             "idm", "https://idm.company.com:8543/IDMProv",
@@ -214,12 +225,20 @@ public class RealEnvironmentScenarios {
      * Guard 2. Refuses an LDAP or SOAP endpoint that the selected scenarios use but nobody
      * named: the LDAP URL when ldap.* is used, the Role service URL when roles.* is, and a
      * Resource service URL when resources.* is. application.yml has no placeholder for the
-     * resource URL, so there it is only required to be set. Endpoints no scenario uses are
-     * not checked.
+     * resource URL, so there it is only required to be set. For LDAP, the placeholder bind DN
+     * and password are also refused. Endpoints no scenario uses are not checked.
      */
     static void requireEndpoints(Environment environment, ScenarioNeeds needs) {
         if (needs.ldap()) {
             requireNamed(environment, "idm.test.ldap.url", "IDM_TEST_LDAP_URL", LDAP_URL_PLACEHOLDER);
+            // A blank bind DN or password is anonymous bind, which is legitimate; only the
+            // placeholders are refused. The dev profile overrides the DN but not the password.
+            if (LDAP_USER_DN_PLACEHOLDER.equals(environment.getProperty("idm.test.ldap.user-dn"))) {
+                refusePlaceholder("idm.test.ldap.user-dn");
+            }
+            if (LDAP_PASSWORD_PLACEHOLDER.equals(environment.getProperty("idm.test.ldap.password"))) {
+                refusePlaceholder("idm.test.ldap.password");
+            }
         }
         if (needs.roles()) {
             requireNamed(environment, "idm.test.soap.url", "IDM_TEST_SOAP_URL", SOAP_URL_PLACEHOLDER);
@@ -294,9 +313,10 @@ public class RealEnvironmentScenarios {
 
     /**
      * Guard DB. For each database the selected scenarios use, refuses one that is not
-     * configured, and one whose jdbc-url, username or password is still application.yml's
-     * placeholder. Databases no scenario uses are not checked, and are never contacted, because
-     * their pools open on first use. Messages name properties and variables, never a value.
+     * configured, one whose jdbc-url is an in-memory database, and one whose jdbc-url, username
+     * or password is still application.yml's placeholder. Databases no scenario uses are not
+     * checked, and are never contacted, because their pools open on first use. Messages name
+     * properties and variables, never a value.
      */
     static void requireDatabases(Set<String> databases, DatabaseProperties properties) {
         for (String name : new TreeSet<>(databases)) {
@@ -310,6 +330,15 @@ public class RealEnvironmentScenarios {
             DatabasePlaceholder placeholder = DATABASE_PLACEHOLDERS.get(name);
             requireNamedValue(prefix + "jdbc-url", config.getJdbcUrl(), variableFor(prefix + "jdbc-url"),
                     placeholder == null ? null : placeholder.jdbcUrl());
+            String jdbcUrl = config.getJdbcUrl().toLowerCase(Locale.ROOT);
+            for (String inMemory : IN_MEMORY_JDBC_PREFIXES) {
+                if (jdbcUrl.startsWith(inMemory)) {
+                    throw new IllegalStateException(prefix + "jdbc-url points at an in-memory database ("
+                            + inMemory + "), which exists only inside this test run, so nothing another system"
+                            + " provisioned could be checked there. Point it at a real database: set "
+                            + variableFor(prefix + "jdbc-url") + ".");
+                }
+            }
             if (placeholder != null && placeholder.username().equals(config.getUsername())) {
                 refusePlaceholder(prefix + "username");
             }

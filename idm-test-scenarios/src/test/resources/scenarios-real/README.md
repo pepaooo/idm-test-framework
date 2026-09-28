@@ -78,6 +78,12 @@ The runner refuses to start, before any scenario runs, when:
   for example `IDM_TEST_REST_IDM_PASSWORD`, `IDM_TEST_SOAP_USERNAME` or
   `SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_SAP_CLIENTSECRET`, and never the value.
 
+- when your scenarios use `ldap.*`, the bind DN or password while still `application.yml`'s
+  placeholders (`cn=admin,dc=company,dc=com` and `secret`). A blank or unset DN or password is
+  allowed, for anonymous bind.
+- a used database whose `jdbc-url` is in-memory: `jdbc:h2:mem:`, `jdbc:hsqldb:mem:`, or
+  `jdbc:derby:memory:`. Nothing another system provisioned can exist there.
+
 When your scenarios use `ldap.*`, a real directory genuinely reachable at `ldap://localhost:389`
 is refused too, because that is the placeholder value — point it at `ldap://127.0.0.1:389`
 instead (or any other address) to run against it.
@@ -124,8 +130,8 @@ because the scenarios module's schema initializer recreates its schema there, so
 
 | Your scenarios use | You must configure (and not leave as the placeholder) |
 |---|---|
-| `ldap.*` | `idm.test.ldap.url` (`IDM_TEST_LDAP_URL`) checked against its placeholder; the bind DN and password must also be set but are not placeholder-checked |
-| `db.*` with `database: <name>` | `idm.test.databases.<name>.jdbc-url`, `username`, `password` |
+| `ldap.*` | `idm.test.ldap.url` (`IDM_TEST_LDAP_URL`), `user-dn` (`IDM_TEST_LDAP_USERDN`) and `password` (`IDM_TEST_LDAP_PASSWORD`), each refused while still `application.yml`'s placeholder; a blank bind DN or password is allowed (anonymous bind) |
+| `db.*` with `database: <name>` | `idm.test.databases.<name>.jdbc-url`, `username`, `password`, none left as the placeholder; an in-memory URL (`jdbc:h2:mem:`, `jdbc:hsqldb:mem:`, `jdbc:derby:memory:`) is refused, since nothing provisioned by another system can be in it |
 | `roles.*` | `idm.test.soap.url` (`IDM_TEST_SOAP_URL`) and SOAP credentials |
 | `resources.*` | `idm.test.soap.resource-url` (`IDM_TEST_SOAP_RESOURCEURL`) and SOAP credentials |
 | `rest.*` / `http.request` with `target: <name>` | `idm.test.rest.<name>.base-url`, and credentials only if the target requires authentication |

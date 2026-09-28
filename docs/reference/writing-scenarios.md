@@ -527,17 +527,22 @@ Each check can read **`response`**:
 | `response.json` | the body parsed, when the response is JSON (`application/json` or `…+json`); otherwise `null` |
 
 `response.xml` (a parsed XML or SOAP body) arrives with ITF-25; until then, check `response.body`.
-Checks may also read every name available at this point in the scenario, such as `user.userId`.
+Checks may also read every name available at this point in the scenario, such as `user.userId`,
+directly — inside `js:{ … }`, names are read as-is (`user.userId`), not as `${user.userId}`;
+`${…}` interpolation does not run inside a check.
 
 **Captures:** the `response` map of the passing attempt.
 
 **Fails when:**
 - a check is `false`: the message names it (`check 2 of 3 is false: …`) with the status and the
-  start of the body. Retried under `wait:`.
+  start of the body. Retried under `wait:`, unless its source reads `response.xml` (see below).
 - a check throws, for example `response.json.department` while `response.json` is still `null`.
-  Retried under `wait:`.
+  Retried under `wait:`, unless its source reads `response.xml` (see below).
 - a check returns something other than `true`/`false`: the message shows what it returned. This
   ends the wait at once, because it is a mistake in the check.
+- a failing check (false or throwing) whose source reads `response.xml`: this ends the wait at
+  once too, because `response.xml` cannot become available before ITF-25 no matter how long the
+  wait polls.
 - the server can't be reached. Retried.
 - the target is unknown, credentials are misconfigured or rejected, the method isn't supported,
   `body` isn't text or `headers` isn't a map. These end the wait at once.
@@ -584,7 +589,9 @@ Provisioning is asynchronous, so assertions can retry. Only assertions (`ldap.ve
 - **The defaults for `wait: true`** come from `idm.test.executor.default-timeout-seconds` and
   `default-poll-interval-seconds`: 60 s / 1 s in the `test` profile, 5 min / 5 s otherwise, unless
   your environment overrides them.
-- **Parameters are resolved once,** before the first attempt; each attempt repeats the same check.
+- **Parameters are resolved once,** before the first attempt; each attempt repeats the same
+  check — except `http.verify`'s `check`, which is evaluated fresh on every attempt against that
+  attempt's `response` (reading scenario names as they stood when the step started).
 - **Failures that waiting can't fix end the wait at once**, as each step's **Fails when** paragraph
   says. The message then ends with `(not retried: waiting cannot change this)`.
 - **When the wait times out,** the step fails with the last result it saw, followed by

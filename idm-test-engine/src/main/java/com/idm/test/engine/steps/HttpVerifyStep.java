@@ -23,7 +23,10 @@ import java.util.Set;
  * {@code check} against {@code response}. All must return true. Retryable: under wait:, the
  * request and the checks repeat until they pass or the timeout expires. A check that throws is
  * retried (for example before provisioning, response.json can be null); a check that returns
- * something other than true or false is an authoring mistake and ends the wait at once.
+ * something other than true or false is an authoring mistake and ends the wait at once. A
+ * failing check (false or throwing) whose source reads {@code response.xml} also ends the wait
+ * at once, since {@code response.xml} cannot become available before ITF-25 no matter how long
+ * the wait polls.
  */
 public final class HttpVerifyStep implements StepType {
 
@@ -100,13 +103,16 @@ public final class HttpVerifyStep implements StepType {
                 value = check.evaluate(Map.of("response", bound));
             } catch (RuntimeException e) {
                 String error = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
-                return StepOutcome.failure(label + " failed: " + error + context(response) + hint);
+                String message = label + " failed: " + TokenFailureText.safe(error, null) + context(response) + hint;
+                return hint.isEmpty() ? StepOutcome.failure(message) : StepOutcome.finalFailure(message);
             }
             if (!(value instanceof Boolean passed)) {
-                return StepOutcome.finalFailure(label + " must return true or false, got " + describe(value) + hint);
+                return StepOutcome.finalFailure(
+                        label + " must return true or false, got " + TokenFailureText.safe(describe(value), null) + hint);
             }
             if (!passed) {
-                return StepOutcome.failure(label + " is false: " + check.source() + context(response) + hint);
+                String message = label + " is false: " + check.source() + context(response) + hint;
+                return hint.isEmpty() ? StepOutcome.failure(message) : StepOutcome.finalFailure(message);
             }
         }
 

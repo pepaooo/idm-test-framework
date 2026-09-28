@@ -9,6 +9,7 @@ import com.idm.test.engine.steps.DbExecuteStep;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -635,6 +636,17 @@ class ScenarioValidatorTest {
                 .hasMessageContaining("'check' must be js:{ … } expressions");
         assertThatThrownBy(() -> deferredValidator.validate(scenario(new StepSpec("probe.verify",
                 Map.of("check", List.of()))), "t.yaml"))
+                .hasMessageContaining("'check' needs at least one condition");
+    }
+
+    @Test
+    @DisplayName("A null check: (YAML 'check:' with no value, or 'check: ~') is reported, not an NPE")
+    void testDeferredCheckRejectsNull() {
+        Map<String, Object> params = new HashMap<>();
+        params.put("check", null);
+
+        assertThatThrownBy(() -> deferredValidator.validate(scenario(new StepSpec("probe.verify", params)), "t.yaml"))
+                .isInstanceOf(ValidationException.class)
                 .hasMessageContaining("'check' needs at least one condition");
     }
 

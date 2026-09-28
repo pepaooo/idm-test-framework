@@ -68,12 +68,14 @@ class HttpVerifyStepsTest {
     }
 
     private static StepResult run(Map<String, Object> params) {
+        return runSteps(List.of(new StepSpec("http.verify", params))).steps().get(0);
+    }
+
+    private static ScenarioResult runSteps(List<StepSpec> steps) {
         ScenarioEngine engine = new ScenarioEngine(Map.of(STEP.name(), STEP),
                 new FixtureFactory(new TestDataGenerator()), new TestExecutor(),
                 Duration.ofSeconds(2), Duration.ofMillis(100), new ExpressionEvaluator());
-        ScenarioResult result = engine.run(new com.idm.test.engine.model.Scenario("verify", null, Map.of(),
-                List.of(new StepSpec("http.verify", params))), "verify.yaml");
-        return result.steps().get(0);
+        return engine.run(new com.idm.test.engine.model.Scenario("verify", null, Map.of(), steps), "verify.yaml");
     }
 
     private static Map<String, Object> params(Object... keyValues) {
@@ -161,14 +163,44 @@ class HttpVerifyStepsTest {
     }
 
     @Test
-    @DisplayName("Reading response.xml fails with the ITF-25 hint")
+    @DisplayName("Reading response.xml fails with the ITF-25 hint and ends a wait at once")
     void testXmlHint() {
         stubJson(200, "{}");
 
-        StepResult step = run(params("check", "js:{ response.xml.Envelope !== undefined }"));
+        StepResult step = run(params("check", "js:{ response.xml.Envelope !== undefined }",
+                "wait", Map.of("timeout", "2s", "poll", "1s")));
 
         assertThat(step.success()).isFalse();
-        assertThat(step.message()).contains("response.xml is not available yet: it arrives with ITF-25");
+        assertThat(step.attempts()).isEqualTo(1);
+        assertThat(step.message()).contains("response.xml is not available yet: it arrives with ITF-25")
+                .endsWith("(not retried: waiting cannot change this)");
+    }
+
+    private static final String SECRET_BODY =
+            ("Bearer abcdefgh123456" + "x".repeat(2000)).substring(0, 2000);
+
+    @Test
+    @DisplayName("A throwing check's error text is capped and secrets in the body are masked")
+    void testThrowingCheckMessageIsCapped() {
+        stubJson(200, SECRET_BODY);
+
+        StepResult step = run(params("check", "js:{ response.body.contain('x') }"));
+
+        assertThat(step.success()).isFalse();
+        assertThat(step.message()).doesNotContain("abcdefgh123456");
+        assertThat(step.message().length()).isLessThan(900);
+    }
+
+    @Test
+    @DisplayName("A non-boolean check result is capped and secrets in it are masked")
+    void testNonBooleanMessageIsCapped() {
+        stubJson(200, SECRET_BODY);
+
+        StepResult step = run(params("check", "js:{ response }"));
+
+        assertThat(step.success()).isFalse();
+        assertThat(step.message()).doesNotContain("abcdefgh123456");
+        assertThat(step.message().length()).isLessThan(900);
     }
 
     @Test
@@ -189,11 +221,19 @@ class HttpVerifyStepsTest {
     }
 
     @Test
-    @DisplayName("as: binds the passing response")
+    @DisplayName("as: binds the passing response, and a later step can read into it")
     void testCapture() {
         stubJson(200, "{\"id\":7}");
-        StepResult step = run(params("check", "js:{ response.status === 200 }", "as", "account"));
-        assertThat(step.success()).as(step.message()).isTrue();
+
+        ScenarioResult result = runSteps(List.of(
+                new StepSpec("http.verify", params("check", "js:{ response.status === 200 }", "as", "account")),
+                new StepSpec("set", Map.of("accountId", "${account.json.id}"))));
+
+        StepResult verifyStep = result.steps().get(0);
+        StepResult setStep = result.steps().get(1);
+        assertThat(verifyStep.success()).as(verifyStep.message()).isTrue();
+        assertThat(setStep.success()).as(setStep.message()).isTrue();
+        assertThat(setStep.resolvedParams()).containsEntry("accountId", 7);
     }
 
     @Test

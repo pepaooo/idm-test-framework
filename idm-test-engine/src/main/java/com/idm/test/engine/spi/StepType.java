@@ -8,8 +8,11 @@ import java.util.Set;
  * One kind of step a scenario can contain.
  * <p>
  * Implementations receive parameters that are <em>already interpolated</em> — the engine
- * resolves {@code ${...}} before calling — and never handle retrying. Retrying belongs to
- * the engine so the policy lives in one place and steps stay trivially testable.
+ * resolves {@code ${...}} before calling — except for any parameter named in
+ * {@link #deferredParams()}, which arrives as a {@link DeferredExpression} (or a list of them)
+ * for the step to evaluate itself, once per attempt. Steps never handle retrying themselves.
+ * Retrying belongs to the engine so the policy lives in one place and steps stay trivially
+ * testable.
  * <p>
  * The engine strips the two reserved keys, {@code as} and {@code wait}, out of the parameter
  * map before a step ever sees it: neither is ever present in {@link #execute}'s {@code params}.
@@ -80,6 +83,11 @@ public interface StepType {
      * Parameters the engine must not resolve before {@link #execute}: each arrives as a
      * {@link DeferredExpression} (or a list of them) that the step evaluates itself. Each value
      * must be a whole-value {@code js:{ … }} expression, which the validator enforces.
+     * <p>
+     * Only assertions (retryable steps) may declare deferred parameters: a cleanup entry is
+     * always an action, and {@code ScenarioEngine} resolves every one of its parameters up
+     * front, with no step-driven re-evaluation, so a deferred parameter there would never be
+     * evaluated per attempt the way {@code http.verify}'s {@code check} is.
      */
     default Set<String> deferredParams() {
         return Set.of();
@@ -104,7 +112,10 @@ public interface StepType {
      * engine treats any thrown exception as a bug in the step, not a normal failure path.
      *
      * @param params            already-interpolated parameters, with {@code as} and
-     *                          {@code wait} stripped (see the interface javadoc)
+     *                          {@code wait} stripped (see the interface javadoc). A name in
+     *                          {@link #deferredParams()} is the exception: it arrives
+     *                          unevaluated, as a {@link DeferredExpression} or a list of them,
+     *                          for the step to evaluate itself (see {@link #deferredParams()})
      * @param captureRequested  true when the scenario declared an {@code as:} name for this
      *                          step, so the returned {@link StepOutcome#value()} will actually
      *                          be bound into scenario scope. A step whose work only exists to

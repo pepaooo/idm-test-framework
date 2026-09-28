@@ -296,7 +296,7 @@ public final class ScenarioValidator {
      */
     private static void requireDeferred(String name, Object value, Set<String> known, Set<String> bindings,
                                         String sourceName, int index, String stepType) {
-        List<?> items = value instanceof List<?> list ? list : List.of(value);
+        List<?> items = value == null ? List.of() : value instanceof List<?> list ? list : List.of(value);
         if (items.isEmpty()) {
             throw new ValidationException(sourceName, index, stepType, "'" + name + "' needs at least one condition");
         }

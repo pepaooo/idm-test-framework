@@ -23,8 +23,6 @@ import java.util.Set;
  */
 public final class HttpRequestStep implements StepType {
 
-    static final Set<String> METHODS = HttpExchange.METHODS;
-
     private final IdmRestConnector connector;
     private final RestProperties properties;
     private final RestAuthenticator authenticator;

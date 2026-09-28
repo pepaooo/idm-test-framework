@@ -2,6 +2,8 @@
 
 This guide describes the current [capability baseline](../architecture/capabilities.md). Begin in the repository root with Java 21. See [running tests](../reference/running-tests.md) if the build environment is not ready.
 
+For a complete lookup of every key, step and rule, see the [authoring reference](../reference/writing-scenarios.md).
+
 ## 1. Run the bundled example
 
 The file [user-provisioning.yaml](../../idm-test-scenarios/src/test/resources/scenarios/user-provisioning.yaml) already exists. Run it through the JUnit adapter:
@@ -84,76 +86,16 @@ A guarded read such as `typeof created === 'undefined' ? null : created.dn` stil
 
 `as` must be a fresh literal identifier. A requested capture with no value fails the scenario. Verification capture is a selected map, not a promise to return every LDAP attribute; inspect [LdapVerifyStep](../../idm-test-engine/src/main/java/com/idm/test/engine/steps/LdapVerifyStep.java) before relying on a field.
 
-## 4. Supported steps
+## 4. Steps
 
-| Step | Required parameters | Optional parameters | Behavior |
-|---|---|---|---|
-| `ldap.create` | `dn` | `attributes`, `as` | Create once; write teardown yourself in `cleanup:` |
-| `ldap.verify` | `dn`, `expect` | `wait`, `as` | Verify attributes; may retry |
-| `http.request` | `target`, `method`, `path` | `headers`, `body`, `as` | Send a raw string body (JSON, XML, a SOAP envelope); capture `{status, headers, body}` as text; never fails on HTTP status |
-| `set` | One or more name/value entries | — | Bind values without a connector call |
+The framework has 13 step types across LDAP, databases, the SOAP role and resource services,
+REST and raw HTTP. Every step's parameters, what `as:` captures, how it fails and an example
+are in the [authoring reference](../reference/writing-scenarios.md#4-step-reference), which a
+test keeps in step with the code.
 
-The create step maps known LDAP attributes into `LdapUser` and passes remaining attributes as custom attributes. The directory schema decides which are acceptable. Supply required directory attributes even when the YAML parameter itself is optional.
-
-Use a nonempty `expect` map to check meaningful state. The validator checks that `expect` is present, not that every nested assertion expresses a useful condition.
-
-### HTTP requests with a raw body (REST and SOAP)
-
-`http.request` sends its `body` exactly as written and captures the response as text, so the same step calls a JSON API or a SOAP service. A SOAP call is a `POST` whose body is the envelope, with a `SOAPAction` header:
-
-```yaml
-- http.request:
-    target: roleservice                  # idm.test.rest.roleservice.base-url
-    method: POST
-    path: /IDMProv/role/service
-    headers:
-      Content-Type: "text/xml; charset=UTF-8"
-      SOAPAction: "http://www.novell.com/role/service/getUserRequest"
-    body: |
-      <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/">
-        <soapenv:Body>...${user.userId}...</soapenv:Body>
-      </soapenv:Envelope>
-    as: resp
-```
-
-- **Addressing:** the target is a named base URL from configuration, just as for `rest.*`.
-- **`body` must be a string.** To send a JSON object built from a map, use `rest.request`.
-- **Default headers:** with a body and no `Content-Type`, the request is sent as `text/plain; charset=UTF-8`. Without an `Accept`, it sends `Accept: */*`.
-- **The capture:**
-  - `resp.status` is a number
-  - `resp.headers` uses lower-case names, e.g. `resp.headers['content-type'][0]`
-  - `resp.body` is always text, `""` when empty. Read JSON with `js:{ JSON.parse(resp.body).id }`.
-- **Any HTTP status is a successful step.** The status appears in the step message and the report. Checking it, and reading XML responses from JavaScript, are planned separately.
-
-### Authentication
-
-`rest.request`, `rest.verify` and `http.request` authenticate with their target's settings. Nothing goes in the scenario:
-
-| Target settings (`idm.test.rest.<target>.*`) | Header sent |
-|---|---|
-| `use-oauth: true`, `oauth-client-name: <registration>` | `Authorization: Bearer <token>`, a client-credentials token from `spring.security.oauth2.client.registration.<registration>`, cached and renewed by Spring Security |
-| `username` and `password` | `Authorization: Basic ...` |
-| neither | none |
-
-- **Configuration errors:** a username without a password, the reverse, or `use-oauth` naming an unknown registration fails the step before anything is sent.
-- **The step's own header wins:** a step that sets `Authorization` itself, in any letter case, sends exactly that header, and the target's credentials are not used. Use this for negative tests:
-
-  ```yaml
-  - http.request:
-      target: idm
-      method: GET
-      path: /users
-      headers:
-        Authorization: "Basic bm9ib2R5Ondyb25n"
-      as: denied
-  ```
-
-- **Keep secrets in target settings, not in YAML:** a header written in a scenario is a resolved parameter and is written to the results file unredacted, while the header added from target settings never is.
-
-`roles.*` and `resources.*` send HTTP basic authentication when `idm.test.soap.username` and `password` are both set.
-
-Database, role, resource and `rest.*` steps also exist; a complete reference is tracked as
-ITF-10. `http.request` is described above.
+For calling a SOAP service or any API with a raw body, see
+[`http.request`](../reference/writing-scenarios.md#httprequest); for how REST targets
+authenticate, see [targets and configuration](../reference/writing-scenarios.md#7-targets-and-configuration).
 
 ## 5. Waiting
 

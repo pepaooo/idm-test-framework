@@ -9,7 +9,8 @@
 
 1. [Running and troubleshooting](reference/running-tests.md).
 2. [Scenario authoring](guides/scenario-authoring.md).
-3. [Configuration](reference/configuration.md).
+3. [Writing scenarios: the reference](reference/writing-scenarios.md) — every step, parameter and rule.
+4. [Configuration](reference/configuration.md).
 
 ## Understand and maintain the architecture
 

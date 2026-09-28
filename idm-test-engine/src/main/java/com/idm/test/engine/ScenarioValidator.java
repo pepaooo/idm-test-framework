@@ -9,6 +9,7 @@ import com.idm.test.engine.model.WaitSpec;
 import com.idm.test.engine.spi.StepType;
 
 import java.time.Duration;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -189,7 +190,15 @@ public final class ScenarioValidator {
 
             requireWellFormedExpressions(step.params(),
                     message -> new ValidationException(sourceName, index, step.type(), message));
-            requireKnownReferences(step.params(), known, sourceName, i, step.type());
+            Map<String, Object> immediate = new LinkedHashMap<>(step.params());
+            type.deferredParams().forEach(immediate::remove);
+            requireKnownReferences(immediate, known, sourceName, i, step.type());
+            for (String name : type.deferredParams()) {
+                if (step.params().containsKey(name)) {
+                    requireDeferred(name, step.params().get(name), known, type.deferredBindings(),
+                            sourceName, i, step.type());
+                }
+            }
 
             Object asRaw = step.params().get("as");
             if (asRaw != null) {
@@ -278,6 +287,29 @@ public final class ScenarioValidator {
                                 + "' has been declared or bound at this point");
             }
         }
+    }
+
+    /**
+     * A deferred parameter is evaluated by its step, once per attempt, so it must be a
+     * js:{ … } expression (or a non-empty list of them). Its references may name the step's
+     * bindings, e.g. {@code response}, as well as everything known at this point.
+     */
+    private static void requireDeferred(String name, Object value, Set<String> known, Set<String> bindings,
+                                        String sourceName, int index, String stepType) {
+        List<?> items = value instanceof List<?> list ? list : List.of(value);
+        if (items.isEmpty()) {
+            throw new ValidationException(sourceName, index, stepType, "'" + name + "' needs at least one condition");
+        }
+        for (Object item : items) {
+            String text = String.valueOf(item);
+            if (!(item instanceof String) || Interpolator.expressionBody(text) == null) {
+                throw new ValidationException(sourceName, index, stepType,
+                        "'" + name + "' must be js:{ … } expressions; got \"" + text + "\"");
+            }
+        }
+        Set<String> visible = new LinkedHashSet<>(known);
+        visible.addAll(bindings);
+        requireKnownReferences(value, visible, sourceName, index, stepType);
     }
 
     /**

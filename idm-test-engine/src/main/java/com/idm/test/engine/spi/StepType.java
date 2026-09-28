@@ -77,6 +77,23 @@ public interface StepType {
     }
 
     /**
+     * Parameters the engine must not resolve before {@link #execute}: each arrives as a
+     * {@link DeferredExpression} (or a list of them) that the step evaluates itself. Each value
+     * must be a whole-value {@code js:{ … }} expression, which the validator enforces.
+     */
+    default Set<String> deferredParams() {
+        return Set.of();
+    }
+
+    /**
+     * Names the step binds when it evaluates its deferred parameters (for example
+     * {@code response}). The validator treats them as known inside those parameters only.
+     */
+    default Set<String> deferredBindings() {
+        return Set.of();
+    }
+
+    /**
      * Runs the step.
      * <p>
      * {@code params} arrives already resolved: {@code ${...}} interpolation has run, and the

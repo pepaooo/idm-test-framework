@@ -132,8 +132,8 @@ Actions change state; assertions check it and may retry.
 Every step also accepts `as:` to capture its result. `rest.*` and `http.request` address a named
 target (`idm.test.rest.<target>.base-url`) and authenticate with that target's settings — basic,
 OAuth2 client credentials, or none — unless the step writes its own `Authorization` header. The
-[authoring guide](docs/guides/scenario-authoring.md) has the details; a full per-step reference is
-tracked as ITF-10.
+[authoring guide](docs/guides/scenario-authoring.md) walks through it. The
+[authoring reference](docs/reference/writing-scenarios.md) documents every parameter, capture and failure mode.
 
 ### Waiting
 
@@ -326,6 +326,7 @@ Organised by how much you should trust it.
 - Team presentation — [PowerPoint](docs/presentations/project-introduction.pptx), [PDF](docs/presentations/project-introduction.pdf), and [speaker notes](docs/presentations/project-introduction.md)
 
 **Reference** — maintained:
+- [Writing scenarios](docs/reference/writing-scenarios.md) — every step, parameter and rule of the YAML tier
 - [Specification](docs/reference/specification.md) — architecture and design decisions
 - [Configuration](docs/reference/configuration.md) — connectors, databases, endpoints
 - [Running tests](docs/reference/running-tests.md) — test execution guide

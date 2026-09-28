@@ -120,4 +120,18 @@ class ScenarioNeedsTest {
                       x: 1
                 """)).isEqualTo(new ScenarioNeeds(false, java.util.Set.of(), false, false, java.util.Set.of()));
     }
+
+    @Test
+    @DisplayName("http.verify contributes its target to the REST targets")
+    void testHttpVerifyTarget() {
+        assertThat(needs("""
+                name: v
+                steps:
+                  - http.verify:
+                      target: roleservice
+                      method: GET
+                      path: /x
+                      check: "js:{ true }"
+                """).restTargets()).containsExactly("roleservice");
+    }
 }

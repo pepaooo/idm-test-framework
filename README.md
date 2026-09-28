@@ -128,6 +128,7 @@ Actions change state; assertions check it and may retry.
 | `rest.request` | action | `target`, `method`, `path` | `body`, `bodyFrom`, `headers` |
 | `rest.verify` | assertion | `target`, `path`, `expect` | `method`, `headers`, `wait` |
 | `http.request` | action | `target`, `method`, `path` | `headers`, `body` (a raw string: JSON, XML, a SOAP envelope) |
+| `http.verify` | assertion | `target`, `method`, `path`, `check` | `headers`, `body`, `wait` (JavaScript conditions on `response`) |
 
 Every step also accepts `as:` to capture its result. `rest.*` and `http.request` address a named
 target (`idm.test.rest.<target>.base-url`) and authenticate with that target's settings — basic,

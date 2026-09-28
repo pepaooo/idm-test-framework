@@ -502,10 +502,77 @@ status is a successful step**, and the status appears in the step message and th
     as: resp
 ```
 
+#### `http.verify`
+
+**Assertion (accepts `wait:`).** Sends a request like `http.request`, then checks the response with
+JavaScript conditions. Under `wait:`, the request and the checks repeat until every check is true or
+the wait times out.
+
+| Parameter | Required | Meaning |
+|---|---|---|
+| `target` | yes | the configured target name |
+| `method` | yes | `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `HEAD` or `OPTIONS`, in any letter case |
+| `path` | yes | appended to the target's base URL |
+| `check` | yes | one `js:{ … }` condition, or a list of them; each must return `true` or `false`, and all must be `true` |
+| `headers` | no | a map of header name to value, as for `http.request` |
+| `body` | no | the body as text, as for `http.request` |
+
+Each check can read **`response`**:
+
+| Key | Value |
+|---|---|
+| `response.status` | the HTTP status, a number |
+| `response.headers` | header names in lower case, each with a list of values: `response.headers['content-type'][0]` |
+| `response.body` | the body as text, `""` when empty |
+| `response.json` | the body parsed, when the response is JSON (`application/json` or `…+json`); otherwise `null` |
+
+`response.xml` (a parsed XML or SOAP body) arrives with ITF-25; until then, check `response.body`.
+Checks may also read every name available at this point in the scenario, such as `user.userId`.
+
+**Captures:** the `response` map of the passing attempt.
+
+**Fails when:**
+- a check is `false`: the message names it (`check 2 of 3 is false: …`) with the status and the
+  start of the body. Retried under `wait:`.
+- a check throws, for example `response.json.department` while `response.json` is still `null`.
+  Retried under `wait:`.
+- a check returns something other than `true`/`false`: the message shows what it returned. This
+  ends the wait at once, because it is a mistake in the check.
+- the server can't be reached. Retried.
+- the target is unknown, credentials are misconfigured or rejected, the method isn't supported,
+  `body` isn't text or `headers` isn't a map. These end the wait at once.
+
+Any HTTP status can be checked. A `404` is only a failure if a check says so.
+
+```yaml
+- http.verify:
+    target: idm
+    method: GET
+    path: "/users/${user.userId}"
+    check:
+      - "js:{ response.status === 200 }"
+      - "js:{ response.json.department === 'Finance' }"
+    wait: { timeout: 2m, poll: 5s }
+
+- http.verify:
+    target: roleservice
+    method: POST
+    path: /IDMProv/role/service
+    headers:
+      Content-Type: "text/xml; charset=UTF-8"
+      SOAPAction: "http://www.novell.com/role/service/getUserRequest"
+    body: |
+      <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/">
+        <soapenv:Body>...${user.userId}...</soapenv:Body>
+      </soapenv:Envelope>
+    check: "js:{ response.status === 200 && response.body.includes('<status>ACTIVE</status>') }"
+    wait: true
+```
+
 ## 5. Waiting
 
 Provisioning is asynchronous, so assertions can retry. Only assertions (`ldap.verify`,
-`db.verify`, `rest.verify`) accept `wait:`; on an action it is rejected when the file loads.
+`db.verify`, `rest.verify`, `http.verify`) accept `wait:`; on an action it is rejected when the file loads.
 
 | Form | Meaning |
 |---|---|
@@ -594,6 +661,7 @@ waiting. Each message names the file and the step. Real examples:
 | an assertion in `cleanup:` | `demo.yaml: cleanup entry 1 (ldap.verify): cleanup entries must be actions; ldap.verify is an assertion and tears nothing down` |
 | `as:` (or `wait:`) in `cleanup:` | `demo.yaml: cleanup entry 1 (ldap.delete): 'as' is not allowed on a cleanup entry` |
 | missing `name` | `demo.yaml: 'name' is required` |
+| a `check:` that isn't `js:{ … }`, or an empty list | `demo.yaml, step 1 (http.verify): 'check' must be js:{ … } expressions; got "status is 200"` |
 
 Some mistakes can only be found when the step runs: a misspelled property on a bound name
 (`${user.userid}`), a value of the wrong shape (`expect` as text instead of a map), or a DN the

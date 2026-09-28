@@ -66,7 +66,7 @@ The runner refuses to start, before any scenario runs, when:
   blank or still its `application.yml` placeholder. Only targets the selected scenarios use are
   checked: a run with no `rest.*` steps is never asked for REST addresses.
 - the credentials a scenario about to run needs are still `application.yml`'s placeholders, or
-  only half given (guard 5):
+  only half given (the credentials check):
   - **for each REST target used:**
     - a `username`/`password` still equal to `idmadmin`/`idmpass`, or only one of them set
     - `use-oauth` with no `oauth-client-name`, or a registration with no `client-id`/`client-secret`
@@ -78,9 +78,9 @@ The runner refuses to start, before any scenario runs, when:
   for example `IDM_TEST_REST_IDM_PASSWORD`, `IDM_TEST_SOAP_USERNAME` or
   `SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_SAP_CLIENTSECRET`, and never the value.
 
-A real directory genuinely reachable at `ldap://localhost:389` is refused too, because that is
-the placeholder value — point it at `ldap://127.0.0.1:389` instead (or any other address) to
-run against it.
+When your scenarios use `ldap.*`, a real directory genuinely reachable at `ldap://localhost:389`
+is refused too, because that is the placeholder value — point it at `ldap://127.0.0.1:389`
+instead (or any other address) to run against it.
 
 ### Profiles override the `IDM_*` variables — use `IDM_TEST_*` instead
 
@@ -95,8 +95,10 @@ A later profile document overrides the default one, so under `IDM_TEST_PROFILE=d
   `dev` block.
 - Under `prod`, the same keys are hardcoded in the `prod` block — and `prod`'s `soap.url` is
   exactly `https://idm.company.com:8543/IDMProv/role/service`, the placeholder value. That
-  means **`prod` is refused by guard 2 until you override it**, since the profile's own value
-  is indistinguishable from nobody having named a target.
+  means **a `prod` run whose scenarios use `roles.*` is refused by the LDAP/SOAP URL check
+  until you override it**, since the profile's own value is indistinguishable from nobody
+  having named a target. A `prod` run whose scenarios don't use `roles.*` is not affected,
+  since that check only looks at the SOAP URL when `roles.*` is used.
 
 To point at a different host without editing `application.yml`, set the Spring property
 itself as an environment variable, using its relaxed-binding form, for example
@@ -139,8 +141,8 @@ Credentials come from the environment variables `application.yml` already refere
 `IDM_SOAP_PASSWORD`, `IDM_REST_URL`, `IDM_REST_USER`, `IDM_REST_PASSWORD`, `SAP_DB_*`,
 `HR_DB_*`, `WORKDAY_DB_*`, and the OAuth2 clients' `SAP_CLIENT_ID`/`SAP_CLIENT_SECRET`,
 `WORKDAY_CLIENT_ID`/`WORKDAY_CLIENT_SECRET` and `SERVICENOW_CLIENT_ID`/`SERVICENOW_CLIENT_SECRET`
-(with `*_TOKEN_URI` for each token endpoint). The relaxed-binding names in guard 5's messages
-work too, under any profile.
+(with `*_TOKEN_URI` for each token endpoint). The relaxed-binding names in the credentials
+check's messages work too, under any profile.
 
 The `sap`, `workday` and `servicenow` REST targets authenticate with OAuth2 client credentials;
 `idm` with basic authentication. A target you add with only a `base-url` is unauthenticated.
@@ -149,8 +151,8 @@ Scenarios name their database by its key: `sap`, `oracle-hr` or `workday`. `test
 embedded H2.
 
 A SOAP service or any other API called with `http.request` is a target too: configure its base
-URL as `idm.test.rest.<name>.base-url`, or with `IDM_TEST_REST_<NAME>_BASEURL`. Guard 4 checks it
-like any REST target.
+URL as `idm.test.rest.<name>.base-url`, or with `IDM_TEST_REST_<NAME>_BASEURL`. The REST-target
+check treats it like any other REST target.
 
 ## Running against containers
 

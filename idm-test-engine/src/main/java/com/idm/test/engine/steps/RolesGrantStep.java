@@ -19,6 +19,9 @@ public final class RolesGrantStep implements StepType {
 
     private final RoleServiceConnector connector;
 
+    /**
+     * @param connector the SOAP connector, or null when the service is not configured; execute then fails without calling anything
+     */
     public RolesGrantStep(RoleServiceConnector connector) {
         this.connector = connector;
     }
@@ -40,6 +43,10 @@ public final class RolesGrantStep implements StepType {
 
     @Override
     public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
+        if (connector == null) {
+            return StepOutcome.finalFailure(
+                    "roles.grant cannot run: no Role service is configured (idm.test.soap.url)");
+        }
         // captureRequested is ignored: the assignment DNs come back from the call itself, so
         // there is no extra work to skip when nobody asked to capture them.
         String user = String.valueOf(params.get("user"));

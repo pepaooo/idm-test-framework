@@ -74,8 +74,8 @@ public class ContainerScenarios extends RealEnvironmentScenarios {
     private static final int LDAP_PORT = 389;
     private static final int WIREMOCK_PORT = 8080;
 
-    // Every configured database must accept a connection for the context to start, so all
-    // four point at the one PostgreSQL. oracle-hr here is a stand-in and says nothing about Oracle.
+    // The corpus uses test-db; pointing all four at the one PostgreSQL keeps any db.* step working.
+    // oracle-hr here is a stand-in and says nothing about Oracle.
     private static final List<String> DATABASES = List.of("test-db", "sap", "oracle-hr", "workday");
 
     private static final List<GenericContainer<?>> STARTED = new ArrayList<>();

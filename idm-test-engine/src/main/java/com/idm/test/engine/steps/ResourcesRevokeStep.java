@@ -17,6 +17,9 @@ public final class ResourcesRevokeStep implements StepType {
 
     private final ResourceServiceConnector connector;
 
+    /**
+     * @param connector the SOAP connector, or null when the service is not configured; execute then fails without calling anything
+     */
     public ResourcesRevokeStep(ResourceServiceConnector connector) {
         this.connector = connector;
     }
@@ -38,6 +41,10 @@ public final class ResourcesRevokeStep implements StepType {
 
     @Override
     public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
+        if (connector == null) {
+            return StepOutcome.finalFailure(
+                    "resources.revoke cannot run: no Resource service is configured (idm.test.soap.resource-url)");
+        }
         String user = String.valueOf(params.get("user"));
         String resource = String.valueOf(params.get("resource"));
         Object rawReason = params.get("reason");

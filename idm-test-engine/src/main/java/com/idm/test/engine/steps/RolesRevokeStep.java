@@ -22,6 +22,9 @@ public final class RolesRevokeStep implements StepType {
 
     private final RoleServiceConnector connector;
 
+    /**
+     * @param connector the SOAP connector, or null when the service is not configured; execute then fails without calling anything
+     */
     public RolesRevokeStep(RoleServiceConnector connector) {
         this.connector = connector;
     }
@@ -38,6 +41,10 @@ public final class RolesRevokeStep implements StepType {
 
     @Override
     public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
+        if (connector == null) {
+            return StepOutcome.finalFailure(
+                    "roles.revoke cannot run: no Role service is configured (idm.test.soap.url)");
+        }
         List<String> assignments = StepValues.toStringList(params.get("assignments"));
 
         if (assignments.isEmpty()) {

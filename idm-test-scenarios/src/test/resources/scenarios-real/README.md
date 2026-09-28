@@ -61,14 +61,12 @@ outcome is in the JSON report.
 The runner refuses to start, before any scenario runs, when:
 
 - the active profile is `test` (the embedded configuration)
-- `idm.test.ldap.url` or `idm.test.soap.url` is blank or still the `application.yml` placeholder
-  (`ldap://localhost:389`, `https://idm.company.com:8543/IDMProv/role/service`)
 - this directory contains no `.yaml`
 - a scenario about to run uses a REST `target:` that is not configured, or whose `base-url` is
   blank or still its `application.yml` placeholder. Only targets the selected scenarios use are
   checked: a run with no `rest.*` steps is never asked for REST addresses.
 - the credentials a scenario about to run needs are still `application.yml`'s placeholders, or
-  only half given (guard 5):
+  only half given (the credentials check):
   - **for each REST target used:**
     - a `username`/`password` still equal to `idmadmin`/`idmpass`, or only one of them set
     - `use-oauth` with no `oauth-client-name`, or a registration with no `client-id`/`client-secret`
@@ -80,9 +78,9 @@ The runner refuses to start, before any scenario runs, when:
   for example `IDM_TEST_REST_IDM_PASSWORD`, `IDM_TEST_SOAP_USERNAME` or
   `SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_SAP_CLIENTSECRET`, and never the value.
 
-A real directory genuinely reachable at `ldap://localhost:389` is refused too, because that is
-the placeholder value — point it at `ldap://127.0.0.1:389` instead (or any other address) to
-run against it.
+When your scenarios use `ldap.*`, a real directory genuinely reachable at `ldap://localhost:389`
+is refused too, because that is the placeholder value — point it at `ldap://127.0.0.1:389`
+instead (or any other address) to run against it.
 
 ### Profiles override the `IDM_*` variables — use `IDM_TEST_*` instead
 
@@ -97,8 +95,10 @@ A later profile document overrides the default one, so under `IDM_TEST_PROFILE=d
   `dev` block.
 - Under `prod`, the same keys are hardcoded in the `prod` block — and `prod`'s `soap.url` is
   exactly `https://idm.company.com:8543/IDMProv/role/service`, the placeholder value. That
-  means **`prod` is refused by guard 2 until you override it**, since the profile's own value
-  is indistinguishable from nobody having named a target.
+  means **a `prod` run whose scenarios use `roles.*` is refused by the LDAP/SOAP URL check
+  until you override it**, since the profile's own value is indistinguishable from nobody
+  having named a target. A `prod` run whose scenarios don't use `roles.*` is not affected,
+  since that check only looks at the SOAP URL when `roles.*` is used.
 
 To point at a different host without editing `application.yml`, set the Spring property
 itself as an environment variable, using its relaxed-binding form, for example
@@ -116,22 +116,36 @@ scenarios use one of those targets is refused until that target's
 Usernames and passwords still come from the `IDM_*`, `SAP_DB_*`, `HR_DB_*` and `WORKDAY_DB_*`
 variables listed below, since neither `dev` nor `prod` overrides those keys.
 
-The Spring context will not start unless the following are also true:
+The runner checks, and connects to, **only what the selected scenarios use**. A repository no
+scenario touches can stay as `application.yml`'s placeholder, and it is never contacted. The one
+exception is the embedded `test-db` (in-memory H2 by default): it is always opened at startup,
+because the scenarios module's schema initializer recreates its schema there, so never point
+`test-db` at a real database.
 
-- **Every database configured under `idm.test.databases` accepts a connection.** That means
-  `sap`, `oracle-hr` and `workday`, not only the ones your scenarios use. Each pool connects
-  when it is created (`new HikariDataSource(config)` in `DatabaseConfiguration`).
-- **`idm.test.soap.resource-url` is set** (for example with the environment variable
-  `IDM_TEST_SOAP_RESOURCEURL`). Without it, the `ResourceServiceConnector` bean is not created
-  and the context fails.
+| Your scenarios use | You must configure (and not leave as the placeholder) |
+|---|---|
+| `ldap.*` | `idm.test.ldap.url` (`IDM_TEST_LDAP_URL`) checked against its placeholder; the bind DN and password must also be set but are not placeholder-checked |
+| `db.*` with `database: <name>` | `idm.test.databases.<name>.jdbc-url`, `username`, `password` |
+| `roles.*` | `idm.test.soap.url` (`IDM_TEST_SOAP_URL`) and SOAP credentials |
+| `resources.*` | `idm.test.soap.resource-url` (`IDM_TEST_SOAP_RESOURCEURL`) and SOAP credentials |
+| `rest.*` / `http.request` with `target: <name>` | `idm.test.rest.<name>.base-url`, and credentials only if the target requires authentication |
+
+Database placeholders refused: `sap` `jdbc:postgresql://localhost:5432/sap` (`sapuser`/`sappass`),
+`oracle-hr` `jdbc:oracle:thin:@localhost:1521:HRDB` (`hruser`/`hrpass`), `workday`
+`jdbc:postgresql://localhost:5432/workday` (`wdayuser`/`wdaypass`). A database really at that
+exact localhost URL must be named another way (for example `127.0.0.1`).
+
+Database pools open on first use: a used database that cannot be reached fails the first step
+that touches it, not the whole run. A name written as `${...}` is only known at run time and is
+not checked in advance.
 
 Credentials come from the environment variables `application.yml` already references:
 `IDM_LDAP_URL`, `IDM_LDAP_USER_DN`, `IDM_LDAP_PASSWORD`, `IDM_SOAP_URL`, `IDM_SOAP_USER`,
 `IDM_SOAP_PASSWORD`, `IDM_REST_URL`, `IDM_REST_USER`, `IDM_REST_PASSWORD`, `SAP_DB_*`,
 `HR_DB_*`, `WORKDAY_DB_*`, and the OAuth2 clients' `SAP_CLIENT_ID`/`SAP_CLIENT_SECRET`,
 `WORKDAY_CLIENT_ID`/`WORKDAY_CLIENT_SECRET` and `SERVICENOW_CLIENT_ID`/`SERVICENOW_CLIENT_SECRET`
-(with `*_TOKEN_URI` for each token endpoint). The relaxed-binding names in guard 5's messages
-work too, under any profile.
+(with `*_TOKEN_URI` for each token endpoint). The relaxed-binding names in the credentials
+check's messages work too, under any profile.
 
 The `sap`, `workday` and `servicenow` REST targets authenticate with OAuth2 client credentials;
 `idm` with basic authentication. A target you add with only a `base-url` is unauthenticated.
@@ -140,8 +154,8 @@ Scenarios name their database by its key: `sap`, `oracle-hr` or `workday`. `test
 embedded H2.
 
 A SOAP service or any other API called with `http.request` is a target too: configure its base
-URL as `idm.test.rest.<name>.base-url`, or with `IDM_TEST_REST_<NAME>_BASEURL`. Guard 4 checks it
-like any REST target.
+URL as `idm.test.rest.<name>.base-url`, or with `IDM_TEST_REST_<NAME>_BASEURL`. The REST-target
+check treats it like any other REST target.
 
 ## Running against containers
 

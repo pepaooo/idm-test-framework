@@ -1,0 +1,18 @@
+name: LDAP only, through the real-environment runner
+description: The runner must start and run with only LDAP configured
+fixtures:
+  user:
+    generate: random-user
+steps:
+  - ldap.create:
+      dn: "cn=${user.userId},ou=users"
+      attributes:
+        cn: ${user.userId}
+        sn: ${user.lastName}
+      as: createdDn
+  - ldap.verify:
+      dn: "${createdDn}"
+      exists: true
+cleanup:
+  - ldap.delete:
+      dn: "${createdDn}"

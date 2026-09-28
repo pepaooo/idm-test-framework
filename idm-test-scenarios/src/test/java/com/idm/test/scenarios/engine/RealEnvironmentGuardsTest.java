@@ -1,5 +1,6 @@
 package com.idm.test.scenarios.engine;
 
+import com.idm.test.connector.database.config.DatabaseProperties;
 import com.idm.test.connector.rest.config.RestProperties;
 import com.idm.test.connector.soap.config.SoapProperties;
 import com.idm.test.engine.ScenarioLoader;
@@ -38,6 +39,10 @@ class RealEnvironmentGuardsTest {
     private static final String REAL_LDAP = "ldap://edir.example.org:389";
     private static final String REAL_SOAP = "https://idm.example.org:8543/IDMProv/role/service";
 
+    /** What the existing guard-2 tests assumed: LDAP and the Role service are used. */
+    private static final ScenarioNeeds LDAP_AND_ROLES = new ScenarioNeeds(true, Set.of(), true, false, Set.of());
+    private static final ScenarioNeeds NOTHING = new ScenarioNeeds(false, Set.of(), false, false, Set.of());
+
     private static MockEnvironment target(String ldapUrl, String soapUrl, String... profiles) {
         MockEnvironment environment = new MockEnvironment();
         environment.setActiveProfiles(profiles);
@@ -53,14 +58,14 @@ class RealEnvironmentGuardsTest {
     @Test
     @DisplayName("A named, non-embedded target passes")
     void testRealTargetPasses() {
-        assertThatCode(() -> RealEnvironmentScenarios.requireRealTarget(target(REAL_LDAP, REAL_SOAP, "dev")))
+        assertThatCode(() -> RealEnvironmentScenarios.requireRealTarget(target(REAL_LDAP, REAL_SOAP, "dev"), LDAP_AND_ROLES))
                 .doesNotThrowAnyException();
     }
 
     @Test
     @DisplayName("The embedded 'test' profile is refused")
     void testEmbeddedProfileRefused() {
-        assertThatThrownBy(() -> RealEnvironmentScenarios.requireRealTarget(target(REAL_LDAP, REAL_SOAP, "test")))
+        assertThatThrownBy(() -> RealEnvironmentScenarios.requireRealTarget(target(REAL_LDAP, REAL_SOAP, "test"), LDAP_AND_ROLES))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("'test'")
                 .hasMessageContaining("IDM_TEST_PROFILE");
@@ -69,7 +74,7 @@ class RealEnvironmentGuardsTest {
     @Test
     @DisplayName("The embedded 'test' profile is refused even alongside another profile")
     void testEmbeddedProfileRefusedAmongOthers() {
-        assertThatThrownBy(() -> RealEnvironmentScenarios.requireRealTarget(target(REAL_LDAP, REAL_SOAP, "dev", "test")))
+        assertThatThrownBy(() -> RealEnvironmentScenarios.requireRealTarget(target(REAL_LDAP, REAL_SOAP, "dev", "test"), LDAP_AND_ROLES))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("'test'");
     }
@@ -77,7 +82,7 @@ class RealEnvironmentGuardsTest {
     @Test
     @DisplayName("An unset LDAP URL is refused")
     void testUnsetLdapUrlRefused() {
-        assertThatThrownBy(() -> RealEnvironmentScenarios.requireRealTarget(target(null, REAL_SOAP, "dev")))
+        assertThatThrownBy(() -> RealEnvironmentScenarios.requireRealTarget(target(null, REAL_SOAP, "dev"), LDAP_AND_ROLES))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("idm.test.ldap.url")
                 .hasMessageContaining("IDM_TEST_LDAP_URL");
@@ -86,7 +91,7 @@ class RealEnvironmentGuardsTest {
     @Test
     @DisplayName("A blank LDAP URL is refused")
     void testBlankLdapUrlRefused() {
-        assertThatThrownBy(() -> RealEnvironmentScenarios.requireRealTarget(target("  ", REAL_SOAP, "dev")))
+        assertThatThrownBy(() -> RealEnvironmentScenarios.requireRealTarget(target("  ", REAL_SOAP, "dev"), LDAP_AND_ROLES))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("idm.test.ldap.url");
     }
@@ -95,7 +100,7 @@ class RealEnvironmentGuardsTest {
     @DisplayName("The LDAP URL placeholder from application.yml is refused")
     void testLdapPlaceholderRefused() {
         assertThatThrownBy(() -> RealEnvironmentScenarios.requireRealTarget(
-                target(RealEnvironmentScenarios.LDAP_URL_PLACEHOLDER, REAL_SOAP, "dev")))
+                target(RealEnvironmentScenarios.LDAP_URL_PLACEHOLDER, REAL_SOAP, "dev"), LDAP_AND_ROLES))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("idm.test.ldap.url")
                 .hasMessageContaining("placeholder")
@@ -105,7 +110,7 @@ class RealEnvironmentGuardsTest {
     @Test
     @DisplayName("An unset SOAP URL is refused")
     void testUnsetSoapUrlRefused() {
-        assertThatThrownBy(() -> RealEnvironmentScenarios.requireRealTarget(target(REAL_LDAP, null, "dev")))
+        assertThatThrownBy(() -> RealEnvironmentScenarios.requireRealTarget(target(REAL_LDAP, null, "dev"), LDAP_AND_ROLES))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("idm.test.soap.url")
                 .hasMessageContaining("IDM_TEST_SOAP_URL");
@@ -115,11 +120,126 @@ class RealEnvironmentGuardsTest {
     @DisplayName("The SOAP URL placeholder from application.yml is refused")
     void testSoapPlaceholderRefused() {
         assertThatThrownBy(() -> RealEnvironmentScenarios.requireRealTarget(
-                target(REAL_LDAP, RealEnvironmentScenarios.SOAP_URL_PLACEHOLDER, "dev")))
+                target(REAL_LDAP, RealEnvironmentScenarios.SOAP_URL_PLACEHOLDER, "dev"), LDAP_AND_ROLES))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("idm.test.soap.url")
                 .hasMessageContaining("placeholder")
                 .hasMessageContaining("IDM_TEST_SOAP_URL");
+    }
+
+    private static DatabaseProperties databases(String name, String url, String user, String password) {
+        DatabaseProperties.DatabaseConfig config = new DatabaseProperties.DatabaseConfig();
+        config.setJdbcUrl(url);
+        config.setUsername(user);
+        config.setPassword(password);
+        DatabaseProperties properties = new DatabaseProperties();
+        properties.setDatabases(Map.of(name, config));
+        return properties;
+    }
+
+    @Test
+    @DisplayName("Guard 2 ignores LDAP and SOAP URLs that no selected scenario uses, even placeholders or unset")
+    void testUnusedEndpointsIgnored() {
+        assertThatCode(() -> RealEnvironmentScenarios.requireRealTarget(
+                target(RealEnvironmentScenarios.LDAP_URL_PLACEHOLDER, null, "dev"), NOTHING))
+                .doesNotThrowAnyException();
+        assertThatCode(() -> RealEnvironmentScenarios.requireRealTarget(
+                target(null, RealEnvironmentScenarios.SOAP_URL_PLACEHOLDER, "dev"),
+                new ScenarioNeeds(false, Set.of(), false, false, Set.of("idm"))))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("Guard 1 still refuses the embedded profile when nothing is used")
+    void testEmbeddedRefusedEvenWithNoNeeds() {
+        assertThatThrownBy(() -> RealEnvironmentScenarios.requireRealTarget(target(null, null, "test"), NOTHING))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("'test'");
+    }
+
+    @Test
+    @DisplayName("Guard 2 checks the LDAP URL only when ldap.* is used, and the SOAP URL only when roles.* is")
+    void testEndpointsCheckedOnlyWhenUsed() {
+        assertThatThrownBy(() -> RealEnvironmentScenarios.requireRealTarget(target(null, REAL_SOAP, "dev"),
+                new ScenarioNeeds(true, Set.of(), false, false, Set.of())))
+                .hasMessageContaining("IDM_TEST_LDAP_URL");
+        assertThatCode(() -> RealEnvironmentScenarios.requireRealTarget(target(REAL_LDAP, null, "dev"),
+                new ScenarioNeeds(true, Set.of(), false, false, Set.of())))
+                .doesNotThrowAnyException();
+        assertThatThrownBy(() -> RealEnvironmentScenarios.requireRealTarget(target(null, null, "dev"),
+                new ScenarioNeeds(false, Set.of(), true, false, Set.of())))
+                .hasMessageContaining("IDM_TEST_SOAP_URL");
+    }
+
+    @Test
+    @DisplayName("Guard 2 requires the resource URL only when resources.* is used")
+    void testResourceUrlOnlyWhenUsed() {
+        ScenarioNeeds resources = new ScenarioNeeds(false, Set.of(), false, true, Set.of());
+        assertThatThrownBy(() -> RealEnvironmentScenarios.requireRealTarget(target(null, null, "dev"), resources))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("idm.test.soap.resource-url")
+                .hasMessageContaining("IDM_TEST_SOAP_RESOURCEURL");
+
+        MockEnvironment configured = target(null, null, "dev");
+        configured.setProperty("idm.test.soap.resource-url", "https://idm.example.org/IDMProv/resource/service");
+        assertThatCode(() -> RealEnvironmentScenarios.requireRealTarget(configured, resources))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("The DB guard refuses a used database that is not configured, listing the configured ones")
+    void testUnconfiguredDatabaseRefused() {
+        assertThatThrownBy(() -> RealEnvironmentScenarios.requireDatabases(Set.of("hr"),
+                databases("sap", "jdbc:postgresql://db.example.org/sap", "svc", "real")))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("'hr'")
+                .hasMessageContaining("[sap]");
+    }
+
+    @Test
+    @DisplayName("The DB guard refuses a blank or placeholder URL and placeholder credentials, never echoing a credential")
+    void testDatabasePlaceholdersRefused() {
+        RealEnvironmentScenarios.DatabasePlaceholder sap = RealEnvironmentScenarios.DATABASE_PLACEHOLDERS.get("sap");
+
+        assertThatThrownBy(() -> RealEnvironmentScenarios.requireDatabases(Set.of("sap"),
+                databases("sap", " ", "svc", "real")))
+                .hasMessageContaining("IDM_TEST_DATABASES_SAP_JDBCURL");
+        assertThatThrownBy(() -> RealEnvironmentScenarios.requireDatabases(Set.of("sap"),
+                databases("sap", sap.jdbcUrl(), "svc", "real")))
+                .hasMessageContaining("idm.test.databases.sap.jdbc-url")
+                .hasMessageContaining("placeholder");
+        assertThatThrownBy(() -> RealEnvironmentScenarios.requireDatabases(Set.of("sap"),
+                databases("sap", "jdbc:postgresql://db.example.org/sap", sap.username(), "real")))
+                .hasMessageContaining("IDM_TEST_DATABASES_SAP_USERNAME");
+        assertThatThrownBy(() -> RealEnvironmentScenarios.requireDatabases(Set.of("sap"),
+                databases("sap", "jdbc:postgresql://db.example.org/sap", "svc", sap.password())))
+                .hasMessageContaining("IDM_TEST_DATABASES_SAP_PASSWORD")
+                .hasMessageNotContaining(sap.password());
+    }
+
+    @Test
+    @DisplayName("The DB guard passes a real configuration and ignores databases no scenario uses")
+    void testDatabaseGuardPasses() {
+        DatabaseProperties placeholders = databases("sap",
+                RealEnvironmentScenarios.DATABASE_PLACEHOLDERS.get("sap").jdbcUrl(), "sapuser", "sappass");
+        assertThatCode(() -> RealEnvironmentScenarios.requireDatabases(Set.of(), placeholders))
+                .doesNotThrowAnyException();
+        assertThatCode(() -> RealEnvironmentScenarios.requireDatabases(Set.of("sap"),
+                databases("sap", "jdbc:postgresql://db.example.org/sap", "svc", "real")))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("The database placeholders match the fallbacks application.yml declares")
+    void testDatabasePlaceholdersMatchApplicationYml() throws IOException {
+        String yaml = Files.readString(Path.of("src/test/resources/application.yml"));
+        Map<String, String> prefixes = Map.of("sap", "SAP_DB", "oracle-hr", "HR_DB", "workday", "WORKDAY_DB");
+
+        assertThat(RealEnvironmentScenarios.DATABASE_PLACEHOLDERS).containsOnlyKeys("sap", "oracle-hr", "workday");
+        RealEnvironmentScenarios.DATABASE_PLACEHOLDERS.forEach((name, placeholder) -> assertThat(yaml)
+                .contains("${" + prefixes.get(name) + "_URL:" + placeholder.jdbcUrl() + "}")
+                .contains("${" + prefixes.get(name) + "_USER:" + placeholder.username() + "}")
+                .contains("${" + prefixes.get(name) + "_PASSWORD:" + placeholder.password() + "}"));
     }
 
     @Test

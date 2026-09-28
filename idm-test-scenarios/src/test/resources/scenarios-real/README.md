@@ -78,6 +78,12 @@ The runner refuses to start, before any scenario runs, when:
   for example `IDM_TEST_REST_IDM_PASSWORD`, `IDM_TEST_SOAP_USERNAME` or
   `SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_SAP_CLIENTSECRET`, and never the value.
 
+- when your scenarios use `ldap.*`, the bind DN or password while still `application.yml`'s
+  placeholders (`cn=admin,dc=company,dc=com` and `secret`). A blank or unset DN or password is
+  allowed, for anonymous bind.
+- a used database whose `jdbc-url` is in-memory: `jdbc:h2:mem:`, `jdbc:hsqldb:mem:`, or
+  `jdbc:derby:memory:`. Nothing another system provisioned can exist there.
+
 When your scenarios use `ldap.*`, a real directory genuinely reachable at `ldap://localhost:389`
 is refused too, because that is the placeholder value — point it at `ldap://127.0.0.1:389`
 instead (or any other address) to run against it.

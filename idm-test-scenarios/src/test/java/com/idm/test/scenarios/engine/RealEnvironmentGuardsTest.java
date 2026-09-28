@@ -292,8 +292,7 @@ class RealEnvironmentGuardsTest {
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("idm.test.ldap.password")
                 .hasMessageContaining("IDM_TEST_LDAP_PASSWORD")
-                .hasMessageNotContaining("'" + RealEnvironmentScenarios.LDAP_PASSWORD_PLACEHOLDER + "'")
-                .hasMessageNotContaining(": " + RealEnvironmentScenarios.LDAP_PASSWORD_PLACEHOLDER);
+                .hasMessageNotContaining(RealEnvironmentScenarios.LDAP_PASSWORD_PLACEHOLDER);
     }
 
     @Test

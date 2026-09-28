@@ -9,6 +9,7 @@ import com.idm.test.engine.result.CleanupResult;
 import com.idm.test.engine.result.CleanupStatus;
 import com.idm.test.engine.result.ScenarioResult;
 import com.idm.test.engine.result.StepResult;
+import com.idm.test.engine.spi.DeferredExpression;
 import com.idm.test.engine.spi.StepOutcome;
 import com.idm.test.engine.spi.StepType;
 
@@ -128,14 +129,23 @@ public final class ScenarioEngine {
                     null, null);
         }
 
-        Map<String, Object> resolved = (Map<String, Object>) Interpolator.resolve(
-                step.params(), scope, evaluator);
+        // Deferred parameters are left for the step to evaluate itself (see
+        // StepType.deferredParams); everything else is resolved once, as always.
+        Map<String, Object> immediate = new LinkedHashMap<>(step.params());
+        Map<String, Object> deferred = new LinkedHashMap<>();
+        for (String name : type.deferredParams()) {
+            if (immediate.containsKey(name)) {
+                deferred.put(name, immediate.remove(name));
+            }
+        }
+        Map<String, Object> resolved = (Map<String, Object>) Interpolator.resolve(immediate, scope, evaluator);
+        deferred.forEach((name, value) -> resolved.put(name, defer(value, scope)));
 
         WaitSpec wait = WaitSpec.parse(resolved.remove("wait"), defaultTimeout, defaultPoll);
         Object asName = resolved.remove("as");
 
         if (wait != null && !type.retryable()) {
-            return new StepResult(index, step.type(), resolved, false,
+            return new StepResult(index, step.type(), reportable(resolved), false,
                     System.currentTimeMillis() - started,
                     "'wait' is only valid on assertions, and step '" + step.type()
                             + "' is not retryable",
@@ -147,7 +157,7 @@ public final class ScenarioEngine {
         if (wait == null) {
             StepOutcome outcome = type.execute(resolved, captureRequested);
             outcome = bind(scope, asName, outcome, step.type());
-            return new StepResult(index, step.type(), resolved, outcome.success(),
+            return new StepResult(index, step.type(), reportable(resolved), outcome.success(),
                     System.currentTimeMillis() - started, outcome.message(), null, null);
         }
 
@@ -201,8 +211,40 @@ public final class ScenarioEngine {
             message = outcome.message() + " (last observed value after retrying)";
         }
 
-        return new StepResult(index, step.type(), resolved, success, elapsed, message,
+        return new StepResult(index, step.type(), reportable(resolved), success, elapsed, message,
                 attempts.get(), waitedMillis);
+    }
+
+    private Object defer(Object value, Map<String, Object> scope) {
+        if (value instanceof List<?> list) {
+            List<Object> expressions = new ArrayList<>(list.size());
+            list.forEach(item -> expressions.add(defer(item, scope)));
+            return expressions;
+        }
+        String text = String.valueOf(value);
+        String body = Interpolator.expressionBody(text);
+        if (body == null) {
+            // The validator rejects this at load; reaching it means validation was skipped.
+            throw new IllegalArgumentException("a deferred parameter must be a js:{ … } expression, got '" + text + "'");
+        }
+        return new ScopedExpression(text, body, scope, evaluator);
+    }
+
+    /** Resolved parameters as the results record them: deferred expressions as their source text. */
+    private static Map<String, Object> reportable(Map<String, Object> resolved) {
+        Map<String, Object> report = new LinkedHashMap<>();
+        resolved.forEach((name, value) -> report.put(name, reportableValue(value)));
+        return report;
+    }
+
+    private static Object reportableValue(Object value) {
+        if (value instanceof DeferredExpression expression) {
+            return expression.source();
+        }
+        if (value instanceof List<?> list && !list.isEmpty() && list.get(0) instanceof DeferredExpression) {
+            return list.stream().map(ScenarioEngine::reportableValue).toList();
+        }
+        return value;
     }
 
     /**

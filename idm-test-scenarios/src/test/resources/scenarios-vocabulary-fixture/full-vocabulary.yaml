@@ -84,6 +84,18 @@ steps:
         <Envelope><Body><echo>${user.userId}</echo></Body></Envelope>
       as: soapResponse
 
+  - http.verify:
+      target: idm
+      method: POST
+      path: /soap/echo
+      headers:
+        Content-Type: "text/xml; charset=UTF-8"
+        SOAPAction: "urn:echo"
+      body: |
+        <Envelope><Body><echo>${user.userId}</echo></Body></Envelope>
+      check: "js:{ response.status === 200 }"
+      wait: true
+
   - ldap.delete:
       dn: "cn=${user.userId},ou=users"
 

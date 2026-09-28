@@ -56,7 +56,8 @@ failure. Only a non-boolean result is final.
 - **`check`:** a single string or a list of strings, each a whole-value `js:{ … }` expression.
 - **Each attempt** sends the request, builds `response`, and then evaluates the checks in order,
   stopping at the first that is not `true`.
-- **`as:`** binds the last attempt's `response` map (the same five keys as §4, `xml` excluded).
+- **`as:`** binds the last attempt's `response` map (the same four keys as §4: `status`,
+  `headers`, `body`, `json`).
 - **Shared code:** the request-building and sending logic is shared with `HttpRequestStep` (one
   helper), not copied.
 
@@ -138,6 +139,9 @@ In `ScenarioValidator`, for a step whose type declares deferred parameters:
 | a check returns a non-boolean (`"ACTIVE"`, `1`, a map, `null`) | **final** failure, `http.verify GET <url>: check <i> of <n> must return true or false, got <value>` | **stops at once** |
 | transport error, or a 5xx/I/O error from the token server | failure, as `http.request` | retried |
 | unknown target or no base-url; misconfigured or rejected credentials; unsupported method; non-text `body`; non-map `headers` | **final** failure | **stops at once** (ITF-26) |
+
+*Amended after final review (jangulo): a failing check that reads `response.xml` is final,
+because waiting cannot make it available before ITF-25.*
 
 - **`<excerpt>`** is the response body passed through the same rules as
   `TokenFailureText.safe(body, null)`: whitespace collapsed, capped at 300 characters with `…`.

@@ -9,6 +9,7 @@ import com.idm.test.engine.steps.DbExecuteStep;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -39,6 +40,18 @@ class ScenarioValidatorTest {
     private final ScenarioValidator validator = new ScenarioValidator(
             Map.of("ldap.create", ACTION, "ldap.verify", ASSERTION),
             Set.of("random-user"));
+
+    private static final StepType DEFERRED = new StepType() {
+        public String name() { return "probe.verify"; }
+        public boolean retryable() { return true; }
+        public Set<String> requiredParams() { return Set.of("check"); }
+        public Set<String> deferredParams() { return Set.of("check"); }
+        public Set<String> deferredBindings() { return Set.of("response"); }
+        public StepOutcome execute(Map<String, Object> params, boolean captureRequested) { return StepOutcome.success("ok"); }
+    };
+
+    private final ScenarioValidator deferredValidator = new ScenarioValidator(
+            Map.of("ldap.create", ACTION, "probe.verify", DEFERRED), Set.of("random-user"));
 
     private static Scenario scenario(StepSpec... steps) {
         return new Scenario("Test", null,
@@ -601,5 +614,50 @@ class ScenarioValidatorTest {
                 .isInstanceOf(ValidationException.class)
                 .hasMessageContaining("cleanup entry 1")
                 .hasMessageContaining("nowhere");
+    }
+
+    @Test
+    @DisplayName("A deferred check may read its bindings and the scenario's names")
+    void testDeferredCheckAccepted() {
+        Scenario ok = scenario(new StepSpec("probe.verify", Map.of(
+                "check", List.of("js:{ response.status === 200 }", "js:{ response.body.includes(user.userId) }"))));
+        assertThatCode(() -> deferredValidator.validate(ok, "ok.yaml")).doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("A deferred check must be js:{} expressions, and not an empty list")
+    void testDeferredCheckShape() {
+        assertThatThrownBy(() -> deferredValidator.validate(scenario(new StepSpec("probe.verify",
+                Map.of("check", "status is 200"))), "t.yaml"))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("'check' must be js:{ … } expressions; got \"status is 200\"");
+        assertThatThrownBy(() -> deferredValidator.validate(scenario(new StepSpec("probe.verify",
+                Map.of("check", "${user.userId}"))), "t.yaml"))
+                .hasMessageContaining("'check' must be js:{ … } expressions");
+        assertThatThrownBy(() -> deferredValidator.validate(scenario(new StepSpec("probe.verify",
+                Map.of("check", List.of()))), "t.yaml"))
+                .hasMessageContaining("'check' needs at least one condition");
+    }
+
+    @Test
+    @DisplayName("A null check: (YAML 'check:' with no value, or 'check: ~') is reported, not an NPE")
+    void testDeferredCheckRejectsNull() {
+        Map<String, Object> params = new HashMap<>();
+        params.put("check", null);
+
+        assertThatThrownBy(() -> deferredValidator.validate(scenario(new StepSpec("probe.verify", params)), "t.yaml"))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("'check' needs at least one condition");
+    }
+
+    @Test
+    @DisplayName("A binding is known only inside the deferred parameter; unknown roots are still rejected")
+    void testDeferredBindingScope() {
+        assertThatThrownBy(() -> deferredValidator.validate(scenario(new StepSpec("probe.verify",
+                Map.of("check", "js:{ respnse.status === 200 }"))), "t.yaml"))
+                .hasMessageContaining("nothing named 'respnse'");
+        assertThatThrownBy(() -> deferredValidator.validate(scenario(new StepSpec("ldap.create",
+                Map.of("dn", "js:{ response.body }"))), "t.yaml"))
+                .hasMessageContaining("nothing named 'response'");
     }
 }

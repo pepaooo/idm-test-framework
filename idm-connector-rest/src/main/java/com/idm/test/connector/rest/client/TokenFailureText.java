@@ -28,8 +28,10 @@ import java.util.regex.Pattern;
  * a URL scheme (e.g. {@code "s"} inside {@code https}) cannot corrupt the URL match, since the
  * URL rule has already run. Masking happens before the length cut, so truncation can never
  * leave part of a secret behind.
+ * <p>
+ * Also used by http.verify to excerpt a response body in failure messages.
  */
-final class TokenFailureText {
+public final class TokenFailureText {
 
     static final int MAX_LENGTH = 300;
 
@@ -48,7 +50,7 @@ final class TokenFailureText {
      * @param clientSecret the secret to mask, or null/empty when there is none
      * @return the masked, collapsed and capped text; never null
      */
-    static String safe(String text, String clientSecret) {
+    public static String safe(String text, String clientSecret) {
         if (text == null) {
             return "";
         }

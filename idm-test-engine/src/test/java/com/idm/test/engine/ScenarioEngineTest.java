@@ -7,6 +7,7 @@ import com.idm.test.engine.model.Scenario;
 import com.idm.test.engine.model.StepSpec;
 import com.idm.test.engine.result.CleanupStatus;
 import com.idm.test.engine.result.ScenarioResult;
+import com.idm.test.engine.spi.DeferredExpression;
 import com.idm.test.engine.spi.StepOutcome;
 import com.idm.test.engine.spi.StepType;
 import com.idm.test.utils.data.TestDataGenerator;
@@ -17,6 +18,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -416,6 +418,80 @@ class ScenarioEngineTest {
 
         assertThat(received).hasSize(1);
         assertThat(received.get(0)).doesNotContainKey("as");
+    }
+
+    /** An assertion whose 'check' is deferred and sees 'attempt' as a binding. */
+    private StepType deferredProbe(List<Object> seen) {
+        AtomicInteger attempt = new AtomicInteger();
+        return new StepType() {
+            public String name() { return "probe.verify"; }
+            public boolean retryable() { return true; }
+            public Set<String> requiredParams() { return Set.of("check"); }
+            public Set<String> deferredParams() { return Set.of("check"); }
+            public Set<String> deferredBindings() { return Set.of("attempt"); }
+            public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
+                seen.add(params.get("check"));
+                DeferredExpression check = (DeferredExpression) params.get("check");
+                Object passed = check.evaluate(Map.of("attempt", attempt.incrementAndGet()));
+                return Boolean.TRUE.equals(passed) ? StepOutcome.success("ok") : StepOutcome.failure("not yet");
+            }
+        };
+    }
+
+    @Test
+    @DisplayName("A deferred parameter reaches the step unevaluated and is evaluated each attempt with scope and bindings")
+    void testDeferredParameter() {
+        List<Object> seen = new ArrayList<>();
+        ScenarioEngine engine = engineWith(deferredProbe(seen));
+
+        ScenarioResult result = engine.run(scenario(
+                new StepSpec("set", Map.of("target", 3)),
+                new StepSpec("probe.verify", Map.of("check", "js:{ attempt >= target }", "wait", Boolean.TRUE))), "t.yaml");
+
+        assertThat(result.success()).isTrue();
+        assertThat(result.steps().get(1).attempts()).isEqualTo(3);
+        assertThat(seen).allSatisfy(value -> assertThat(value).isInstanceOf(DeferredExpression.class));
+        assertThat(((DeferredExpression) seen.get(0)).source()).isEqualTo("js:{ attempt >= target }");
+        assertThat(result.steps().get(1).resolvedParams().get("check")).isEqualTo("js:{ attempt >= target }");
+    }
+
+    @Test
+    @DisplayName("A deferred list arrives as a list of expressions and is reported as its sources")
+    void testDeferredList() {
+        List<Object> seen = new ArrayList<>();
+        StepType listProbe = new StepType() {
+            public String name() { return "probe.verify"; }
+            public boolean retryable() { return true; }
+            public Set<String> requiredParams() { return Set.of("check"); }
+            public Set<String> deferredParams() { return Set.of("check"); }
+            public Set<String> deferredBindings() { return Set.of("attempt"); }
+            public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
+                seen.add(params.get("check"));
+                return StepOutcome.success("ok");
+            }
+        };
+        ScenarioEngine engine = engineWith(listProbe);
+
+        ScenarioResult result = engine.run(scenario(new StepSpec("probe.verify",
+                Map.of("check", List.of("js:{ true }", "js:{ attempt > 0 }")))), "t.yaml");
+
+        assertThat(result.success()).isTrue();
+        assertThat((List<?>) seen.get(0)).hasSize(2).allSatisfy(v -> assertThat(v).isInstanceOf(DeferredExpression.class));
+        assertThat(result.steps().get(0).resolvedParams().get("check"))
+                .isEqualTo(List.of("js:{ true }", "js:{ attempt > 0 }"));
+    }
+
+    @Test
+    @DisplayName("A binding wins over a scope name of the same name")
+    void testBindingWinsOverScope() {
+        List<Object> seen = new ArrayList<>();
+        ScenarioEngine engine = engineWith(deferredProbe(seen));
+
+        ScenarioResult result = engine.run(scenario(
+                new StepSpec("set", Map.of("attempt", 0)),
+                new StepSpec("probe.verify", Map.of("check", "js:{ attempt === 1 }"))), "t.yaml");
+
+        assertThat(result.success()).isTrue();
     }
 
     @Test

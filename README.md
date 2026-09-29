@@ -128,7 +128,7 @@ Actions change state; assertions check it and may retry.
 | `rest.request` | action | `target`, `method`, `path` | `body`, `bodyFrom`, `headers` |
 | `rest.verify` | assertion | `target`, `path`, `expect` | `method`, `headers`, `wait` |
 | `http.request` | action | `target`, `method`, `path` | `headers`, `body` (a raw string: JSON, XML, a SOAP envelope) |
-| `http.verify` | assertion | `target`, `method`, `path`, `check` | `headers`, `body`, `wait` (JavaScript conditions on `response`) |
+| `http.verify` | assertion | `target`, `method`, `path`, `check` | `headers`, `body`, `wait` (JavaScript conditions on `response`, including its parsed JSON and XML) |
 
 Every step also accepts `as:` to capture its result. `rest.*` and `http.request` address a named
 target (`idm.test.rest.<target>.base-url`) and authenticate with that target's settings — basic,
@@ -290,9 +290,6 @@ placeholder LDAP/SOAP URL, REST target, database, or credentials. See
 
 | Ticket | Work |
 |---|---|
-| ITF-24 | JavaScript assertions against an HTTP response, retryable with `wait:` |
-| ITF-25 | Reading XML (SOAP responses) from `js:{}` expressions |
-| ITF-10 | Authoring reference for the YAML tier |
 | ITF-16 | Oracle-compatible connection test query for database pools |
 | ITF-17 | Stop the runners starting embedded LDAP and WireMock as a side effect |
 | ITF-18 | Check ContainerScenarios' "Docker is not available" message without Docker |

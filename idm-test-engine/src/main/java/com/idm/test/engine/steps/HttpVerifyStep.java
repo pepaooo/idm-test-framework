@@ -23,16 +23,15 @@ import java.util.Set;
  * {@code check} against {@code response}. All must return true. Retryable: under wait:, the
  * request and the checks repeat until they pass or the timeout expires. A check that throws is
  * retried (for example before provisioning, response.json can be null); a check that returns
- * something other than true or false is an authoring mistake and ends the wait at once. A
- * failing check (false or throwing) whose source reads {@code response.xml} also ends the wait
- * at once, since {@code response.xml} cannot become available before ITF-25 no matter how long
- * the wait polls.
+ * something other than true or false is an authoring mistake and ends the wait at once.
+ * <p>
+ * {@code response.json} and {@code response.xml} are the body parsed for a JSON or XML media
+ * type, else null. When a failing check reads {@code response.xml} while it is null, the
+ * message says why (the Content-Type, an empty body, or where the XML is malformed).
  */
 public final class HttpVerifyStep implements StepType {
 
     private static final ObjectMapper JSON = new ObjectMapper();
-    private static final String XML_HINT =
-            " (response.xml is not available yet: it arrives with ITF-25; check response.body for now)";
 
     private final IdmRestConnector connector;
     private final RestProperties properties;
@@ -91,34 +90,38 @@ public final class HttpVerifyStep implements StepType {
         }
 
         TextResponse response = result.getData().get();
-        Map<String, Object> bound = responseOf(response);
+        Bound bound = responseOf(response);
         String where = "http.verify " + request.method() + " " + request.url();
         int total = checks.size();
         for (int i = 0; i < total; i++) {
             DeferredExpression check = checks.get(i);
             String label = where + ": check " + (i + 1) + " of " + total;
-            String hint = check.source().contains("response.xml") ? XML_HINT : "";
+            String hint = bound.xmlNullReason() != null && check.source().contains("response.xml")
+                    ? " (response.xml is null: " + TokenFailureText.safe(bound.xmlNullReason(), null) + ")"
+                    : "";
             Object value;
             try {
-                value = check.evaluate(Map.of("response", bound));
+                value = check.evaluate(Map.of("response", bound.response()));
             } catch (RuntimeException e) {
                 String error = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
-                String message = label + " failed: " + TokenFailureText.safe(error, null) + context(response) + hint;
-                return hint.isEmpty() ? StepOutcome.failure(message) : StepOutcome.finalFailure(message);
+                return StepOutcome.failure(label + " failed: " + TokenFailureText.safe(error, null) + context(response) + hint);
             }
             if (!(value instanceof Boolean passed)) {
                 return StepOutcome.finalFailure(
-                        label + " must return true or false, got " + TokenFailureText.safe(describe(value), null) + hint);
+                        label + " must return true or false, got " + TokenFailureText.safe(describe(value), null));
             }
             if (!passed) {
-                String message = label + " is false: " + check.source() + context(response) + hint;
-                return hint.isEmpty() ? StepOutcome.failure(message) : StepOutcome.finalFailure(message);
+                return StepOutcome.failure(label + " is false: " + check.source() + context(response) + hint);
             }
         }
 
         String message = request.method() + " " + request.url() + " passed " + total
                 + " check(s) (status " + response.status() + ")";
-        return captureRequested ? StepOutcome.success(message, bound) : StepOutcome.success(message);
+        return captureRequested ? StepOutcome.success(message, bound.response()) : StepOutcome.success(message);
+    }
+
+    /** The response map the checks read, and why its xml is null (null when xml was parsed). */
+    private record Bound(Map<String, Object> response, String xmlNullReason) {
     }
 
     private static List<DeferredExpression> checksOf(Object raw) {
@@ -133,21 +136,43 @@ public final class HttpVerifyStep implements StepType {
         return checks;
     }
 
-    /** status, headers and body as http.request captures them, plus the parsed JSON body. */
-    private static Map<String, Object> responseOf(TextResponse response) {
+    /** status, headers and body as http.request captures them, plus the parsed JSON and XML bodies. */
+    private static Bound responseOf(TextResponse response) {
         Map<String, Object> bound = new LinkedHashMap<>(HttpExchange.capture(response));
-        bound.put("json", jsonOf(response));
-        return bound;
+        String mediaType = mediaTypeOf(response);
+        bound.put("json", jsonOf(mediaType, response.body()));
+        Object xml = null;
+        String reason;
+        if (response.body().isBlank()) {
+            reason = "the body is empty";
+        } else if (mediaType.isEmpty()) {
+            reason = "no Content-Type";
+        } else if (!(mediaType.equals("text/xml") || mediaType.equals("application/xml") || mediaType.endsWith("+xml"))) {
+            reason = "Content-Type is " + mediaType;
+        } else {
+            try {
+                xml = XmlObjects.parse(response.body());
+                reason = null;
+            } catch (IllegalArgumentException malformed) {
+                reason = "the body is " + malformed.getMessage();
+            }
+        }
+        bound.put("xml", xml);
+        return new Bound(bound, reason);
     }
 
-    private static Object jsonOf(TextResponse response) {
+    /** The first Content-Type value before any parameters, lower-cased; "" when absent. */
+    private static String mediaTypeOf(TextResponse response) {
         List<String> types = response.headers().getOrDefault("content-type", List.of());
-        String mediaType = types.isEmpty() ? "" : types.get(0).split(";", 2)[0].trim().toLowerCase(Locale.ROOT);
-        if (!(mediaType.equals("application/json") || mediaType.endsWith("+json")) || response.body().isBlank()) {
+        return types.isEmpty() ? "" : types.get(0).split(";", 2)[0].trim().toLowerCase(Locale.ROOT);
+    }
+
+    private static Object jsonOf(String mediaType, String body) {
+        if (!(mediaType.equals("application/json") || mediaType.endsWith("+json")) || body.isBlank()) {
             return null;
         }
         try {
-            return JSON.readValue(response.body(), Object.class);
+            return JSON.readValue(body, Object.class);
         } catch (Exception notJson) {
             return null; // declared JSON but isn't: the check sees null, as IdmRestConnector does
         }

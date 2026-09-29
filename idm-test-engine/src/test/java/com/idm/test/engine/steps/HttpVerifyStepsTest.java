@@ -162,18 +162,137 @@ class HttpVerifyStepsTest {
                 .endsWith("(not retried: waiting cannot change this)");
     }
 
+    private static final String SOAP = """
+            <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/">
+              <soapenv:Body>
+                <ns2:getUserResponse xmlns:ns2="http://idm.example/users">
+                  <ns2:user id="42">
+                    <ns2:status>ACTIVE</ns2:status>
+                    <ns2:role>Admin</ns2:role>
+                    <ns2:role>HR</ns2:role>
+                  </ns2:user>
+                </ns2:getUserResponse>
+              </soapenv:Body>
+            </soapenv:Envelope>
+            """;
+
+    private static void stubBody(String contentType, String body) {
+        var response = aResponse().withStatus(200).withBody(body);
+        if (contentType != null) {
+            response.withHeader("Content-Type", contentType);
+        }
+        WIREMOCK.stubFor(get(urlEqualTo("/users/1")).willReturn(response));
+    }
+
     @Test
-    @DisplayName("Reading response.xml fails with the ITF-25 hint and ends a wait at once")
-    void testXmlHint() {
+    @DisplayName("A SOAP envelope is read through response.xml by local names, attributes and lists")
+    void testSoapEnvelope() {
+        stubBody("text/xml; charset=UTF-8", SOAP);
+
+        StepResult step = run(params("check", List.of(
+                "js:{ response.xml.Envelope.Body.getUserResponse.user.status === 'ACTIVE' }",
+                "js:{ response.xml.Envelope.Body.getUserResponse.user['@id'] === '42' }",
+                "js:{ [].concat(response.xml.Envelope.Body.getUserResponse.user.role).includes('HR') }",
+                "js:{ response.json === null }")));
+
+        assertThat(step.success()).as(step.message()).isTrue();
+    }
+
+    @Test
+    @DisplayName("application/soap+xml and application/xml are parsed")
+    void testXmlMediaTypes() {
+        for (String type : List.of("application/soap+xml; charset=UTF-8", "application/xml")) {
+            stubBody(type, SOAP);
+
+            StepResult step = run(params("check", "js:{ response.xml.Envelope.Body.getUserResponse.user.status === 'ACTIVE' }"));
+
+            assertThat(step.success()).as(type + ": " + step.message()).isTrue();
+        }
+    }
+
+    @Test
+    @DisplayName("When response.xml is null, a failing check that reads it says why")
+    void testXmlNullHints() {
+        stubBody("text/html", "<html><body>down</body></html>");
+        assertThat(run(params("check", "js:{ response.xml.Envelope !== undefined }")).message())
+                .endsWith(" (response.xml is null: Content-Type is text/html)");
+
+        stubBody(null, SOAP);
+        assertThat(run(params("check", "js:{ response.xml !== null }")).message())
+                .endsWith(" (response.xml is null: no Content-Type)");
+
+        stubBody("text/xml", "");
+        assertThat(run(params("check", "js:{ response.xml !== null }")).message())
+                .endsWith(" (response.xml is null: the body is empty)");
+
+        stubBody("text/xml", "<Envelope>");
+        assertThat(run(params("check", "js:{ response.xml !== null }")).message())
+                .contains(" (response.xml is null: the body is not well-formed XML at line 1, column ");
+    }
+
+    @Test
+    @DisplayName("A body nested 90 elements deep binds, and checks can still run")
+    void testDeepXmlStillCheckable() {
+        stubBody("text/xml", "<a>".repeat(90) + "x" + "</a>".repeat(90));
+        assertThat(run(params("check", "js:{ response.status === 200 && response.xml !== null }")).success()).isTrue();
+    }
+
+    @Test
+    @DisplayName("A failing check that doesn't read response.xml, or reads a parsed one, gets no hint")
+    void testNoHintOtherwise() {
+        stubBody("text/html", "<html/>");
+        assertThat(run(params("check", "js:{ response.status === 201 }")).message())
+                .doesNotContain("response.xml is null");
+
+        stubBody("text/xml", SOAP);
+        assertThat(run(params("check", "js:{ response.xml.Envelope.Body.nothing === 'x' }")).message())
+                .doesNotContain("response.xml is null");
+    }
+
+    @Test
+    @DisplayName("A failing response.xml check is retried under wait, not final")
+    void testXmlFailureRetried() {
         stubJson(200, "{}");
 
         StepResult step = run(params("check", "js:{ response.xml.Envelope !== undefined }",
                 "wait", Map.of("timeout", "2s", "poll", "1s")));
 
         assertThat(step.success()).isFalse();
-        assertThat(step.attempts()).isEqualTo(1);
-        assertThat(step.message()).contains("response.xml is not available yet: it arrives with ITF-25")
-                .endsWith("(not retried: waiting cannot change this)");
+        assertThat(step.attempts()).isGreaterThan(1);
+        assertThat(step.message()).contains("(response.xml is null: Content-Type is application/json)")
+                .endsWith("(last observed value after retrying)")
+                .doesNotContain("ITF-25");
+    }
+
+    @Test
+    @DisplayName("Under wait, malformed XML then a valid envelope passes on the second attempt")
+    void testMalformedThenValid() {
+        WIREMOCK.stubFor(get(urlEqualTo("/users/1")).inScenario("restart")
+                .whenScenarioStateIs(Scenario.STARTED).willSetStateTo("up")
+                .willReturn(aResponse().withStatus(200).withHeader("Content-Type", "text/xml").withBody("<Envelope>")));
+        WIREMOCK.stubFor(get(urlEqualTo("/users/1")).inScenario("restart")
+                .whenScenarioStateIs("up")
+                .willReturn(aResponse().withStatus(200).withHeader("Content-Type", "text/xml").withBody(SOAP)));
+
+        StepResult step = run(params("check", "js:{ response.xml.Envelope.Body.getUserResponse.user.status === 'ACTIVE' }",
+                "wait", Map.of("timeout", "2s", "poll", "1s")));
+
+        assertThat(step.success()).as(step.message()).isTrue();
+        assertThat(step.attempts()).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("as: binds response.xml, and a later step can read into it")
+    void testCaptureXml() {
+        stubBody("text/xml", SOAP);
+
+        ScenarioResult result = runSteps(List.of(
+                new StepSpec("http.verify", params("check", "js:{ response.status === 200 }", "as", "soap")),
+                new StepSpec("set", Map.of("status", "${soap.xml.Envelope.Body.getUserResponse.user.status}"))));
+
+        StepResult setStep = result.steps().get(1);
+        assertThat(setStep.success()).as(setStep.message()).isTrue();
+        assertThat(setStep.resolvedParams()).containsEntry("status", "ACTIVE");
     }
 
     private static final String SECRET_BODY =

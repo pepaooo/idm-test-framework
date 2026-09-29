@@ -525,24 +525,61 @@ Each check can read **`response`**:
 | `response.headers` | header names in lower case, each with a list of values: `response.headers['content-type'][0]` |
 | `response.body` | the body as text, `""` when empty |
 | `response.json` | the body parsed, when the response is JSON (`application/json` or `…+json`); otherwise `null` |
+| `response.xml` | the body parsed, when the response is XML (`text/xml`, `application/xml` or `…+xml`, which includes SOAP 1.2's `application/soap+xml`); otherwise `null`. See **Reading XML** below |
 
-`response.xml` (a parsed XML or SOAP body) arrives with ITF-25; until then, check `response.body`.
 Checks may also read every name available at this point in the scenario, such as `user.userId`,
 directly — inside `js:{ … }`, names are read as-is (`user.userId`), not as `${user.userId}`;
 `${…}` interpolation does not run inside a check.
+
+**Reading XML.** `response.xml` turns the body into names you can follow with dots:
+
+- **Start at the root element:** `response.xml.Envelope.Body…`.
+- **Elements are named without their namespace prefix:** `<soapenv:Body>` is `Body` and
+  `<ns2:status>` is `status`, whatever prefix the server uses.
+- **An element holding only text is that text:** `<name>Ana</name>` is `'Ana'`, and an empty
+  element is `''`.
+- **Attributes are `'@name'`:** `user['@id']`. When an element has attributes or child elements,
+  its own text is `'#text'`: `status['#text']`.
+- **An element that appears once is a single value; one that repeats is a list:** `role[1]`.
+  When a check may see one or several, `[].concat(user.role)` is always a list:
+  `[].concat(user.role).includes('HR')`.
+- **Every value is text:** compare with `'42'`, or convert with `Number(user['@id'])`.
+- **A body with a DOCTYPE, or nested more than 90 elements deep, is refused** as not
+  well-formed, so a response can't make the check read files or expand entities.
+
+```xml
+<user id="42">
+  <status code="1">ACTIVE</status>
+  <name>Ana</name>
+  <role>Admin</role>
+  <role>HR</role>
+  <manager/>
+</user>
+```
+
+reads as
+
+```js
+{ user: { '@id': '42',
+          status: { '@code': '1', '#text': 'ACTIVE' },
+          name: 'Ana',
+          role: ['Admin', 'HR'],
+          manager: '' } }
+```
 
 **Captures:** the `response` map of the passing attempt.
 
 **Fails when:**
 - a check is `false`: the message names it (`check 2 of 3 is false: …`) with the status and the
-  start of the body. Retried under `wait:`, unless its source reads `response.xml` (see below).
+  start of the body. Retried under `wait:`.
 - a check throws, for example `response.json.department` while `response.json` is still `null`.
-  Retried under `wait:`, unless its source reads `response.xml` (see below).
+  Retried under `wait:`.
+- when a failing check reads `response.xml` and it is `null`, the message ends with the reason,
+  for example `(response.xml is null: Content-Type is text/html)` or
+  `(response.xml is null: the body is not well-formed XML at line 3, column 7: …)`. This is
+  retried like any failing check.
 - a check returns something other than `true`/`false`: the message shows what it returned. This
   ends the wait at once, because it is a mistake in the check.
-- a failing check (false or throwing) whose source reads `response.xml`: this ends the wait at
-  once too, because `response.xml` cannot become available before ITF-25 no matter how long the
-  wait polls.
 - the server can't be reached. Retried.
 - the target is unknown, credentials are misconfigured or rejected, the method isn't supported,
   `body` isn't text or `headers` isn't a map. These end the wait at once.
@@ -570,7 +607,9 @@ Any HTTP status can be checked. A `404` is only a failure if a check says so.
       <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/">
         <soapenv:Body>...${user.userId}...</soapenv:Body>
       </soapenv:Envelope>
-    check: "js:{ response.status === 200 && response.body.includes('<status>ACTIVE</status>') }"
+    check:
+      - "js:{ response.status === 200 }"
+      - "js:{ response.xml.Envelope.Body.getUserResponse.user.status === 'ACTIVE' }"
     wait: true
 ```
 

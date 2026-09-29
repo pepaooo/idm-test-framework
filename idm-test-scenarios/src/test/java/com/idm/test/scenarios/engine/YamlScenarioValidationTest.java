@@ -45,7 +45,7 @@ class YamlScenarioValidationTest extends BaseIntegrationTest {
     @Test
     @DisplayName("Produces a test for every file; the invalid one fails by name, the valid one still passes")
     void testFactoryHandlesMixOfValidAndInvalidFiles(@TempDir Path tempDir) throws Exception {
-        Map<String, StepType> registry = YamlScenarioTest.registry(
+        Map<String, StepType> registry = ScenarioSupport.registry(
                 ldapDirectories, databaseConnector, roleServiceConnector,
                 resourceServiceConnector, idmRestConnector, restProperties, restAuthenticator);
         ScenarioValidator validator = new ScenarioValidator(registry, FixtureFactory.SUPPORTED_GENERATORS);
@@ -58,7 +58,7 @@ class YamlScenarioValidationTest extends BaseIntegrationTest {
                 new ExpressionEvaluator());
         Path results = tempDir.resolve("scenario-results.json");
 
-        List<DynamicTest> tests = YamlScenarioTest.buildTests(FIXTURE_DIR, validator, engine, results);
+        List<DynamicTest> tests = ScenarioSupport.buildTests(FIXTURE_DIR, validator, engine, results);
 
         // Every file on disk gets a dynamic test, whether or not it is valid.
         assertThat(tests).extracting(DynamicTest::getDisplayName)
@@ -97,7 +97,7 @@ class YamlScenarioValidationTest extends BaseIntegrationTest {
     @Test
     @DisplayName("A scenario using every step type should load and validate")
     void testFullVocabularyValidates() {
-        Map<String, StepType> registry = YamlScenarioTest.registry(
+        Map<String, StepType> registry = ScenarioSupport.registry(
                 ldapDirectories, databaseConnector, roleServiceConnector,
                 resourceServiceConnector, idmRestConnector, restProperties, restAuthenticator);
         ScenarioValidator validator =

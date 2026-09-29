@@ -38,7 +38,7 @@ class MultiDirectoryScenarioTest extends BaseIntegrationTest {
     @TestFactory
     @DisplayName("Each scenario file runs as its own test")
     Stream<DynamicTest> scenarios() throws Exception {
-        Map<String, StepType> registry = YamlScenarioTest.registry(
+        Map<String, StepType> registry = ScenarioSupport.registry(
                 ldapDirectories, databaseConnector, roleServiceConnector,
                 resourceServiceConnector, idmRestConnector, restProperties, restAuthenticator);
         ScenarioValidator validator = new ScenarioValidator(registry, FixtureFactory.SUPPORTED_GENERATORS);
@@ -50,6 +50,6 @@ class MultiDirectoryScenarioTest extends BaseIntegrationTest {
                 executorProperties.getDefaultPollInterval(),
                 new ExpressionEvaluator());
 
-        return YamlScenarioTest.buildTests(SCENARIO_DIR, validator, engine, RESULTS).stream();
+        return ScenarioSupport.buildTests(SCENARIO_DIR, validator, engine, RESULTS).stream();
     }
 }

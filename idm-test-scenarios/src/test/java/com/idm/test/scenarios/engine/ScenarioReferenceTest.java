@@ -51,7 +51,7 @@ class ScenarioReferenceTest {
     @BeforeAll
     static void load() throws IOException {
         lines = Files.readAllLines(PAGE, StandardCharsets.UTF_8);
-        registry = YamlScenarioTest.registry(null, null, null, null, null,
+        registry = ScenarioSupport.registry(null, null, null, null, null,
                 new RestProperties(), RestAuthenticator.withoutOAuth());
     }
 

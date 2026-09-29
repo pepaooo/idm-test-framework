@@ -368,7 +368,7 @@ class RealEnvironmentGuardsTest {
         // not know about, this fails and makes them read the README first.
         // This is a deliberate tripwire, not a permanent invariant: when the first real
         // scenario is added here, delete this test.
-        assertThat(YamlScenarioTest.scenarioFiles(RealEnvironmentScenarios.DEFAULT_SCENARIO_DIR)).isEmpty();
+        assertThat(ScenarioSupport.scenarioFiles(RealEnvironmentScenarios.DEFAULT_SCENARIO_DIR)).isEmpty();
         assertThat(getClass().getClassLoader().getResource(RealEnvironmentScenarios.DEFAULT_SCENARIO_DIR + "/README.md"))
                 .as("scenarios-real/README.md must ship so the directory exists on the classpath")
                 .isNotNull();

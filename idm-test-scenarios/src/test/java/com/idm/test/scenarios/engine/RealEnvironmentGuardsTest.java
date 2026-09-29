@@ -40,9 +40,13 @@ class RealEnvironmentGuardsTest {
     private static final String REAL_SOAP = "https://idm.example.org:8543/IDMProv/role/service";
 
     /** What the existing guard-2 tests assumed: LDAP and the Role service are used. */
-    private static final ScenarioNeeds LDAP_AND_ROLES = new ScenarioNeeds(true, Set.of(), true, false, Set.of());
-    private static final ScenarioNeeds NOTHING = new ScenarioNeeds(false, Set.of(), false, false, Set.of());
-    private static final ScenarioNeeds LDAP_ONLY = new ScenarioNeeds(true, Set.of(), false, false, Set.of());
+    private static final ScenarioNeeds LDAP_AND_ROLES = new ScenarioNeeds(java.util.Set.of(ScenarioNeeds.DEFAULT_DIRECTORY), Set.of(), true, false, Set.of());
+    private static final ScenarioNeeds NOTHING = new ScenarioNeeds(java.util.Set.of(), Set.of(), false, false, Set.of());
+    private static final ScenarioNeeds LDAP_ONLY = new ScenarioNeeds(java.util.Set.of(ScenarioNeeds.DEFAULT_DIRECTORY), Set.of(), false, false, Set.of());
+
+    private static final ScenarioNeeds AD_ONLY = new ScenarioNeeds(Set.of("ad"), Set.of(), false, false, Set.of());
+    private static final ScenarioNeeds DEFAULT_ONLY =
+            new ScenarioNeeds(Set.of(ScenarioNeeds.DEFAULT_DIRECTORY), Set.of(), false, false, Set.of());
 
     private static MockEnvironment target(String ldapUrl, String soapUrl, String... profiles) {
         MockEnvironment environment = new MockEnvironment();
@@ -157,7 +161,7 @@ class RealEnvironmentGuardsTest {
                 .doesNotThrowAnyException();
         assertThatCode(() -> RealEnvironmentScenarios.requireRealTarget(
                 target(null, RealEnvironmentScenarios.SOAP_URL_PLACEHOLDER, "dev"),
-                new ScenarioNeeds(false, Set.of(), false, false, Set.of("idm"))))
+                new ScenarioNeeds(java.util.Set.of(), Set.of(), false, false, Set.of("idm"))))
                 .doesNotThrowAnyException();
     }
 
@@ -173,20 +177,20 @@ class RealEnvironmentGuardsTest {
     @DisplayName("Guard 2 checks the LDAP URL only when ldap.* is used, and the SOAP URL only when roles.* is")
     void testEndpointsCheckedOnlyWhenUsed() {
         assertThatThrownBy(() -> RealEnvironmentScenarios.requireRealTarget(target(null, REAL_SOAP, "dev"),
-                new ScenarioNeeds(true, Set.of(), false, false, Set.of())))
+                new ScenarioNeeds(java.util.Set.of(ScenarioNeeds.DEFAULT_DIRECTORY), Set.of(), false, false, Set.of())))
                 .hasMessageContaining("IDM_TEST_LDAP_URL");
         assertThatCode(() -> RealEnvironmentScenarios.requireRealTarget(target(REAL_LDAP, null, "dev"),
-                new ScenarioNeeds(true, Set.of(), false, false, Set.of())))
+                new ScenarioNeeds(java.util.Set.of(ScenarioNeeds.DEFAULT_DIRECTORY), Set.of(), false, false, Set.of())))
                 .doesNotThrowAnyException();
         assertThatThrownBy(() -> RealEnvironmentScenarios.requireRealTarget(target(null, null, "dev"),
-                new ScenarioNeeds(false, Set.of(), true, false, Set.of())))
+                new ScenarioNeeds(java.util.Set.of(), Set.of(), true, false, Set.of())))
                 .hasMessageContaining("IDM_TEST_SOAP_URL");
     }
 
     @Test
     @DisplayName("Guard 2 requires the resource URL only when resources.* is used")
     void testResourceUrlOnlyWhenUsed() {
-        ScenarioNeeds resources = new ScenarioNeeds(false, Set.of(), false, true, Set.of());
+        ScenarioNeeds resources = new ScenarioNeeds(java.util.Set.of(), Set.of(), false, true, Set.of());
         assertThatThrownBy(() -> RealEnvironmentScenarios.requireRealTarget(target(null, null, "dev"), resources))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("idm.test.soap.resource-url")
@@ -768,5 +772,95 @@ class RealEnvironmentGuardsTest {
         RealEnvironmentScenarios.OAUTH_CLIENT_PLACEHOLDERS.forEach((name, placeholder) -> assertThat(yaml)
                 .contains("${" + prefixes.get(name) + "_CLIENT_ID:" + placeholder.username() + "}")
                 .contains("${" + prefixes.get(name) + "_CLIENT_SECRET:" + placeholder.password() + "}"));
+    }
+
+    /** A dev target with the old block pointing at a real directory, plus the given named-directory properties. */
+    private static MockEnvironment directoriesTarget(String... keyValues) {
+        MockEnvironment environment = target(REAL_LDAP, null, "dev");
+        for (int i = 0; i < keyValues.length; i += 2) {
+            environment.setProperty(keyValues[i], keyValues[i + 1]);
+        }
+        return environment;
+    }
+
+    @Test
+    @DisplayName("A configured named directory passes")
+    void testNamedDirectoryPasses() {
+        assertThatCode(() -> RealEnvironmentScenarios.requireRealTarget(
+                directoriesTarget("idm.test.directories.ad.url", "ldaps://dc01.example.org:636"), AD_ONLY))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("A named directory without a url, or with the placeholder, is refused")
+    void testNamedDirectoryUrl() {
+        assertThatThrownBy(() -> RealEnvironmentScenarios.requireRealTarget(
+                directoriesTarget("idm.test.directories.ad.base-dn", "dc=corp"), AD_ONLY))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("idm.test.directories.ad.url")
+                .hasMessageContaining("IDM_TEST_DIRECTORIES_AD_URL");
+        assertThatThrownBy(() -> RealEnvironmentScenarios.requireRealTarget(
+                directoriesTarget("idm.test.directories.ad.url", "ldap://localhost:389"), AD_ONLY))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("idm.test.directories.ad.url")
+                .hasMessageContaining("placeholder");
+    }
+
+    @Test
+    @DisplayName("A named directory's placeholder bind DN or password is refused")
+    void testNamedDirectoryCredentials() {
+        assertThatThrownBy(() -> RealEnvironmentScenarios.requireRealTarget(directoriesTarget(
+                "idm.test.directories.ad.url", "ldaps://dc01.example.org:636",
+                "idm.test.directories.ad.user-dn", "cn=admin,dc=company,dc=com"), AD_ONLY))
+                .hasMessageContaining("idm.test.directories.ad.user-dn");
+        assertThatThrownBy(() -> RealEnvironmentScenarios.requireRealTarget(directoriesTarget(
+                "idm.test.directories.ad.url", "ldaps://dc01.example.org:636",
+                "idm.test.directories.ad.password", "secret"), AD_ONLY))
+                .hasMessageContaining("idm.test.directories.ad.password");
+    }
+
+    @Test
+    @DisplayName("A directory the scenarios use but nobody configured is refused")
+    void testUnconfiguredDirectory() {
+        assertThatThrownBy(() -> RealEnvironmentScenarios.requireRealTarget(directoriesTarget(
+                "idm.test.directories.ad.url", "ldaps://dc01.example.org:636"),
+                new ScenarioNeeds(Set.of("adx"), Set.of(), false, false, Set.of())))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("Scenarios use directory 'adx', which is not configured. Configured directories: [ad, default]");
+    }
+
+    @Test
+    @DisplayName("A step without directory: is refused when there is no default")
+    void testNoDefaultDirectory() {
+        MockEnvironment environment = target(null, null, "dev");
+        environment.setProperty("idm.test.directories.ad.url", "ldaps://dc01.example.org:636");
+        environment.setProperty("idm.test.directories.edir.url", "ldaps://edir.example.org:636");
+
+        assertThatThrownBy(() -> RealEnvironmentScenarios.requireRealTarget(environment, DEFAULT_ONLY))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("Scenarios use an ldap.* step without directory:, and there is no default directory."
+                        + " Set idm.test.default-directory, or name a directory on each step."
+                        + " Configured directories: [ad, edir]");
+    }
+
+    @Test
+    @DisplayName("default-directory decides what a step without directory: is checked against")
+    void testDefaultDirectorySetting() {
+        assertThatThrownBy(() -> RealEnvironmentScenarios.requireRealTarget(directoriesTarget(
+                "idm.test.default-directory", "ad",
+                "idm.test.directories.ad.url", "ldap://localhost:389"), DEFAULT_ONLY))
+                .hasMessageContaining("idm.test.directories.ad.url");
+        assertThatThrownBy(() -> RealEnvironmentScenarios.requireRealTarget(directoriesTarget(
+                "idm.test.default-directory", "nope",
+                "idm.test.directories.ad.url", "ldaps://dc01.example.org:636"), DEFAULT_ONLY))
+                .hasMessageContaining("idm.test.default-directory is 'nope'");
+    }
+
+    @Test
+    @DisplayName("Directories no scenario uses are not checked")
+    void testUnusedDirectoryNotChecked() {
+        assertThatCode(() -> RealEnvironmentScenarios.requireRealTarget(
+                directoriesTarget("idm.test.directories.ad.url", "ldap://localhost:389"), DEFAULT_ONLY))
+                .doesNotThrowAnyException();
     }
 }

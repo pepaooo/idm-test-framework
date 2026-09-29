@@ -10,22 +10,27 @@ import java.util.Set;
 import java.util.TreeSet;
 
 /**
- * What the selected scenarios use: LDAP, named databases, the Role and Resource services, and
+ * What the selected scenarios use: LDAP directories (by name; {@link #DEFAULT_DIRECTORY} for a
+ * step that names none), named databases, the Role and Resource services, and
  * REST targets. The real-environment guards check, and the run contacts, only these. Read
  * from every scenario's steps and cleanup. A name containing {@code ${} is only known at run
  * time and is skipped; a null name is skipped; anything else is converted with
  * {@code String.valueOf}, as the steps themselves do.
  */
-record ScenarioNeeds(boolean ldap, Set<String> databases, boolean roles, boolean resources,
+record ScenarioNeeds(Set<String> directories, Set<String> databases, boolean roles, boolean resources,
                      Set<String> restTargets) {
 
+    /** Stands for "the default directory" in {@link #directories()}: an ldap.* step that names none. */
+    static final String DEFAULT_DIRECTORY = "<default>";
+
     ScenarioNeeds {
+        directories = Collections.unmodifiableSortedSet(new TreeSet<>(directories));
         databases = Collections.unmodifiableSortedSet(new TreeSet<>(databases));
         restTargets = Collections.unmodifiableSortedSet(new TreeSet<>(restTargets));
     }
 
     static ScenarioNeeds of(List<Scenario> scenarios) {
-        boolean ldap = false;
+        Set<String> directories = new TreeSet<>();
         boolean roles = false;
         boolean resources = false;
         Set<String> databases = new TreeSet<>();
@@ -36,7 +41,12 @@ record ScenarioNeeds(boolean ldap, Set<String> databases, boolean roles, boolean
             for (StepSpec step : entries) {
                 String type = step.type();
                 if (type.startsWith("ldap.")) {
-                    ldap = true;
+                    Object directory = step.params().get("directory");
+                    if (directory == null) {
+                        directories.add(DEFAULT_DIRECTORY);
+                    } else {
+                        addLiteral(directories, directory);
+                    }
                 } else if (type.startsWith("db.")) {
                     addLiteral(databases, step.params().get("database"));
                 } else if (type.startsWith("roles.")) {
@@ -48,7 +58,12 @@ record ScenarioNeeds(boolean ldap, Set<String> databases, boolean roles, boolean
                 }
             }
         }
-        return new ScenarioNeeds(ldap, databases, roles, resources, targets);
+        return new ScenarioNeeds(directories, databases, roles, resources, targets);
+    }
+
+    /** Whether any ldap.* step is used. */
+    boolean ldap() {
+        return !directories.isEmpty();
     }
 
     /** Whether any SOAP service is used, which is when guard 5 checks SOAP credentials. */

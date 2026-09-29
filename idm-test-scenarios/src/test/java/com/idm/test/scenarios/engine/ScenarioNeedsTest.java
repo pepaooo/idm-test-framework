@@ -29,7 +29,7 @@ class ScenarioNeedsTest {
                   - ldap.delete:
                       dn: cn=x,ou=users
                 """);
-        assertThat(ldap).isEqualTo(new ScenarioNeeds(true, java.util.Set.of(), false, false, java.util.Set.of()));
+        assertThat(ldap).isEqualTo(new ScenarioNeeds(java.util.Set.of(ScenarioNeeds.DEFAULT_DIRECTORY), java.util.Set.of(), false, false, java.util.Set.of()));
 
         ScenarioNeeds all = needs("""
                 name: all
@@ -118,7 +118,7 @@ class ScenarioNeedsTest {
                 steps:
                   - set:
                       x: 1
-                """)).isEqualTo(new ScenarioNeeds(false, java.util.Set.of(), false, false, java.util.Set.of()));
+                """)).isEqualTo(new ScenarioNeeds(java.util.Set.of(), java.util.Set.of(), false, false, java.util.Set.of()));
     }
 
     @Test
@@ -133,5 +133,31 @@ class ScenarioNeedsTest {
                       path: /x
                       check: "js:{ true }"
                 """).restTargets()).containsExactly("roleservice");
+    }
+
+    @Test
+    @DisplayName("ldap.* steps record their directory, or the default marker when they name none; ${…} names are skipped")
+    void testDirectories() {
+        ScenarioNeeds needs = needs("""
+                name: d
+                steps:
+                  - ldap.create:
+                      directory: ad
+                      dn: cn=x,ou=users
+                  - ldap.verify:
+                      dn: cn=x,ou=users
+                      exists: true
+                  - ldap.verify:
+                      directory: "${dir}"
+                      dn: cn=x,ou=users
+                      exists: true
+                cleanup:
+                  - ldap.delete:
+                      directory: edir
+                      dn: cn=x,ou=users
+                """);
+
+        assertThat(needs.directories()).containsExactly(ScenarioNeeds.DEFAULT_DIRECTORY, "ad", "edir");
+        assertThat(needs.ldap()).isTrue();
     }
 }

@@ -130,7 +130,7 @@ because the scenarios module's schema initializer recreates its schema there, so
 
 | Your scenarios use | You must configure (and not leave as the placeholder) |
 |---|---|
-| `ldap.*` | `idm.test.ldap.url` (`IDM_TEST_LDAP_URL`), `user-dn` (`IDM_TEST_LDAP_USERDN`) and `password` (`IDM_TEST_LDAP_PASSWORD`), each refused while still `application.yml`'s placeholder; a blank bind DN or password is allowed (anonymous bind) |
+| `ldap.*` | For each directory the steps use (a step without `directory:` uses the default directory): the older block's `idm.test.ldap.url` (`IDM_TEST_LDAP_URL`), `user-dn` (`IDM_TEST_LDAP_USERDN`) and `password` (`IDM_TEST_LDAP_PASSWORD`) for the directory `default`, or `idm.test.directories.<name>.url` (`IDM_TEST_DIRECTORIES_<NAME>_URL`), `user-dn` and `password` for a named one; each refused while still the placeholder (`ldap://localhost:389`, `cn=admin,dc=company,dc=com`, `secret`); a blank bind DN or password is allowed (anonymous bind). A directory that isn't configured, or a step without `directory:` when there is no default directory, is refused before anything runs |
 | `db.*` with `database: <name>` | `idm.test.databases.<name>.jdbc-url`, `username`, `password`, none left as the placeholder; an in-memory URL (`jdbc:h2:mem:`, `jdbc:hsqldb:mem:`, `jdbc:derby:memory:`) is refused, since nothing provisioned by another system can be in it |
 | `roles.*` | `idm.test.soap.url` (`IDM_TEST_SOAP_URL`) and SOAP credentials |
 | `resources.*` | `idm.test.soap.resource-url` (`IDM_TEST_SOAP_RESOURCEURL`) and SOAP credentials |

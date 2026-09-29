@@ -34,7 +34,7 @@ YAML and compiled test classes are inputs. JSON and Surefire reports are file ou
 
 | Building block | Responsibility | Source |
 |---|---|---|
-| JUnit adapter | Discover/validate files, select them with `-Dscenario`, construct registry, run dynamic tests, write results | [YamlScenarioTest](../../idm-test-scenarios/src/test/java/com/idm/test/scenarios/engine/YamlScenarioTest.java) |
+| JUnit adapter | Discover/validate files, select them with `-Dscenario`, construct registry, run dynamic tests, write results | [YamlScenarioTest](../../idm-test-scenarios/src/test/java/com/idm/test/scenarios/engine/YamlScenarioTest.java) (embedded run), [ScenarioSupport](../../idm-test-scenarios/src/test/java/com/idm/test/scenarios/engine/ScenarioSupport.java) (shared helpers) |
 | Other runners | The same adapter against containers, or against a real lab behind five guards | [ContainerScenarios](../../idm-test-scenarios/src/test/java/com/idm/test/scenarios/engine/ContainerScenarios.java), [RealEnvironmentScenarios](../../idm-test-scenarios/src/test/java/com/idm/test/scenarios/engine/RealEnvironmentScenarios.java) |
 | Loader | Parse YAML into scenario records | [ScenarioLoader](../../idm-test-engine/src/main/java/com/idm/test/engine/ScenarioLoader.java) |
 | Validator | Check known steps, parameters, references and expression syntax | [ScenarioValidator](../../idm-test-engine/src/main/java/com/idm/test/engine/ScenarioValidator.java) |

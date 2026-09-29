@@ -13,7 +13,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * selects nothing must fail, never pass having run zero scenarios, so most of these tests
  * are about the refusals.
  * <p>
- * Tests {@link YamlScenarioTest#select} directly with the pattern as an argument, so nothing
+ * Tests {@link ScenarioSupport#select} directly with the pattern as an argument, so nothing
  * here sets a system property that could leak into other tests.
  */
 @DisplayName("Scenario filter (-Dscenario)")

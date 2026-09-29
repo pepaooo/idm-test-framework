@@ -11,7 +11,6 @@ import org.springframework.ldap.core.LdapTemplate;
 import org.springframework.ldap.core.support.AbstractContextMapper;
 import org.springframework.ldap.query.LdapQuery;
 import org.springframework.ldap.support.LdapNameBuilder;
-import org.springframework.stereotype.Component;
 
 import javax.naming.Name;
 import javax.naming.NamingEnumeration;
@@ -20,7 +19,10 @@ import javax.naming.directory.Attribute;
 import javax.naming.directory.Attributes;
 import javax.naming.directory.BasicAttribute;
 import javax.naming.directory.BasicAttributes;
+import java.util.Collection;
 import java.util.HashMap;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -35,8 +37,9 @@ import static org.springframework.ldap.query.LdapQueryBuilder.query;
  * - Verify attributes match expected values
  * - Search LDAP directory
  * - Check if entry exists
+ * <p>
+ * Built per directory by {@code LdapConfiguration}; see {@link LdapDirectories}.
  */
-@Component
 public class EdirectoryConnector {
 
     private static final Logger log = LoggerFactory.getLogger(EdirectoryConnector.class);
@@ -45,6 +48,35 @@ public class EdirectoryConnector {
 
     public EdirectoryConnector(LdapTemplate ldapTemplate) {
         this.ldapTemplate = ldapTemplate;
+    }
+
+    private static final String[] DEFAULT_OBJECT_CLASSES = {"top", "person", "organizationalPerson", "inetOrgPerson"};
+
+    /** The object classes to write: the author's (one or a list), else the inetOrgPerson chain. */
+    static String[] objectClasses(Object requested) {
+        if (requested == null) {
+            return DEFAULT_OBJECT_CLASSES.clone();
+        }
+        List<String> classes = requested instanceof Collection<?> values
+                ? values.stream().map(String::valueOf).toList()
+                : List.of(String.valueOf(requested));
+        if (classes.isEmpty() || classes.stream().anyMatch(String::isBlank)) {
+            throw new IllegalArgumentException("objectClass must name at least one object class, with no blank values");
+        }
+        return classes.toArray(String[]::new);
+    }
+
+    /** Removes every entry whose name equals {@code name} ignoring case (LDAP names are case-insensitive), returning the last value. */
+    private static Object removeIgnoringCase(Map<String, Object> attributes, String name) {
+        Object found = null;
+        for (Iterator<Map.Entry<String, Object>> it = attributes.entrySet().iterator(); it.hasNext(); ) {
+            Map.Entry<String, Object> entry = it.next();
+            if (entry.getKey().equalsIgnoreCase(name)) {
+                found = entry.getValue();
+                it.remove();
+            }
+        }
+        return found;
     }
 
     /**
@@ -71,8 +103,9 @@ public class EdirectoryConnector {
                 context.setAttributeValue("sn", user.getSn());
             }
 
-            // Set object classes
-            context.setAttributeValues("objectClass", new String[]{"top", "person", "organizationalPerson", "inetOrgPerson"});
+            // Object classes: the author's, when the attributes name them, else the inetOrgPerson chain
+            Map<String, Object> custom = new LinkedHashMap<>(user.getCustomAttributes());
+            context.setAttributeValues("objectClass", objectClasses(removeIgnoringCase(custom, "objectClass")));
 
             // Set optional attributes
             setAttributeIfNotNull(context, "givenName", user.getGivenName());
@@ -85,7 +118,7 @@ public class EdirectoryConnector {
             setAttributeIfNotNull(context, "description", user.getDescription());
 
             // Set custom attributes
-            for (Map.Entry<String, Object> entry : user.getCustomAttributes().entrySet()) {
+            for (Map.Entry<String, Object> entry : custom.entrySet()) {
                 context.setAttributeValue(entry.getKey(), entry.getValue());
             }
 

@@ -77,6 +77,20 @@ public abstract class BaseIntegrationTest {
      */
     private static final EmbeddedLdapServer LDAP_SERVER = startLdapServer();
 
+    private static final String SECOND_BASE_DN = "dc=second,dc=com";
+    private static final String SECOND_BIND_DN = "cn=admin,dc=second,dc=com";
+
+    /** A second in-memory directory, standard schema, configured as idm.test.directories.second. */
+    private static final EmbeddedLdapServer SECOND_LDAP_SERVER = startSecondLdapServer();
+
+    private static EmbeddedLdapServer startSecondLdapServer() {
+        try {
+            return EmbeddedLdapServer.start(SECOND_BASE_DN, SECOND_BIND_DN, LDAP_BIND_PASSWORD, 0, "ldap-second.ldif");
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to start the second embedded LDAP server", e);
+        }
+    }
+
     /**
      * WireMock server for SOAP mocking, on a dynamically allocated port.
      */
@@ -113,6 +127,10 @@ public abstract class BaseIntegrationTest {
         registry.add("idm.test.ldap.base-dn", () -> LDAP_BASE_DN);
         registry.add("idm.test.ldap.user-dn", () -> LDAP_BIND_DN);
         registry.add("idm.test.ldap.password", () -> LDAP_BIND_PASSWORD);
+        registry.add("idm.test.directories.second.url", SECOND_LDAP_SERVER::getUrl);
+        registry.add("idm.test.directories.second.base-dn", () -> SECOND_BASE_DN);
+        registry.add("idm.test.directories.second.user-dn", () -> SECOND_BIND_DN);
+        registry.add("idm.test.directories.second.password", () -> LDAP_BIND_PASSWORD);
         registry.add("idm.test.soap.url",
                 () -> "http://localhost:" + WIREMOCK_SERVER.port() + "/IDMProv/role/service");
         // ResourceServiceConnector is only registered as a bean when this property is set

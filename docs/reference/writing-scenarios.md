@@ -132,8 +132,32 @@ misconfigured or rejected credentials). Those end the wait at once, and the mess
 
 ### LDAP
 
-LDAP DNs are **relative to the configured base DN** (`idm.test.ldap.base-dn`). With the base
+LDAP DNs are **relative to the directory's base DN** (`base-dn`). With the base
 `dc=test,dc=com`, write `cn=jdoe,ou=users`, not the full DN.
+
+**Several directories.** A lab can configure several directories, for example your eDirectory
+and an Active Directory that IdM provisions into, each under `idm.test.directories.<name>`. An
+`ldap.*` step works in the directory its `directory:` names, or in the **default directory**
+when it names none:
+
+- `idm.test.default-directory`, when set;
+- otherwise the only directory, when there is just one;
+- otherwise `default`, which is what the older `idm.test.ldap` block configures.
+
+A `directory:` that isn't configured, or a step without one when there is no default, fails
+at once without retrying (`ldap.verify: unknown directory 'adx'. Configured directories: [ad,
+default]`), and the real-environment runner refuses such a scenario before running anything.
+With more than one directory configured, step messages name the directory
+(`created cn=jdoe,ou=users in directory 'ad'`).
+
+```yaml
+- ldap.verify:
+    directory: ad
+    dn: "CN=${user.firstName} ${user.lastName},OU=Users"
+    expect:
+      mail: ${user.email}
+    wait: { timeout: 5m, poll: 10s }
+```
 
 #### `ldap.create`
 
@@ -147,6 +171,24 @@ LDAP DNs are **relative to the configured base DN** (`idm.test.ldap.base-dn`). W
 
 **Captures:** the DN you gave, as text. Capture it and reference it in `cleanup:` to delete the
 entry afterwards.
+
+**Object classes:** without an `objectClass` attribute the entry is created as
+`top, person, organizationalPerson, inetOrgPerson`. Give `objectClass` (one value or a list) to
+use other classes, for example for an Active Directory user:
+
+```yaml
+- ldap.create:
+    directory: ad
+    dn: "CN=${user.firstName} ${user.lastName},OU=Users"
+    attributes:
+      objectClass: [top, person, organizationalPerson, user]
+      sAMAccountName: ${user.userId}
+      givenName: ${user.firstName}
+      sn: ${user.lastName}
+```
+
+Active Directory creates such an account disabled and without a password; setting passwords
+and enabling accounts is not supported yet (ITF-33).
 
 **Fails when:** the directory refuses the entry, for example because it already exists, violates
 the schema or the bind lacks rights.
@@ -684,7 +726,9 @@ reference; this section says where to look.
   [REST API configuration](configuration.md#rest-api-configuration).
 - **Databases:** `database: sap` means `idm.test.databases.sap`. See
   [database configuration](configuration.md#database-configuration).
-- **LDAP:** `idm.test.ldap.*`. LDAP steps take DNs relative to `idm.test.ldap.base-dn`.
+- **LDAP:** `directory: ad` means `idm.test.directories.ad`; without `directory:`, the default
+  directory (the older `idm.test.ldap.*` block is the directory `default`). LDAP steps take DNs
+  relative to that directory's `base-dn`. See [LDAP configuration](configuration.md#ldap-configuration).
 - **SOAP:** `idm.test.soap.url` (roles) and `idm.test.soap.resource-url` (resources), with the SOAP
   username and password. SOAP steps take full DNs.
 - **TLS** (`ldaps://`, `https://`): the servers' CA must be in the test JVM's truststore. See
@@ -702,7 +746,7 @@ waiting. Each message names the file and the step. Real examples:
 |---|---|
 | unknown step type | `demo.yaml, step 1 (ldap.creat): unknown step type. Available: [db.execute, db.verify, http.request, …]` |
 | missing required parameter | `demo.yaml, step 1 (ldap.create): missing required parameter 'dn'` |
-| unknown parameter (often a typo) | `demo.yaml, step 1 (ldap.create): unknown parameter 'atributes'. ldap.create accepts: [as, attributes, dn]` |
+| unknown parameter (often a typo) | `demo.yaml, step 1 (ldap.create): unknown parameter 'atributes'. ldap.create accepts: [as, attributes, directory, dn]` |
 | a reference to a name not bound yet, in `${…}` or `js:{…}` | `demo.yaml, step 1 (ldap.create): references '${usr...}' but nothing named 'usr' has been declared or bound at this point` |
 | an expression that doesn't compile | `demo.yaml, step 1 (ldap.create): invalid expression js:{  1 +  }: Unexpected end of file (expression#1)` |
 | unknown generator | `demo.yaml: fixture 'user' uses unknown generator 'random-person'. Available: [random-user]` |

@@ -1,0 +1,8 @@
+# The second embedded directory (dc=second,dc=com), configured as idm.test.directories.second
+# so a scenario can prove it writes to one directory and not another.
+
+dn: ou=users,dc=second,dc=com
+objectClass: organizationalUnit
+objectClass: top
+ou: users
+description: User accounts in the second directory

@@ -94,6 +94,47 @@ idm:
 - `IDM_LDAP_USER_DN` - Admin user DN
 - `IDM_LDAP_PASSWORD` - Admin password
 
+#### Several directories
+
+To check what IdM provisions into more than one directory, name each under
+`idm.test.directories`, with the same keys as `idm.test.ldap`:
+
+```yaml
+idm:
+  test:
+    default-directory: edirectory      # used by ldap.* steps without directory:
+    directories:
+      edirectory:
+        url: ldaps://edir.company.com:636
+        base-dn: o=company
+        user-dn: cn=admin,o=company
+        password: ${EDIR_PASSWORD}
+      ad:
+        url: ldaps://dc01.company.com:636
+        base-dn: dc=corp,dc=company,dc=com
+        user-dn: CN=svc-idmtest,OU=Service,DC=corp,DC=company,DC=com
+        password: ${AD_PASSWORD}
+        pooled: false
+```
+
+- **The `idm.test.ldap` block above is the directory named `default`,** so existing
+  configurations keep working. A `directories.default` entry replaces it (a warning is logged).
+- **The default directory** is `default-directory` when set (it must name a configured
+  directory, or startup fails), otherwise the only directory, otherwise `default`.
+- **The directory `default` always exists** in the scenarios module, because the shipped
+  `application.yml` always defines the `idm.test.ldap` block. Once you add named directories,
+  set `default-directory` unless the old block is the directory your steps (and the Java tier)
+  should use; otherwise steps without `directory:` go to the old block, not to "the only
+  named directory".
+- **Name directories with lower-case letters and digits.** The environment-variable form
+  (`IDM_TEST_DIRECTORIES_<NAME>_URL`) upper-cases the name and drops dashes, so other names
+  cannot be set from environment variables reliably.
+- **Nothing connects at startup:** a directory's connection opens when a step first uses it.
+- **Scenarios choose** with `directory: <name>`; see the
+  [authoring reference](writing-scenarios.md#ldap).
+- **Environment variables** follow Spring's rules, for example
+  `IDM_TEST_DIRECTORIES_AD_URL` and `IDM_TEST_DIRECTORIES_AD_PASSWORD`.
+
 ### Database Configuration
 
 Configure multiple databases for testing provisioning to different systems:

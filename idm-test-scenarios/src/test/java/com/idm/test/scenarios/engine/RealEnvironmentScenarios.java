@@ -2,7 +2,8 @@ package com.idm.test.scenarios.engine;
 
 import com.idm.test.connector.database.client.MultiDatabaseConnector;
 import com.idm.test.connector.database.config.DatabaseProperties;
-import com.idm.test.connector.ldap.client.EdirectoryConnector;
+import com.idm.test.connector.ldap.client.LdapDirectories;
+import com.idm.test.connector.ldap.config.LdapProperties;
 import com.idm.test.connector.rest.client.IdmRestConnector;
 import com.idm.test.connector.rest.client.RestAuthenticator;
 import com.idm.test.connector.rest.config.RestProperties;
@@ -26,6 +27,8 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.autoconfigure.ldap.LdapAutoConfiguration;
+import org.springframework.boot.context.properties.bind.Bindable;
+import org.springframework.boot.context.properties.bind.Binder;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.core.env.Environment;
 
@@ -37,6 +40,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.stream.Stream;
@@ -131,7 +135,7 @@ public class RealEnvironmentScenarios {
     private Environment environment;
 
     @Autowired
-    private EdirectoryConnector edirectoryConnector;
+    private LdapDirectories ldapDirectories;
 
     @Autowired
     private MultiDatabaseConnector databaseConnector;
@@ -183,7 +187,7 @@ public class RealEnvironmentScenarios {
         requireCredentials(needs.restTargets(), needs.soap(), restProperties, soapProperties, environment);
 
         Map<String, StepType> registry = YamlScenarioTest.registry(
-                edirectoryConnector, databaseConnector, roleServiceConnector.getIfAvailable(),
+                ldapDirectories, databaseConnector, roleServiceConnector.getIfAvailable(),
                 resourceServiceConnector.getIfAvailable(), idmRestConnector, restProperties, restAuthenticator);
         ScenarioValidator validator = new ScenarioValidator(registry, FixtureFactory.SUPPORTED_GENERATORS);
         ScenarioEngine engine = new ScenarioEngine(
@@ -225,26 +229,100 @@ public class RealEnvironmentScenarios {
      * Guard 2. Refuses an LDAP or SOAP endpoint that the selected scenarios use but nobody
      * named: the LDAP URL when ldap.* is used, the Role service URL when roles.* is, and a
      * Resource service URL when resources.* is. application.yml has no placeholder for the
-     * resource URL, so there it is only required to be set. For LDAP, the placeholder bind DN
-     * and password are also refused. Endpoints no scenario uses are not checked.
+     * resource URL, so there it is only required to be set. The LDAP part is per directory (see
+     * {@link #requireDirectories}). Endpoints no scenario uses are not checked.
      */
     static void requireEndpoints(Environment environment, ScenarioNeeds needs) {
         if (needs.ldap()) {
-            requireNamed(environment, "idm.test.ldap.url", "IDM_TEST_LDAP_URL", LDAP_URL_PLACEHOLDER);
-            // A blank bind DN or password is anonymous bind, which is legitimate; only the
-            // placeholders are refused. The dev profile overrides the DN but not the password.
-            if (LDAP_USER_DN_PLACEHOLDER.equals(environment.getProperty("idm.test.ldap.user-dn"))) {
-                refusePlaceholder("idm.test.ldap.user-dn");
-            }
-            if (LDAP_PASSWORD_PLACEHOLDER.equals(environment.getProperty("idm.test.ldap.password"))) {
-                refusePlaceholder("idm.test.ldap.password");
-            }
+            requireDirectories(environment, needs.directories());
         }
         if (needs.roles()) {
             requireNamed(environment, "idm.test.soap.url", "IDM_TEST_SOAP_URL", SOAP_URL_PLACEHOLDER);
         }
         if (needs.resources()) {
             requireNamed(environment, "idm.test.soap.resource-url", "IDM_TEST_SOAP_RESOURCEURL", null);
+        }
+    }
+
+    /**
+     * Guard 2 for LDAP, per directory the selected scenarios use. The directory named
+     * {@code default} that the older {@code idm.test.ldap} block configures keeps its original
+     * checks; a named directory ({@code idm.test.directories.<name>}) must have a url that is not
+     * the placeholder, and neither the placeholder bind DN nor password. A step without
+     * {@code directory:} is checked against the default directory. Directories no scenario uses
+     * are not checked.
+     */
+    static void requireDirectories(Environment environment, Set<String> used) {
+        Map<String, LdapProperties> named = Binder.get(environment)
+                .bind("idm.test.directories", Bindable.mapOf(String.class, LdapProperties.class))
+                .orElse(Map.of());
+        String legacyUrl = environment.getProperty("idm.test.ldap.url");
+        Set<String> names = new TreeSet<>(named.keySet());
+        // With no named directories, the old block is the only candidate, and its own checks
+        // explain an unset URL better than "not configured" would.
+        if (named.isEmpty() || (legacyUrl != null && !legacyUrl.isBlank())) {
+            names.add(LdapDirectories.DEFAULT);
+        }
+        Optional<String> defaultName =
+                LdapDirectories.resolveDefault(environment.getProperty("idm.test.default-directory"), names);
+
+        for (String requested : new TreeSet<>(used)) {
+            String name = requested;
+            if (ScenarioNeeds.DEFAULT_DIRECTORY.equals(requested)) {
+                name = defaultName.orElseThrow(() -> new IllegalStateException(
+                        "Scenarios use an ldap.* step without directory:, and there is no default directory."
+                                + " Set idm.test.default-directory, or name a directory on each step."
+                                + " Configured directories: " + names));
+            }
+            if (!names.contains(name)) {
+                throw new IllegalStateException("Scenarios use directory '" + name
+                        + "', which is not configured. Configured directories: " + names);
+            }
+            if (LdapDirectories.DEFAULT.equals(name) && !named.containsKey(LdapDirectories.DEFAULT)) {
+                try {
+                    requireLegacyDirectory(environment);
+                } catch (IllegalStateException e) {
+                    String configuredDefault = environment.getProperty("idm.test.default-directory");
+                    boolean fellBackToOldBlock = ScenarioNeeds.DEFAULT_DIRECTORY.equals(requested)
+                            && !named.isEmpty()
+                            && (configuredDefault == null || configuredDefault.isBlank());
+                    if (!fellBackToOldBlock) {
+                        throw e;
+                    }
+                    throw new IllegalStateException(e.getMessage()
+                            + " Steps without directory: use the directory 'default' (the idm.test.ldap block);"
+                            + " to use one of " + new TreeSet<>(named.keySet())
+                            + " instead, set idm.test.default-directory.", e);
+                }
+            } else {
+                requireNamedDirectory(name, named.get(name));
+            }
+        }
+    }
+
+    /** The older idm.test.ldap block's checks, unchanged. */
+    private static void requireLegacyDirectory(Environment environment) {
+        requireNamed(environment, "idm.test.ldap.url", "IDM_TEST_LDAP_URL", LDAP_URL_PLACEHOLDER);
+        // A blank bind DN or password is anonymous bind, which is legitimate; only the
+        // placeholders are refused. The dev profile overrides the DN but not the password.
+        if (LDAP_USER_DN_PLACEHOLDER.equals(environment.getProperty("idm.test.ldap.user-dn"))) {
+            refusePlaceholder("idm.test.ldap.user-dn");
+        }
+        if (LDAP_PASSWORD_PLACEHOLDER.equals(environment.getProperty("idm.test.ldap.password"))) {
+            refusePlaceholder("idm.test.ldap.password");
+        }
+    }
+
+    private static void requireNamedDirectory(String name, LdapProperties directory) {
+        String prefix = "idm.test.directories." + name + ".";
+        requireNamedValue(prefix + "url", directory.getUrl(),
+                "IDM_TEST_DIRECTORIES_" + name.toUpperCase(Locale.ROOT).replace("-", "") + "_URL",
+                LDAP_URL_PLACEHOLDER);
+        if (LDAP_USER_DN_PLACEHOLDER.equals(directory.getUserDn())) {
+            refusePlaceholder(prefix + "user-dn");
+        }
+        if (LDAP_PASSWORD_PLACEHOLDER.equals(directory.getPassword())) {
+            refusePlaceholder(prefix + "password");
         }
     }
 

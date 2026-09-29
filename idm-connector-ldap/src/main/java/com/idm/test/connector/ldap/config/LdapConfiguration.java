@@ -1,5 +1,7 @@
 package com.idm.test.connector.ldap.config;
 
+import com.idm.test.connector.ldap.client.EdirectoryConnector;
+import com.idm.test.connector.ldap.client.LdapDirectories;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -10,105 +12,101 @@ import org.springframework.ldap.core.support.LdapContextSource;
 import org.springframework.ldap.pool.factory.PoolingContextSource;
 import org.springframework.ldap.pool.validation.DefaultDirContextValidator;
 
+import java.util.Map;
+import java.util.TreeMap;
+import java.util.function.Consumer;
+
 /**
- * Configures Spring LDAP template with connection pooling.
+ * Builds one LdapTemplate and {@link EdirectoryConnector} per configured directory
+ * ({@code idm.test.directories.<name>}, plus the older {@code idm.test.ldap} block as
+ * {@code default}), held in {@link LdapDirectories}. The default directory's template and
+ * connector are also beans, for the Java tier. Nothing connects here: a connection opens when
+ * a directory is first used.
  */
 @Configuration
-@EnableConfigurationProperties(LdapProperties.class)
+@EnableConfigurationProperties({LdapProperties.class, LdapDirectoriesProperties.class})
 public class LdapConfiguration {
 
     private static final Logger log = LoggerFactory.getLogger(LdapConfiguration.class);
 
-    /**
-     * Creates LdapContextSource from configuration properties.
-     *
-     * @param properties LDAP configuration properties
-     * @return configured LdapContextSource
-     */
+    static final String REPLACED_WARNING = "idm.test.directories.default replaces the idm.test.ldap block";
+
     @Bean
-    public LdapContextSource ldapContextSource(LdapProperties properties) {
-        log.info("Configuring LDAP connection: {}", properties.getUrl());
+    public LdapDirectories ldapDirectories(LdapProperties ldapProperties, LdapDirectoriesProperties directoriesProperties) {
+        Map<String, LdapProperties> configs =
+                directoryConfigs(ldapProperties, directoriesProperties.getDirectories(), log::warn);
+        Map<String, LdapTemplate> templates = new TreeMap<>();
+        configs.forEach((name, config) -> templates.put(name, buildTemplate(name, config)));
+        LdapDirectories directories = LdapDirectories.of(templates, directoriesProperties.getDefaultDirectory());
+        log.info("LDAP directories {} (default: {})", directories.names(), directories.defaultName().orElse("none"));
+        return directories;
+    }
+
+    /** The default directory's template, for the Java tier; null (no bean) when there is no default. */
+    @Bean
+    public LdapTemplate ldapTemplate(LdapDirectories ldapDirectories) {
+        return ldapDirectories.defaultName().flatMap(ldapDirectories::template).orElse(null);
+    }
+
+    /** The default directory's connector, for the Java tier; null (no bean) when there is no default. */
+    @Bean
+    public EdirectoryConnector edirectoryConnector(LdapDirectories ldapDirectories) {
+        return ldapDirectories.defaultName().flatMap(ldapDirectories::connector).orElse(null);
+    }
+
+    /**
+     * The named directories, plus the older {@code idm.test.ldap} block as {@code default} when
+     * its url is set. A named {@code default} replaces the older block, with a warning.
+     */
+    static Map<String, LdapProperties> directoryConfigs(
+            LdapProperties legacy, Map<String, LdapProperties> directories, Consumer<String> warn) {
+        Map<String, LdapProperties> configs = new TreeMap<>(directories);
+        if (legacy != null && legacy.getUrl() != null && !legacy.getUrl().isBlank()) {
+            if (configs.containsKey(LdapDirectories.DEFAULT)) {
+                warn.accept(REPLACED_WARNING);
+            } else {
+                configs.put(LdapDirectories.DEFAULT, legacy);
+            }
+        }
+        return configs;
+    }
+
+    /** Context source, then an optional pool, then the template: the chain one directory always used. */
+    static LdapTemplate buildTemplate(String name, LdapProperties config) {
+        if (config.getUrl() == null || config.getUrl().isBlank()) {
+            throw new IllegalStateException("idm.test.directories." + name + ".url is not set");
+        }
+        log.info("Configuring LDAP directory '{}': {}", name, config.getUrl());
 
         LdapContextSource contextSource = new LdapContextSource();
-        contextSource.setUrl(properties.getUrl());
-        contextSource.setBase(properties.getBaseDn());
-        contextSource.setUserDn(properties.getUserDn());
-        contextSource.setPassword(properties.getPassword());
-
-        // Additional settings for stability
-        contextSource.setPooled(false); // Disable built-in pooling, we'll use PoolingContextSource
+        contextSource.setUrl(config.getUrl());
+        contextSource.setBase(config.getBaseDn());
+        contextSource.setUserDn(config.getUserDn());
+        contextSource.setPassword(config.getPassword());
+        contextSource.setPooled(false); // PoolingContextSource below does the pooling
         contextSource.setReferral("follow");
-
         try {
             contextSource.afterPropertiesSet();
-            log.info("LDAP context source configured successfully");
         } catch (Exception e) {
-            log.error("Failed to configure LDAP context source: {}", e.getMessage());
-            throw new RuntimeException("Failed to configure LDAP", e);
+            throw new IllegalStateException("Failed to configure LDAP directory '" + name + "'", e);
         }
 
-        return contextSource;
-    }
-
-    /**
-     * Creates pooling context source wrapper around LdapContextSource.
-     *
-     * @param ldapContextSource the LDAP context source
-     * @param properties LDAP configuration properties
-     * @return pooled context source
-     */
-    @Bean
-    public PoolingContextSource poolingContextSource(
-            LdapContextSource ldapContextSource,
-            LdapProperties properties) {
-
-        if (!properties.isPooled()) {
-            log.info("LDAP connection pooling is disabled");
-            return null;
-        }
-
-        log.info("Configuring LDAP connection pool (min={}, max={})",
-                properties.getMinIdle(), properties.getMaxActive());
-
-        PoolingContextSource poolingContextSource = new PoolingContextSource();
-        poolingContextSource.setContextSource(ldapContextSource);
-        poolingContextSource.setDirContextValidator(new DefaultDirContextValidator());
-        poolingContextSource.setTestOnBorrow(true);
-        poolingContextSource.setTestWhileIdle(true);
-        poolingContextSource.setMinIdle(properties.getMinIdle());
-        poolingContextSource.setMaxActive(properties.getMaxActive());
-        poolingContextSource.setMaxTotal(properties.getMaxTotal());
-        poolingContextSource.setMaxWait(properties.getMaxWait());
-
-        return poolingContextSource;
-    }
-
-    /**
-     * Creates LdapTemplate bean.
-     * Uses pooled context source if available, otherwise uses direct context source.
-     *
-     * @param ldapContextSource direct LDAP context source
-     * @param poolingContextSource pooled context source (may be null)
-     * @return configured LdapTemplate
-     */
-    @Bean
-    public LdapTemplate ldapTemplate(
-            LdapContextSource ldapContextSource,
-            PoolingContextSource poolingContextSource) {
-
-        LdapTemplate ldapTemplate;
-
-        if (poolingContextSource != null) {
-            log.info("Creating LdapTemplate with connection pooling");
-            ldapTemplate = new LdapTemplate(poolingContextSource);
+        LdapTemplate template;
+        if (config.isPooled()) {
+            PoolingContextSource pool = new PoolingContextSource();
+            pool.setContextSource(contextSource);
+            pool.setDirContextValidator(new DefaultDirContextValidator());
+            pool.setTestOnBorrow(true);
+            pool.setTestWhileIdle(true);
+            pool.setMinIdle(config.getMinIdle());
+            pool.setMaxActive(config.getMaxActive());
+            pool.setMaxTotal(config.getMaxTotal());
+            pool.setMaxWait(config.getMaxWait());
+            template = new LdapTemplate(pool);
         } else {
-            log.info("Creating LdapTemplate without connection pooling");
-            ldapTemplate = new LdapTemplate(ldapContextSource);
+            template = new LdapTemplate(contextSource);
         }
-
-        ldapTemplate.setIgnorePartialResultException(true);
-
-        log.info("LdapTemplate configured successfully");
-        return ldapTemplate;
+        template.setIgnorePartialResultException(true);
+        return template;
     }
 }

@@ -7,9 +7,12 @@ import com.idm.test.core.model.OperationResult;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.ldap.core.AttributesMapper;
 import org.springframework.ldap.core.LdapTemplate;
 import org.springframework.test.context.TestPropertySource;
 
+import javax.naming.NamingEnumeration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -21,8 +24,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @SpringBootTest(classes = {
     com.idm.test.connector.ldap.config.EmbeddedLdapServerConfig.class,
-    LdapConfiguration.class,
-    EdirectoryConnector.class
+    LdapConfiguration.class
 })
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class EdirectoryConnectorTest {
@@ -454,5 +456,29 @@ class EdirectoryConnectorTest {
         user.setTelephoneNumber("555-0001");
         user.setTitle("Software Engineer");
         return user;
+    }
+
+    @Test
+    @Order(100)
+    @DisplayName("create writes the objectClass given in the attributes instead of the inetOrgPerson default")
+    void testCreateWithCustomObjectClass() {
+        LdapUser user = new LdapUser();
+        user.setDn(TEST_USER_DN);
+        user.setCn(TEST_USER_CN);
+        user.setSn("Doe");
+        user.addCustomAttribute("objectClass", List.of("top", "person", "organizationalPerson"));
+
+        OperationResult<LdapUser> result = connector.create(user);
+
+        assertThat(result.isSuccess()).as(result.getMessage()).isTrue();
+        List<String> classes = ldapTemplate.lookup(TEST_USER_DN, (AttributesMapper<List<String>>) attributes -> {
+            List<String> values = new ArrayList<>();
+            NamingEnumeration<?> all = attributes.get("objectClass").getAll();
+            while (all.hasMore()) {
+                values.add(String.valueOf(all.next()));
+            }
+            return values;
+        });
+        assertThat(classes).containsExactlyInAnyOrder("top", "person", "organizationalPerson");
     }
 }

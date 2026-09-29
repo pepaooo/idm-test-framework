@@ -1,0 +1,33 @@
+name: One scenario, two directories
+description: >
+  Creates an entry in the second directory with its own object classes, checks it is there
+  and not in the default directory, and deletes it.
+
+fixtures:
+  user:
+    generate: random-user
+
+steps:
+  - ldap.create:
+      directory: second
+      dn: "cn=${user.userId},ou=users"
+      as: createdDn
+      attributes:
+        objectClass: [top, person, organizationalPerson]
+        cn: "${user.userId}"
+        sn: "${user.lastName}"
+
+  - ldap.verify:
+      directory: second
+      dn: "cn=${user.userId},ou=users"
+      expect:
+        sn: "${user.lastName}"
+
+  - ldap.verify:
+      dn: "cn=${user.userId},ou=users"
+      exists: false
+
+cleanup:
+  - ldap.delete:
+      directory: second
+      dn: "${createdDn}"

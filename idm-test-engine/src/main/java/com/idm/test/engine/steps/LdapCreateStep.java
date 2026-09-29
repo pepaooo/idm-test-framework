@@ -1,6 +1,7 @@
 package com.idm.test.engine.steps;
 
 import com.idm.test.connector.ldap.client.EdirectoryConnector;
+import com.idm.test.connector.ldap.client.LdapDirectories;
 import com.idm.test.connector.ldap.model.LdapUser;
 import com.idm.test.core.model.OperationResult;
 import com.idm.test.engine.spi.StepOutcome;
@@ -17,10 +18,10 @@ import java.util.Set;
  */
 public final class LdapCreateStep implements StepType {
 
-    private final EdirectoryConnector connector;
+    private final LdapDirectories directories;
 
-    public LdapCreateStep(EdirectoryConnector connector) {
-        this.connector = connector;
+    public LdapCreateStep(LdapDirectories directories) {
+        this.directories = directories;
     }
 
     @Override
@@ -35,7 +36,7 @@ public final class LdapCreateStep implements StepType {
 
     @Override
     public Set<String> acceptedParams() {
-        return Set.of("dn", "attributes");
+        return Set.of("dn", "attributes", "directory");
     }
 
     @Override
@@ -44,6 +45,12 @@ public final class LdapCreateStep implements StepType {
         // captureRequested is ignored: the created DN is always cheap to return, so there is
         // no extra work to skip when nobody asked to capture it.
         String dn = String.valueOf(params.get("dn"));
+        LdapTarget target = LdapTarget.of("ldap.create", params, directories);
+        if (target.isFailure()) {
+            return target.failure();
+        }
+        EdirectoryConnector connector = target.connector();
+        String where = target.at(dn);
         Map<String, Object> attributes =
                 (Map<String, Object>) params.getOrDefault("attributes", Map.of());
 
@@ -51,10 +58,10 @@ public final class LdapCreateStep implements StepType {
         OperationResult<LdapUser> result = connector.create(user);
 
         if (!result.isSuccess()) {
-            return StepOutcome.failure("ldap.create failed for " + dn + ": " + result.getMessage());
+            return StepOutcome.failure("ldap.create failed for " + where + ": " + result.getMessage());
         }
 
-        return StepOutcome.success("created " + dn, dn);
+        return StepOutcome.success("created " + where, dn);
     }
 
     /**

@@ -105,7 +105,7 @@ public final class LdapVerifyStep implements StepType {
      * had particular values.
      */
     private StepOutcome verifyExistence(EdirectoryConnector connector, String dn, String where,
-                                    boolean shouldExist) {
+                                        boolean shouldExist) {
         OperationResult<Boolean> result = connector.exists(dn);
 
         if (!result.isSuccess()) {

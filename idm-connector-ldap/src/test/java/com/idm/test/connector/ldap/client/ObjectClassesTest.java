@@ -3,6 +3,7 @@ package com.idm.test.connector.ldap.client;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.util.Arrays;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -34,5 +35,8 @@ class ObjectClassesTest {
                 .hasMessage("objectClass must name at least one object class, with no blank values");
         assertThatThrownBy(() -> EdirectoryConnector.objectClasses(List.of("top", " ")))
                 .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> EdirectoryConnector.objectClasses(Arrays.asList("top", null)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("objectClass must name at least one object class, with no blank values");
     }
 }

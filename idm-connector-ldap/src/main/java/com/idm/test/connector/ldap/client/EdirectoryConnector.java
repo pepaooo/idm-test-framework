@@ -25,6 +25,7 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 import static org.springframework.ldap.query.LdapQueryBuilder.query;
 
@@ -60,7 +61,8 @@ public class EdirectoryConnector {
         List<String> classes = requested instanceof Collection<?> values
                 ? values.stream().map(String::valueOf).toList()
                 : List.of(String.valueOf(requested));
-        if (classes.isEmpty() || classes.stream().anyMatch(String::isBlank)) {
+        boolean hasNull = requested instanceof Collection<?> values && values.stream().anyMatch(Objects::isNull);
+        if (hasNull || classes.isEmpty() || classes.stream().anyMatch(String::isBlank)) {
             throw new IllegalArgumentException("objectClass must name at least one object class, with no blank values");
         }
         return classes.toArray(String[]::new);

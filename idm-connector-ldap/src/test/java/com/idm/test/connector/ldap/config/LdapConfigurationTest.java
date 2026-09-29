@@ -1,8 +1,11 @@
 package com.idm.test.connector.ldap.config;
 
 import com.idm.test.connector.ldap.client.LdapDirectories;
+import com.idm.test.utils.ldap.EmbeddedLdapServer;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+
+import org.springframework.ldap.pool.factory.PoolingContextSource;
 
 import java.net.ServerSocket;
 import java.net.SocketTimeoutException;
@@ -94,16 +97,17 @@ class LdapConfigurationTest {
     void testDefaultBeans() {
         LdapConfiguration configuration = new LdapConfiguration();
 
-        LdapDirectories withDefault = configuration.ldapDirectories(directory("ldap://edir:389"),
+        try (LdapDirectories withDefault = configuration.ldapDirectories(directory("ldap://edir:389"),
                 directories(null, Map.of("ad", directory("ldap://ad:389"))));
-        assertThat(configuration.ldapTemplate(withDefault)).isSameAs(withDefault.template("default").orElseThrow());
-        assertThat(configuration.edirectoryConnector(withDefault)).isSameAs(withDefault.connector("default").orElseThrow());
+             LdapDirectories noDefault = configuration.ldapDirectories(directory(null),
+                directories(null, Map.of("ad", directory("ldap://ad:389"), "edir", directory("ldap://edir:389"))))) {
+            assertThat(configuration.ldapTemplate(withDefault)).isSameAs(withDefault.template("default").orElseThrow());
+            assertThat(configuration.edirectoryConnector(withDefault)).isSameAs(withDefault.connector("default").orElseThrow());
 
-        LdapDirectories noDefault = configuration.ldapDirectories(directory(null),
-                directories(null, Map.of("ad", directory("ldap://ad:389"), "edir", directory("ldap://edir:389"))));
-        assertThat(noDefault.defaultName()).isEmpty();
-        assertThat(configuration.ldapTemplate(noDefault)).isNull();
-        assertThat(configuration.edirectoryConnector(noDefault)).isNull();
+            assertThat(noDefault.defaultName()).isEmpty();
+            assertThat(configuration.ldapTemplate(noDefault)).isNull();
+            assertThat(configuration.edirectoryConnector(noDefault)).isNull();
+        }
     }
 
     @Test
@@ -115,11 +119,34 @@ class LdapConfigurationTest {
             LdapProperties unpooled = directory(url);
             unpooled.setPooled(false);
 
-            new LdapConfiguration().ldapDirectories(directory(null),
-                    directories(null, Map.of("pooled", pooled, "unpooled", unpooled)));
+            try (LdapDirectories built = new LdapConfiguration().ldapDirectories(directory(null),
+                    directories(null, Map.of("pooled", pooled, "unpooled", unpooled)))) {
+                server.setSoTimeout(300);
+                assertThatThrownBy(server::accept).isInstanceOf(SocketTimeoutException.class);
+            }
+        }
+    }
 
-            server.setSoTimeout(300);
-            assertThatThrownBy(server::accept).isInstanceOf(SocketTimeoutException.class);
+    @Test
+    @DisplayName("Closing the directories destroys each connection pool and releases its connections")
+    void testCloseDestroysPools() throws Exception {
+        try (EmbeddedLdapServer server = EmbeddedLdapServer.start(
+                "dc=test,dc=com", "cn=admin,dc=test,dc=com", "secret", 0, null)) {
+            LdapProperties pooled = directory(server.getUrl());
+            pooled.setUserDn("cn=admin,dc=test,dc=com");
+            pooled.setPassword("secret");
+            LdapDirectories directories = new LdapConfiguration().ldapDirectories(directory(null),
+                    directories(null, Map.of("pooled", pooled)));
+
+            directories.template("pooled").orElseThrow().lookup("");
+            PoolingContextSource pool =
+                    (PoolingContextSource) directories.template("pooled").orElseThrow().getContextSource();
+            assertThat(pool.getNumIdle()).isGreaterThan(0);
+
+            directories.close();
+
+            assertThat(pool.getNumIdle()).isZero();
+            assertThatThrownBy(pool::getReadOnlyContext).isInstanceOf(RuntimeException.class);
         }
     }
 }

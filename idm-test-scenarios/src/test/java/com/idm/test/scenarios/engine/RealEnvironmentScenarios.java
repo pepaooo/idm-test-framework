@@ -279,7 +279,21 @@ public class RealEnvironmentScenarios {
                         + "', which is not configured. Configured directories: " + names);
             }
             if (LdapDirectories.DEFAULT.equals(name) && !named.containsKey(LdapDirectories.DEFAULT)) {
-                requireLegacyDirectory(environment);
+                try {
+                    requireLegacyDirectory(environment);
+                } catch (IllegalStateException e) {
+                    String configuredDefault = environment.getProperty("idm.test.default-directory");
+                    boolean fellBackToOldBlock = ScenarioNeeds.DEFAULT_DIRECTORY.equals(requested)
+                            && !named.isEmpty()
+                            && (configuredDefault == null || configuredDefault.isBlank());
+                    if (!fellBackToOldBlock) {
+                        throw e;
+                    }
+                    throw new IllegalStateException(e.getMessage()
+                            + " Steps without directory: use the directory 'default' (the idm.test.ldap block);"
+                            + " to use one of " + new TreeSet<>(named.keySet())
+                            + " instead, set idm.test.default-directory.", e);
+                }
             } else {
                 requireNamedDirectory(name, named.get(name));
             }

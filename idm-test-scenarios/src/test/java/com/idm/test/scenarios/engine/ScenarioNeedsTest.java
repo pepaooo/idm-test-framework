@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -29,7 +30,7 @@ class ScenarioNeedsTest {
                   - ldap.delete:
                       dn: cn=x,ou=users
                 """);
-        assertThat(ldap).isEqualTo(new ScenarioNeeds(java.util.Set.of(ScenarioNeeds.DEFAULT_DIRECTORY), java.util.Set.of(), false, false, java.util.Set.of()));
+        assertThat(ldap).isEqualTo(new ScenarioNeeds(Set.of(ScenarioNeeds.DEFAULT_DIRECTORY), Set.of(), false, false, Set.of()));
 
         ScenarioNeeds all = needs("""
                 name: all
@@ -118,7 +119,7 @@ class ScenarioNeedsTest {
                 steps:
                   - set:
                       x: 1
-                """)).isEqualTo(new ScenarioNeeds(java.util.Set.of(), java.util.Set.of(), false, false, java.util.Set.of()));
+                """)).isEqualTo(new ScenarioNeeds(Set.of(), Set.of(), false, false, Set.of()));
     }
 
     @Test

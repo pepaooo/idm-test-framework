@@ -187,11 +187,14 @@ In order:
   used
 
 **Runner (`YamlScenarioTest` and the corpus):**
-- `YamlScenarioTest` starts a second embedded UnboundID server (base `dc=second,dc=com`) and
-  configures it as `idm.test.directories.second`, with the existing server staying `default`
-  through the old block. The existing corpus runs unchanged.
-- A new corpus scenario creates an entry in `second` with a custom `objectClass`, verifies it
-  is there and not in `default`, and deletes it in `cleanup:`.
+- `BaseIntegrationTest` (which `YamlScenarioTest` extends) starts a second embedded UnboundID
+  server (base `dc=second,dc=com`) and configures it as `idm.test.directories.second`, with the
+  existing server staying `default` through the old block. The existing corpus runs unchanged.
+- A new scenario, in its own directory (`scenarios-directories/`, run by
+  `MultiDirectoryScenarioTest`) rather than the main corpus, because `ContainerScenarios` runs
+  the main corpus against a single OpenLDAP container: it creates an entry in `second` with a
+  custom `objectClass`, verifies it is there and not in `default`, and deletes it in
+  `cleanup:`.
 
 **Real-environment guards (`RealEnvironmentGuardsTest`):**
 - an unconfigured directory, a missing default, and each placeholder for a named directory are

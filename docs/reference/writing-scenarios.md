@@ -526,6 +526,11 @@ Each check can read **`response`**:
 | `response.body` | the body as text, `""` when empty |
 | `response.json` | the body parsed, when the response is JSON (`application/json` or `…+json`); otherwise `null` |
 | `response.xml` | the body parsed, when the response is XML (`text/xml`, `application/xml` or `…+xml`, which includes SOAP 1.2's `application/soap+xml`); otherwise `null`. See **Reading XML** below |
+
+Checks may also read every name available at this point in the scenario, such as `user.userId`,
+directly — inside `js:{ … }`, names are read as-is (`user.userId`), not as `${user.userId}`;
+`${…}` interpolation does not run inside a check.
+
 **Reading XML.** `response.xml` turns the body into names you can follow with dots:
 
 - **Start at the root element:** `response.xml.Envelope.Body…`.
@@ -561,10 +566,6 @@ reads as
           role: ['Admin', 'HR'],
           manager: '' } }
 ```
-
-Checks may also read every name available at this point in the scenario, such as `user.userId`,
-directly — inside `js:{ … }`, names are read as-is (`user.userId`), not as `${user.userId}`;
-`${…}` interpolation does not run inside a check.
 
 **Captures:** the `response` map of the passing attempt.
 

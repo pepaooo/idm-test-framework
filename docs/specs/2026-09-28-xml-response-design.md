@@ -87,9 +87,9 @@ The `DocumentBuilderFactory` is configured so that XML can't reach outside the b
 - `FEATURE_SECURE_PROCESSING` is on; `ACCESS_EXTERNAL_DTD` and `ACCESS_EXTERNAL_SCHEMA` are
   empty.
 - XInclude is off and entity references are not expanded.
-- The JDK's `maxElementDepth` limit is set to 100 (the same depth the JavaScript sandbox
-  accepts), so a deeply nested body can't exhaust the stack while it is mapped.
-- A document with a DOCTYPE, or nested deeper than 100 elements, is therefore **malformed**,
+- The JDK's `maxElementDepth` limit is set to 90, below the JavaScript sandbox's 100-level
+  limit, which also counts the `response` map around the parsed body, so a deeply nested body can't exhaust the stack while it is mapped.
+- A document with a DOCTYPE, or nested deeper than 90 elements, is therefore **malformed**,
   like any other parse error.
 
 ### Errors

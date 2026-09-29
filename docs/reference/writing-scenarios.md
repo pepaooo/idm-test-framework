@@ -544,7 +544,7 @@ directly — inside `js:{ … }`, names are read as-is (`user.userId`), not as `
   When a check may see one or several, `[].concat(user.role)` is always a list:
   `[].concat(user.role).includes('HR')`.
 - **Every value is text:** compare with `'42'`, or convert with `Number(user['@id'])`.
-- **A body with a DOCTYPE, or nested more than 100 elements deep, is refused** as not
+- **A body with a DOCTYPE, or nested more than 90 elements deep, is refused** as not
   well-formed, so a response can't make the check read files or expand entities.
 
 ```xml

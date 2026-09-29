@@ -27,7 +27,7 @@ import java.util.Map;
  * are {@code @name}, an element's own text beside attributes or children is {@code #text}, and
  * a repeated element becomes a list. Every value is a string.
  * <p>
- * The parser refuses any DOCTYPE, loads nothing external and stops at 100 levels of nesting, so
+ * The parser refuses any DOCTYPE, loads nothing external and stops at 90 levels of nesting, so
  * a response body can't read files, expand entities or exhaust the stack.
  */
 public final class XmlObjects {
@@ -57,7 +57,7 @@ public final class XmlObjects {
     /**
      * @return a one-entry map, the root element's local name to its value
      * @throws IllegalArgumentException when the text is not well-formed XML, has a DOCTYPE or
-     *                                  nests deeper than 100 elements
+     *                                  nests deeper than 90 elements
      */
     public static Map<String, Object> parse(String text) {
         Document document;
@@ -81,13 +81,14 @@ public final class XmlObjects {
     }
 
     private static DocumentBuilderFactory factory() throws ParserConfigurationException {
-        DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+        DocumentBuilderFactory factory = DocumentBuilderFactory.newDefaultInstance();
         factory.setNamespaceAware(true);
         factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
         factory.setFeature(DISALLOW_DOCTYPE, true);
         factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, "");
         factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_SCHEMA, "");
-        factory.setAttribute(MAX_ELEMENT_DEPTH, "100");
+        // stays below the JavaScript sandbox's 100-level limit, which also counts the response map around the body
+        factory.setAttribute(MAX_ELEMENT_DEPTH, "90");
         factory.setXIncludeAware(false);
         factory.setExpandEntityReferences(false);
         factory.setCoalescing(true);

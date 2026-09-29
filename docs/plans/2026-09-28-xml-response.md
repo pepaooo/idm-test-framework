@@ -25,7 +25,7 @@
   - two attributes with the same local name become a list
   - CDATA is text; comments and processing instructions are ignored
   - values are always strings
-- **Parser settings, exactly:** namespace-aware; `FEATURE_SECURE_PROCESSING` true; `http://apache.org/xml/features/disallow-doctype-decl` true; `ACCESS_EXTERNAL_DTD` and `ACCESS_EXTERNAL_SCHEMA` `""`; `http://www.oracle.com/xml/jaxp/properties/maxElementDepth` `"100"`; XInclude off; `setExpandEntityReferences(false)`; coalescing on; comments ignored; an `ErrorHandler` that prints nothing.
+- **Parser settings, exactly:** namespace-aware; `FEATURE_SECURE_PROCESSING` true; `http://apache.org/xml/features/disallow-doctype-decl` true; `ACCESS_EXTERNAL_DTD` and `ACCESS_EXTERNAL_SCHEMA` `""`; `http://www.oracle.com/xml/jaxp/properties/maxElementDepth` `"90"`; XInclude off; `setExpandEntityReferences(false)`; coalescing on; comments ignored; an `ErrorHandler` that prints nothing.
 - **Malformed input** throws `IllegalArgumentException` with message `not well-formed XML at line <l>, column <c>: <parser message>`, or `not well-formed XML: <parser message>` when the parser gives no line.
 - **`response.xml`** is parsed when the first `Content-Type` value's media type (before `;`, trimmed, lower-cased) is `text/xml` or `application/xml`, or ends in `+xml`, and the body isn't blank. Otherwise, or when parsing fails, it is `null`.
 - **Why `xml` is null** (checked in this order):
@@ -212,7 +212,7 @@ class XmlObjectsTest {
     }
 
     @Test
-    @DisplayName("Nesting deeper than 100 elements is refused")
+    @DisplayName("Nesting deeper than 90 elements is refused")
     void testDepthLimit() {
         String deep = "<a>".repeat(101) + "</a>".repeat(101);
         String allowed = "<a>".repeat(100) + "</a>".repeat(100);
@@ -279,7 +279,7 @@ import java.util.Map;
  * are {@code @name}, an element's own text beside attributes or children is {@code #text}, and
  * a repeated element becomes a list. Every value is a string.
  * <p>
- * The parser refuses any DOCTYPE, loads nothing external and stops at 100 levels of nesting, so
+ * The parser refuses any DOCTYPE, loads nothing external and stops at 90 levels of nesting, so
  * a response body can't read files, expand entities or exhaust the stack.
  */
 public final class XmlObjects {
@@ -309,7 +309,7 @@ public final class XmlObjects {
     /**
      * @return a one-entry map, the root element's local name to its value
      * @throws IllegalArgumentException when the text is not well-formed XML, has a DOCTYPE or
-     *                                  nests deeper than 100 elements
+     *                                  nests deeper than 90 elements
      */
     public static Map<String, Object> parse(String text) {
         Document document;
@@ -339,7 +339,7 @@ public final class XmlObjects {
         factory.setFeature(DISALLOW_DOCTYPE, true);
         factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, "");
         factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_SCHEMA, "");
-        factory.setAttribute(MAX_ELEMENT_DEPTH, "100");
+        factory.setAttribute(MAX_ELEMENT_DEPTH, "90");
         factory.setXIncludeAware(false);
         factory.setExpandEntityReferences(false);
         factory.setCoalescing(true);
@@ -862,7 +862,7 @@ with the "Reading XML" block below. Keep it a bold paragraph, not a heading: `Sc
   When a check may see one or several, `[].concat(user.role)` is always a list:
   `[].concat(user.role).includes('HR')`.
 - **Every value is text:** compare with `'42'`, or convert with `Number(user['@id'])`.
-- **A body with a DOCTYPE, or nested more than 100 elements deep, is refused** as not
+- **A body with a DOCTYPE, or nested more than 90 elements deep, is refused** as not
   well-formed, so a response can't make the check read files or expand entities.
 
 ```xml

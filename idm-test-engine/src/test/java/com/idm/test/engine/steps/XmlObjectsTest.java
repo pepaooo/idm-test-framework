@@ -155,10 +155,11 @@ class XmlObjectsTest {
     }
 
     @Test
-    @DisplayName("Nesting deeper than 100 elements is refused")
+    @DisplayName("Nesting deeper than 90 elements is refused")
     void testDepthLimit() {
-        String deep = "<a>".repeat(101) + "</a>".repeat(101);
-        String allowed = "<a>".repeat(100) + "</a>".repeat(100);
+        // JDK 24+ already caps depth at 100 by default, so refusing 91 proves the explicit cap.
+        String deep = "<a>".repeat(91) + "</a>".repeat(91);
+        String allowed = "<a>".repeat(90) + "</a>".repeat(90);
 
         assertThatThrownBy(() -> XmlObjects.parse(deep))
                 .isInstanceOf(IllegalArgumentException.class)

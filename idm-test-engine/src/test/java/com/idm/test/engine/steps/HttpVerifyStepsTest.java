@@ -231,6 +231,13 @@ class HttpVerifyStepsTest {
     }
 
     @Test
+    @DisplayName("A body nested 90 elements deep binds, and checks can still run")
+    void testDeepXmlStillCheckable() {
+        stubBody("text/xml", "<a>".repeat(90) + "x" + "</a>".repeat(90));
+        assertThat(run(params("check", "js:{ response.status === 200 && response.xml !== null }")).success()).isTrue();
+    }
+
+    @Test
     @DisplayName("A failing check that doesn't read response.xml, or reads a parsed one, gets no hint")
     void testNoHintOtherwise() {
         stubBody("text/html", "<html/>");

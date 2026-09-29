@@ -87,7 +87,10 @@ The `DocumentBuilderFactory` is configured so that XML can't reach outside the b
 - `FEATURE_SECURE_PROCESSING` is on; `ACCESS_EXTERNAL_DTD` and `ACCESS_EXTERNAL_SCHEMA` are
   empty.
 - XInclude is off and entity references are not expanded.
-- A document with a DOCTYPE is therefore **malformed**, like any other parse error.
+- The JDK's `maxElementDepth` limit is set to 100 (the same depth the JavaScript sandbox
+  accepts), so a deeply nested body can't exhaust the stack while it is mapped.
+- A document with a DOCTYPE, or nested deeper than 100 elements, is therefore **malformed**,
+  like any other parse error.
 
 ### Errors
 
@@ -144,8 +147,10 @@ text. A check that fails while `xml` is non-null gets no hint.
 - the SOAP example checks `response.xml.Envelope.Body…` instead of `response.body`
 - the outcome text drops the `response.xml` final rule and describes the hint
 
-Also: the README's `http.verify` row and the capability matrix mention XML checks. The
-authoring guide is unchanged (it points to the reference).
+Also: the README's `http.verify` row and the capability matrix mention XML checks; the README's
+"Next" table drops the finished ITF-10, ITF-24 and ITF-25 rows; `docs/overview.md` no longer
+calls JavaScript checks and XML "planned". The authoring guide is unchanged (it points to the
+reference).
 
 ## 6. Testing
 

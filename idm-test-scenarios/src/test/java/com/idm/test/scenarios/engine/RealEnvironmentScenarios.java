@@ -175,10 +175,10 @@ public class RealEnvironmentScenarios {
     Stream<DynamicTest> scenarios() throws Exception {
         requireNotEmbedded(environment);
         String scenarioDir = scenarioDirectory();
-        requireScenarios(YamlScenarioTest.scenarioFiles(scenarioDir), scenarioDir);
+        requireScenarios(ScenarioSupport.scenarioFiles(scenarioDir), scenarioDir);
         // After guard 3, so an empty directory gets its README message and only a pattern
         // that matches nothing gets the filter's message.
-        List<String> selected = YamlScenarioTest.selectedScenarioFiles(scenarioDir);
+        List<String> selected = ScenarioSupport.selectedScenarioFiles(scenarioDir);
         // Everything below checks only what the selected scenarios use.
         ScenarioNeeds needs = ScenarioNeeds.of(loadForGuards(scenarioDir, selected));
         requireEndpoints(environment, needs);
@@ -186,7 +186,7 @@ public class RealEnvironmentScenarios {
         requireDatabases(needs.databases(), databaseProperties);
         requireCredentials(needs.restTargets(), needs.soap(), restProperties, soapProperties, environment);
 
-        Map<String, StepType> registry = YamlScenarioTest.registry(
+        Map<String, StepType> registry = ScenarioSupport.registry(
                 ldapDirectories, databaseConnector, roleServiceConnector.getIfAvailable(),
                 resourceServiceConnector.getIfAvailable(), idmRestConnector, restProperties, restAuthenticator);
         ScenarioValidator validator = new ScenarioValidator(registry, FixtureFactory.SUPPORTED_GENERATORS);
@@ -198,7 +198,7 @@ public class RealEnvironmentScenarios {
                 executorProperties.getDefaultPollInterval(),
                 new ExpressionEvaluator());
 
-        return YamlScenarioTest.buildTests(scenarioDir, selected, validator, engine, RESULTS).stream();
+        return ScenarioSupport.buildTests(scenarioDir, selected, validator, engine, RESULTS).stream();
     }
 
     /**

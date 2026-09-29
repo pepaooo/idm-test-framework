@@ -69,6 +69,11 @@ class RealEnvironmentScenariosStructureTest {
                 .isEmpty();
     }
 
+    /**
+     * A source-level check. The run-time guarantee (the runner's helper path never loads
+     * {@code BaseIntegrationTest}, so it starts no embedded server) is
+     * {@link ScenarioSupportIsolationTest}.
+     */
     @Test
     @DisplayName("Source references no embedded server")
     void testNoEmbeddedServerReferences() throws IOException {

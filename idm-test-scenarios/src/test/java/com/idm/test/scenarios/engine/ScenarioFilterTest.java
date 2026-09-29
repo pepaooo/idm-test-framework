@@ -35,34 +35,34 @@ class ScenarioFilterTest {
     @Test
     @DisplayName("No filter returns every file unchanged")
     void testNoFilterReturnsEverything() {
-        assertThat(YamlScenarioTest.select(FILES, null, DIR)).containsExactlyElementsOf(FILES);
+        assertThat(ScenarioSupport.select(FILES, null, DIR)).containsExactlyElementsOf(FILES);
     }
 
     @Test
     @DisplayName("An exact file name selects that one file")
     void testExactNameSelectsOneFile() {
-        assertThat(YamlScenarioTest.select(FILES, "provisioning-user-to-ldap.yaml", DIR))
+        assertThat(ScenarioSupport.select(FILES, "provisioning-user-to-ldap.yaml", DIR))
                 .containsExactly("provisioning-user-to-ldap.yaml");
     }
 
     @Test
     @DisplayName("A file name without .yaml selects the same file")
     void testNameWithoutExtensionSelectsFile() {
-        assertThat(YamlScenarioTest.select(FILES, "provisioning-user-to-ldap", DIR))
+        assertThat(ScenarioSupport.select(FILES, "provisioning-user-to-ldap", DIR))
                 .containsExactly("provisioning-user-to-ldap.yaml");
     }
 
     @Test
     @DisplayName("A group glob selects its group and nothing that merely contains the word")
     void testGroupGlobIsPrecise() {
-        assertThat(YamlScenarioTest.select(FILES, "provisioning-*", DIR))
+        assertThat(ScenarioSupport.select(FILES, "provisioning-*", DIR))
                 .containsExactly("provisioning-minimal-user.yaml", "provisioning-user-to-ldap.yaml");
     }
 
     @Test
     @DisplayName("A brace glob selects two groups")
     void testBraceGlobSelectsTwoGroups() {
-        assertThat(YamlScenarioTest.select(FILES, "{provisioning-*,roles-*}", DIR))
+        assertThat(ScenarioSupport.select(FILES, "{provisioning-*,roles-*}", DIR))
                 .containsExactly(
                         "provisioning-minimal-user.yaml",
                         "provisioning-user-to-ldap.yaml",
@@ -72,7 +72,7 @@ class ScenarioFilterTest {
     @Test
     @DisplayName("A filter that matches nothing fails, listing what is available")
     void testNoMatchFails() {
-        assertThatThrownBy(() -> YamlScenarioTest.select(FILES, "provisoning-user-to-ldap.yaml", DIR))
+        assertThatThrownBy(() -> ScenarioSupport.select(FILES, "provisoning-user-to-ldap.yaml", DIR))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("-Dscenario=provisoning-user-to-ldap.yaml")
                 .hasMessageContaining(DIR)
@@ -83,7 +83,7 @@ class ScenarioFilterTest {
     @Test
     @DisplayName("A filter against an empty directory fails and says there is nothing to choose from")
     void testNoMatchInEmptyDirectoryFails() {
-        assertThatThrownBy(() -> YamlScenarioTest.select(List.of(), "anything.yaml", DIR))
+        assertThatThrownBy(() -> ScenarioSupport.select(List.of(), "anything.yaml", DIR))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("-Dscenario=anything.yaml")
                 .hasMessageContaining("Available: none");
@@ -92,7 +92,7 @@ class ScenarioFilterTest {
     @Test
     @DisplayName("A blank filter fails rather than guessing")
     void testBlankFilterFails() {
-        assertThatThrownBy(() -> YamlScenarioTest.select(FILES, "  ", DIR))
+        assertThatThrownBy(() -> ScenarioSupport.select(FILES, "  ", DIR))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("is set but empty");
     }
@@ -100,7 +100,7 @@ class ScenarioFilterTest {
     @Test
     @DisplayName("An invalid glob fails, naming the pattern")
     void testInvalidGlobFails() {
-        assertThatThrownBy(() -> YamlScenarioTest.select(FILES, "provisioning-[", DIR))
+        assertThatThrownBy(() -> ScenarioSupport.select(FILES, "provisioning-[", DIR))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("-Dscenario=provisioning-[")
                 .hasMessageContaining("not a valid glob");

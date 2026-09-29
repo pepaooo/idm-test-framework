@@ -214,8 +214,8 @@ class XmlObjectsTest {
     @Test
     @DisplayName("Nesting deeper than 90 elements is refused")
     void testDepthLimit() {
-        String deep = "<a>".repeat(101) + "</a>".repeat(101);
-        String allowed = "<a>".repeat(100) + "</a>".repeat(100);
+        String deep = "<a>".repeat(91) + "</a>".repeat(91);
+        String allowed = "<a>".repeat(90) + "</a>".repeat(90);
 
         assertThatThrownBy(() -> XmlObjects.parse(deep))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -333,7 +333,7 @@ public final class XmlObjects {
     }
 
     private static DocumentBuilderFactory factory() throws ParserConfigurationException {
-        DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+        DocumentBuilderFactory factory = DocumentBuilderFactory.newDefaultInstance();
         factory.setNamespaceAware(true);
         factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
         factory.setFeature(DISALLOW_DOCTYPE, true);

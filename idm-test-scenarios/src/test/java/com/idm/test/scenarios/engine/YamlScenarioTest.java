@@ -1,7 +1,7 @@
 package com.idm.test.scenarios.engine;
 
 import com.idm.test.connector.database.client.MultiDatabaseConnector;
-import com.idm.test.connector.ldap.client.EdirectoryConnector;
+import com.idm.test.connector.ldap.client.LdapDirectories;
 import com.idm.test.connector.rest.client.IdmRestConnector;
 import com.idm.test.connector.rest.client.RestAuthenticator;
 import com.idm.test.connector.rest.config.RestProperties;
@@ -74,7 +74,7 @@ class YamlScenarioTest extends BaseIntegrationTest {
     @DisplayName("Each scenario file runs as its own test")
     Stream<DynamicTest> scenarios() throws Exception {
         Map<String, StepType> registry = registry(
-                edirectoryConnector, databaseConnector, roleServiceConnector,
+                ldapDirectories, databaseConnector, roleServiceConnector,
                 resourceServiceConnector, idmRestConnector, restProperties, restAuthenticator);
         ScenarioValidator validator = new ScenarioValidator(registry, FixtureFactory.SUPPORTED_GENERATORS);
         ScenarioEngine engine = new ScenarioEngine(
@@ -201,7 +201,7 @@ class YamlScenarioTest extends BaseIntegrationTest {
     }
 
     static Map<String, StepType> registry(
-            EdirectoryConnector edirectoryConnector,
+            LdapDirectories ldapDirectories,
             MultiDatabaseConnector databaseConnector,
             RoleServiceConnector roleServiceConnector,
             ResourceServiceConnector resourceServiceConnector,
@@ -210,10 +210,10 @@ class YamlScenarioTest extends BaseIntegrationTest {
             RestAuthenticator restAuthenticator) {
         Map<String, StepType> registry = new LinkedHashMap<>();
         for (StepType type : List.of(
-                new LdapCreateStep(edirectoryConnector),
-                new LdapVerifyStep(edirectoryConnector),
-                new LdapUpdateStep(edirectoryConnector),
-                new LdapDeleteStep(edirectoryConnector),
+                new LdapCreateStep(ldapDirectories),
+                new LdapVerifyStep(ldapDirectories),
+                new LdapUpdateStep(ldapDirectories),
+                new LdapDeleteStep(ldapDirectories),
                 new DbExecuteStep(databaseConnector),
                 new DbVerifyStep(databaseConnector),
                 new RolesGrantStep(roleServiceConnector),

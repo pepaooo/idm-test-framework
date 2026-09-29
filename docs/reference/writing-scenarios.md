@@ -143,6 +143,7 @@ LDAP DNs are **relative to the configured base DN** (`idm.test.ldap.base-dn`). W
 |---|---|---|
 | `dn` | yes | the entry's DN, relative to the base DN |
 | `attributes` | no | a map of attribute name to value; the directory's schema decides which attributes are allowed and which are required |
+| `directory` | no | the configured directory to work in (`idm.test.directories.<name>`); without it, the default directory. See **Several directories** under LDAP |
 
 **Captures:** the DN you gave, as text. Capture it and reference it in `cleanup:` to delete the
 entry afterwards.
@@ -169,6 +170,7 @@ the schema or the bind lacks rights.
 |---|---|---|
 | `dn` | yes | the entry's DN, relative to the base DN |
 | `attributes` | yes | a map of attribute name to new value; attributes not listed are left as they are |
+| `directory` | no | the configured directory to work in (`idm.test.directories.<name>`); without it, the default directory. See **Several directories** under LDAP |
 
 **Captures:** the DN, as text. Nothing is restored automatically: to put old values back,
 capture them first with `ldap.verify … as:` and write an `ldap.update` in `cleanup:`.
@@ -190,6 +192,7 @@ schema violation, insufficient rights).
 | Parameter | Required | Meaning |
 |---|---|---|
 | `dn` | yes | the entry's DN, relative to the base DN |
+| `directory` | no | the configured directory to work in (`idm.test.directories.<name>`); without it, the default directory. See **Several directories** under LDAP |
 
 **Captures:** the DN, as text.
 
@@ -211,6 +214,7 @@ fails; see [Cleanup](#6-cleanup).
 | `dn` | yes | the entry's DN, relative to the base DN |
 | `expect` | no | a map of attribute name to expected value; only the listed attributes are compared. Give exactly one of `expect` or `exists` |
 | `exists` | no | `true` to assert the entry is present, `false` to assert it is absent. Give exactly one of `expect` or `exists` |
+| `directory` | no | the configured directory to work in (`idm.test.directories.<name>`); without it, the default directory. See **Several directories** under LDAP |
 
 **Captures:** with `expect`, a map of the entry's attributes, read after the check passes (for
 example `${entry.mail}`). With `exists`, nothing, so declaring `as:` fails the step.

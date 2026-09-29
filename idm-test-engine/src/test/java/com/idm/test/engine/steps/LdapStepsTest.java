@@ -1,9 +1,11 @@
 package com.idm.test.engine.steps;
 
 import com.idm.test.connector.ldap.client.EdirectoryConnector;
+import com.idm.test.connector.ldap.client.LdapDirectories;
 import com.idm.test.connector.ldap.model.LdapUser;
 import com.idm.test.core.model.OperationResult;
 import com.idm.test.engine.spi.StepOutcome;
+import com.idm.test.engine.spi.StepType;
 import com.idm.test.utils.ldap.EmbeddedLdapServer;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -13,6 +15,7 @@ import org.springframework.ldap.core.LdapTemplate;
 import org.springframework.ldap.core.support.LdapContextSource;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -37,6 +40,7 @@ class LdapStepsTest {
 
     private static EmbeddedLdapServer server;
     private static EdirectoryConnector connector;
+    private static LdapDirectories directories;
 
     @BeforeAll
     static void startDirectory() throws Exception {
@@ -51,6 +55,11 @@ class LdapStepsTest {
         contextSource.afterPropertiesSet();
 
         connector = new EdirectoryConnector(new LdapTemplate(contextSource));
+        directories = only(connector);
+    }
+
+    private static LdapDirectories only(EdirectoryConnector connector) {
+        return LdapDirectories.ofConnectors(Map.of(LdapDirectories.DEFAULT, connector), null);
     }
 
     @AfterAll
@@ -63,7 +72,7 @@ class LdapStepsTest {
     @Test
     @DisplayName("ldap.create should report failure rather than throw on a schema violation")
     void testCreateFailure() {
-        LdapCreateStep create = new LdapCreateStep(connector);
+        LdapCreateStep create = new LdapCreateStep(directories);
 
         // inetOrgPerson requires sn; omitting it must fail
         StepOutcome outcome = create.execute(Map.of(
@@ -78,11 +87,11 @@ class LdapStepsTest {
     @DisplayName("ldap.verify should pass when the attributes match")
     void testVerifyMatches() {
         String dn = "cn=ada.verify,ou=users";
-        new LdapCreateStep(connector).execute(Map.of(
+        new LdapCreateStep(directories).execute(Map.of(
                 "dn", dn,
                 "attributes", Map.of("cn", "ada.verify", "sn", "Lovelace", "givenName", "Ada")), false);
 
-        StepOutcome outcome = new LdapVerifyStep(connector).execute(Map.of(
+        StepOutcome outcome = new LdapVerifyStep(directories).execute(Map.of(
                 "dn", dn,
                 "expect", Map.of("givenName", "Ada", "sn", "Lovelace")), false);
 
@@ -93,11 +102,11 @@ class LdapStepsTest {
     @DisplayName("ldap.verify should fail and say what it saw when an attribute differs")
     void testVerifyMismatch() {
         String dn = "cn=grace.verify,ou=users";
-        new LdapCreateStep(connector).execute(Map.of(
+        new LdapCreateStep(directories).execute(Map.of(
                 "dn", dn,
                 "attributes", Map.of("cn", "grace.verify", "sn", "Hopper", "givenName", "Grace")), false);
 
-        StepOutcome outcome = new LdapVerifyStep(connector).execute(Map.of(
+        StepOutcome outcome = new LdapVerifyStep(directories).execute(Map.of(
                 "dn", dn,
                 "expect", Map.of("givenName", "Ada")), false);
 
@@ -109,7 +118,7 @@ class LdapStepsTest {
     @Test
     @DisplayName("ldap.verify should fail when the entry does not exist")
     void testVerifyMissingEntry() {
-        StepOutcome outcome = new LdapVerifyStep(connector).execute(Map.of(
+        StepOutcome outcome = new LdapVerifyStep(directories).execute(Map.of(
                 "dn", "cn=absent,ou=users",
                 "expect", Map.of("givenName", "Ada")), false);
 
@@ -119,17 +128,17 @@ class LdapStepsTest {
     @Test
     @DisplayName("Only the assertion step is retryable")
     void testRetryability() {
-        assertThat(new LdapCreateStep(connector).retryable()).isFalse();
-        assertThat(new LdapVerifyStep(connector).retryable()).isTrue();
-        assertThat(new LdapCreateStep(connector).name()).isEqualTo("ldap.create");
-        assertThat(new LdapVerifyStep(connector).name()).isEqualTo("ldap.verify");
+        assertThat(new LdapCreateStep(directories).retryable()).isFalse();
+        assertThat(new LdapVerifyStep(directories).retryable()).isTrue();
+        assertThat(new LdapCreateStep(directories).name()).isEqualTo("ldap.create");
+        assertThat(new LdapVerifyStep(directories).name()).isEqualTo("ldap.verify");
     }
 
     @Test
     @DisplayName("ldap.verify should require only 'dn', leaving the expect-vs-exists choice "
             + "to rejectMalformedAssertion")
     void testVerifyRequiresOnlyDn() {
-        LdapVerifyStep verify = new LdapVerifyStep(connector);
+        LdapVerifyStep verify = new LdapVerifyStep(directories);
 
         // 'expect' is no longer unconditionally required: exists: is now a valid alternative
         // assertion. A typo like "expct" (with no exists: present either) is still caught,
@@ -137,16 +146,16 @@ class LdapStepsTest {
         // supplied" branch, exercised in testVerifyRejectsNeitherExpectNorExists.
         assertThat(verify.requiredParams()).containsExactly("dn");
         assertThat(verify.acceptedParams())
-                .containsExactlyInAnyOrder("dn", "expect", "exists", "wait");
+                .containsExactlyInAnyOrder("dn", "expect", "exists", "wait", "directory");
     }
 
     @Test
     @DisplayName("ldap.create should require 'dn' and also accept 'attributes'")
     void testCreateRequiredAndAcceptedParams() {
-        LdapCreateStep create = new LdapCreateStep(connector);
+        LdapCreateStep create = new LdapCreateStep(directories);
 
         assertThat(create.requiredParams()).containsExactly("dn");
-        assertThat(create.acceptedParams()).containsExactlyInAnyOrder("dn", "attributes");
+        assertThat(create.acceptedParams()).containsExactlyInAnyOrder("dn", "attributes", "directory");
     }
 
     @Test
@@ -154,7 +163,7 @@ class LdapStepsTest {
     void testCreateReturnsDn() {
         String dn = "cn=ada.value,ou=users";
 
-        StepOutcome outcome = new LdapCreateStep(connector).execute(Map.of(
+        StepOutcome outcome = new LdapCreateStep(directories).execute(Map.of(
                 "dn", dn,
                 "attributes", Map.of("cn", "ada.value", "sn", "Lovelace")), false);
 
@@ -166,11 +175,11 @@ class LdapStepsTest {
             + "requested, for as: to capture")
     void testVerifyReturnsAttributes() {
         String dn = "cn=grace.value,ou=users";
-        new LdapCreateStep(connector).execute(Map.of(
+        new LdapCreateStep(directories).execute(Map.of(
                 "dn", dn,
                 "attributes", Map.of("cn", "grace.value", "sn", "Hopper", "givenName", "Grace")), false);
 
-        StepOutcome outcome = new LdapVerifyStep(connector).execute(Map.of(
+        StepOutcome outcome = new LdapVerifyStep(directories).execute(Map.of(
                 "dn", dn,
                 "expect", Map.of("givenName", "Grace")), true);
 
@@ -190,7 +199,7 @@ class LdapStepsTest {
         when(mockConnector.verifyAttributes(any(), any()))
                 .thenReturn(OperationResult.success(true));
 
-        StepOutcome outcome = new LdapVerifyStep(mockConnector).execute(Map.of(
+        StepOutcome outcome = new LdapVerifyStep(only(mockConnector)).execute(Map.of(
                 "dn", "cn=x,ou=users", "expect", Map.of("givenName", "Ada")), false);
 
         assertThat(outcome.success()).isTrue();
@@ -208,7 +217,7 @@ class LdapStepsTest {
         when(mockConnector.read(any()))
                 .thenReturn(OperationResult.<LdapUser>failure("connection dropped"));
 
-        StepOutcome outcome = new LdapVerifyStep(mockConnector).execute(Map.of(
+        StepOutcome outcome = new LdapVerifyStep(only(mockConnector)).execute(Map.of(
                 "dn", "cn=x,ou=users", "expect", Map.of("givenName", "Ada")), true);
 
         assertThat(outcome.success()).isFalse();
@@ -219,7 +228,7 @@ class LdapStepsTest {
     @Test
     @DisplayName("A failed step should carry no captured value")
     void testFailureHasNoValue() {
-        StepOutcome outcome = new LdapVerifyStep(connector).execute(Map.of(
+        StepOutcome outcome = new LdapVerifyStep(directories).execute(Map.of(
                 "dn", "cn=absent.value,ou=users",
                 "expect", Map.of("givenName", "Ada")), false);
 
@@ -234,7 +243,7 @@ class LdapStepsTest {
     @Test
     @DisplayName("ldap.update should report failure rather than throw for a missing entry")
     void testUpdateMissingEntryFails() {
-        LdapUpdateStep update = new LdapUpdateStep(connector);
+        LdapUpdateStep update = new LdapUpdateStep(directories);
 
         StepOutcome outcome = update.execute(
                 Map.of("dn", "cn=nobody.here,ou=users", "attributes", Map.of("title", "X")), false);
@@ -247,8 +256,8 @@ class LdapStepsTest {
     @Test
     @DisplayName("ldap.update should bind the dn when a capture was requested")
     void testUpdateCaptureIsTheDn() {
-        LdapCreateStep create = new LdapCreateStep(connector);
-        LdapUpdateStep update = new LdapUpdateStep(connector);
+        LdapCreateStep create = new LdapCreateStep(directories);
+        LdapUpdateStep update = new LdapUpdateStep(directories);
         String dn = "cn=ada.capture,ou=users";
 
         create.execute(Map.of("dn", dn, "attributes",
@@ -268,8 +277,8 @@ class LdapStepsTest {
     @Test
     @DisplayName("ldap.delete should remove the entry")
     void testDeleteReturnsTheDn() {
-        LdapCreateStep create = new LdapCreateStep(connector);
-        LdapDeleteStep delete = new LdapDeleteStep(connector);
+        LdapCreateStep create = new LdapCreateStep(directories);
+        LdapDeleteStep delete = new LdapDeleteStep(directories);
         String dn = "cn=ada.delete,ou=users";
 
         create.execute(Map.of("dn", dn, "attributes",
@@ -286,7 +295,7 @@ class LdapStepsTest {
     void testDeleteMissingEntryFails() {
         // LdapTemplate.unbind succeeds silently on a DN that does not exist, so without an
         // explicit existence check this step would report "deleted" having deleted nothing.
-        LdapDeleteStep delete = new LdapDeleteStep(connector);
+        LdapDeleteStep delete = new LdapDeleteStep(directories);
 
         StepOutcome outcome = delete.execute(Map.of("dn", "cn=never.existed,ou=users"), false);
 
@@ -297,8 +306,8 @@ class LdapStepsTest {
     @Test
     @DisplayName("ldap.delete should bind the dn when a capture was requested")
     void testDeleteCaptureIsTheDn() {
-        LdapCreateStep create = new LdapCreateStep(connector);
-        LdapDeleteStep delete = new LdapDeleteStep(connector);
+        LdapCreateStep create = new LdapCreateStep(directories);
+        LdapDeleteStep delete = new LdapDeleteStep(directories);
         String dn = "cn=ada.deletecapture,ou=users";
 
         create.execute(Map.of("dn", dn, "attributes",
@@ -317,7 +326,7 @@ class LdapStepsTest {
         // expected values belongs used to throw a ClassCastException out of execute() — a
         // StepType.execute implementation must never throw. rest.verify and db.verify were
         // both fixed for exactly this; this closes the same gap in their remaining sibling.
-        StepOutcome outcome = new LdapVerifyStep(connector).execute(Map.of(
+        StepOutcome outcome = new LdapVerifyStep(directories).execute(Map.of(
                 "dn", "cn=whoever,ou=users",
                 "expect", "Engineer"), false);
 
@@ -328,14 +337,14 @@ class LdapStepsTest {
     @Test
     @DisplayName("ldap.verify should reject an expect block that asserts nothing")
     void testVerifyRejectsEmptyExpect() {
-        LdapCreateStep create = new LdapCreateStep(connector);
+        LdapCreateStep create = new LdapCreateStep(directories);
         String dn = "cn=ada.vacuous,ou=users";
         create.execute(Map.of("dn", dn, "attributes",
                 Map.of("cn", "ada.vacuous", "sn", "Lovelace")), false);
 
         // 'expect' being required catches a misspelled expct:, but a present-but-empty
         // expect: {} passed that check and reported "verified" having compared nothing.
-        StepOutcome outcome = new LdapVerifyStep(connector).execute(
+        StepOutcome outcome = new LdapVerifyStep(directories).execute(
                 Map.of("dn", dn, "expect", Map.of()), false);
 
         assertThat(outcome.success()).isFalse();
@@ -349,7 +358,7 @@ class LdapStepsTest {
     @Test
     @DisplayName("ldap.verify exists:false should pass once the entry is gone")
     void testVerifyExistsFalsePassesWhenAbsent() {
-        StepOutcome outcome = new LdapVerifyStep(connector).execute(
+        StepOutcome outcome = new LdapVerifyStep(directories).execute(
                 Map.of("dn", "cn=never.created,ou=users", "exists", false), false);
 
         assertThat(outcome.success()).isTrue();
@@ -358,12 +367,12 @@ class LdapStepsTest {
     @Test
     @DisplayName("ldap.verify exists:false should fail while the entry is still there")
     void testVerifyExistsFalseFailsWhenPresent() {
-        LdapCreateStep create = new LdapCreateStep(connector);
+        LdapCreateStep create = new LdapCreateStep(directories);
         String dn = "cn=ada.stillhere,ou=users";
         create.execute(Map.of("dn", dn, "attributes",
                 Map.of("cn", "ada.stillhere", "sn", "Lovelace")), false);
 
-        StepOutcome outcome = new LdapVerifyStep(connector).execute(
+        StepOutcome outcome = new LdapVerifyStep(directories).execute(
                 Map.of("dn", dn, "exists", false), false);
 
         assertThat(outcome.success()).isFalse();
@@ -373,12 +382,12 @@ class LdapStepsTest {
     @Test
     @DisplayName("ldap.verify exists:true should pass without asserting attributes")
     void testVerifyExistsTruePassesWhenPresent() {
-        LdapCreateStep create = new LdapCreateStep(connector);
+        LdapCreateStep create = new LdapCreateStep(directories);
         String dn = "cn=ada.present,ou=users";
         create.execute(Map.of("dn", dn, "attributes",
                 Map.of("cn", "ada.present", "sn", "Lovelace")), false);
 
-        StepOutcome outcome = new LdapVerifyStep(connector).execute(
+        StepOutcome outcome = new LdapVerifyStep(directories).execute(
                 Map.of("dn", dn, "exists", true), false);
 
         assertThat(outcome.success()).isTrue();
@@ -387,7 +396,7 @@ class LdapStepsTest {
     @Test
     @DisplayName("ldap.verify exists:true should fail when the entry is absent")
     void testVerifyExistsTrueFailsWhenAbsent() {
-        StepOutcome outcome = new LdapVerifyStep(connector).execute(
+        StepOutcome outcome = new LdapVerifyStep(directories).execute(
                 Map.of("dn", "cn=not.there,ou=users", "exists", true), false);
 
         assertThat(outcome.success()).isFalse();
@@ -397,7 +406,7 @@ class LdapStepsTest {
     @DisplayName("ldap.verify should reject expect and exists supplied together")
     void testVerifyRejectsExpectAndExistsTogether() {
         // expect already implies existence, so supplying both says nothing about intent.
-        StepOutcome outcome = new LdapVerifyStep(connector).execute(Map.of(
+        StepOutcome outcome = new LdapVerifyStep(directories).execute(Map.of(
                 "dn", "cn=ada,ou=users",
                 "expect", Map.of("sn", "Lovelace"),
                 "exists", true), false);
@@ -411,7 +420,7 @@ class LdapStepsTest {
     void testVerifyRejectsNeitherExpectNorExists() {
         // The vacuous-assertion trap: making expect optional means "neither supplied"
         // must fail, or the step verifies nothing at all.
-        StepOutcome outcome = new LdapVerifyStep(connector).execute(
+        StepOutcome outcome = new LdapVerifyStep(directories).execute(
                 Map.of("dn", "cn=ada,ou=users"), false);
 
         assertThat(outcome.success()).isFalse();
@@ -428,7 +437,7 @@ class LdapStepsTest {
         // equal against an attribute the entry does not have, and the step reports "verified"
         // having compared nothing. Map.of() cannot hold a null value — that is exactly why
         // earlier test rounds never caught this — so a HashMap is required here.
-        LdapCreateStep create = new LdapCreateStep(connector);
+        LdapCreateStep create = new LdapCreateStep(directories);
         String dn = "cn=ada.nullexpect,ou=users";
         create.execute(Map.of("dn", dn, "attributes",
                 Map.of("cn", "ada.nullexpect", "sn", "Lovelace")), false);
@@ -439,7 +448,7 @@ class LdapStepsTest {
         params.put("dn", dn);
         params.put("expect", expect);
 
-        StepOutcome outcome = new LdapVerifyStep(connector).execute(params, false);
+        StepOutcome outcome = new LdapVerifyStep(directories).execute(params, false);
 
         assertThat(outcome.success()).isFalse();
         assertThat(outcome.message()).contains(dn).containsIgnoringCase("title");
@@ -448,7 +457,7 @@ class LdapStepsTest {
     @Test
     @DisplayName("ldap.verify should reject a non-boolean exists")
     void testVerifyRejectsNonBooleanExists() {
-        StepOutcome outcome = new LdapVerifyStep(connector).execute(
+        StepOutcome outcome = new LdapVerifyStep(directories).execute(
                 Map.of("dn", "cn=ada,ou=users", "exists", "yes"), false);
 
         assertThat(outcome.success()).isFalse();
@@ -458,7 +467,7 @@ class LdapStepsTest {
     @Test
     @DisplayName("ldap.create registers nothing: the entry is still there after the step")
     void testCreateLeavesTheEntry() {
-        LdapCreateStep create = new LdapCreateStep(connector);
+        LdapCreateStep create = new LdapCreateStep(directories);
         String dn = "cn=ada.stays,ou=users";
 
         StepOutcome outcome = create.execute(Map.of(
@@ -475,7 +484,7 @@ class LdapStepsTest {
     @Test
     @DisplayName("A malformed ldap.verify is a final failure; a missing entry is not")
     void testLdapVerifyFinalFailures() {
-        LdapVerifyStep verify = new LdapVerifyStep(connector);
+        LdapVerifyStep verify = new LdapVerifyStep(directories);
 
         assertThat(verify.execute(Map.of("dn", "cn=x,ou=users", "expect", Map.of("cn", "x"), "exists", true), false)
                 .isFinal()).isTrue();
@@ -486,5 +495,76 @@ class LdapStepsTest {
         StepOutcome missing = verify.execute(Map.of("dn", "cn=nobody-itf26,ou=users", "exists", true), false);
         assertThat(missing.success()).isFalse();
         assertThat(missing.isFinal()).isFalse();
+    }
+
+    @Test
+    @DisplayName("directory: selects that directory's connector, and messages name it when several are configured")
+    void testDirectorySelectsConnector() {
+        EdirectoryConnector a = mock(EdirectoryConnector.class);
+        EdirectoryConnector b = mock(EdirectoryConnector.class);
+        when(b.create(any())).thenReturn(OperationResult.success(new LdapUser()));
+        LdapDirectories two = LdapDirectories.ofConnectors(Map.of("a", a, "b", b), "a");
+
+        StepOutcome outcome = new LdapCreateStep(two).execute(Map.of(
+                "directory", "b", "dn", "cn=x,ou=users", "attributes", Map.of("cn", "x", "sn", "X")), false);
+
+        assertThat(outcome.success()).as(outcome.message()).isTrue();
+        assertThat(outcome.message()).isEqualTo("created cn=x,ou=users in directory 'b'");
+        verify(b).create(any());
+        verify(a, never()).create(any());
+    }
+
+    @Test
+    @DisplayName("Without directory:, the default directory is used")
+    void testDefaultDirectoryUsed() {
+        EdirectoryConnector a = mock(EdirectoryConnector.class);
+        EdirectoryConnector b = mock(EdirectoryConnector.class);
+        when(b.exists(any())).thenReturn(OperationResult.success(true));
+        when(b.delete(any())).thenReturn(OperationResult.success(null));
+        LdapDirectories two = LdapDirectories.ofConnectors(Map.of("a", a, "b", b), "b");
+
+        StepOutcome outcome = new LdapDeleteStep(two).execute(Map.of("dn", "cn=x,ou=users"), false);
+
+        assertThat(outcome.success()).as(outcome.message()).isTrue();
+        assertThat(outcome.message()).isEqualTo("deleted cn=x,ou=users in directory 'b'");
+        verify(a, never()).exists(any());
+    }
+
+    @Test
+    @DisplayName("An unknown directory is a final failure, listing the configured ones")
+    void testUnknownDirectoryIsFinal() {
+        LdapDirectories two = LdapDirectories.ofConnectors(
+                Map.of("ad", mock(EdirectoryConnector.class), "default", mock(EdirectoryConnector.class)), null);
+
+        StepOutcome outcome = new LdapVerifyStep(two).execute(Map.of(
+                "directory", "adx", "dn", "cn=x,ou=users", "exists", true), false);
+
+        assertThat(outcome.success()).isFalse();
+        assertThat(outcome.isFinal()).isTrue();
+        assertThat(outcome.message()).isEqualTo("ldap.verify: unknown directory 'adx'. Configured directories: [ad, default]");
+    }
+
+    @Test
+    @DisplayName("No directory: and no default is a final failure")
+    void testNoDefaultIsFinal() {
+        LdapDirectories two = LdapDirectories.ofConnectors(
+                Map.of("ad", mock(EdirectoryConnector.class), "edir", mock(EdirectoryConnector.class)), null);
+
+        StepOutcome outcome = new LdapUpdateStep(two).execute(Map.of(
+                "dn", "cn=x,ou=users", "attributes", Map.of("title", "T")), false);
+
+        assertThat(outcome.success()).isFalse();
+        assertThat(outcome.isFinal()).isTrue();
+        assertThat(outcome.message()).isEqualTo("ldap.update: name a directory; there is no default."
+                + " Configured directories: [ad, edir]");
+    }
+
+    @Test
+    @DisplayName("Every ldap.* step accepts directory:")
+    void testDirectoryAccepted() {
+        for (StepType step : List.of(new LdapCreateStep(directories), new LdapVerifyStep(directories),
+                new LdapUpdateStep(directories), new LdapDeleteStep(directories))) {
+            assertThat(step.acceptedParams()).as(step.name()).contains("directory");
+        }
     }
 }

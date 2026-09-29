@@ -1,6 +1,7 @@
 package com.idm.test.engine.steps;
 
 import com.idm.test.connector.ldap.client.EdirectoryConnector;
+import com.idm.test.connector.ldap.client.LdapDirectories;
 import com.idm.test.core.model.OperationResult;
 import com.idm.test.engine.spi.StepOutcome;
 import com.idm.test.engine.spi.StepType;
@@ -15,10 +16,10 @@ import java.util.Set;
  */
 public final class LdapUpdateStep implements StepType {
 
-    private final EdirectoryConnector connector;
+    private final LdapDirectories directories;
 
-    public LdapUpdateStep(EdirectoryConnector connector) {
-        this.connector = connector;
+    public LdapUpdateStep(LdapDirectories directories) {
+        this.directories = directories;
     }
 
     @Override
@@ -34,24 +35,35 @@ public final class LdapUpdateStep implements StepType {
     }
 
     @Override
+    public Set<String> acceptedParams() {
+        return Set.of("dn", "attributes", "directory");
+    }
+
+    @Override
     @SuppressWarnings("unchecked")
     public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
         // captureRequested is ignored: the dn is already in hand, so there is no extra work
         // to skip when nobody asked to capture it.
         String dn = String.valueOf(params.get("dn"));
+        LdapTarget target = LdapTarget.of("ldap.update", params, directories);
+        if (target.isFailure()) {
+            return target.failure();
+        }
+        EdirectoryConnector connector = target.connector();
+        String where = target.at(dn);
         Map<String, Object> attributes = (Map<String, Object>) params.get("attributes");
 
         if (attributes == null || attributes.isEmpty()) {
             return StepOutcome.failure(
-                    "ldap.update for " + dn + " has no attributes to change");
+                    "ldap.update for " + where + " has no attributes to change");
         }
 
         OperationResult<Void> result = connector.update(dn, attributes);
         if (!result.isSuccess()) {
             return StepOutcome.failure(
-                    "ldap.update failed for " + dn + ": " + result.getMessage());
+                    "ldap.update failed for " + where + ": " + result.getMessage());
         }
 
-        return StepOutcome.success("updated " + dn + " " + attributes.keySet(), dn);
+        return StepOutcome.success("updated " + where + " " + attributes.keySet(), dn);
     }
 }

@@ -1,6 +1,7 @@
 package com.idm.test.engine.steps;
 
 import com.idm.test.connector.ldap.client.EdirectoryConnector;
+import com.idm.test.connector.ldap.client.LdapDirectories;
 import com.idm.test.connector.ldap.model.LdapUser;
 import com.idm.test.core.model.OperationResult;
 import com.idm.test.engine.spi.StepOutcome;
@@ -17,10 +18,10 @@ import java.util.Set;
  */
 public final class LdapVerifyStep implements StepType {
 
-    private final EdirectoryConnector connector;
+    private final LdapDirectories directories;
 
-    public LdapVerifyStep(EdirectoryConnector connector) {
-        this.connector = connector;
+    public LdapVerifyStep(LdapDirectories directories) {
+        this.directories = directories;
     }
 
     @Override
@@ -43,21 +44,27 @@ public final class LdapVerifyStep implements StepType {
 
     @Override
     public Set<String> acceptedParams() {
-        return Set.of("dn", "expect", "exists", "wait");
+        return Set.of("dn", "expect", "exists", "wait", "directory");
     }
 
     @Override
     @SuppressWarnings("unchecked")
     public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
         String dn = String.valueOf(params.get("dn"));
+        LdapTarget target = LdapTarget.of("ldap.verify", params, directories);
+        if (target.isFailure()) {
+            return target.failure();
+        }
+        EdirectoryConnector connector = target.connector();
+        String where = target.at(dn);
 
-        StepOutcome rejection = rejectMalformedAssertion(params, dn);
+        StepOutcome rejection = rejectMalformedAssertion(params, where);
         if (rejection != null) {
             return rejection;
         }
 
         if (params.containsKey("exists")) {
-            return verifyExistence(dn, (Boolean) params.get("exists"));
+            return verifyExistence(connector, dn, where, (Boolean) params.get("exists"));
         }
 
         Map<String, Object> expected = (Map<String, Object>) params.get("expect");
@@ -66,14 +73,14 @@ public final class LdapVerifyStep implements StepType {
 
         if (!result.isSuccess()) {
             return StepOutcome.failure(
-                    "ldap.verify failed for " + dn + ": " + result.getMessage());
+                    "ldap.verify failed for " + where + ": " + result.getMessage());
         }
 
         if (!captureRequested) {
             // Nobody declared as: for this step, so there is nothing to capture — skip the
             // follow-up read entirely rather than paying for it on every retry attempt of an
             // assertion nobody is going to read the value of.
-            return StepOutcome.success("verified " + dn);
+            return StepOutcome.success("verified " + where);
         }
 
         // Read once, only after verification passes and only because a capture was actually
@@ -83,11 +90,11 @@ public final class LdapVerifyStep implements StepType {
             // Verification passed but the entry could not be re-read for its as: capture.
             // Reporting success with an empty map would let `${v.cn}` miss silently later, so
             // this fails the step instead of fabricating a value.
-            return StepOutcome.failure("ldap.verify passed for " + dn
+            return StepOutcome.failure("ldap.verify passed for " + where
                     + " but the follow-up read for its as: capture failed: " + entry.getMessage());
         }
 
-        return StepOutcome.success("verified " + dn, LdapAttributes.of(entry.getData().get()));
+        return StepOutcome.success("verified " + where, LdapAttributes.of(entry.getData().get()));
     }
 
     /**
@@ -97,23 +104,24 @@ public final class LdapVerifyStep implements StepType {
      * is that the entry is gone, and until now the DSL could only assert that an entry still
      * had particular values.
      */
-    private StepOutcome verifyExistence(String dn, boolean shouldExist) {
+    private StepOutcome verifyExistence(EdirectoryConnector connector, String dn, String where,
+                                    boolean shouldExist) {
         OperationResult<Boolean> result = connector.exists(dn);
 
         if (!result.isSuccess()) {
-            return StepOutcome.failure("ldap.verify could not check whether " + dn
+            return StepOutcome.failure("ldap.verify could not check whether " + where
                     + " exists: " + result.getMessage());
         }
 
         boolean present = Boolean.TRUE.equals(result.getData().orElse(false));
         if (present != shouldExist) {
-            return StepOutcome.failure("ldap.verify expected " + dn + " to be "
+            return StepOutcome.failure("ldap.verify expected " + where + " to be "
                     + (shouldExist ? "present" : "absent") + " but it was "
                     + (present ? "present" : "absent"));
         }
 
         return StepOutcome.success(
-                "verified " + dn + " is " + (shouldExist ? "present" : "absent"));
+                "verified " + where + " is " + (shouldExist ? "present" : "absent"));
     }
 
     /**
@@ -124,30 +132,30 @@ public final class LdapVerifyStep implements StepType {
      * verify nothing at all while looking like an assertion. That defect class has been found
      * eight times in this project, so the rule is stated positively and checked before any I/O.
      */
-    private static StepOutcome rejectMalformedAssertion(Map<String, Object> params, String dn) {
+    private static StepOutcome rejectMalformedAssertion(Map<String, Object> params, String where) {
         boolean hasExpect = params.containsKey("expect");
         boolean hasExists = params.containsKey("exists");
 
         if (hasExpect && hasExists) {
-            return StepOutcome.finalFailure("ldap.verify for " + dn + " supplies both 'expect' and "
+            return StepOutcome.finalFailure("ldap.verify for " + where + " supplies both 'expect' and "
                     + "'exists'; expect already implies the entry exists, so give only one");
         }
         if (!hasExpect && !hasExists) {
-            return StepOutcome.finalFailure("ldap.verify for " + dn + " supplies neither 'expect' "
+            return StepOutcome.finalFailure("ldap.verify for " + where + " supplies neither 'expect' "
                     + "nor 'exists' — it would verify nothing. Assert attributes with expect:, "
                     + "or presence with exists:");
         }
         if (hasExists && !(params.get("exists") instanceof Boolean)) {
-            return StepOutcome.finalFailure("ldap.verify for " + dn + " has an 'exists' that is not "
+            return StepOutcome.finalFailure("ldap.verify for " + where + " has an 'exists' that is not "
                     + "true or false");
         }
         if (hasExpect) {
             if (!(params.get("expect") instanceof Map<?, ?> expect)) {
-                return StepOutcome.finalFailure("ldap.verify for " + dn
+                return StepOutcome.finalFailure("ldap.verify for " + where
                         + " has an expect that is not a map of attribute names to expected values");
             }
             if (expect.isEmpty()) {
-                return StepOutcome.finalFailure("ldap.verify for " + dn
+                return StepOutcome.finalFailure("ldap.verify for " + where
                         + " has an empty expect: block — it would verify nothing");
             }
 
@@ -160,7 +168,7 @@ public final class LdapVerifyStep implements StepType {
             // eighth time in this project.
             for (Map.Entry<?, ?> attribute : expect.entrySet()) {
                 if (attribute.getValue() == null) {
-                    return StepOutcome.finalFailure("ldap.verify for " + dn
+                    return StepOutcome.finalFailure("ldap.verify for " + where
                             + " has a null expected value for attribute '" + attribute.getKey()
                             + "' — a missing or misspelled attribute name parses the same way "
                             + "and would verify nothing. Check for a typo, or assert exists: "

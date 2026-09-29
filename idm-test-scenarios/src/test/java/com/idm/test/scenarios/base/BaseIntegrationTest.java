@@ -4,6 +4,7 @@ import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
 import com.idm.test.connector.database.client.MultiDatabaseConnector;
 import com.idm.test.connector.ldap.client.EdirectoryConnector;
+import com.idm.test.connector.ldap.client.LdapDirectories;
 import com.idm.test.connector.rest.client.IdmRestConnector;
 import com.idm.test.connector.rest.client.RestAuthenticator;
 import com.idm.test.connector.rest.config.RestProperties;
@@ -130,6 +131,9 @@ public abstract class BaseIntegrationTest {
 
     @Autowired
     protected EdirectoryConnector edirectoryConnector;
+
+    @Autowired
+    protected LdapDirectories ldapDirectories;
 
     @Autowired
     protected MultiDatabaseConnector databaseConnector;

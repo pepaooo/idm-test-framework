@@ -2,7 +2,7 @@ package com.idm.test.scenarios.engine;
 
 import com.idm.test.connector.database.client.MultiDatabaseConnector;
 import com.idm.test.connector.database.config.DatabaseProperties;
-import com.idm.test.connector.ldap.client.EdirectoryConnector;
+import com.idm.test.connector.ldap.client.LdapDirectories;
 import com.idm.test.connector.rest.client.IdmRestConnector;
 import com.idm.test.connector.rest.client.RestAuthenticator;
 import com.idm.test.connector.rest.config.RestProperties;
@@ -131,7 +131,7 @@ public class RealEnvironmentScenarios {
     private Environment environment;
 
     @Autowired
-    private EdirectoryConnector edirectoryConnector;
+    private LdapDirectories ldapDirectories;
 
     @Autowired
     private MultiDatabaseConnector databaseConnector;
@@ -183,7 +183,7 @@ public class RealEnvironmentScenarios {
         requireCredentials(needs.restTargets(), needs.soap(), restProperties, soapProperties, environment);
 
         Map<String, StepType> registry = YamlScenarioTest.registry(
-                edirectoryConnector, databaseConnector, roleServiceConnector.getIfAvailable(),
+                ldapDirectories, databaseConnector, roleServiceConnector.getIfAvailable(),
                 resourceServiceConnector.getIfAvailable(), idmRestConnector, restProperties, restAuthenticator);
         ScenarioValidator validator = new ScenarioValidator(registry, FixtureFactory.SUPPORTED_GENERATORS);
         ScenarioEngine engine = new ScenarioEngine(

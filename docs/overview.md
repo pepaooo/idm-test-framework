@@ -67,7 +67,7 @@ Failures identify the file and step. A waiting assertion records the attempt cou
 - JUnit execution and JSON results; embedded local test infrastructure without Docker; optional runners for containers and for a real lab.
 - Authentication from configuration: basic or OAuth2 client credentials for REST targets, basic for SOAP.
 
-Checking HTTP responses in JavaScript and reading XML responses are planned (ITF-24, ITF-25). CLI, frontend and HTML reporting are deferred.
+HTTP responses are checked with JavaScript conditions, reading JSON and XML bodies as plain objects (ITF-24, ITF-25). CLI, frontend and HTML reporting are deferred.
 
 The [capability matrix](architecture/capabilities.md) records exact status and source evidence. Its 2026-09-25 review ran 591 tests successfully. That count is a dated snapshot, not a promise about later revisions.
 

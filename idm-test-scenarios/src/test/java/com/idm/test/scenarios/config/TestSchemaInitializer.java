@@ -16,8 +16,9 @@ import java.util.Map;
  * <p>
  * {@code spring.sql.init} cannot do this: DatabaseConfiguration builds its Hikari
  * DataSources privately inside the jdbcTemplates map bean, so no DataSource bean is
- * exposed for Spring Boot to initialize. schema.sql was configured but never ran,
- * leaving every scenario query failing with "bad SQL grammar".
+ * exposed for Spring Boot to initialize. When {@code spring.sql.init} was configured it ran
+ * schema.sql against Spring Boot's own embedded H2, never against test-db; that
+ * DataSource is now excluded (ITF-32), so this class is the only thing that runs schema.sql.
  * <p>
  * Runs once at context startup rather than via H2's INIT=RUNSCRIPT, which would fire
  * on every pooled connection and drop the tables mid-test.

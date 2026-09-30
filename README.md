@@ -130,7 +130,7 @@ Actions change state; assertions check it and may retry.
 | `http.request` | action | `target`, `method`, `path` | `headers`, `body` (a raw string: JSON, XML, a SOAP envelope) |
 | `http.verify` | assertion | `target`, `method`, `path`, `check` | `headers`, `body`, `wait` (JavaScript conditions on `response`, including its parsed JSON and XML) |
 
-Every step also accepts `as:` to capture its result. `rest.*` and `http.request` address a named
+Every step also accepts `as:` to capture its result and `description:` to say why the step exists. `rest.*` and `http.request` address a named
 target (`idm.test.rest.<target>.base-url`) and authenticate with that target's settings — basic,
 OAuth2 client credentials, or none — unless the step writes its own `Authorization` header. The
 [authoring guide](docs/guides/scenario-authoring.md) walks through it. The

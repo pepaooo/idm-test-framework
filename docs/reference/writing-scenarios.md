@@ -101,7 +101,10 @@ passwords and tokens in target settings, never in scenario YAML.
 It's text, `${…}` references are resolved, and `js:{ … }` is not allowed. It appears in the
 results (`*-results.json`) and in a failing step's message, so a reader who never opens the
 YAML still knows what the step was for. On `set:`, `description` is the step's description,
-not a name to bind.
+not a name to bind. Like parameters, a description is written to the results unredacted, so never put
+secrets in it. A `${…}` that can't be resolved fails the step; in `cleanup:` the description is recorded
+as written instead. Reference a field (for example `${user.userId}`) rather than a whole fixture, which
+would print as a map.
 
 ```yaml
 - roles.grant:

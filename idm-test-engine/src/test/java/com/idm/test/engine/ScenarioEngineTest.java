@@ -7,6 +7,7 @@ import com.idm.test.engine.model.Scenario;
 import com.idm.test.engine.model.StepSpec;
 import com.idm.test.engine.result.CleanupStatus;
 import com.idm.test.engine.result.ScenarioResult;
+import com.idm.test.engine.result.StepResult;
 import com.idm.test.engine.spi.DeferredExpression;
 import com.idm.test.engine.spi.StepOutcome;
 import com.idm.test.engine.spi.StepType;
@@ -934,6 +935,21 @@ class ScenarioEngineTest {
         assertThat(result.success()).isFalse();
         assertThat(result.steps().get(0).message()).startsWith("could not resolve 'description': ");
         assertThat(events).isEmpty();
+    }
+
+    @Test
+    @DisplayName("A step that fails on an unresolvable parameter still records its description resolved")
+    void testFailedStepRecordsResolvedDescription() {
+        ScenarioEngine engine = engineWith(recordingAction("a"));
+
+        ScenarioResult result = engine.run(scenario(
+                new StepSpec("a", params("description", "Create ${user.userId}", "dn", "${nobody.here}"))), "t.yaml");
+
+        assertThat(result.success()).isFalse();
+        StepResult step = result.steps().get(0);
+        assertThat(step.success()).isFalse();
+        assertThat(step.description()).startsWith("Create ").doesNotContain("${");
+        assertThat(result.failureSummary()).contains(step.description()).doesNotContain("Create ${");
     }
 
     @Test

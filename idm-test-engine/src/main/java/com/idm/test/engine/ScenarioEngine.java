@@ -95,7 +95,7 @@ public final class ScenarioEngine {
                             System.currentTimeMillis() - stepStarted,
                             "step '" + step.type() + "' threw " + e.getClass().getSimpleName()
                                     + ": " + e.getMessage(),
-                            null, null, writtenDescription(step));
+                            null, null, describe(step, scope));
                 }
                 results.add(result);
                 success = result.success();
@@ -344,15 +344,7 @@ public final class ScenarioEngine {
                     writtenDescription(entry));
         }
 
-        String description = writtenDescription(entry);
-        Object raw = entry.params().get(DESCRIPTION);
-        if (raw != null && scope.keySet().containsAll(Interpolator.references(raw))) {
-            try {
-                description = resolvedDescription(entry, scope);
-            } catch (RuntimeException e) {
-                // recorded as written: a description must never change what cleanup does
-            }
-        }
+        String description = describe(entry, scope);
 
         StepType type = registry.get(entry.type());
         if (type == null) {
@@ -375,6 +367,22 @@ public final class ScenarioEngine {
     private static String writtenDescription(StepSpec step) {
         Object value = step.params().get(DESCRIPTION);
         return value == null ? null : String.valueOf(value);
+    }
+
+    /**
+     * The description resolved when every reference is in scope and resolving succeeds, otherwise as
+     * written (null when absent). Never throws: a description must not change what a step or cleanup does.
+     */
+    private String describe(StepSpec step, Map<String, Object> scope) {
+        Object raw = step.params().get(DESCRIPTION);
+        if (raw != null && scope.keySet().containsAll(Interpolator.references(raw))) {
+            try {
+                return resolvedDescription(step, scope);
+            } catch (RuntimeException e) {
+                // fall through to the text as written
+            }
+        }
+        return writtenDescription(step);
     }
 
     /** The description resolved with {@code scope}, or null. Throws when a reference can't be resolved. */

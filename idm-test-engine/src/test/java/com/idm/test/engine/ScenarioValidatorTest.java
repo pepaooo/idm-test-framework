@@ -713,6 +713,16 @@ class ScenarioValidatorTest {
     }
 
     @Test
+    @DisplayName("A description with js:{ embedded mid-text is rejected too")
+    void testDescriptionRejectsEmbeddedExpression() {
+        Scenario scenario = scenario(new StepSpec("ldap.create",
+                params("description", "before js:{ 1 } after", "dn", "x")));
+
+        assertThatThrownBy(() -> validator.validate(scenario, "d.yaml"))
+                .hasMessageContaining("'description' must be text; js:{ … } is not allowed here");
+    }
+
+    @Test
     @DisplayName("A description's ${…} names must be known, with the usual scope rules")
     void testDescriptionReferences() {
         Scenario unknown = scenario(new StepSpec("ldap.create", params("description", "for ${nobody}", "dn", "x")));

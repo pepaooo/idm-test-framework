@@ -15,11 +15,13 @@ steps:
         title: Analyst
 
   - db.execute:
+      description: "Create the SAP account for ${user.userId}"
       database: test-db
       statement: "INSERT INTO sap_users (username, status) VALUES (?, ?)"
       params: ["${user.userId}", "ACTIVE"]
 
   - db.verify:
+      description: Wait until the account is ACTIVE
       database: test-db
       query: "SELECT status FROM sap_users WHERE username = ?"
       params: ["${user.userId}"]
@@ -43,6 +45,7 @@ steps:
 
 cleanup:
   - db.execute:
+      description: Remove the SAP account
       database: test-db
       statement: "DELETE FROM sap_users WHERE username = ?"
       params: ["${user.userId}"]

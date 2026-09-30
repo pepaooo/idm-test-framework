@@ -97,6 +97,19 @@ A parameter's value can be:
 Resolved values are written to the results file **unredacted**. Use synthetic data, and keep
 passwords and tokens in target settings, never in scenario YAML.
 
+**Describing steps.** Any step or cleanup entry may say why it exists with `description:`.
+It's text, `${…}` references are resolved, and `js:{ … }` is not allowed. It appears in the
+results (`*-results.json`) and in a failing step's message, so a reader who never opens the
+YAML still knows what the step was for. On `set:`, `description` is the step's description,
+not a name to bind.
+
+```yaml
+- roles.grant:
+    description: "Grant the Finance roles to ${user.userId}"
+    user: "cn=${user.userId},ou=users,o=data"
+    roles: [ ... ]
+```
+
 ## 3. Fixtures
 
 A fixture is a named map of test data.
@@ -746,7 +759,7 @@ waiting. Each message names the file and the step. Real examples:
 |---|---|
 | unknown step type | `demo.yaml, step 1 (ldap.creat): unknown step type. Available: [db.execute, db.verify, http.request, …]` |
 | missing required parameter | `demo.yaml, step 1 (ldap.create): missing required parameter 'dn'` |
-| unknown parameter (often a typo) | `demo.yaml, step 1 (ldap.create): unknown parameter 'atributes'. ldap.create accepts: [as, attributes, directory, dn]` |
+| unknown parameter (often a typo) | `demo.yaml, step 1 (ldap.create): unknown parameter 'atributes'. ldap.create accepts: [as, attributes, description, directory, dn]` |
 | a reference to a name not bound yet, in `${…}` or `js:{…}` | `demo.yaml, step 1 (ldap.create): references '${usr...}' but nothing named 'usr' has been declared or bound at this point` |
 | an expression that doesn't compile | `demo.yaml, step 1 (ldap.create): invalid expression js:{  1 +  }: Unexpected end of file (expression#1)` |
 | unknown generator | `demo.yaml: fixture 'user' uses unknown generator 'random-person'. Available: [random-user]` |
@@ -754,6 +767,8 @@ waiting. Each message names the file and the step. Real examples:
 | `wait:` on an action | `demo.yaml, step 1 (ldap.create): 'wait' is only valid on assertions, and this step is an action` |
 | an assertion in `cleanup:` | `demo.yaml: cleanup entry 1 (ldap.verify): cleanup entries must be actions; ldap.verify is an assertion and tears nothing down` |
 | `as:` (or `wait:`) in `cleanup:` | `demo.yaml: cleanup entry 1 (ldap.delete): 'as' is not allowed on a cleanup entry` |
+| a `description` that isn't text | `demo.yaml, step 2 (roles.grant): 'description' must be text` |
+| a `description` that is a `js:{…}` expression | `demo.yaml, step 2 (roles.grant): 'description' must be text; js:{ … } is not allowed here` |
 | missing `name` | `demo.yaml: 'name' is required` |
 | a `check:` that isn't `js:{ … }`, or an empty list | `demo.yaml, step 1 (http.verify): 'check' must be js:{ … } expressions; got "status is 200"` |
 
@@ -771,16 +786,22 @@ Each run writes a JSON results file in `idm-test-scenarios/target/`:
 | `real-environment-results.json` | `RealEnvironmentScenarios` and `ContainerScenarios` |
 
 Each scenario record has:
-- its source file, status and duration
-- every step: its type, the **resolved** parameters (unredacted), success, message, and for a
-  waited step the number of attempts and the time waited
-- every cleanup entry: its type, resolved parameters, status (SUCCEEDED, FAILED or SKIPPED) and
-  message
+- its source file, status, duration and `description` (null when none)
+- every step: its type, its `description` (null when none), the **resolved** parameters
+  (unredacted), success, message, and for a waited step the number of attempts and the time waited
+- every cleanup entry: its type, its `description` (null when none), resolved parameters, status
+  (SUCCEEDED, FAILED or SKIPPED) and message
 
 A failing scenario's summary starts with the file and the step:
 
 ```text
 provisioning.yaml, step 3 (ldap.verify): ldap.verify expected cn=jdoe,ou=users to be present but it was absent (last observed value after retrying)
+```
+
+A step that has a `description` shows it after the type:
+
+```text
+demo.yaml, step 3 (roles.grant: "Grant the Finance roles to test.user.179…"): <message>
 ```
 
 - `(last observed value after retrying)`: the assertion never passed before the timeout; the
@@ -810,6 +831,7 @@ steps:
       displayName: "js:{ user.firstName + ' ' + user.lastName.toUpperCase() }"
 
   - ldap.create:
+      description: "Create ${user.userId} in the directory"
       dn: "cn=${user.userId},ou=users"
       attributes:
         cn: ${user.userId}
@@ -820,6 +842,7 @@ steps:
       as: createdDn
 
   - roles.grant:
+      description: Request the SAP role for the new user
       user: "cn=${user.userId},ou=users,o=data"
       roles:
         - "cn=SAP_USER,cn=Level10,cn=RoleDefs,cn=RoleConfig,cn=AppConfig,cn=User Application Driver,cn=driverset1,o=system"
@@ -827,6 +850,7 @@ steps:
       as: assignments
 
   - db.verify:
+      description: Wait for the SAP account to become active
       database: sap
       query: "SELECT status FROM sap_users WHERE username = ?"
       params: ["${user.userId}"]
@@ -853,6 +877,7 @@ cleanup:
   - roles.revoke:
       assignments: "${assignments}"
   - ldap.delete:
+      description: Remove the test entry
       dn: "${createdDn}"
 ```
 

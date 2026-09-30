@@ -20,6 +20,7 @@ class RunInfoTest {
         endpoints.put("REST idm", "https://svc:pw@idm.lab/api");
         endpoints.put("Database sap", "jdbc:postgresql://db.lab/sap?password=x");
         endpoints.put("Role service", null);
+        endpoints.put(null, "https://idm.lab/ignored");
 
         RunInfo run = new RunInfo("Real environment", Instant.EPOCH, List.of("dev"), null, endpoints);
 

@@ -14,7 +14,7 @@ import java.util.TreeMap;
  * @param profiles       the active Spring profiles, empty when none
  * @param scenarioFilter the {@code -Dscenario} value, or null
  * @param endpoints      label to URL for what the selected scenarios use; sanitised with
- *                       {@link ReportUrls#sanitise}, sorted by label, null URLs dropped
+ *                       {@link ReportUrls#sanitise}, sorted by label, null labels and URLs dropped
  */
 public record RunInfo(String runner, Instant startedAt, List<String> profiles, String scenarioFilter,
                       Map<String, String> endpoints) {
@@ -24,7 +24,7 @@ public record RunInfo(String runner, Instant startedAt, List<String> profiles, S
         Map<String, String> safe = new TreeMap<>();
         if (endpoints != null) {
             endpoints.forEach((label, url) -> {
-                if (url != null) {
+                if (label != null && url != null) {
                     safe.put(label, ReportUrls.sanitise(url));
                 }
             });

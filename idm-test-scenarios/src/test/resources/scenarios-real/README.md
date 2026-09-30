@@ -12,6 +12,7 @@ IDM_TEST_PROFILE=dev ./mvnw test -pl idm-test-scenarios -am \
 ```
 
 Results are written to `idm-test-scenarios/target/real-environment-results.json`.
+Open `target/real-environment-report.html` for a readable report of the run (see the authoring reference, section 9).
 
 To run one scenario or a group, add `-Dscenario=` with a file name or a glob, for example
 `-Dscenario=create-user.yaml` or `-Dscenario='onboarding-*'`. Quote any pattern containing `*`

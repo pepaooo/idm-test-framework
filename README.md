@@ -178,6 +178,8 @@ the parameters after interpolation, and for a step that waited, how many attempt
 what it last observed. The engine itself renders nothing; this file is the shape an HTML report
 or a UI would read.
 
+Each run also writes a self-contained HTML report beside it (`scenario-report.html`, `real-environment-report.html`, `multi-directory-report.html`) — open it in a browser to read or share the run.
+
 ---
 
 ## Project structure

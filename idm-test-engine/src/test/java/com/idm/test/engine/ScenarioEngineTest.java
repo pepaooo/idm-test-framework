@@ -7,6 +7,7 @@ import com.idm.test.engine.model.Scenario;
 import com.idm.test.engine.model.StepSpec;
 import com.idm.test.engine.result.CleanupStatus;
 import com.idm.test.engine.result.ScenarioResult;
+import com.idm.test.engine.result.StepResult;
 import com.idm.test.engine.spi.DeferredExpression;
 import com.idm.test.engine.spi.StepOutcome;
 import com.idm.test.engine.spi.StepType;
@@ -871,5 +872,139 @@ class ScenarioEngineTest {
         });
         assertThat(result.success()).isFalse();
         assertThat(result.failureSummary()).contains("f went wrong").doesNotContain("cleanup entry");
+    }
+
+    private static Map<String, Object> params(Object... keyValues) {
+        Map<String, Object> params = new java.util.LinkedHashMap<>();
+        for (int i = 0; i < keyValues.length; i += 2) {
+            params.put((String) keyValues[i], keyValues[i + 1]);
+        }
+        return params;
+    }
+
+    /** Records the parameters it received. */
+    private StepType paramsRecorder(String name, List<Map<String, Object>> seen) {
+        return new StepType() {
+            public String name() { return name; }
+            public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
+                seen.add(Map.copyOf(params));
+                return StepOutcome.success("ok");
+            }
+        };
+    }
+
+    @Test
+    @DisplayName("A step's description is resolved into its result, and never reaches the step or resolvedParams")
+    void testStepDescriptionRecorded() {
+        List<Map<String, Object>> seen = new ArrayList<>();
+        ScenarioEngine engine = engineWith(paramsRecorder("a", seen));
+
+        ScenarioResult result = engine.run(scenario(
+                new StepSpec("a", params("description", "Create ${user.userId}", "dn", "x")),
+                new StepSpec("a", params("dn", "y"))), "t.yaml");
+
+        assertThat(result.success()).isTrue();
+        assertThat(seen.get(0)).doesNotContainKey("description");
+        assertThat(result.steps().get(0).description()).startsWith("Create ").doesNotContain("${");
+        assertThat(result.steps().get(0).resolvedParams()).doesNotContainKey("description");
+        assertThat(result.steps().get(1).description()).isNull();
+    }
+
+    @Test
+    @DisplayName("A set: step records its description and binds no 'description' name")
+    void testSetDescription() {
+        ScenarioEngine engine = engineWith(recordingAction("a"));
+
+        ScenarioResult result = engine.run(scenario(
+                new StepSpec("set", params("description", "Pick ${user.userId}", "dn", "z")),
+                new StepSpec("a", params("dn", "${dn}"))), "t.yaml");
+
+        assertThat(result.success()).isTrue();
+        assertThat(result.steps().get(0).description()).startsWith("Pick ").doesNotContain("${");
+        assertThat(result.steps().get(0).resolvedParams()).containsOnlyKeys("dn");
+    }
+
+    @Test
+    @DisplayName("A description that can't be resolved fails the step, naming 'description'")
+    void testUnresolvableDescriptionFailsStep() {
+        ScenarioEngine engine = engineWith(recordingAction("a"));
+
+        ScenarioResult result = engine.run(scenario(
+                new StepSpec("a", params("description", "for ${nobody.here}", "dn", "x"))), "t.yaml");
+
+        assertThat(result.success()).isFalse();
+        assertThat(result.steps().get(0).message()).startsWith("could not resolve 'description': ");
+        assertThat(events).isEmpty();
+    }
+
+    @Test
+    @DisplayName("A step that fails on an unresolvable parameter still records its description resolved")
+    void testFailedStepRecordsResolvedDescription() {
+        ScenarioEngine engine = engineWith(recordingAction("a"));
+
+        ScenarioResult result = engine.run(scenario(
+                new StepSpec("a", params("description", "Create ${user.userId}", "dn", "${nobody.here}"))), "t.yaml");
+
+        assertThat(result.success()).isFalse();
+        StepResult step = result.steps().get(0);
+        assertThat(step.success()).isFalse();
+        assertThat(step.description()).startsWith("Create ").doesNotContain("${");
+        assertThat(result.failureSummary()).contains(step.description()).doesNotContain("Create ${");
+    }
+
+    @Test
+    @DisplayName("Cleanup entries record their description: resolved when they run, as written when skipped")
+    void testCleanupDescription() {
+        ScenarioEngine engine = engineWith(recordingAction("a"), recordingAction("tidy"));
+
+        ScenarioResult result = engine.run(withCleanup(
+                List.of(new StepSpec("a", params("dn", "x"))),
+                new StepSpec("tidy", params("description", "Remove ${user.userId}", "dn", "x")),
+                new StepSpec("tidy", params("description", "Undo ${never}", "dn", "${never}"))), "t.yaml");
+
+        assertThat(result.cleanup().get(0).description()).startsWith("Remove ").doesNotContain("${");
+        assertThat(result.cleanup().get(0).resolvedParams()).doesNotContainKey("description");
+        assertThat(result.cleanup().get(1).status()).isEqualTo(CleanupStatus.SKIPPED);
+        assertThat(result.cleanup().get(1).description()).isEqualTo("Undo ${never}");
+    }
+
+    @Test
+    @DisplayName("A description that only names an unbound value does not skip a runnable cleanup entry")
+    void testCleanupDescriptionDoesNotCauseSkip() {
+        ScenarioEngine engine = engineWith(recordingAction("a"), recordingAction("tidy"));
+
+        ScenarioResult result = engine.run(withCleanup(
+                List.of(new StepSpec("a", params("dn", "x"))),
+                new StepSpec("tidy", params("description", "Undo ${never}", "dn", "x"))), "t.yaml");
+
+        assertThat(result.cleanup().get(0).status()).isEqualTo(CleanupStatus.SUCCEEDED);
+        assertThat(result.cleanup().get(0).description()).isEqualTo("Undo ${never}");
+    }
+
+    @Test
+    @DisplayName("The scenario's own description is recorded")
+    void testScenarioDescriptionRecorded() {
+        ScenarioEngine engine = engineWith(recordingAction("a"));
+
+        ScenarioResult result = engine.run(new Scenario("Test", "What this checks",
+                Map.of(), List.of(new StepSpec("a", params("dn", "x")))), "t.yaml");
+
+        assertThat(result.description()).isEqualTo("What this checks");
+    }
+
+    @Test
+    @DisplayName("The failure summary quotes a failing step's or cleanup entry's description, and is unchanged without one")
+    void testFailureSummaryQuotesDescription() {
+        ScenarioEngine engine = engineWith(failingAction("a"), failingAction("tidy"));
+
+        ScenarioResult described = engine.run(withCleanup(
+                List.of(new StepSpec("a", params("description", "Grant roles", "dn", "x"))),
+                new StepSpec("tidy", params("description", "Remove it", "dn", "x"))), "t.yaml");
+        assertThat(described.failureSummary())
+                .isEqualTo("t.yaml, step 1 (a: \"Grant roles\"): a went wrong; "
+                        + "t.yaml, cleanup entry 1 (tidy: \"Remove it\"): tidy went wrong");
+
+        ScenarioResult plain = engine.run(scenario(new StepSpec("a", params("dn", "x"))), "t.yaml");
+        assertThat(plain.failureSummary()).isEqualTo("t.yaml, step 1 (a): a went wrong");
     }
 }

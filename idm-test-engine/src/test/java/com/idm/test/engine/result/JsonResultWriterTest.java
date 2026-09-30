@@ -66,4 +66,23 @@ class JsonResultWriterTest {
 
         assertThat(Files.exists(target)).isTrue();
     }
+
+    @Test
+    @DisplayName("Should write the scenario's, step's and cleanup entry's descriptions")
+    void testWritesDescriptions(@TempDir Path dir) throws Exception {
+        StepResult step = new StepResult(0, "ldap.create", Map.of("dn", "x"), true, 5, "ok", null, null,
+                "Create the user");
+        CleanupResult cleanup = new CleanupResult(0, "ldap.delete", Map.of("dn", "x"),
+                CleanupStatus.SUCCEEDED, 1, "deleted", "Remove the user");
+        ScenarioResult scenario = new ScenarioResult("Provision Ada", "p.yaml", true, 10,
+                List.of(step), List.of(cleanup), null, "Checks provisioning");
+
+        Path target = dir.resolve("descriptions.json");
+        JsonResultWriter.write(List.of(scenario), target);
+
+        assertThat(Files.readString(target))
+                .contains("\"description\" : \"Checks provisioning\"")
+                .contains("\"description\" : \"Create the user\"")
+                .contains("\"description\" : \"Remove the user\"");
+    }
 }

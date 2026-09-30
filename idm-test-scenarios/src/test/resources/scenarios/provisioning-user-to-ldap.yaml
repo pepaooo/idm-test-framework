@@ -10,6 +10,7 @@ fixtures:
 
 steps:
   - ldap.create:
+      description: "Create ${user.userId} in the directory"
       dn: "cn=${user.userId},ou=users"
       as: createdDn
       attributes:
@@ -19,11 +20,13 @@ steps:
         mail: "${user.email}"
 
   - ldap.verify:
+      description: Wait until the entry exists
       dn: "cn=${user.userId},ou=users"
       exists: true
       wait: true
 
   - ldap.verify:
+      description: Check the entry carries the generated attributes
       dn: "cn=${user.userId},ou=users"
       expect:
         givenName: "${user.firstName}"
@@ -32,4 +35,5 @@ steps:
 
 cleanup:
   - ldap.delete:
+      description: Remove the test entry
       dn: "${createdDn}"

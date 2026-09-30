@@ -83,9 +83,12 @@ class RealEnvironmentLdapOnlyTest extends RealEnvironmentScenarios {
         });
         PREVIOUS.clear();
         if (ldap != null) {
-            String report = Files.readString(Path.of("target", "real-environment-report.html"));
-            assertThat(report).contains("Real environment run").contains("LDAP default").contains(ldap.getUrl());
-            ldap.close();
+            try {
+                String report = Files.readString(Path.of("target", "real-environment-report.html"));
+                assertThat(report).contains("Real environment run").contains("LDAP default").contains(ldap.getUrl());
+            } finally {
+                ldap.close();
+            }
         }
     }
 

@@ -81,7 +81,8 @@ class HtmlReportWriterTest {
 
         assertThat(html).contains("data-tile=\"scenarios\">3<")
                 .contains("data-tile=\"passed\">1<")
-                .contains("data-tile=\"failed\">2<");
+                .contains("data-tile=\"failed\">2<")
+                .contains("Time in scenarios");
     }
 
     @Test
@@ -104,7 +105,7 @@ class HtmlReportWriterTest {
                 .contains("Grant the Finance roles")
                 .contains("Role service error: Invalid name &lt;cn=u&gt;")
                 .contains("&quot;dn&quot; : &quot;cn=u,ou=users&quot;")
-                .contains("Later steps were not run.")
+                .contains("Any later steps were not run.")
                 .contains("<div class=\"evidence\"></div>");
     }
 
@@ -154,6 +155,27 @@ class HtmlReportWriterTest {
 
         assertThat(html).doesNotContain("abc.def").doesNotContain("zzz").doesNotContain("Secret#1")
                 .contains("&quot;Authorization&quot; : &quot;***&quot;");
+    }
+
+    @Test
+    @DisplayName("API key, cookie and pwd parameters are masked")
+    void testApiKeysAndCookiesMasked() {
+        ScenarioResult secret = new ScenarioResult("x", "x.yaml", true, 1,
+                List.of(new StepResult(0, "http.request",
+                        Map.of("headers", Map.of("X-API-Key", "k-111", "Cookie", "sid=c-222",
+                                        "Set-Cookie", "sid=c-333"),
+                                "pwd", "p-444"),
+                        true, 1, "ok", null, null, null)),
+                List.of(), null, null);
+
+        String html = render(secret);
+
+        assertThat(html).doesNotContain("k-111").doesNotContain("c-222").doesNotContain("c-333")
+                .doesNotContain("p-444")
+                .contains("&quot;X-API-Key&quot; : &quot;***&quot;")
+                .contains("&quot;Cookie&quot; : &quot;***&quot;")
+                .contains("&quot;Set-Cookie&quot; : &quot;***&quot;")
+                .contains("&quot;pwd&quot; : &quot;***&quot;");
     }
 
     @Test

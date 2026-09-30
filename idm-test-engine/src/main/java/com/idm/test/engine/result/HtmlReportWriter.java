@@ -29,7 +29,8 @@ public final class HtmlReportWriter {
 
     private static final ObjectMapper JSON = new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT);
     private static final List<String> SECRET_KEYS =
-            List.of("password", "passwd", "secret", "token", "authorization", "credential");
+            List.of("password", "passwd", "pwd", "secret", "token", "authorization", "credential",
+                    "apikey", "api_key", "api-key", "cookie");
     private static final String MASK = "***";
     private static final DateTimeFormatter STARTED =
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss z").withZone(ZoneId.systemDefault());
@@ -83,7 +84,7 @@ public final class HtmlReportWriter {
                 .append(tile("scenarios", "Scenarios", String.valueOf(results.size())))
                 .append(tile("passed", "Passed", String.valueOf(passed)))
                 .append(tile("failed", "Failed", String.valueOf(failed)))
-                .append(tile("duration", "Duration", duration(total)))
+                .append(tile("duration", "Time in scenarios", duration(total)))
                 .append("</div>\n");
 
         html.append("<div class=\"controls\">")
@@ -124,7 +125,7 @@ public final class HtmlReportWriter {
             for (StepResult step : scenario.steps()) {
                 appendStep(html, step);
                 if (!step.success()) {
-                    html.append("<li class=\"not-run\">Later steps were not run.</li>\n");
+                    html.append("<li class=\"not-run\">Any later steps were not run.</li>\n");
                 }
             }
             html.append("</ol>\n");
@@ -279,7 +280,7 @@ public final class HtmlReportWriter {
             ul.cleanup{padding-left:0;list-style:none}ul.cleanup li{padding:4px 0;border-top:1px dashed var(--line)}
             .status{font-size:11px;font-weight:600;padding:1px 6px;border-radius:4px;border:1px solid var(--line)}
             li.succeeded .status{color:var(--ok)}li.failed .status{color:var(--ko)}li.skipped .status{color:var(--muted)}
-            @media print{.controls{display:none}details>*{display:block}details.scenario{break-inside:avoid-page}}
+            @media print{.controls{display:none}details.scenario{break-inside:avoid-page}}
             """;
 
     private static final String JS = """
@@ -287,6 +288,7 @@ public final class HtmlReportWriter {
             function onlyFailed(button){var on=button.getAttribute('aria-pressed')!=='true';
             button.setAttribute('aria-pressed',String(on));
             document.querySelectorAll('details.scenario.passed').forEach(function(d){d.hidden=on;});}
-            window.addEventListener('beforeprint',function(){document.querySelectorAll('details').forEach(function(d){d.open=true;});});
+            window.addEventListener('beforeprint',function(){document.querySelectorAll('details').forEach(function(d){d.open=true;});
+document.querySelectorAll('details.scenario').forEach(function(d){d.hidden=false;});});
             """;
 }

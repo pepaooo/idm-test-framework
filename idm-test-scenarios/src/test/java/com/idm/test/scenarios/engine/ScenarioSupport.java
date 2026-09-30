@@ -31,6 +31,8 @@ import com.idm.test.engine.steps.RestVerifyStep;
 import com.idm.test.engine.steps.RolesGrantStep;
 import com.idm.test.engine.steps.RolesRevokeStep;
 import org.junit.jupiter.api.DynamicTest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -62,6 +64,8 @@ import static org.junit.jupiter.api.Assertions.fail;
  * {@code ScenarioSupportIsolationTest} checks this.
  */
 final class ScenarioSupport {
+
+    private static final Logger LOG = LoggerFactory.getLogger(ScenarioSupport.class);
 
     private ScenarioSupport() {
     }
@@ -125,7 +129,14 @@ final class ScenarioSupport {
                 failures.put(file, e.getMessage());
             }
         }
-        RunInfo run = runInfo.apply(List.copyOf(loaded.values()));
+        RunInfo run;
+        try {
+            run = runInfo.apply(List.copyOf(loaded.values()));
+        } catch (RuntimeException e) {
+            LOG.warn("Could not describe the run for the HTML report, using a minimal header: {}", e.toString());
+            run = RunInfo.minimal("Scenarios");
+        }
+        RunInfo reportRun = run;
 
         List<ScenarioResult> collected = Collections.synchronizedList(new ArrayList<>());
         List<DynamicTest> tests = new ArrayList<>();
@@ -135,7 +146,7 @@ final class ScenarioSupport {
                 tests.add(DynamicTest.dynamicTest(file, () -> {
                     ScenarioResult result = engine.run(scenario, file);
                     collected.add(result);
-                    writeResults(collected, resultsPath, run);
+                    writeResults(collected, resultsPath, reportRun);
 
                     assertThat(result.success())
                             .as(result.failureSummary())
@@ -146,7 +157,7 @@ final class ScenarioSupport {
                 tests.add(DynamicTest.dynamicTest(file, () -> {
                     ScenarioResult result = new ScenarioResult(file, file, false, 0L, List.of(), message);
                     collected.add(result);
-                    writeResults(collected, resultsPath, run);
+                    writeResults(collected, resultsPath, reportRun);
                     fail(message);
                 }));
             }
@@ -154,11 +165,20 @@ final class ScenarioSupport {
         return tests;
     }
 
-    /** The JSON results and, beside them, the HTML report, both of everything run so far. */
-    private static void writeResults(List<ScenarioResult> collected, Path resultsPath, RunInfo run) {
+    /**
+     * The JSON results and, beside them, the HTML report, both of everything run so far. The JSON
+     * is the record and its failure is fatal; the report is auxiliary, so a failure to write it is
+     * logged and never changes a scenario's outcome.
+     */
+    static void writeResults(List<ScenarioResult> collected, Path resultsPath, RunInfo run) {
         List<ScenarioResult> snapshot = List.copyOf(collected);
         JsonResultWriter.write(snapshot, resultsPath);
-        HtmlReportWriter.write(run, snapshot, reportPath(resultsPath));
+        Path report = reportPath(resultsPath);
+        try {
+            HtmlReportWriter.write(run, snapshot, report);
+        } catch (RuntimeException e) {
+            LOG.warn("Could not write the HTML report to {}: {}", report, e.toString());
+        }
     }
 
     /** {@code x-results.json} becomes {@code x-report.html}; any other name gets {@code .html} appended. */

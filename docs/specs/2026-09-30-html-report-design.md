@@ -49,7 +49,8 @@ A new record in `com.idm.test.engine.result` (engine module, Spring-free):
   module, unit-tested):
   - the `user:password@` part is removed
   - the value of any query or `;`-separated parameter whose name contains `password`, `passwd`,
-    `secret`, `token`, `key` or `credential` (case-insensitive) becomes `***`
+    `pwd`, `pass`, `secret`, `token`, `key`, `sig`, `auth` or `credential` (case-insensitive)
+    becomes `***` (widened after security review)
   - an unparseable value is kept as text after the same parameter masking
 
 ### Where `RunInfo` comes from
@@ -91,15 +92,16 @@ A new record in `com.idm.test.engine.result` (engine module, Spring-free):
   failed scenario also shows its failure summary.
 - **Steps,** in order, as rows: status, number (1-based), type, *description*, duration,
   `attempts · waited` for `wait:` steps, and the message (highlighted when failed). Parameters
-  open behind a ▸ as indented JSON. After a failed step: "Later steps were not run."
+  open behind a ▸ as indented JSON. After a failed step: "Any later steps were not run."
 - **Cleanup:** a sub-list with each entry's status (SUCCEEDED, FAILED, SKIPPED), type,
   description and message.
 - **A reserved spot per step** (an empty container with a class name) where ITF-37's evidence will
   render.
 - **Safety:**
   - every piece of text is HTML-escaped (descriptions, messages, parameters, names, URLs)
-  - parameter values whose key (at any depth) contains `password`, `passwd`, `secret`, `token`,
-    `authorization` or `credential` (case-insensitive) render as `***`; the JSON results are
+  - parameter values whose key (at any depth) contains `password`, `passwd`, `pwd`, `secret`, `token`,
+    `authorization`, `credential`, `apikey`, `api_key`, `api-key` or `cookie` (case-insensitive) render as `***`
+    (widened after security review); the JSON results are
     unchanged
   - no `src` or `href` points outside the file
 - **Look:** light and dark themes follow `prefers-color-scheme`; `@media print` expands every
@@ -119,7 +121,7 @@ A new record in `com.idm.test.engine.result` (engine module, Spring-free):
 
 **`HtmlReportWriterTest`:**
 - a failed scenario's `<details>` is `open`, a passed one's isn't
-- step description, attempts and waited, message and parameters appear; "Later steps were not
+- step description, attempts and waited, message and parameters appear; "Any later steps were not
   run" follows a failed step
 - cleanup entries with each status
 - a load-failure result renders its error

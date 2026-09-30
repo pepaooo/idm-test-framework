@@ -787,6 +787,7 @@ Each run writes a JSON results file in `idm-test-scenarios/target/`:
 |---|---|
 | `scenario-results.json` | `YamlScenarioTest` (the embedded run) |
 | `real-environment-results.json` | `RealEnvironmentScenarios` and `ContainerScenarios` |
+| `multi-directory-results.json` | `MultiDirectoryScenarioTest` |
 
 **The HTML report.** Beside each results file, the run writes a report you can open in any
 browser, attach or e-mail: `scenario-report.html`, `real-environment-report.html` or
@@ -796,11 +797,12 @@ rewritten after every scenario, so an interrupted run still has one.
 - **Header:** the runner, start time, duration, active profiles, the `-Dscenario` filter, and the
   endpoints the selected scenarios use. User names and passwords in URLs are removed, and
   credential-looking URL parameters are shown as `***`.
-- **Summary:** scenarios, passed, failed, total duration; Expand all, Collapse all, Only failed.
+- **Summary:** scenarios, passed, failed, time in scenarios (the sum of the scenario durations); Expand all, Collapse all, Only failed.
 - **Each scenario:** open when it failed. Each step shows its description, duration (attempts and
   time waited for `wait:` steps), message and parameters; cleanup entries follow with their
-  status. Parameter values under keys that look secret (`password`, `secret`, `token`,
-  `authorization`, …) are shown as `***` in the report; the JSON keeps them as recorded.
+  status. Parameter values under keys containing `password`, `passwd`, `pwd`, `secret`, `token`,
+  `authorization`, `credential`, `apikey`, `api_key`, `api-key` or `cookie` (matched anywhere in the
+  key, case-insensitive) are shown as `***` in the report; the JSON keeps them as recorded.
   Masking is by parameter name only, so a secret written into a description, a message, or a
   value under an ordinary key appears as written — keep secrets in target and database settings.
 - **Printing** or saving as PDF expands every scenario.

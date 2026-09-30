@@ -11,7 +11,9 @@ import com.idm.test.engine.ScenarioEngine;
 import com.idm.test.engine.ScenarioLoader;
 import com.idm.test.engine.ScenarioValidator;
 import com.idm.test.engine.model.Scenario;
+import com.idm.test.engine.result.HtmlReportWriter;
 import com.idm.test.engine.result.JsonResultWriter;
+import com.idm.test.engine.result.RunInfo;
 import com.idm.test.engine.result.ScenarioResult;
 import com.idm.test.engine.spi.StepType;
 import com.idm.test.engine.steps.DbExecuteStep;
@@ -43,6 +45,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 import java.util.regex.PatternSyntaxException;
 import java.util.stream.Stream;
 
@@ -72,7 +75,21 @@ final class ScenarioSupport {
     static List<DynamicTest> buildTests(
             String scenarioDir, ScenarioValidator validator, ScenarioEngine engine, Path resultsPath)
             throws URISyntaxException {
-        return buildTests(scenarioDir, scenarioFiles(scenarioDir), validator, engine, resultsPath);
+        return buildTests(scenarioDir, validator, engine, resultsPath, scenarios -> RunInfo.minimal("Scenarios"));
+    }
+
+    /** As above, describing the run in the HTML report with {@code runInfo}. */
+    static List<DynamicTest> buildTests(
+            String scenarioDir, ScenarioValidator validator, ScenarioEngine engine, Path resultsPath,
+            Function<List<Scenario>, RunInfo> runInfo) throws URISyntaxException {
+        return buildTests(scenarioDir, scenarioFiles(scenarioDir), validator, engine, resultsPath, runInfo);
+    }
+
+    static List<DynamicTest> buildTests(
+            String scenarioDir, List<String> files, ScenarioValidator validator, ScenarioEngine engine,
+            Path resultsPath) throws URISyntaxException {
+        return buildTests(scenarioDir, files, validator, engine, resultsPath,
+                scenarios -> RunInfo.minimal("Scenarios"));
     }
 
     /**
@@ -90,41 +107,68 @@ final class ScenarioSupport {
      * but trusting that here would mean any other failure during load or validation escapes
      * this factory method entirely — aborting the whole {@code @TestFactory} with zero
      * dynamic tests and no results file, the exact failure shape this method exists to avoid.
+     * <p>
+     * Every result is written as JSON and, beside it, as an HTML report (ITF-36).
      */
     static List<DynamicTest> buildTests(
             String scenarioDir, List<String> files, ScenarioValidator validator, ScenarioEngine engine,
-            Path resultsPath) throws URISyntaxException {
+            Path resultsPath, Function<List<Scenario>, RunInfo> runInfo) throws URISyntaxException {
 
-        List<ScenarioResult> collected = Collections.synchronizedList(new ArrayList<>());
-        List<DynamicTest> tests = new ArrayList<>();
-
+        Map<String, Scenario> loaded = new LinkedHashMap<>();
+        Map<String, String> failures = new LinkedHashMap<>();
         for (String file : files) {
-            DynamicTest test;
             try {
                 Scenario scenario = ScenarioLoader.load(resource(scenarioDir, file), file);
                 validator.validate(scenario, file);
+                loaded.put(file, scenario);
+            } catch (RuntimeException e) {
+                failures.put(file, e.getMessage());
+            }
+        }
+        RunInfo run = runInfo.apply(List.copyOf(loaded.values()));
 
-                test = DynamicTest.dynamicTest(file, () -> {
+        List<ScenarioResult> collected = Collections.synchronizedList(new ArrayList<>());
+        List<DynamicTest> tests = new ArrayList<>();
+        for (String file : files) {
+            if (loaded.containsKey(file)) {
+                Scenario scenario = loaded.get(file);
+                tests.add(DynamicTest.dynamicTest(file, () -> {
                     ScenarioResult result = engine.run(scenario, file);
                     collected.add(result);
-                    JsonResultWriter.write(List.copyOf(collected), resultsPath);
+                    writeResults(collected, resultsPath, run);
 
                     assertThat(result.success())
                             .as(result.failureSummary())
                             .isTrue();
-                });
-            } catch (RuntimeException e) {
-                String message = e.getMessage();
-                test = DynamicTest.dynamicTest(file, () -> {
+                }));
+            } else {
+                String message = failures.get(file);
+                tests.add(DynamicTest.dynamicTest(file, () -> {
                     ScenarioResult result = new ScenarioResult(file, file, false, 0L, List.of(), message);
                     collected.add(result);
-                    JsonResultWriter.write(List.copyOf(collected), resultsPath);
+                    writeResults(collected, resultsPath, run);
                     fail(message);
-                });
+                }));
             }
-            tests.add(test);
         }
         return tests;
+    }
+
+    /** The JSON results and, beside them, the HTML report, both of everything run so far. */
+    private static void writeResults(List<ScenarioResult> collected, Path resultsPath, RunInfo run) {
+        List<ScenarioResult> snapshot = List.copyOf(collected);
+        JsonResultWriter.write(snapshot, resultsPath);
+        HtmlReportWriter.write(run, snapshot, reportPath(resultsPath));
+    }
+
+    /** {@code x-results.json} becomes {@code x-report.html}; any other name gets {@code .html} appended. */
+    static Path reportPath(Path resultsPath) {
+        String name = resultsPath.getFileName().toString();
+        String suffix = "-results.json";
+        String report = name.endsWith(suffix)
+                ? name.substring(0, name.length() - suffix.length()) + "-report.html"
+                : name + ".html";
+        return resultsPath.resolveSibling(report);
     }
 
     /**

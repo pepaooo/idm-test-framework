@@ -9,6 +9,8 @@ import com.idm.test.scenarios.base.BaseIntegrationTest;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.TestFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.env.Environment;
 
 import java.nio.file.Path;
 import java.util.Map;
@@ -27,6 +29,9 @@ class YamlScenarioTest extends BaseIntegrationTest {
     private static final String SCENARIO_DIR = "scenarios";
     private static final Path RESULTS = Path.of("target", "scenario-results.json");
 
+    @Autowired
+    private Environment environment;
+
     @TestFactory
     @DisplayName("Each scenario file runs as its own test")
     Stream<DynamicTest> scenarios() throws Exception {
@@ -43,6 +48,7 @@ class YamlScenarioTest extends BaseIntegrationTest {
                 new ExpressionEvaluator());
 
         return ScenarioSupport.buildTests(SCENARIO_DIR, ScenarioSupport.selectedScenarioFiles(SCENARIO_DIR),
-                validator, engine, RESULTS).stream();
+                validator, engine, RESULTS,
+                scenarios -> RunInfos.of("Embedded", environment, scenarios)).stream();
     }
 }

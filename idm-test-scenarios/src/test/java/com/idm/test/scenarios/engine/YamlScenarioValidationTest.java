@@ -92,6 +92,10 @@ class YamlScenarioValidationTest extends BaseIntegrationTest {
         assertThat(json.indexOf("\"success\" : false", brokenIndex))
                 .as("broken-wait.yaml's recorded result should have success: false in %s", json)
                 .isNotEqualTo(-1);
+
+        String report = java.nio.file.Files.readString(tempDir.resolve("scenario-report.html"));
+        assertThat(report).contains("broken-wait.yaml").contains("valid-user.yaml")
+                .contains("<details class=\"scenario failed\" open>");
     }
 
     @Test

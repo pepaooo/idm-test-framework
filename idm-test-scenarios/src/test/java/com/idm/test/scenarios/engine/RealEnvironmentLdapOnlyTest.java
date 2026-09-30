@@ -14,6 +14,8 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.test.annotation.DirtiesContext;
 
 import javax.sql.DataSource;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.stream.Stream;
@@ -71,7 +73,7 @@ class RealEnvironmentLdapOnlyTest extends RealEnvironmentScenarios {
     }
 
     @AfterAll
-    static void stopDirectory() {
+    static void stopDirectory() throws Exception {
         PREVIOUS.forEach((key, value) -> {
             if (value == null) {
                 System.clearProperty(key);
@@ -81,6 +83,8 @@ class RealEnvironmentLdapOnlyTest extends RealEnvironmentScenarios {
         });
         PREVIOUS.clear();
         if (ldap != null) {
+            String report = Files.readString(Path.of("target", "real-environment-report.html"));
+            assertThat(report).contains("Real environment run").contains("LDAP default").contains(ldap.getUrl());
             ldap.close();
         }
     }

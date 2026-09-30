@@ -34,3 +34,6 @@ build/
 
 ### Logs ###
 /idm-test-scenarios/logs
+
+# Brainstorming visual companion
+.superpowers/

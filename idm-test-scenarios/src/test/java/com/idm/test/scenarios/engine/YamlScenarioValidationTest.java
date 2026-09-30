@@ -92,6 +92,38 @@ class YamlScenarioValidationTest extends BaseIntegrationTest {
         assertThat(json.indexOf("\"success\" : false", brokenIndex))
                 .as("broken-wait.yaml's recorded result should have success: false in %s", json)
                 .isNotEqualTo(-1);
+
+        String report = java.nio.file.Files.readString(tempDir.resolve("scenario-report.html"));
+        assertThat(report).contains("broken-wait.yaml").contains("valid-user.yaml")
+                .contains("<details class=\"scenario failed\" open>");
+    }
+
+    @Test
+    @DisplayName("A failure describing the run does not abort the factory; results and report are still written")
+    void testRunInfoFailureDoesNotAbortFactory(@TempDir Path tempDir) throws Exception {
+        Map<String, StepType> registry = ScenarioSupport.registry(
+                ldapDirectories, databaseConnector, roleServiceConnector,
+                resourceServiceConnector, idmRestConnector, restProperties, restAuthenticator);
+        ScenarioValidator validator = new ScenarioValidator(registry, FixtureFactory.SUPPORTED_GENERATORS);
+        ScenarioEngine engine = new ScenarioEngine(
+                registry,
+                new FixtureFactory(testDataGenerator),
+                testExecutor,
+                executorProperties.getDefaultTimeout(),
+                executorProperties.getDefaultPollInterval(),
+                new ExpressionEvaluator());
+        Path results = tempDir.resolve("scenario-results.json");
+
+        List<DynamicTest> tests = ScenarioSupport.buildTests(FIXTURE_DIR, List.of("valid-user.yaml"), validator,
+                engine, results, scenarios -> {
+                    throw new IllegalStateException("cannot bind properties");
+                });
+
+        assertThat(tests).hasSize(1);
+        assertThatCode(() -> tests.get(0).getExecutable().execute()).doesNotThrowAnyException();
+        assertThat(java.nio.file.Files.readString(results)).contains("\"valid-user.yaml\"");
+        assertThat(java.nio.file.Files.readString(tempDir.resolve("scenario-report.html")))
+                .contains("valid-user.yaml");
     }
 
     @Test

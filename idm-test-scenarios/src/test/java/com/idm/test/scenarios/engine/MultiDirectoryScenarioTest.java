@@ -10,6 +10,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.env.Environment;
 
 import java.nio.file.Path;
 import java.util.Map;
@@ -27,6 +29,9 @@ class MultiDirectoryScenarioTest extends BaseIntegrationTest {
 
     private static final String SCENARIO_DIR = "scenarios-directories";
     private static final Path RESULTS = Path.of("target", "multi-directory-results.json");
+
+    @Autowired
+    private Environment environment;
 
     @Test
     @DisplayName("Both embedded directories are configured, and the old block's is the default")
@@ -50,6 +55,7 @@ class MultiDirectoryScenarioTest extends BaseIntegrationTest {
                 executorProperties.getDefaultPollInterval(),
                 new ExpressionEvaluator());
 
-        return ScenarioSupport.buildTests(SCENARIO_DIR, validator, engine, RESULTS).stream();
+        return ScenarioSupport.buildTests(SCENARIO_DIR, validator, engine, RESULTS,
+                scenarios -> RunInfos.of("Embedded (two directories)", environment, scenarios)).stream();
     }
 }

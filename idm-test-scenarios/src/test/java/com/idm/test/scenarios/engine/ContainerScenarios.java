@@ -84,6 +84,11 @@ public class ContainerScenarios extends RealEnvironmentScenarios {
     @Autowired
     private LdapProperties ldapProperties;
 
+    @Override
+    String runnerName() {
+        return "Containers";
+    }
+
     @BeforeAll
     static void startContainers() throws Exception {
         requireDocker(DockerClientFactory.instance().isDockerAvailable());

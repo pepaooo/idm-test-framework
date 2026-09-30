@@ -19,6 +19,7 @@ Reviewed on **2026-09-25** against Git revision `fb35547c76bfecc0c4b4ca1c7fe71b8
 | YAML `set` | Implemented engine keyword | Bind derived variables | [Engine][engine], [validator][validator] | Bindings are processed in declaration order; duplicate/shadowing names are rejected by validation |
 | YAML `as` | Implemented engine parameter | Capture successful step output | [Engine][engine], [steps][create] | Create captures a DN string; verify captures a selected attribute view after a follow-up read. Requested null captures fail |
 | YAML step descriptions | Implemented (ITF-35) | Explain each step in results and failure messages | [Engine][engine] | Optional `description:` on every step and cleanup entry; text with `${…}` resolved, no `js:{}`; recorded per scenario, step and cleanup entry in the JSON results and quoted in failure summaries |
+| HTML report | Implemented (ITF-36) | Read and share a run's results | [HtmlReportWriter][report], [ScenarioSupport][support] | One self-contained file per run beside the JSON results, rewritten after each scenario; header with runner, profiles, filter and sanitised endpoints; failed scenarios open; secret-looking parameters masked. Per-step evidence (HTTP/SOAP, LDAP, SQL) is ITF-37 |
 | Fixtures | Implemented | Generate or supply scenario data | [Fixture factory][fixtures] | Only `random-user` is registered; `values` are literal overrides, not evaluated expressions |
 | `${path}` interpolation | Implemented | Resolve fixture/variable properties | [Interpolator][interpolator] | Traverses maps by dot-separated keys and substitutes strings; it is not JavaScript or typed object capture |
 | Whole-value `js:{ ... }` expressions | Implemented | Compute values without connector or host access | [Evaluator][evaluator], [conversion][conversion], [expression tests][expression-tests] | Plain Rhino ES6, no helper object; result must convert to plain values. Regex literals containing structural characters can confuse the outer expression parser |
@@ -102,6 +103,8 @@ All five diagrams rendered from their Mermaid sources. The eight-slide PowerPoin
 [executor]: ../../idm-test-core/src/main/java/com/idm/test/core/engine/TestExecutor.java
 [results]: ../../idm-test-engine/src/main/java/com/idm/test/engine/result/ScenarioResult.java
 [writer]: ../../idm-test-engine/src/main/java/com/idm/test/engine/result/JsonResultWriter.java
+[report]: ../../idm-test-engine/src/main/java/com/idm/test/engine/result/HtmlReportWriter.java
+[support]: ../../idm-test-scenarios/src/test/java/com/idm/test/scenarios/engine/ScenarioSupport.java
 [ldap]: ../../idm-connector-ldap/src/main/java/com/idm/test/connector/ldap/client/EdirectoryConnector.java
 [ldap-directories]: ../../idm-connector-ldap/src/main/java/com/idm/test/connector/ldap/client/LdapDirectories.java
 [db]: ../../idm-connector-database/src/main/java/com/idm/test/connector/database/client/MultiDatabaseConnector.java

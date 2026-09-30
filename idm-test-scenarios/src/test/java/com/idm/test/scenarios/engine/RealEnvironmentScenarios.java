@@ -171,6 +171,11 @@ public class RealEnvironmentScenarios {
     @Autowired
     private TestDataGenerator testDataGenerator;
 
+    /** The runner's name in the report; ContainerScenarios overrides it. */
+    String runnerName() {
+        return "Real environment";
+    }
+
     @TestFactory
     @DisplayName("Each real-environment scenario file runs as its own test")
     Stream<DynamicTest> scenarios() throws Exception {
@@ -199,7 +204,8 @@ public class RealEnvironmentScenarios {
                 executorProperties.getDefaultPollInterval(),
                 new ExpressionEvaluator());
 
-        return ScenarioSupport.buildTests(scenarioDir, selected, validator, engine, RESULTS).stream();
+        return ScenarioSupport.buildTests(scenarioDir, selected, validator, engine, RESULTS,
+                scenarios -> RunInfos.of(runnerName(), environment, scenarios)).stream();
     }
 
     /**

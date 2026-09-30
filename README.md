@@ -175,8 +175,10 @@ misspelled `expct:` fails at load rather than producing a green test that verifi
 
 Each run writes `idm-test-scenarios/target/scenario-results.json` — every scenario, every step,
 the parameters after interpolation, and for a step that waited, how many attempts it made and
-what it last observed. The engine itself renders nothing; this file is the shape an HTML report
-or a UI would read.
+what it last observed. `ScenarioEngine` itself renders nothing; the runners write both this JSON file and
+the HTML report from its results.
+
+Each run also writes a self-contained HTML report beside it (`scenario-report.html`, `real-environment-report.html`, `multi-directory-report.html`) — open it in a browser to read or share the run.
 
 ---
 

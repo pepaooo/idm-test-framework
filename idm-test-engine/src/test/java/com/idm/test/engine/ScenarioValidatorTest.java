@@ -10,6 +10,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -659,5 +660,84 @@ class ScenarioValidatorTest {
         assertThatThrownBy(() -> deferredValidator.validate(scenario(new StepSpec("ldap.create",
                 Map.of("dn", "js:{ response.body }"))), "t.yaml"))
                 .hasMessageContaining("nothing named 'response'");
+    }
+
+    private static Map<String, Object> params(Object... keyValues) {
+        Map<String, Object> params = new LinkedHashMap<>();
+        for (int i = 0; i < keyValues.length; i += 2) {
+            params.put((String) keyValues[i], keyValues[i + 1]);
+        }
+        return params;
+    }
+
+    @Test
+    @DisplayName("A description is accepted on an action, an assertion, set: and a cleanup entry")
+    void testDescriptionAccepted() {
+        Scenario described = scenarioWithCleanup(
+                List.of(
+                        new StepSpec("set", params("description", "Pick a DN", "dn", "cn=${user.userId},ou=users")),
+                        new StepSpec("ldap.create", params("description", "Create ${user.userId}", "dn", "${dn}")),
+                        new StepSpec("ldap.verify", params("description", "Check it", "dn", "${dn}",
+                                "expect", Map.of("sn", "x")))),
+                new StepSpec("ldap.create", params("description", "Tidy ${dn}", "dn", "${dn}")));
+
+        assertThatCode(() -> validator.validate(described, "d.yaml")).doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("A description must be text, not a map, a number or null")
+    void testDescriptionMustBeText() {
+        for (Object bad : new Object[]{Map.of("a", "b"), 42, null}) {
+            Scenario scenario = scenario(new StepSpec("ldap.create", params("description", bad, "dn", "x")));
+
+            assertThatThrownBy(() -> validator.validate(scenario, "d.yaml"))
+                    .isInstanceOf(ValidationException.class)
+                    .hasMessageContaining("step 1 (ldap.create): 'description' must be text")
+                    .hasMessageNotContaining("js:");
+        }
+    }
+
+    @Test
+    @DisplayName("A description may not be a js:{} expression")
+    void testDescriptionRejectsExpression() {
+        Scenario scenario = scenario(new StepSpec("ldap.create",
+                params("description", "js:{ user.userId }", "dn", "x")));
+
+        assertThatThrownBy(() -> validator.validate(scenario, "d.yaml"))
+                .hasMessageContaining("'description' must be text; js:{ … } is not allowed here");
+
+        Scenario inCleanup = scenarioWithCleanup(List.of(new StepSpec("ldap.create", params("dn", "x"))),
+                new StepSpec("ldap.create", params("description", "js:{ 1 }", "dn", "x")));
+        assertThatThrownBy(() -> validator.validate(inCleanup, "d.yaml"))
+                .hasMessageContaining("cleanup entry 1 (ldap.create): 'description' must be text; js:{ … } is not allowed here");
+    }
+
+    @Test
+    @DisplayName("A description's ${…} names must be known, with the usual scope rules")
+    void testDescriptionReferences() {
+        Scenario unknown = scenario(new StepSpec("ldap.create", params("description", "for ${nobody}", "dn", "x")));
+        assertThatThrownBy(() -> validator.validate(unknown, "d.yaml"))
+                .hasMessageContaining("references '${nobody...}'");
+
+        Scenario laterBinding = scenarioWithCleanup(
+                List.of(new StepSpec("ldap.create", params("dn", "x", "as", "created"))),
+                new StepSpec("ldap.create", params("description", "undo ${created}", "dn", "x")));
+        assertThatCode(() -> validator.validate(laterBinding, "d.yaml")).doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("On set:, description is the step's description and binds no variable")
+    void testDescriptionOnSetBindsNothing() {
+        Scenario scenario = scenario(
+                new StepSpec("set", params("description", "names", "dn", "x")),
+                new StepSpec("ldap.create", params("dn", "${description}")));
+
+        assertThatThrownBy(() -> validator.validate(scenario, "d.yaml"))
+                .hasMessageContaining("step 2 (ldap.create)")
+                .hasMessageContaining("references '${description...}'");
+
+        Scenario onlyDescription = scenario(new StepSpec("set", params("description", "nothing")));
+        assertThatThrownBy(() -> validator.validate(onlyDescription, "d.yaml"))
+                .hasMessageContaining("a set: step needs at least one name to bind");
     }
 }

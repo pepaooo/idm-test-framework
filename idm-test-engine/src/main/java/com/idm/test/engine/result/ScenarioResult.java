@@ -12,6 +12,7 @@ import java.util.List;
  *                        to this value
  * @param failureDetail  what went wrong before any step could run (e.g. fixture setup),
  *                        or null when the scenario got at least as far as its first step
+ * @param description    the scenario's own top-level description, or null
  */
 public record ScenarioResult(
         String name,
@@ -20,7 +21,8 @@ public record ScenarioResult(
         long durationMillis,
         List<StepResult> steps,
         List<CleanupResult> cleanup,
-        String failureDetail) {
+        String failureDetail,
+        String description) {
 
     public ScenarioResult {
         cleanup = cleanup == null ? List.of() : cleanup;
@@ -29,7 +31,13 @@ public record ScenarioResult(
     /** A result with no cleanup outcomes. */
     public ScenarioResult(String name, String sourceName, boolean success, long durationMillis,
                           List<StepResult> steps, String failureDetail) {
-        this(name, sourceName, success, durationMillis, steps, List.of(), failureDetail);
+        this(name, sourceName, success, durationMillis, steps, List.of(), failureDetail, null);
+    }
+
+    /** A result with cleanup outcomes but no description. */
+    public ScenarioResult(String name, String sourceName, boolean success, long durationMillis,
+                          List<StepResult> steps, List<CleanupResult> cleanup, String failureDetail) {
+        this(name, sourceName, success, durationMillis, steps, cleanup, failureDetail, null);
     }
 
     /**
@@ -55,7 +63,7 @@ public record ScenarioResult(
             StringBuilder step = new StringBuilder()
                     .append(sourceName)
                     .append(", step ").append(failed.index() + 1)
-                    .append(" (").append(failed.type()).append("): ")
+                    .append(" (").append(failed.type()).append(quoted(failed.description())).append("): ")
                     .append(failed.message());
             if (failed.attempts() != null) {
                 step.append(" — gave up after ").append(failed.attempts())
@@ -69,12 +77,17 @@ public record ScenarioResult(
         for (CleanupResult entry : cleanup) {
             if (entry.status() == CleanupStatus.FAILED) {
                 parts.add(sourceName + ", cleanup entry " + (entry.index() + 1)
-                        + " (" + entry.type() + "): " + entry.message());
+                        + " (" + entry.type() + quoted(entry.description()) + "): " + entry.message());
             }
         }
 
         return parts.isEmpty()
                 ? sourceName + ": scenario failed before any step ran"
                 : String.join("; ", parts);
+    }
+
+    /** ': "<description>"' for a failure message, or "" when there is no description. */
+    private static String quoted(String description) {
+        return description == null ? "" : ": \"" + description + "\"";
     }
 }

@@ -11,6 +11,7 @@ import java.util.Map;
  * @param status         how the entry ended
  * @param durationMillis time spent on this entry
  * @param message        the step's own message, or why it was skipped or failed
+ * @param description    the entry's description: resolved when it ran and resolved cleanly, otherwise as written; null when it has none
  */
 public record CleanupResult(
         int index,
@@ -18,5 +19,12 @@ public record CleanupResult(
         Map<String, Object> resolvedParams,
         CleanupStatus status,
         long durationMillis,
-        String message) {
+        String message,
+        String description) {
+
+    /** A result for an entry without a description. */
+    public CleanupResult(int index, String type, Map<String, Object> resolvedParams, CleanupStatus status,
+                         long durationMillis, String message) {
+        this(index, type, resolvedParams, status, durationMillis, message, null);
+    }
 }

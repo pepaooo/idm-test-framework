@@ -35,6 +35,8 @@ public final class ScenarioEngine {
     /** Reserved: handled here rather than by a registered step type. */
     private static final String SET_STEP = "set";
 
+    private static final String DESCRIPTION = "description";
+
     private static final String NOT_RETRIED = " (not retried: waiting cannot change this)";
 
     private final Map<String, StepType> registry;
@@ -93,7 +95,7 @@ public final class ScenarioEngine {
                             System.currentTimeMillis() - stepStarted,
                             "step '" + step.type() + "' threw " + e.getClass().getSimpleName()
                                     + ": " + e.getMessage(),
-                            null, null);
+                            null, null, writtenDescription(step));
                 }
                 results.add(result);
                 success = result.success();
@@ -107,7 +109,8 @@ public final class ScenarioEngine {
                 .anyMatch(entry -> entry.status() == CleanupStatus.FAILED);
 
         return new ScenarioResult(scenario.name(), sourceName, success && !cleanupFailed,
-                System.currentTimeMillis() - started, results, cleanupResults, failureDetail);
+                System.currentTimeMillis() - started, results, cleanupResults, failureDetail,
+                scenario.description());
     }
 
     @SuppressWarnings("unchecked")
@@ -115,8 +118,17 @@ public final class ScenarioEngine {
 
         long started = System.currentTimeMillis();
 
+        String description;
+        try {
+            description = resolvedDescription(step, scope);
+        } catch (RuntimeException e) {
+            return new StepResult(index, step.type(), Map.of(), false,
+                    System.currentTimeMillis() - started,
+                    "could not resolve 'description': " + e.getMessage(), null, null, writtenDescription(step));
+        }
+
         if (SET_STEP.equals(step.type())) {
-            return runSet(step, index, scope, started);
+            return runSet(step, index, scope, started, description);
         }
 
         StepType type = registry.get(step.type());
@@ -126,12 +138,12 @@ public final class ScenarioEngine {
                     System.currentTimeMillis() - started,
                     "unknown step type '" + step.type() + "'. Available: "
                             + new TreeSet<>(registry.keySet()),
-                    null, null);
+                    null, null, description);
         }
 
         // Deferred parameters are left for the step to evaluate itself (see
         // StepType.deferredParams); everything else is resolved once, as always.
-        Map<String, Object> immediate = new LinkedHashMap<>(step.params());
+        Map<String, Object> immediate = withoutDescription(step.params());
         Map<String, Object> deferred = new LinkedHashMap<>();
         for (String name : type.deferredParams()) {
             if (immediate.containsKey(name)) {
@@ -149,7 +161,7 @@ public final class ScenarioEngine {
                     System.currentTimeMillis() - started,
                     "'wait' is only valid on assertions, and step '" + step.type()
                             + "' is not retryable",
-                    null, null);
+                    null, null, description);
         }
 
         boolean captureRequested = asName != null;
@@ -158,7 +170,7 @@ public final class ScenarioEngine {
             StepOutcome outcome = type.execute(resolved, captureRequested);
             outcome = bind(scope, asName, outcome, step.type());
             return new StepResult(index, step.type(), reportable(resolved), outcome.success(),
-                    System.currentTimeMillis() - started, outcome.message(), null, null);
+                    System.currentTimeMillis() - started, outcome.message(), null, null, description);
         }
 
         AtomicInteger attempts = new AtomicInteger();
@@ -212,7 +224,7 @@ public final class ScenarioEngine {
         }
 
         return new StepResult(index, step.type(), reportable(resolved), success, elapsed, message,
-                attempts.get(), waitedMillis);
+                attempts.get(), waitedMillis, description);
     }
 
     private Object defer(Object value, Map<String, Object> scope) {
@@ -251,17 +263,18 @@ public final class ScenarioEngine {
      * Binds each entry into the scenario's variables, in declaration order so a later entry may
      * read one bound earlier in the same step.
      */
-    private StepResult runSet(StepSpec step, int index, Map<String, Object> scope, long started) {
+    private StepResult runSet(StepSpec step, int index, Map<String, Object> scope, long started,
+                              String description) {
         Map<String, Object> bound = new LinkedHashMap<>();
 
-        for (Map.Entry<String, Object> entry : step.params().entrySet()) {
+        for (Map.Entry<String, Object> entry : withoutDescription(step.params()).entrySet()) {
             Object value = Interpolator.resolve(entry.getValue(), scope, evaluator);
             scope.put(entry.getKey(), value);
             bound.put(entry.getKey(), value);
         }
 
         return new StepResult(index, SET_STEP, bound, true,
-                System.currentTimeMillis() - started, "bound " + bound.keySet(), null, null);
+                System.currentTimeMillis() - started, "bound " + bound.keySet(), null, null, description);
     }
 
     /**
@@ -310,7 +323,8 @@ public final class ScenarioEngine {
                 result = new CleanupResult(i, entry.type(), Map.of(), CleanupStatus.FAILED,
                         System.currentTimeMillis() - started,
                         "cleanup '" + entry.type() + "' threw " + e.getClass().getSimpleName()
-                                + ": " + e.getMessage());
+                                + ": " + e.getMessage(),
+                        writtenDescription(entry));
             }
             results.add(result);
         }
@@ -321,28 +335,58 @@ public final class ScenarioEngine {
     private CleanupResult runCleanupEntry(
             StepSpec entry, int index, Map<String, Object> scope, long started) {
 
-        Set<String> unbound = new TreeSet<>(Interpolator.references(entry.params()));
+        Set<String> unbound = new TreeSet<>(Interpolator.references(withoutDescription(entry.params())));
         unbound.removeAll(scope.keySet());
         if (!unbound.isEmpty()) {
             return new CleanupResult(index, entry.type(), Map.of(), CleanupStatus.SKIPPED,
                     System.currentTimeMillis() - started,
-                    "skipped: " + unbound + " never bound, so what this would clean up never happened");
+                    "skipped: " + unbound + " never bound, so what this would clean up never happened",
+                    writtenDescription(entry));
+        }
+
+        String description = writtenDescription(entry);
+        Object raw = entry.params().get(DESCRIPTION);
+        if (raw != null && scope.keySet().containsAll(Interpolator.references(raw))) {
+            try {
+                description = resolvedDescription(entry, scope);
+            } catch (RuntimeException e) {
+                // recorded as written: a description must never change what cleanup does
+            }
         }
 
         StepType type = registry.get(entry.type());
         if (type == null) {
             return new CleanupResult(index, entry.type(), Map.of(), CleanupStatus.FAILED,
                     System.currentTimeMillis() - started,
-                    "unknown step type '" + entry.type() + "'. Available: " + new TreeSet<>(registry.keySet()));
+                    "unknown step type '" + entry.type() + "'. Available: " + new TreeSet<>(registry.keySet()),
+                    description);
         }
 
         Map<String, Object> resolved =
-                (Map<String, Object>) Interpolator.resolve(entry.params(), scope, evaluator);
+                (Map<String, Object>) Interpolator.resolve(withoutDescription(entry.params()), scope, evaluator);
         StepOutcome outcome = type.execute(resolved, false);
 
         return new CleanupResult(index, entry.type(), resolved,
                 outcome.success() ? CleanupStatus.SUCCEEDED : CleanupStatus.FAILED,
-                System.currentTimeMillis() - started, outcome.message());
+                System.currentTimeMillis() - started, outcome.message(), description);
+    }
+
+    /** The description as written, or null. */
+    private static String writtenDescription(StepSpec step) {
+        Object value = step.params().get(DESCRIPTION);
+        return value == null ? null : String.valueOf(value);
+    }
+
+    /** The description resolved with {@code scope}, or null. Throws when a reference can't be resolved. */
+    private String resolvedDescription(StepSpec step, Map<String, Object> scope) {
+        Object value = step.params().get(DESCRIPTION);
+        return value == null ? null : String.valueOf(Interpolator.resolve(value, scope, evaluator));
+    }
+
+    private static Map<String, Object> withoutDescription(Map<String, Object> params) {
+        Map<String, Object> copy = new LinkedHashMap<>(params);
+        copy.remove(DESCRIPTION);
+        return copy;
     }
 
 }

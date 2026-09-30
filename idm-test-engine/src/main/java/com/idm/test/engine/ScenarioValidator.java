@@ -36,6 +36,8 @@ public final class ScenarioValidator {
     /** Reserved: handled by the engine itself rather than by a registered step type. */
     private static final String SET_STEP = "set";
 
+    private static final String DESCRIPTION = "description";
+
     /**
      * The rule for a literal {@code as:}/{@code set:} name: a letter or underscore, followed by
      * letters, digits or underscores. Deliberately excludes {@code $}, {@code {} and {@code }} —
@@ -43,6 +45,28 @@ public final class ScenarioValidator {
      * referenced name past validation (see the "as: is read raw by the validator" finding).
      */
     private static final Pattern IDENTIFIER = Pattern.compile("[A-Za-z_][A-Za-z0-9_]*");
+
+    /**
+     * A step's or cleanup entry's description is text for people: ${…} references are fine, a
+     * js:{ … } expression is not (a description must never compute anything).
+     */
+    private static void requireTextDescription(Map<String, Object> params, Locate locate) {
+        if (!params.containsKey(DESCRIPTION)) {
+            return;
+        }
+        if (!(params.get(DESCRIPTION) instanceof String text)) {
+            throw locate.at("'description' must be text");
+        }
+        boolean expression;
+        try {
+            expression = Interpolator.expressionBody(text) != null;
+        } catch (IllegalArgumentException malformed) {
+            expression = true;
+        }
+        if (expression) {
+            throw locate.at("'description' must be text; js:{ … } is not allowed here");
+        }
+    }
 
     /** Builds the located error for one entry, so helpers work for steps and cleanup alike. */
     @FunctionalInterface
@@ -108,12 +132,20 @@ public final class ScenarioValidator {
             int index = i;
             StepSpec step = scenario.steps().get(i);
 
+            requireTextDescription(step.params(),
+                    message -> new ValidationException(sourceName, index, step.type(), message));
+
             if (SET_STEP.equals(step.type())) {
-                if (step.params().isEmpty()) {
+                Map<String, Object> names = new LinkedHashMap<>(step.params());
+                Object description = names.remove(DESCRIPTION);
+                if (names.isEmpty()) {
                     throw new ValidationException(sourceName, i, step.type(),
                             "a set: step needs at least one name to bind");
                 }
-                for (Map.Entry<String, Object> entry : step.params().entrySet()) {
+                if (description != null) {
+                    requireKnownReferences(description, known, sourceName, i, step.type());
+                }
+                for (Map.Entry<String, Object> entry : names.entrySet()) {
                     requireWellFormedExpressions(entry.getValue(),
                             message -> new ValidationException(sourceName, index, step.type(), message));
                     requireKnownReferences(entry.getValue(), known, sourceName, i, step.type());
@@ -140,6 +172,7 @@ public final class ScenarioValidator {
             Set<String> accepted = new LinkedHashSet<>(type.acceptedParams());
             accepted.addAll(type.requiredParams());
             accepted.add("as");                 // any step's result may be captured
+            accepted.add(DESCRIPTION);
             if (type.retryable()) {
                 accepted.add("wait");
             }
@@ -356,9 +389,11 @@ public final class ScenarioValidator {
                 throw locate.at("'" + reserved + "' is not allowed on a cleanup entry");
             }
         }
+        requireTextDescription(entry.params(), locate);
 
         Set<String> accepted = new LinkedHashSet<>(type.acceptedParams());
         accepted.addAll(type.requiredParams());
+        accepted.add(DESCRIPTION);
 
         for (String required : new TreeSet<>(type.requiredParams())) {
             if (!entry.params().containsKey(required)) {

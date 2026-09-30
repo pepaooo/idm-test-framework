@@ -53,12 +53,6 @@ class RealEnvironmentLdapOnlyTest extends RealEnvironmentScenarios {
     @Autowired
     private ApplicationContext context;
 
-    @Test
-    @DisplayName("The real runner's context creates no Spring Boot DataSource (ITF-32)")
-    void testNoBootDataSource() {
-        assertThat(context.getBeanNamesForType(DataSource.class)).isEmpty();
-    }
-
     @BeforeAll
     static void startDirectory() throws Exception {
         ldap = EmbeddedLdapServer.start(BASE_DN, BIND_DN, BIND_PASSWORD, 0, "ldap-init.ldif",
@@ -89,6 +83,12 @@ class RealEnvironmentLdapOnlyTest extends RealEnvironmentScenarios {
         if (ldap != null) {
             ldap.close();
         }
+    }
+
+    @Test
+    @DisplayName("The real runner's context creates no Spring Boot DataSource (ITF-32)")
+    void testNoBootDataSource() {
+        assertThat(context.getBeanNamesForType(DataSource.class)).isEmpty();
     }
 
     @TestFactory

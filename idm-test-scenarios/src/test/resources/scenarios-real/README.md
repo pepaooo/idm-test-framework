@@ -128,6 +128,8 @@ exception is the embedded `test-db` (in-memory H2 by default): it is always open
 because the scenarios module's schema initializer recreates its schema there, so never point
 `test-db` at a real database.
 
+In a real run's log, lines such as `HikariPool-test-db … url=jdbc:h2:mem:testdb` and `Executing SQL script from class path resource [schema.sql]` come from that `test-db` exception (they appear when `org.springframework.jdbc` logs at DEBUG, as the `dev` profile does). They are expected and touch only that in-memory database. Spring Boot's own anonymous H2 database (`HikariPool-1`, `jdbc:h2:mem:<random-id>`) is no longer created (ITF-32).
+
 | Your scenarios use | You must configure (and not leave as the placeholder) |
 |---|---|
 | `ldap.*` | For each directory the steps use (a step without `directory:` uses the default directory): the older block's `idm.test.ldap.url` (`IDM_TEST_LDAP_URL`), `user-dn` (`IDM_TEST_LDAP_USERDN`) and `password` (`IDM_TEST_LDAP_PASSWORD`) for the directory `default`, or `idm.test.directories.<name>.url` (`IDM_TEST_DIRECTORIES_<NAME>_URL`), `user-dn` and `password` for a named one; each refused while still the placeholder (`ldap://localhost:389`, `cn=admin,dc=company,dc=com`, `secret`); a blank bind DN or password is allowed (anonymous bind). A directory that isn't configured, or a step without `directory:` when there is no default directory, is refused before anything runs |

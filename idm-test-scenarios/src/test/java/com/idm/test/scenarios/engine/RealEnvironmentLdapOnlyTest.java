@@ -7,13 +7,18 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.DynamicTest;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationContext;
 import org.springframework.test.annotation.DirtiesContext;
 
+import javax.sql.DataSource;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.stream.Stream;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * The real-environment runner with only LDAP configured: an embedded directory stands in for
@@ -45,6 +50,9 @@ class RealEnvironmentLdapOnlyTest extends RealEnvironmentScenarios {
     @Autowired
     private LdapProperties ldapProperties;
 
+    @Autowired
+    private ApplicationContext context;
+
     @BeforeAll
     static void startDirectory() throws Exception {
         ldap = EmbeddedLdapServer.start(BASE_DN, BIND_DN, BIND_PASSWORD, 0, "ldap-init.ldif",
@@ -75,6 +83,12 @@ class RealEnvironmentLdapOnlyTest extends RealEnvironmentScenarios {
         if (ldap != null) {
             ldap.close();
         }
+    }
+
+    @Test
+    @DisplayName("The real runner's context creates no Spring Boot DataSource (ITF-32)")
+    void testNoBootDataSource() {
+        assertThat(context.getBeanNamesForType(DataSource.class)).isEmpty();
     }
 
     @TestFactory

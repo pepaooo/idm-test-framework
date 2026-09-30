@@ -2,6 +2,9 @@ package com.idm.test.scenarios.engine;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
+import org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration;
+import org.springframework.boot.autoconfigure.ldap.LdapAutoConfiguration;
 import org.springframework.core.annotation.MergedAnnotations;
 import org.springframework.core.annotation.MergedAnnotations.SearchStrategy;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -14,6 +17,7 @@ import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -32,6 +36,19 @@ class RealEnvironmentScenariosStructureTest {
     private static final Class<?> RUNNER = RealEnvironmentScenarios.class;
     private static final Path SOURCE =
             Path.of("src/test/java/com/idm/test/scenarios/engine/RealEnvironmentScenarios.java");
+
+    @Test
+    @DisplayName("Excludes Spring Boot's LDAP and DataSource auto-configuration, for the container runner too")
+    void testExcludesBootLdapAndDataSource() {
+        for (Class<?> runner : List.of(RUNNER, ContainerScenarios.class)) {
+            Class<?>[] excluded = MergedAnnotations.from(runner, SearchStrategy.TYPE_HIERARCHY)
+                    .get(EnableAutoConfiguration.class)
+                    .getClassArray("exclude");
+
+            assertThat(excluded).as(runner.getSimpleName())
+                    .contains(LdapAutoConfiguration.class, DataSourceAutoConfiguration.class);
+        }
+    }
 
     @Test
     @DisplayName("Extends nothing, so it inherits no embedded wiring")

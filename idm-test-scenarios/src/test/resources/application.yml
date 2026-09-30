@@ -272,13 +272,6 @@ spring:
     activate:
       on-profile: test
 
-  # Initialize H2 databases with schema
-  sql:
-    init:
-      mode: always
-      schema-locations: classpath:schema.sql
-      continue-on-error: false
-
 idm:
   test:
     # Use Testcontainers or embedded services

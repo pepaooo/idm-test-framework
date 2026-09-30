@@ -22,6 +22,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
+import org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration;
 import org.springframework.boot.autoconfigure.ldap.LdapAutoConfiguration;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
@@ -48,7 +49,9 @@ import static org.assertj.core.api.Assertions.assertThat;
  * - OpenLDAP server (ldap://localhost:random-port)
  * - WireMock SOAP server (http://localhost:8090)
  * <p>
- * Excludes Spring Boot's LdapAutoConfiguration since we provide custom LDAP configuration.
+ * Excludes Spring Boot's LdapAutoConfiguration since we provide custom LDAP configuration,
+ * and DataSourceAutoConfiguration, whose own embedded H2 the framework never used (ITF-32):
+ * databases are the named pools of DatabaseConfiguration.
  * <p>
  * {@code RestProperties} no longer needs enabling here: {@code RestClientConfiguration} now
  * carries {@code @EnableConfigurationProperties(RestProperties.class)} itself (the same fix
@@ -58,7 +61,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @SpringBootTest
 @ActiveProfiles("test")
-@EnableAutoConfiguration(exclude = {LdapAutoConfiguration.class})
+@EnableAutoConfiguration(exclude = {LdapAutoConfiguration.class, DataSourceAutoConfiguration.class})
 public abstract class BaseIntegrationTest {
 
     protected final Logger log = LoggerFactory.getLogger(getClass());

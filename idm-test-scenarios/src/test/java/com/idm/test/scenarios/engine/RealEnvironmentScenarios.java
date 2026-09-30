@@ -26,6 +26,7 @@ import org.junit.jupiter.api.TestFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
+import org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration;
 import org.springframework.boot.autoconfigure.ldap.LdapAutoConfiguration;
 import org.springframework.boot.context.properties.bind.Bindable;
 import org.springframework.boot.context.properties.bind.Binder;
@@ -74,7 +75,7 @@ import java.util.stream.Stream;
  * at a real database.
  */
 @SpringBootTest
-@EnableAutoConfiguration(exclude = {LdapAutoConfiguration.class})
+@EnableAutoConfiguration(exclude = {LdapAutoConfiguration.class, DataSourceAutoConfiguration.class})
 @DisplayName("Real-environment scenarios")
 public class RealEnvironmentScenarios {
 

@@ -231,18 +231,18 @@ the schema or the bind lacks rights.
 | Parameter | Required | Meaning |
 |---|---|---|
 | `dn` | yes | the entry's DN, relative to the base DN |
-| `attributes` | yes | a map of attribute name to new value, or a list of values; attributes not listed are left as they are |
+| `attributes` | yes | a map of attribute name to new value (one value, or a list of several); attributes not listed are left as they are |
 | `directory` | no | the configured directory to work in (`idm.test.directories.<name>`); without it, the default directory. See **Several directories** under LDAP |
 
 **Captures:** the DN, as text. Nothing is restored automatically: to put old values back,
 capture them first with `ldap.verify … as:` and write an `ldap.update` in `cleanup:`.
 
-**Several values:** a list replaces every value of the attribute (`seeAlso: [cn=a,ou=groups,o=data]`);
+**Several values:** a list replaces every value of the attribute (`seeAlso: ["cn=a,ou=groups,o=data"]`);
 an empty list (`[]`) removes the attribute. To restore an entry, capture it with `ldap.verify … as:`
 first: a multi-valued attribute is captured as a list, so writing it back restores every value.
 
-**Fails when:** `attributes` is empty, or the directory refuses the change (no such entry, a
-schema violation, insufficient rights).
+**Fails when:** `attributes` is empty, a list holds `null`, a map or a list, or the directory refuses
+the change (no such entry, a schema violation, insufficient rights).
 
 ```yaml
 - ldap.update:

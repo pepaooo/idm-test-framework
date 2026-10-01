@@ -233,7 +233,7 @@ class EdirectoryConnectorTest {
 
         assertThat(result.isSuccess()).isFalse();
         assertThat(result.getData().get()).isFalse();
-        assertThat(result.getMessage()).contains("mismatch");
+        assertThat(result.getMessage()).isEqualTo("Attribute 'sn': expected=Wrong, actual=Doe");
         assertThat(result.getErrorType().get()).isEqualTo(ErrorType.VALIDATION_ERROR);
     }
 
@@ -438,6 +438,95 @@ class EdirectoryConnectorTest {
 
         assertThat(connector.read(dn).getData().orElseThrow().getCustomAttributes())
                 .doesNotContainKey("userPassword");
+
+        connector.delete(dn);
+    }
+
+    // ------------------------------------------------------------------
+    // ITF-38: multi-valued attributes
+    // ------------------------------------------------------------------
+
+    private static final String DEV = "cn=developers,ou=groups,dc=test,dc=com";
+    private static final String VPN = "cn=vpn,ou=groups,dc=test,dc=com";
+
+    private String createMultiValued(String cn) {
+        String dn = "cn=" + cn + "," + TEST_BASE_DN;
+        connector.delete(dn);
+        LdapUser user = new LdapUser();
+        user.setDn(dn);
+        user.setCn(cn);
+        user.setSn("Multi");
+        user.addCustomAttribute("ou", List.of("Engineering", "Security"));
+        user.addCustomAttribute("seeAlso", List.of(DEV, VPN));
+        user.setUserPassword("s3cr3t");
+        OperationResult<LdapUser> created = connector.create(user);
+        assertThat(created.isSuccess()).as(created.getMessage()).isTrue();
+        return dn;
+    }
+
+    @Test
+    @DisplayName("readAttributes returns every value of a multi-valued attribute, built-in or not, and no userPassword")
+    void testReadAttributesReturnsLists() {
+        String dn = createMultiValued("multi.read");
+
+        OperationResult<Map<String, Object>> read = connector.readAttributes(dn);
+
+        assertThat(read.isSuccess()).as(read.getMessage()).isTrue();
+        Map<String, Object> attributes = read.getData().orElseThrow();
+        assertThat((List<?>) attributes.get("ou")).map(String::valueOf)
+                .containsExactlyInAnyOrder("Engineering", "Security");
+        assertThat((List<?>) attributes.get("seeAlso")).map(String::valueOf)
+                .containsExactlyInAnyOrder(DEV, VPN);
+        assertThat(attributes.get("sn")).isEqualTo("Multi");
+        assertThat(attributes.get("SN")).as("keys ignore case").isEqualTo("Multi");
+        assertThat(attributes.keySet()).noneMatch(key -> key.equalsIgnoreCase("userPassword"));
+
+        connector.delete(dn);
+    }
+
+    @Test
+    @DisplayName("readAttributes reports a missing entry as NOT_FOUND")
+    void testReadAttributesMissingEntry() {
+        OperationResult<Map<String, Object>> read = connector.readAttributes("cn=nobody.itf38," + TEST_BASE_DN);
+
+        assertThat(read.isSuccess()).isFalse();
+        assertThat(read.getErrorType()).contains(ErrorType.NOT_FOUND);
+        assertThat(read.getMessage()).contains("not found");
+    }
+
+    @Test
+    @DisplayName("verifyAttributes matches lists in any order, DNs ignoring case, and contains/excludes")
+    void testVerifyAttributesMultiValued() {
+        String dn = createMultiValued("multi.verify");
+
+        assertThat(connector.verifyAttributes(dn, Map.of("ou", List.of("Security", "Engineering"))).isSuccess())
+                .isTrue();
+        assertThat(connector.verifyAttributes(dn, Map.of("seeAlso",
+                Map.of("contains", "CN=Developers, OU=Groups, DC=test, DC=com",
+                        "excludes", "cn=finance,ou=groups,dc=test,dc=com"))).isSuccess())
+                .isTrue();
+
+        OperationResult<Boolean> scalar = connector.verifyAttributes(dn, Map.of("ou", "Engineering"));
+        assertThat(scalar.isSuccess()).isFalse();
+        assertThat(scalar.getErrorType()).contains(ErrorType.VALIDATION_ERROR);
+        assertThat(scalar.getMessage()).startsWith("Attribute 'ou': expected=Engineering, actual=[");
+
+        connector.delete(dn);
+    }
+
+    @Test
+    @DisplayName("update writes a list as several values, and an empty list removes the attribute")
+    void testUpdateWritesLists() {
+        String dn = createMultiValued("multi.update");
+
+        assertThat(connector.update(dn, Map.of("seeAlso", List.of(DEV))).isSuccess()).isTrue();
+        assertThat(connector.readAttributes(dn).getData().orElseThrow().get("seeAlso")).isEqualTo(DEV);
+
+        assertThat(connector.update(dn, Map.of("ou", List.of("A", "B", "C"))).isSuccess()).isTrue();
+        assertThat((List<?>) connector.readAttributes(dn).getData().orElseThrow().get("ou")).hasSize(3);
+
+        assertThat(connector.update(dn, Map.of("seeAlso", List.of())).isSuccess()).isTrue();
+        assertThat(connector.readAttributes(dn).getData().orElseThrow()).doesNotContainKey("seeAlso");
 
         connector.delete(dn);
     }

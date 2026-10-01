@@ -115,10 +115,10 @@ Actions change state; assertions check it and may retry.
 
 | Step | Kind | Required | Also accepts |
 |---|---|---|---|
-| `ldap.create` | action | `dn` | `attributes` (may include `objectClass`), `directory` |
-| `ldap.update` | action | `dn`, `attributes` | `directory` |
+| `ldap.create` | action | `dn` | `attributes` (may include `objectClass`; a list writes several values), `directory` |
+| `ldap.update` | action | `dn`, `attributes` | `directory` (a list writes several values, `[]` removes the attribute) |
 | `ldap.delete` | action | `dn` | `directory` |
-| `ldap.verify` | assertion | `dn`, and exactly one of `expect` or `exists` | `wait`, `directory` |
+| `ldap.verify` | assertion | `dn`, and exactly one of `expect` or `exists` | `wait`, `directory` (`expect` values may be a list: exact set, any order; or `{contains, excludes}`) |
 | `db.execute` | action | `database`, `statement` | `params` |
 | `db.verify` | assertion | `database`, `query`, `expect` | `params`, `wait` |
 | `roles.grant` | action | `user`, `roles` | `reason` |

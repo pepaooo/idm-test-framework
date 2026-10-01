@@ -469,7 +469,7 @@ public class EdirectoryConnector {
                 return OperationResult.<Boolean>builder()
                         .success(false)
                         .data(false)
-                        .message("Failed to read entry: " + readResult.getMessage())
+                        .message(readResult.getMessage())
                         .errorType(readResult.getErrorType().orElse(ErrorType.LDAP_ERROR))
                         .throwable(readResult.getThrowable().orElse(null))
                         .build();

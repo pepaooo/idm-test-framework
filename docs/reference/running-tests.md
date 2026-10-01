@@ -14,7 +14,7 @@ H2 schema, and runs every module's tests: 591 on 2026-09-25. Every test runs; no
 for a missing service. A connector the context cannot build fails the context, so a broken
 environment is red, never quietly green.
 
-It includes `YamlScenarioTest`, which runs the 20 YAML scenarios in
+It includes `YamlScenarioTest`, which runs the 21 YAML scenarios in
 `idm-test-scenarios/src/test/resources/scenarios/` against the embedded services and writes
 `idm-test-scenarios/target/scenario-results.json`.
 
@@ -73,7 +73,7 @@ module keeps testing the old code, and nothing tells you so. When in doubt, use 
 ./mvnw -pl idm-test-scenarios -am test -Dtest=ContainerScenarios -Dsurefire.failIfNoSpecifiedTests=false
 ```
 
-`ContainerScenarios` runs the same 20 scenarios against OpenLDAP, PostgreSQL and WireMock started
+`ContainerScenarios` runs the same 21 scenarios against OpenLDAP, PostgreSQL and WireMock started
 by Testcontainers. It has no `Test` suffix, so the default suite never runs it, and a machine
 without Docker is never asked for one. It accepts `-Dscenario` too.
 

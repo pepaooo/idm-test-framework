@@ -115,10 +115,10 @@ Actions change state; assertions check it and may retry.
 
 | Step | Kind | Required | Also accepts |
 |---|---|---|---|
-| `ldap.create` | action | `dn` | `attributes` (may include `objectClass`), `directory` |
-| `ldap.update` | action | `dn`, `attributes` | `directory` |
+| `ldap.create` | action | `dn` | `attributes` (may include `objectClass`; a list writes several values), `directory` |
+| `ldap.update` | action | `dn`, `attributes` (a list writes several values, `[]` removes the attribute) | `directory` |
 | `ldap.delete` | action | `dn` | `directory` |
-| `ldap.verify` | assertion | `dn`, and exactly one of `expect` or `exists` | `wait`, `directory` |
+| `ldap.verify` | assertion | `dn`, and exactly one of `expect` (a value, a list as the exact set in any order, or `{contains, excludes}`) or `exists` | `wait`, `directory` |
 | `db.execute` | action | `database`, `statement` | `params` |
 | `db.verify` | assertion | `database`, `query`, `expect` | `params`, `wait` |
 | `roles.grant` | action | `user`, `roles` | `reason` |
@@ -261,7 +261,7 @@ Verified on 2026-09-25 with `./mvnw clean test` at `fb35547`:
 | **Total** | **591** |
 
 The scenarios module holds the Java workflow tests (provisioning, role assignment, modification,
-deprovisioning and multi-system flows), a corpus of 20 YAML scenarios converted from them, and the
+deprovisioning and multi-system flows), a corpus of 21 YAML scenarios converted from them, and the
 tests of the runners and their guards.
 
 **Worth being explicit about:** the default suite *simulates* IdM. The Java and YAML scenarios

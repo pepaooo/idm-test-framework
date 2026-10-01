@@ -7,6 +7,7 @@ import com.idm.test.core.model.OperationResult;
 import com.idm.test.engine.spi.StepOutcome;
 import com.idm.test.engine.spi.StepType;
 
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
@@ -54,6 +55,11 @@ public final class LdapCreateStep implements StepType {
         Map<String, Object> attributes =
                 (Map<String, Object>) params.getOrDefault("attributes", Map.of());
 
+        String listProblem = LdapLists.problem("ldap.create", where, attributes, false);
+        if (listProblem != null) {
+            return StepOutcome.failure(listProblem);
+        }
+
         LdapUser user = toLdapUser(dn, attributes);
         OperationResult<LdapUser> result = connector.create(user);
 
@@ -67,6 +73,7 @@ public final class LdapCreateStep implements StepType {
     /**
      * Maps the well-known attribute names onto LdapUser; anything else becomes a custom
      * attribute, which is how scenarios carry directory-specific fields.
+     * A list, for any name, is written as several values.
      */
     private static LdapUser toLdapUser(String dn, Map<String, Object> attributes) {
         LdapUser user = new LdapUser();
@@ -89,6 +96,11 @@ public final class LdapCreateStep implements StepType {
     }
 
     private static String take(Map<String, Object> attributes, String key) {
+        if (attributes.get(key) instanceof Collection<?>) {
+            // Several values: the typed field holds one, so leave it to be written as a
+            // custom attribute with every value.
+            return null;
+        }
         Object value = attributes.remove(key);
         return value == null ? null : value.toString();
     }

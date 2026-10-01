@@ -58,6 +58,11 @@ public final class LdapUpdateStep implements StepType {
                     "ldap.update for " + where + " has no attributes to change");
         }
 
+        String listProblem = LdapLists.problem("ldap.update", where, attributes, true);
+        if (listProblem != null) {
+            return StepOutcome.failure(listProblem);
+        }
+
         OperationResult<Void> result = connector.update(dn, attributes);
         if (!result.isSuccess()) {
             return StepOutcome.failure(

@@ -5,6 +5,7 @@ import com.idm.test.core.model.ErrorType;
 import com.idm.test.core.model.OperationResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.ldap.core.AttributesMapper;
 import org.springframework.ldap.core.DirContextAdapter;
 import org.springframework.ldap.core.DirContextOperations;
 import org.springframework.ldap.core.LdapTemplate;
@@ -20,12 +21,12 @@ import javax.naming.directory.Attributes;
 import javax.naming.directory.BasicAttribute;
 import javax.naming.directory.BasicAttributes;
 import java.util.Collection;
-import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.TreeMap;
 
 import static org.springframework.ldap.query.LdapQueryBuilder.query;
 
@@ -119,9 +120,13 @@ public class EdirectoryConnector {
             setAttributeIfNotNull(context, "ou", user.getOu());
             setAttributeIfNotNull(context, "description", user.getDescription());
 
-            // Set custom attributes
+            // Set custom attributes; a collection is one attribute with several values
             for (Map.Entry<String, Object> entry : custom.entrySet()) {
-                context.setAttributeValue(entry.getKey(), entry.getValue());
+                if (entry.getValue() instanceof Collection<?> values) {
+                    context.setAttributeValues(entry.getKey(), values.toArray());
+                } else {
+                    context.setAttributeValue(entry.getKey(), entry.getValue());
+                }
             }
 
             ldapTemplate.bind(context);
@@ -196,6 +201,78 @@ public class EdirectoryConnector {
     }
 
     /**
+     * Reads every attribute of an entry, with all its values.
+     * <p>
+     * Unlike {@link #read}, nothing collapses to a first value: a single value is a scalar and
+     * several are a list, for the ten names {@link LdapUser} types as well. Keys keep the
+     * directory's spelling but are looked up ignoring case, as LDAP names are.
+     * {@code userPassword} is never returned (see {@link #EXCLUDED_ATTRIBUTE}).
+     *
+     * @param dn the distinguished name
+     * @return operation result containing the attributes or error
+     */
+    public OperationResult<Map<String, Object>> readAttributes(String dn) {
+        log.debug("Reading LDAP attributes: {}", dn);
+
+        try {
+            Name name = LdapNameBuilder.newInstance(dn).build();
+
+            Map<String, Object> attributes = ldapTemplate.lookup(name,
+                    (AttributesMapper<Map<String, Object>>) EdirectoryConnector::attributeMap);
+
+            return OperationResult.<Map<String, Object>>builder()
+                    .success(true)
+                    .data(attributes)
+                    .message("Attributes read successfully")
+                    .build();
+
+        } catch (org.springframework.ldap.NameNotFoundException e) {
+            log.warn("LDAP entry not found: {}", dn);
+            return OperationResult.<Map<String, Object>>builder()
+                    .success(false)
+                    .message("Entry not found: " + dn)
+                    .errorType(ErrorType.NOT_FOUND)
+                    .throwable(e)
+                    .build();
+        } catch (Exception e) {
+            log.error("Failed to read LDAP attributes '{}': {}", dn, e.getMessage());
+            return OperationResult.<Map<String, Object>>builder()
+                    .success(false)
+                    .message("Failed to read entry: " + e.getMessage())
+                    .errorType(ErrorType.LDAP_ERROR)
+                    .throwable(e)
+                    .build();
+        }
+    }
+
+    private static Map<String, Object> attributeMap(Attributes attributes) throws NamingException {
+        Map<String, Object> result = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        NamingEnumeration<? extends Attribute> all = attributes.getAll();
+        while (all.hasMore()) {
+            Attribute attribute = all.next();
+            if (!EXCLUDED_ATTRIBUTE.equalsIgnoreCase(attribute.getID())) {
+                result.put(attribute.getID(), valueOf(attribute));
+            }
+        }
+        return result;
+    }
+
+    /**
+     * A single-valued attribute reads as its scalar value; a multi-valued one as a list
+     * of every value, so nothing is silently dropped.
+     */
+    private static Object valueOf(Attribute attribute) throws NamingException {
+        if (attribute.size() == 1) {
+            return attribute.get();
+        }
+        List<Object> values = new java.util.ArrayList<>(attribute.size());
+        for (int i = 0; i < attribute.size(); i++) {
+            values.add(attribute.get(i));
+        }
+        return values;
+    }
+
+    /**
      * Updates user attributes in LDAP.
      *
      * @param dn the distinguished name
@@ -214,8 +291,15 @@ public class EdirectoryConnector {
 
             int i = 0;
             for (Map.Entry<String, Object> entry : attributes.entrySet()) {
-                javax.naming.directory.Attribute attr =
-                    new BasicAttribute(entry.getKey(), entry.getValue());
+                // A collection is several values; an empty one replaces the attribute with
+                // nothing, which removes it.
+                javax.naming.directory.Attribute attr;
+                if (entry.getValue() instanceof Collection<?> values) {
+                    attr = new BasicAttribute(entry.getKey());
+                    values.forEach(attr::add);
+                } else {
+                    attr = new BasicAttribute(entry.getKey(), entry.getValue());
+                }
                 mods[i++] = new javax.naming.directory.ModificationItem(
                     javax.naming.directory.DirContext.REPLACE_ATTRIBUTE, attr);
             }
@@ -371,56 +455,39 @@ public class EdirectoryConnector {
      * Verifies that an LDAP entry has expected attribute values.
      *
      * @param dn the distinguished name
-     * @param expectedAttributes map of attribute names to expected values
+     * @param expectedAttributes map of attribute names to expected values: a value, a list (the exact set, any
+     *                           order) or a {contains, excludes} map; see LdapValueMatcher
      * @return operation result indicating if verification passed
      */
     public OperationResult<Boolean> verifyAttributes(String dn, Map<String, Object> expectedAttributes) {
         log.debug("Verifying LDAP attributes for: {}", dn);
 
         try {
-            OperationResult<LdapUser> readResult = read(dn);
+            OperationResult<Map<String, Object>> readResult = readAttributes(dn);
 
             if (!readResult.isSuccess()) {
                 return OperationResult.<Boolean>builder()
                         .success(false)
                         .data(false)
-                        .message("Failed to read entry: " + readResult.getMessage())
+                        .message(readResult.getMessage())
                         .errorType(readResult.getErrorType().orElse(ErrorType.LDAP_ERROR))
                         .throwable(readResult.getThrowable().orElse(null))
                         .build();
             }
 
-            LdapUser user = readResult.getData().orElseThrow();
+            Map<String, Object> actualAttributes = readResult.getData().orElseThrow();
 
-            // Build actual attributes map
-            Map<String, Object> actualAttributes = new HashMap<>();
-            actualAttributes.put("cn", user.getCn());
-            actualAttributes.put("sn", user.getSn());
-            actualAttributes.put("givenName", user.getGivenName());
-            actualAttributes.put("mail", user.getMail());
-            actualAttributes.put("uid", user.getUid());
-            actualAttributes.put("telephoneNumber", user.getTelephoneNumber());
-            actualAttributes.put("title", user.getTitle());
-            actualAttributes.put("ou", user.getOu());
-            actualAttributes.put("description", user.getDescription());
-            actualAttributes.putAll(user.getCustomAttributes());
-
-            // Compare expected vs actual
             for (Map.Entry<String, Object> entry : expectedAttributes.entrySet()) {
-                String attrName = entry.getKey();
-                Object expectedValue = entry.getValue();
-                Object actualValue = actualAttributes.get(attrName);
+                String mismatch = LdapValueMatcher.match(
+                        entry.getKey(), entry.getValue(), actualAttributes.get(entry.getKey()));
 
-                if (!valuesEqual(expectedValue, actualValue)) {
-                    String message = String.format(
-                            "Attribute mismatch for '%s': expected=%s, actual=%s",
-                            attrName, expectedValue, actualValue);
-                    log.warn(message);
+                if (mismatch != null) {
+                    log.warn(mismatch);
 
                     return OperationResult.<Boolean>builder()
                             .success(false)
                             .data(false)
-                            .message(message)
+                            .message(mismatch)
                             .errorType(ErrorType.VALIDATION_ERROR)
                             .build();
                 }
@@ -547,21 +614,6 @@ public class EdirectoryConnector {
             return user;
         }
 
-        /**
-         * A single-valued attribute reads as its scalar value; a multi-valued one as a list
-         * of every value, so nothing is silently dropped.
-         */
-        private static Object valueOf(Attribute attribute) throws NamingException {
-            if (attribute.size() == 1) {
-                return attribute.get();
-            }
-            List<Object> values = new java.util.ArrayList<>(attribute.size());
-            for (int i = 0; i < attribute.size(); i++) {
-                values.add(attribute.get(i));
-            }
-            return values;
-        }
-
         private static void setMapped(LdapUser user, String id, String value) {
             switch (id) {
                 case "cn" -> user.setCn(value);
@@ -585,19 +637,6 @@ public class EdirectoryConnector {
         if (value != null) {
             context.setAttributeValue(name, value);
         }
-    }
-
-    /**
-     * Compares two values for equality, handling nulls.
-     */
-    private boolean valuesEqual(Object expected, Object actual) {
-        if (expected == null && actual == null) {
-            return true;
-        }
-        if (expected == null || actual == null) {
-            return false;
-        }
-        return expected.equals(actual) || expected.toString().equals(actual.toString());
     }
 
     /**

@@ -261,7 +261,7 @@ Verified on 2026-09-25 with `./mvnw clean test` at `fb35547`:
 | **Total** | **591** |
 
 The scenarios module holds the Java workflow tests (provisioning, role assignment, modification,
-deprovisioning and multi-system flows), a corpus of 20 YAML scenarios converted from them, and the
+deprovisioning and multi-system flows), a corpus of 21 YAML scenarios converted from them, and the
 tests of the runners and their guards.
 
 **Worth being explicit about:** the default suite *simulates* IdM. The Java and YAML scenarios

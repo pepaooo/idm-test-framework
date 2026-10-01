@@ -206,6 +206,10 @@ use other classes, for example for an Active Directory user:
 Active Directory creates such an account disabled and without a password; setting passwords
 and enabling accounts is not supported yet (ITF-33).
 
+**Several values:** give a list to write an attribute with several values, for any attribute
+(`ou: [Engineering, Security]`). An empty list, or a list holding `null`, a map or a list, fails
+the step.
+
 **Fails when:** the directory refuses the entry, for example because it already exists, violates
 the schema or the bind lacks rights.
 
@@ -227,11 +231,15 @@ the schema or the bind lacks rights.
 | Parameter | Required | Meaning |
 |---|---|---|
 | `dn` | yes | the entry's DN, relative to the base DN |
-| `attributes` | yes | a map of attribute name to new value; attributes not listed are left as they are |
+| `attributes` | yes | a map of attribute name to new value, or a list of values; attributes not listed are left as they are |
 | `directory` | no | the configured directory to work in (`idm.test.directories.<name>`); without it, the default directory. See **Several directories** under LDAP |
 
 **Captures:** the DN, as text. Nothing is restored automatically: to put old values back,
 capture them first with `ldap.verify … as:` and write an `ldap.update` in `cleanup:`.
+
+**Several values:** a list replaces every value of the attribute (`seeAlso: [cn=a,ou=groups,o=data]`);
+an empty list (`[]`) removes the attribute. To restore an entry, capture it with `ldap.verify … as:`
+first: a multi-valued attribute is captured as a list, so writing it back restores every value.
 
 **Fails when:** `attributes` is empty, or the directory refuses the change (no such entry, a
 schema violation, insufficient rights).
@@ -270,17 +278,52 @@ fails; see [Cleanup](#6-cleanup).
 | Parameter | Required | Meaning |
 |---|---|---|
 | `dn` | yes | the entry's DN, relative to the base DN |
-| `expect` | no | a map of attribute name to expected value; only the listed attributes are compared. Give exactly one of `expect` or `exists` |
+| `expect` | no | a map of attribute name to expected value (see **Values** below); only the listed attributes are compared. Give exactly one of `expect` or `exists` |
 | `exists` | no | `true` to assert the entry is present, `false` to assert it is absent. Give exactly one of `expect` or `exists` |
 | `directory` | no | the configured directory to work in (`idm.test.directories.<name>`); without it, the default directory. See **Several directories** under LDAP |
 
 **Captures:** with `expect`, a map of the entry's attributes, read after the check passes (for
-example `${entry.mail}`). With `exists`, nothing, so declaring `as:` fails the step.
+example `${entry.mail}`); an attribute with several values is a list. With `exists`, nothing, so
+declaring `as:` fails the step.
+
+**Values:** each attribute in `expect` takes one of these forms. The directory's values are
+compared as a set, since LDAP keeps no order.
+
+| Form | Passes when |
+|---|---|
+| a value, `title: Manager` | the attribute has exactly that one value |
+| a list, `ou: [Engineering, Security]` | the attribute has exactly these values, in any order |
+| `{ contains: [...] }` | every listed value is present; other values are ignored |
+| `{ excludes: [...] }` | none of the listed values is present; an absent attribute passes |
+| `{ contains: [...], excludes: [...] }` | both |
+
+- `contains` and `excludes` take a list or a single value.
+- When both sides are DNs, they compare as DNs: `CN=Finance, OU=Groups, O=Data` matches
+  `cn=finance,ou=groups,o=data`. Other values compare as text, exactly.
+- A value is only a match for an attribute with **one** value: on an entry with two `cn` values,
+  `cn: jdoe` fails. Use `cn: { contains: [jdoe] }`.
+- `excludes` cannot tell a misspelled attribute name from an absent attribute, so it passes for
+  either. Pair it with a `contains` on the same attribute, or another check in the same step.
+
+```yaml
+- roles.revoke:
+    assignments: ["${grant}"]
+
+- ldap.verify:
+    dn: "cn=${user.userId},ou=users"
+    expect:
+      groupMembership:
+        contains: ["cn=Employees,ou=groups,o=data"]
+        excludes: ["cn=Finance,ou=groups,o=data"]
+    wait: { timeout: 5m, poll: 10s }
+```
 
 **Fails when:** an attribute differs, or the entry is present or absent contrary to `exists`.
 These are retried under `wait:`. Giving both or neither of `expect`/`exists`, an empty `expect`,
-a non-boolean `exists`, or an `expect` value of `null` (usually a misspelled attribute name) ends
-the wait at once.
+a non-boolean `exists`, an `expect` value of `null` (usually a misspelled attribute name), or a
+malformed value form (an empty list; a map with keys other than `contains`/`excludes` or with
+neither; an empty `contains`/`excludes`; a `null`, map or list inside a list; the same value in
+both `contains` and `excludes`) ends the wait at once.
 
 ```yaml
 - ldap.verify:

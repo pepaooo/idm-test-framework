@@ -1,0 +1,52 @@
+name: Verify multi-valued attributes in the directory
+description: Several ou and seeAlso values, checked as an exact set in any order, with contains and with excludes
+
+fixtures:
+  user:
+    generate: random-user
+
+steps:
+  - ldap.create:
+      description: Create a user in two departments and two groups
+      dn: "cn=${user.userId},ou=users"
+      as: createdDn
+      attributes:
+        cn: "${user.userId}"
+        sn: "${user.lastName}"
+        ou: [Engineering, Security]
+        seeAlso:
+          - "cn=developers,ou=groups,o=data"
+          - "cn=vpn-users,ou=groups,o=data"
+
+  - ldap.verify:
+      description: Both departments, listed in the other order
+      dn: "${createdDn}"
+      expect:
+        ou: [Security, Engineering]
+
+  - ldap.verify:
+      description: The groups, with a DN written in another case and spacing
+      dn: "${createdDn}"
+      expect:
+        seeAlso:
+          contains: ["CN=Developers, OU=Groups, O=Data"]
+          excludes: ["cn=finance,ou=groups,o=data"]
+
+  - ldap.update:
+      description: Take the user out of the VPN group
+      dn: "${createdDn}"
+      attributes:
+        seeAlso: ["cn=developers,ou=groups,o=data"]
+
+  - ldap.verify:
+      description: The VPN group is gone and the other stays
+      dn: "${createdDn}"
+      expect:
+        seeAlso:
+          contains: ["cn=developers,ou=groups,o=data"]
+          excludes: ["cn=vpn-users,ou=groups,o=data"]
+      wait: true
+
+cleanup:
+  - ldap.delete:
+      dn: "${createdDn}"

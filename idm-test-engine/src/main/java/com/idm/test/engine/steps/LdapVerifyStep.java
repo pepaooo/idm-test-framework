@@ -2,16 +2,18 @@ package com.idm.test.engine.steps;
 
 import com.idm.test.connector.ldap.client.EdirectoryConnector;
 import com.idm.test.connector.ldap.client.LdapDirectories;
-import com.idm.test.connector.ldap.model.LdapUser;
+import com.idm.test.connector.ldap.client.LdapValueMatcher;
 import com.idm.test.core.model.OperationResult;
 import com.idm.test.engine.spi.StepOutcome;
 import com.idm.test.engine.spi.StepType;
 
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 
 /**
- * Asserts that an LDAP entry carries the expected attribute values.
+ * Asserts that an LDAP entry carries the expected attribute values — a value, the exact set of a
+ * multi-valued attribute in any order, or {@code contains}/{@code excludes} (see LdapValueMatcher).
  * <p>
  * Retryable: provisioning is asynchronous, so the engine may call this repeatedly under a
  * {@code wait} until it passes or the timeout expires.
@@ -85,7 +87,7 @@ public final class LdapVerifyStep implements StepType {
 
         // Read once, only after verification passes and only because a capture was actually
         // requested, so a polling assertion does not double its read load on every attempt.
-        OperationResult<LdapUser> entry = connector.read(dn);
+        OperationResult<Map<String, Object>> entry = connector.readAttributes(dn);
         if (!entry.isSuccess() || entry.getData().isEmpty()) {
             // Verification passed but the entry could not be re-read for its as: capture.
             // Reporting success with an empty map would let `${v.cn}` miss silently later, so
@@ -94,7 +96,12 @@ public final class LdapVerifyStep implements StepType {
                     + " but the follow-up read for its as: capture failed: " + entry.getMessage());
         }
 
-        return StepOutcome.success("verified " + where, LdapAttributes.of(entry.getData().get()));
+        // Every value of every attribute: a multi-valued one is a list, so it can be written
+        // back by an ldap.update in cleanup.
+        Map<String, Object> captured = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        captured.putAll(entry.getData().get());
+        captured.put("dn", dn);
+        return StepOutcome.success("verified " + where, captured);
     }
 
     /**
@@ -173,6 +180,11 @@ public final class LdapVerifyStep implements StepType {
                             + "' — a missing or misspelled attribute name parses the same way "
                             + "and would verify nothing. Check for a typo, or assert exists: "
                             + "false to check for absence instead.");
+                }
+                String problem = LdapValueMatcher.shapeProblem(attribute.getValue());
+                if (problem != null) {
+                    return StepOutcome.finalFailure("ldap.verify for " + where + ": attribute '"
+                            + attribute.getKey() + "' " + problem);
                 }
             }
         }

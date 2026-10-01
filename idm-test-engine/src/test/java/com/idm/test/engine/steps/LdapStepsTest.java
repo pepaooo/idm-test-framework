@@ -205,6 +205,7 @@ class LdapStepsTest {
         assertThat(outcome.success()).isTrue();
         assertThat(outcome.value()).isNull();
         verify(mockConnector, never()).read(any());
+        verify(mockConnector, never()).readAttributes(any());
     }
 
     @Test
@@ -214,8 +215,8 @@ class LdapStepsTest {
         EdirectoryConnector mockConnector = mock(EdirectoryConnector.class);
         when(mockConnector.verifyAttributes(any(), any()))
                 .thenReturn(OperationResult.success(true));
-        when(mockConnector.read(any()))
-                .thenReturn(OperationResult.<LdapUser>failure("connection dropped"));
+        when(mockConnector.readAttributes(any()))
+                .thenReturn(OperationResult.<Map<String, Object>>failure("connection dropped"));
 
         StepOutcome outcome = new LdapVerifyStep(only(mockConnector)).execute(Map.of(
                 "dn", "cn=x,ou=users", "expect", Map.of("givenName", "Ada")), true);
@@ -566,5 +567,118 @@ class LdapStepsTest {
                 new LdapUpdateStep(directories), new LdapDeleteStep(directories))) {
             assertThat(step.acceptedParams()).as(step.name()).contains("directory");
         }
+    }
+
+    // ------------------------------------------------------------------
+    // ITF-38: multi-valued attributes
+    // ------------------------------------------------------------------
+
+    @Test
+    @DisplayName("ldap.create writes lists as several values, built-in attributes included, and ldap.verify matches them")
+    void testCreateAndVerifyLists() {
+        String dn = "cn=ada.multi,ou=users";
+        StepOutcome created = new LdapCreateStep(directories).execute(Map.of(
+                "dn", dn,
+                "attributes", Map.of("cn", "ada.multi", "sn", "Lovelace",
+                        "ou", List.of("Engineering", "Security"),
+                        "seeAlso", List.of("cn=a,ou=groups,dc=test,dc=com", "cn=b,ou=groups,dc=test,dc=com"))),
+                false);
+        assertThat(created.success()).as(created.message()).isTrue();
+
+        StepOutcome verified = new LdapVerifyStep(directories).execute(Map.of(
+                "dn", dn,
+                "expect", Map.of(
+                        "ou", List.of("Security", "Engineering"),
+                        "seeAlso", Map.of("contains", "CN=A,OU=Groups,DC=test,DC=com",
+                                "excludes", "cn=c,ou=groups,dc=test,dc=com"))), true);
+
+        assertThat(verified.success()).as(verified.message()).isTrue();
+        @SuppressWarnings("unchecked")
+        Map<String, Object> captured = (Map<String, Object>) verified.value();
+        assertThat(captured.get("dn")).isEqualTo(dn);
+        assertThat((List<?>) captured.get("ou")).map(String::valueOf)
+                .containsExactlyInAnyOrder("Engineering", "Security");
+        assertThat(captured.get("sn")).isEqualTo("Lovelace");
+
+        connector.delete(dn);
+    }
+
+    @Test
+    @DisplayName("ldap.update writes a list as several values and an empty list removes the attribute")
+    void testUpdateLists() {
+        String dn = "cn=ada.multiupdate,ou=users";
+        new LdapCreateStep(directories).execute(Map.of("dn", dn,
+                "attributes", Map.of("cn", "ada.multiupdate", "sn", "Lovelace")), false);
+
+        assertThat(new LdapUpdateStep(directories).execute(Map.of("dn", dn,
+                "attributes", Map.of("ou", List.of("A", "B"))), false).success()).isTrue();
+        assertThat(new LdapVerifyStep(directories).execute(Map.of("dn", dn,
+                "expect", Map.of("ou", List.of("B", "A"))), false).success()).isTrue();
+
+        assertThat(new LdapUpdateStep(directories).execute(Map.of("dn", dn,
+                "attributes", Map.of("ou", List.of())), false).success()).isTrue();
+        assertThat(new LdapVerifyStep(directories).execute(Map.of("dn", dn,
+                "expect", Map.of("ou", Map.of("excludes", List.of("A", "B")))), false).success()).isTrue();
+        assertThat(connector.readAttributes(dn).getData().orElseThrow()).doesNotContainKey("ou");
+
+        connector.delete(dn);
+    }
+
+    @Test
+    @DisplayName("ldap.create rejects an empty list, and both write steps reject null, map or list items, without calling the directory")
+    void testWriteStepsRejectMalformedLists() {
+        EdirectoryConnector mockConnector = mock(EdirectoryConnector.class);
+        LdapDirectories mocked = only(mockConnector);
+
+        StepOutcome empty = new LdapCreateStep(mocked).execute(Map.of("dn", "cn=x,ou=users",
+                "attributes", Map.of("cn", "x", "sn", "X", "ou", List.of())), false);
+        assertThat(empty.success()).isFalse();
+        assertThat(empty.message()).isEqualTo(
+                "ldap.create for cn=x,ou=users: attribute 'ou' has an empty list; there is nothing to write");
+
+        StepOutcome nested = new LdapCreateStep(mocked).execute(Map.of("dn", "cn=x,ou=users",
+                "attributes", Map.of("cn", "x", "sn", "X", "ou", List.of("A", List.of("B")))), false);
+        assertThat(nested.success()).isFalse();
+        assertThat(nested.message()).isEqualTo("ldap.create for cn=x,ou=users: attribute 'ou' "
+                + "has a null, map or list value inside its list; give plain values");
+
+        StepOutcome updateNested = new LdapUpdateStep(mocked).execute(Map.of("dn", "cn=x,ou=users",
+                "attributes", Map.of("ou", List.of(Map.of("a", "b")))), false);
+        assertThat(updateNested.success()).isFalse();
+        assertThat(updateNested.message()).isEqualTo("ldap.update for cn=x,ou=users: attribute 'ou' "
+                + "has a null, map or list value inside its list; give plain values");
+
+        verify(mockConnector, never()).create(any());
+        verify(mockConnector, never()).update(any(), any());
+    }
+
+    @Test
+    @DisplayName("A malformed matcher in ldap.verify is a final failure before the directory is called")
+    void testVerifyRejectsMalformedMatchers() {
+        EdirectoryConnector mockConnector = mock(EdirectoryConnector.class);
+        LdapVerifyStep verify = new LdapVerifyStep(only(mockConnector));
+
+        Map<Object, String> cases = new java.util.LinkedHashMap<>();
+        cases.put(List.of(), "is an empty list, which a misspelled attribute name would also satisfy; "
+                + "to assert values are absent use { excludes: [...] }");
+        cases.put(Map.of("contain", "a"), "has unknown matcher keys [contain]; use contains and/or excludes");
+        cases.put(Map.of(), "is an empty map; use contains and/or excludes");
+        cases.put(Map.of("excludes", List.of()), "has an empty 'excludes'");
+        cases.put(Map.of("contains", List.of("a", List.of("b"))),
+                "has a null, map or list value in 'contains'; give plain values");
+        cases.put(List.of("a", Map.of()), "has a null, map or list value inside its list; give plain values");
+        cases.put(Map.of("contains", "cn=a,o=x", "excludes", "CN=A,O=X"),
+                "lists [cn=a,o=x] in both 'contains' and 'excludes'");
+
+        cases.forEach((expected, problem) -> {
+            StepOutcome outcome = verify.execute(Map.of("dn", "cn=x,ou=users",
+                    "expect", Map.of("groupMembership", expected)), false);
+            assertThat(outcome.success()).as(problem).isFalse();
+            assertThat(outcome.isFinal()).as(problem).isTrue();
+            assertThat(outcome.message()).isEqualTo(
+                    "ldap.verify for cn=x,ou=users: attribute 'groupMembership' " + problem);
+        });
+
+        verify(mockConnector, never()).verifyAttributes(any(), any());
     }
 }

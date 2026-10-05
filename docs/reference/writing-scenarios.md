@@ -284,8 +284,8 @@ fails; see [Cleanup](#6-cleanup).
 | `exists` | no | `true` to assert the entry is present, `false` to assert it is absent. Give exactly one of `expect` or `exists` |
 | `directory` | no | the configured directory to work in (`idm.test.directories.<name>`); without it, the default directory. See **Several directories** under LDAP |
 
-**Captures:** with `expect`, a map of the entry's attributes, read after the check passes (for
-example `${entry.mail}`); an attribute with several values is a list. With `exists`, nothing, so
+**Captures:** with `expect`, a map of the entry's attributes, taken from the same read the check used: every
+attribute, a list for a multi-valued one (for example `${entry.mail}`). With `exists`, nothing, so
 declaring `as:` fails the step.
 
 **Values:** each attribute in `expect` takes one of these forms. The directory's values are
@@ -862,8 +862,8 @@ the step's `evidence` key (`"kind": "http"`, `"sql"` or `"ldap"`).
 | `db.verify` | the SQL, its parameters and the rows returned |
 | `db.execute` | the SQL, its parameters and the number of rows changed |
 | `ldap.create`, `ldap.update` | the DN and the attributes written |
-| `ldap.delete` | the DN |
-| `ldap.verify` | with `expect`, every attribute read; with `exists`, whether the entry was there |
+| `ldap.delete` | the DN, and that the entry was absent when there was none |
+| `ldap.verify` | with `expect`, every attribute read; with `exists`, whether the entry was there; with `expect`, that the entry was absent when there was none |
 
 - **Last attempt only:** a step with `wait:` keeps the evidence of its last attempt.
 - **Nothing sent, nothing shown:** a malformed parameter or an unknown target, database or
@@ -876,7 +876,11 @@ the step's `evidence` key (`"kind": "http"`, `"sql"` or `"ldap"`).
   attributes (`userPassword`, `unicodePwd`); database columns with such names; and SQL parameters
   bound to such a column in `INSERT … (cols) VALUES (?, …)` or `col = ?` / `<>` / `!=` / `LIKE ?`.
   Any other SQL parameter is shown as given, so don't put a secret in `params` of a statement
-  written another way, and a secret inside free text appears as written.
+  written another way, and a secret inside free text appears as written. Secrets carried as
+  name/value pairs are not masked either, for example an XDS
+  `<attr attr-name="nspmDistributionPassword"><value>…</value></attr>` or JSON
+  `{"name": "password", "value": "…"}`, because masking goes by the element or key name, not by a
+  sibling's value.
 - **Size limits:** bodies are cut at 16 384 characters, at most 20 rows are kept (the report
   says how many more there were), each database value is cut at 1 024 characters, and an LDAP
   attribute shows at most 20 values.

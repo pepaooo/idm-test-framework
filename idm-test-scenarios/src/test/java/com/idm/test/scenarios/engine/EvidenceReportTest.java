@@ -46,5 +46,12 @@ class EvidenceReportTest extends BaseIntegrationTest {
         assertThat(json).contains("\"kind\" : \"sql\"").contains("\"kind\" : \"ldap\"");
         String html = Files.readString(dir.resolve("scenario-report.html"));
         assertThat(html).contains("<details class=\"evidence\"").contains("SQL · ");
+        // None of the embedded run's configured credentials may reach either output. The LDAP password
+        // default ("secret") and the other bare "test" values are skipped as too generic to search for.
+        for (String credential : List.of("sappass", "hrpass", "wdaypass", "idmpass",
+                "sap-test-secret", "workday-secret", "snow-secret")) {
+            assertThat(json).doesNotContain(credential);
+            assertThat(html).doesNotContain(credential);
+        }
     }
 }

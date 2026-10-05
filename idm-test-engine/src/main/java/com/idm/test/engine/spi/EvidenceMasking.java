@@ -171,7 +171,9 @@ final class EvidenceMasking {
     }
 
     private static boolean alreadyTruncated(String text, int limit) {
-        return text.startsWith(TRUNCATED, limit) && text.endsWith(" more characters]")
+        String suffix = " more characters]";
+        return text.length() >= limit + TRUNCATED.length() + suffix.length()
+                && text.startsWith(TRUNCATED, limit) && text.endsWith(suffix)
                 && text.substring(limit + TRUNCATED.length(), text.length() - " more characters]".length())
                         .chars().allMatch(Character::isDigit);
     }

@@ -15,7 +15,8 @@ import java.util.Map;
  * The step's own header wins: if the author wrote {@code Authorization} in any letter case, the
  * target's settings are not consulted at all, so no token is fetched for a request that will not
  * use it and a scenario can send bad credentials on purpose. The added header is never a step
- * parameter, so it never reaches a message, a capture or the results file.
+ * parameter, so it never reaches a message or a capture; it reaches the results and the report only as
+ * masked evidence ({@code ***}).
  */
 final class RestAuthorization {
 

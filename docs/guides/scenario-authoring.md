@@ -84,7 +84,7 @@ A guarded read such as `typeof created === 'undefined' ? null : created.dn` stil
 | `ldap.create` | Relative DN string |
 | `ldap.verify` | Attribute view built by the step from the same read the check used |
 
-`as` must be a fresh literal identifier. A requested capture with no value fails the scenario. Verification capture is a selected map, not a promise to return every LDAP attribute; inspect [LdapVerifyStep](../../idm-test-engine/src/main/java/com/idm/test/engine/steps/LdapVerifyStep.java) before relying on a field.
+`as` must be a fresh literal identifier. A requested capture with no value fails the scenario. The `ldap.verify` capture holds every attribute of the entry except `userPassword` (a list for a multi-valued attribute), plus `dn`.
 
 ## 4. Steps
 

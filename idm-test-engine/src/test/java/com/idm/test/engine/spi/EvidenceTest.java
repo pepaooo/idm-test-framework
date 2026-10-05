@@ -278,6 +278,22 @@ class EvidenceTest {
         assertThat(again.attributes()).isEqualTo(first.attributes());
     }
 
+    @Test
+    @DisplayName("Text that is only the truncation note at the limit is cut, never an exception")
+    void truncationNoteAtTheLimitDoesNotThrow() {
+        int limit = 1_024;
+        String note = "… [truncated, more characters]";
+        String atLimit = "x".repeat(limit) + note;
+        assertThat(EvidenceMasking.truncate(atLimit, limit)).startsWith("x".repeat(limit)).endsWith(" more characters]");
+        for (int extra = -3; extra <= 3; extra++) {
+            String text = "x".repeat(limit + extra) + note;
+            assertThat(EvidenceMasking.truncate(text, limit)).isNotNull();
+        }
+        String genuine = "x".repeat(limit) + "… [truncated, 10 more characters]";
+        assertThat(EvidenceMasking.truncate(genuine, limit)).isEqualTo(genuine);
+        assertThat(http(Map.of(), atLimit, null).requestBody()).isInstanceOf(String.class);
+    }
+
     private static final Duration FAST = Duration.ofSeconds(2);
 
     private static String hex(int length) {

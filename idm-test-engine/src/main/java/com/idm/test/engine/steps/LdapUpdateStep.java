@@ -3,6 +3,7 @@ package com.idm.test.engine.steps;
 import com.idm.test.connector.ldap.client.EdirectoryConnector;
 import com.idm.test.connector.ldap.client.LdapDirectories;
 import com.idm.test.core.model.OperationResult;
+import com.idm.test.engine.spi.LdapEvidence;
 import com.idm.test.engine.spi.StepOutcome;
 import com.idm.test.engine.spi.StepType;
 
@@ -63,12 +64,15 @@ public final class LdapUpdateStep implements StepType {
             return StepOutcome.failure(listProblem);
         }
 
+        LdapEvidence evidence = LdapEvidence.written(LdapTarget.requested(params), dn, "update", attributes);
         OperationResult<Void> result = connector.update(dn, attributes);
         if (!result.isSuccess()) {
             return StepOutcome.failure(
-                    "ldap.update failed for " + where + ": " + result.getMessage());
+                    "ldap.update failed for " + where + ": " + result.getMessage())
+                    .withEvidence(evidence);
         }
 
-        return StepOutcome.success("updated " + where + " " + attributes.keySet(), dn);
+        return StepOutcome.success("updated " + where + " " + attributes.keySet(), dn)
+                .withEvidence(evidence);
     }
 }

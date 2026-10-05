@@ -3,7 +3,9 @@ package com.idm.test.engine.steps;
 import com.idm.test.connector.ldap.client.EdirectoryConnector;
 import com.idm.test.connector.ldap.client.LdapDirectories;
 import com.idm.test.connector.ldap.client.LdapValueMatcher;
+import com.idm.test.core.model.ErrorType;
 import com.idm.test.core.model.OperationResult;
+import com.idm.test.engine.spi.LdapEvidence;
 import com.idm.test.engine.spi.StepOutcome;
 import com.idm.test.engine.spi.StepType;
 
@@ -66,42 +68,44 @@ public final class LdapVerifyStep implements StepType {
         }
 
         if (params.containsKey("exists")) {
-            return verifyExistence(connector, dn, where, (Boolean) params.get("exists"));
+            return verifyExistence(LdapTarget.requested(params), connector, dn, where, (Boolean) params.get("exists"));
         }
 
         Map<String, Object> expected = (Map<String, Object>) params.get("expect");
+        String directory = LdapTarget.requested(params);
 
-        OperationResult<Boolean> result = connector.verifyAttributes(dn, expected);
+        // One read per attempt: it is compared, recorded as evidence and, when asked for,
+        // captured — so neither evidence nor as: costs the directory a second read.
+        OperationResult<Map<String, Object>> entry = connector.readAttributes(dn);
+        if (!entry.isSuccess() || entry.getData().isEmpty()) {
+            StepOutcome failure = StepOutcome.failure("ldap.verify failed for " + where + ": " + entry.getMessage());
+            return entry.getErrorType().filter(ErrorType.NOT_FOUND::equals).isPresent()
+                    ? failure.withEvidence(LdapEvidence.absent(directory, dn, "read"))
+                    : failure;
+        }
 
-        if (!result.isSuccess()) {
-            return StepOutcome.failure(
-                    "ldap.verify failed for " + where + ": " + result.getMessage());
+        Map<String, Object> actual = entry.getData().get();
+        LdapEvidence evidence = LdapEvidence.read(directory, dn, actual);
+
+        for (Map.Entry<String, Object> attribute : expected.entrySet()) {
+            String mismatch = LdapValueMatcher.match(
+                    attribute.getKey(), attribute.getValue(), actual.get(attribute.getKey()));
+            if (mismatch != null) {
+                return StepOutcome.failure("ldap.verify failed for " + where + ": " + mismatch)
+                        .withEvidence(evidence);
+            }
         }
 
         if (!captureRequested) {
-            // Nobody declared as: for this step, so there is nothing to capture — skip the
-            // follow-up read entirely rather than paying for it on every retry attempt of an
-            // assertion nobody is going to read the value of.
-            return StepOutcome.success("verified " + where);
-        }
-
-        // Read once, only after verification passes and only because a capture was actually
-        // requested, so a polling assertion does not double its read load on every attempt.
-        OperationResult<Map<String, Object>> entry = connector.readAttributes(dn);
-        if (!entry.isSuccess() || entry.getData().isEmpty()) {
-            // Verification passed but the entry could not be re-read for its as: capture.
-            // Reporting success with an empty map would let `${v.cn}` miss silently later, so
-            // this fails the step instead of fabricating a value.
-            return StepOutcome.failure("ldap.verify passed for " + where
-                    + " but the follow-up read for its as: capture failed: " + entry.getMessage());
+            return StepOutcome.success("verified " + where).withEvidence(evidence);
         }
 
         // Every value of every attribute: a multi-valued one is a list, so it can be written
         // back by an ldap.update in cleanup.
         Map<String, Object> captured = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
-        captured.putAll(entry.getData().get());
+        captured.putAll(actual);
         captured.put("dn", dn);
-        return StepOutcome.success("verified " + where, captured);
+        return StepOutcome.success("verified " + where, captured).withEvidence(evidence);
     }
 
     /**
@@ -111,7 +115,7 @@ public final class LdapVerifyStep implements StepType {
      * is that the entry is gone, and until now the DSL could only assert that an entry still
      * had particular values.
      */
-    private StepOutcome verifyExistence(EdirectoryConnector connector, String dn, String where,
+    private StepOutcome verifyExistence(String directory, EdirectoryConnector connector, String dn, String where,
                                         boolean shouldExist) {
         OperationResult<Boolean> result = connector.exists(dn);
 
@@ -124,11 +128,13 @@ public final class LdapVerifyStep implements StepType {
         if (present != shouldExist) {
             return StepOutcome.failure("ldap.verify expected " + where + " to be "
                     + (shouldExist ? "present" : "absent") + " but it was "
-                    + (present ? "present" : "absent"));
+                    + (present ? "present" : "absent"))
+                    .withEvidence(LdapEvidence.exists(directory, dn, present));
         }
 
         return StepOutcome.success(
-                "verified " + where + " is " + (shouldExist ? "present" : "absent"));
+                "verified " + where + " is " + (shouldExist ? "present" : "absent"))
+                .withEvidence(LdapEvidence.exists(directory, dn, present));
     }
 
     /**

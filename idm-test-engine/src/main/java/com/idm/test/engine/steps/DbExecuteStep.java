@@ -1,7 +1,9 @@
 package com.idm.test.engine.steps;
 
 import com.idm.test.connector.database.client.MultiDatabaseConnector;
+import com.idm.test.core.model.ErrorType;
 import com.idm.test.core.model.OperationResult;
+import com.idm.test.engine.spi.SqlEvidence;
 import com.idm.test.engine.spi.StepOutcome;
 import com.idm.test.engine.spi.StepType;
 
@@ -48,14 +50,19 @@ public final class DbExecuteStep implements StepType {
         OperationResult<Integer> result = connector.executeUpdate(database, statement, arguments);
 
         if (!result.isSuccess()) {
-            return StepOutcome.failure(
+            StepOutcome failure = StepOutcome.failure(
                     "db.execute failed on '" + database + "': " + result.getMessage());
+            // An unknown database was never contacted, so there is nothing to show.
+            return result.getErrorType().filter(ErrorType.CONFIGURATION_ERROR::equals).isPresent()
+                    ? failure
+                    : failure.withEvidence(SqlEvidence.failed(database, statement, arguments));
         }
 
         int affected = result.getData().orElse(0);
         String message = "executed on '" + database + "', " + affected + " row(s) affected";
 
-        return StepOutcome.success(message, affected);
+        return StepOutcome.success(message, affected)
+                .withEvidence(SqlEvidence.update(database, statement, arguments, affected));
     }
 
     /**

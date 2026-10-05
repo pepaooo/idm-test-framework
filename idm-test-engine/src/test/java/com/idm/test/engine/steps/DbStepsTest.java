@@ -1,6 +1,7 @@
 package com.idm.test.engine.steps;
 
 import com.idm.test.connector.database.client.MultiDatabaseConnector;
+import com.idm.test.engine.spi.SqlEvidence;
 import com.idm.test.engine.spi.StepOutcome;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -401,5 +402,52 @@ class DbStepsTest {
                 "query", "SELECT * FROM not_created_yet", "expect", Map.of("rowCount", 1)), false);
         assertThat(missingTable.success()).isFalse();
         assertThat(missingTable.isFinal()).isFalse();
+    }
+
+    @Test
+    @DisplayName("db.execute records the statement, masked parameters and the update count")
+    void testExecuteEvidence() {
+        jdbc.execute("CREATE TABLE IF NOT EXISTS accounts (username VARCHAR(50), pwd VARCHAR(50))");
+
+        StepOutcome outcome = new DbExecuteStep(connector).execute(Map.of(
+                "database", DB,
+                "statement", "INSERT INTO accounts (username, pwd) VALUES (?, ?)",
+                "params", List.of("jdoe", "S3cret!")), false);
+
+        SqlEvidence evidence = (SqlEvidence) outcome.evidence();
+        assertThat(evidence.database()).isEqualTo(DB);
+        assertThat(evidence.params()).containsExactly("jdoe", "***");
+        assertThat(evidence.updateCount()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("db.verify records at most 20 rows and the real row count, on success and on failure")
+    void testVerifyEvidence() {
+        for (int i = 0; i < 25; i++) {
+            jdbc.update("INSERT INTO sap_users (username, status) VALUES (?, 'ACTIVE')", "u" + i);
+        }
+
+        StepOutcome outcome = new DbVerifyStep(connector).execute(Map.of(
+                "database", DB,
+                "query", "SELECT username FROM sap_users",
+                "expect", Map.of("rowCount", 3)), false);
+
+        assertThat(outcome.success()).isFalse();
+        SqlEvidence evidence = (SqlEvidence) outcome.evidence();
+        assertThat(evidence.rows()).hasSize(20);
+        assertThat(evidence.totalRows()).isEqualTo(25);
+    }
+
+    @Test
+    @DisplayName("A SQL error records the statement; an unknown database records nothing")
+    void testEvidenceOnErrors() {
+        StepOutcome sqlError = new DbVerifyStep(connector).execute(Map.of(
+                "database", DB, "query", "SELECT * FROM no_such_table", "expect", Map.of("rowCount", 0)), false);
+        assertThat(sqlError.success()).isFalse();
+        assertThat(((SqlEvidence) sqlError.evidence()).rows()).isNull();
+
+        StepOutcome unknown = new DbVerifyStep(connector).execute(Map.of(
+                "database", "nope", "query", "SELECT 1", "expect", Map.of("rowCount", 1)), false);
+        assertThat(unknown.evidence()).isNull();
     }
 }

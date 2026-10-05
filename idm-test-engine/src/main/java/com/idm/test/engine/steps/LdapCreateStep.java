@@ -4,6 +4,7 @@ import com.idm.test.connector.ldap.client.EdirectoryConnector;
 import com.idm.test.connector.ldap.client.LdapDirectories;
 import com.idm.test.connector.ldap.model.LdapUser;
 import com.idm.test.core.model.OperationResult;
+import com.idm.test.engine.spi.LdapEvidence;
 import com.idm.test.engine.spi.StepOutcome;
 import com.idm.test.engine.spi.StepType;
 
@@ -60,14 +61,16 @@ public final class LdapCreateStep implements StepType {
             return StepOutcome.failure(listProblem);
         }
 
+        LdapEvidence evidence = LdapEvidence.written(LdapTarget.requested(params), dn, "create", attributes);
         LdapUser user = toLdapUser(dn, attributes);
         OperationResult<LdapUser> result = connector.create(user);
 
         if (!result.isSuccess()) {
-            return StepOutcome.failure("ldap.create failed for " + where + ": " + result.getMessage());
+            return StepOutcome.failure("ldap.create failed for " + where + ": " + result.getMessage())
+                    .withEvidence(evidence);
         }
 
-        return StepOutcome.success("created " + where, dn);
+        return StepOutcome.success("created " + where, dn).withEvidence(evidence);
     }
 
     /**

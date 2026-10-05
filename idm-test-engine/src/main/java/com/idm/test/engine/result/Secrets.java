@@ -1,6 +1,9 @@
 package com.idm.test.engine.result;
 
+import java.lang.reflect.Array;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -14,7 +17,8 @@ public final class Secrets {
 
     public static final String MASK = "***";
 
-    private static final List<String> SECRET_NAMES = List.of("password", "passwd", "pwd", "secret", "token",
+    /** A name is a secret when, lower-cased, it contains one of these. */
+    public static final List<String> NAMES = List.of("password", "passwd", "pwd", "secret", "token",
             "authorization", "credential", "apikey", "api_key", "api-key", "cookie");
 
     private Secrets() {
@@ -26,10 +30,14 @@ public final class Secrets {
             return false;
         }
         String lower = name.toLowerCase(Locale.ROOT);
-        return SECRET_NAMES.stream().anyMatch(lower::contains);
+        return NAMES.stream().anyMatch(lower::contains);
     }
 
-    /** A copy with every value under a secret-looking key, at any depth, replaced by {@value #MASK}. */
+    /**
+     * An unmodifiable deep copy with every value under a secret-looking key, at any depth, replaced
+     * by {@value #MASK}. Maps stay maps; lists, sets, other collections and arrays (except
+     * {@code byte[]}) become lists. Other values are returned as they are.
+     */
     public static Object maskByKey(Object value) {
         if (value instanceof Map<?, ?> map) {
             Map<String, Object> copy = new LinkedHashMap<>();
@@ -37,12 +45,20 @@ public final class Secrets {
                 String name = String.valueOf(key);
                 copy.put(name, isSecret(name) ? MASK : maskByKey(inner));
             });
-            return copy;
+            return Collections.unmodifiableMap(copy);
         }
-        if (value instanceof List<?> list) {
-            List<Object> copy = new ArrayList<>(list.size());
-            list.forEach(inner -> copy.add(maskByKey(inner)));
-            return copy;
+        if (value instanceof Collection<?> collection) {
+            List<Object> copy = new ArrayList<>(collection.size());
+            collection.forEach(inner -> copy.add(maskByKey(inner)));
+            return Collections.unmodifiableList(copy);
+        }
+        if (value != null && value.getClass().isArray() && !(value instanceof byte[])) {
+            int length = Array.getLength(value);
+            List<Object> copy = new ArrayList<>(length);
+            for (int i = 0; i < length; i++) {
+                copy.add(maskByKey(Array.get(value, i)));
+            }
+            return Collections.unmodifiableList(copy);
         }
         return value;
     }

@@ -7,7 +7,8 @@ import java.util.Map;
 
 /**
  * One HTTP exchange as a step made it. Bodies are text for http.* and JSON structures for rest.*.
- * The constructor masks secret headers and body values, sanitises the URL and cuts long bodies.
+ * The constructor masks secret headers and body values, sanitises the URL, the {@code Location} and
+ * {@code Content-Location} header values and the error text as URLs, and cuts long bodies.
  *
  * @param status   the response status, or null when there was no response
  * @param error    why there was no response, or null
@@ -22,6 +23,7 @@ public record HttpEvidence(String method, String url, Map<String, List<String>> 
         requestBody = EvidenceMasking.body(requestBody);
         responseHeaders = EvidenceMasking.headers(responseHeaders);
         responseBody = EvidenceMasking.body(responseBody);
+        error = ReportUrls.sanitise(error);
     }
 
     /** Request headers as the steps hold them, one value per name. */

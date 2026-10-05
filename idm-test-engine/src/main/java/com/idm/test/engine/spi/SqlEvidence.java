@@ -23,7 +23,7 @@ public record SqlEvidence(String database, String sql, List<Object> params, List
     }
 
     public static SqlEvidence query(String database, String sql, Object[] params, List<Map<String, Object>> rows) {
-        return new SqlEvidence(database, sql, listOf(params), rows, rows.size(), null);
+        return new SqlEvidence(database, sql, listOf(params), rows, rows == null ? null : rows.size(), null);
     }
 
     public static SqlEvidence update(String database, String sql, Object[] params, int count) {

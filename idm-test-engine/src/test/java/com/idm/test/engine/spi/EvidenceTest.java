@@ -7,8 +7,10 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @DisplayName("Evidence masking and size limits")
 class EvidenceTest {
@@ -141,5 +143,136 @@ class EvidenceTest {
         assertThat(LdapEvidence.exists(null, "cn=u", true).present()).isTrue();
         assertThat(LdapEvidence.absent(null, "cn=u", "read").present()).isFalse();
         assertThat(LdapEvidence.read(null, "cn=u", Map.of("cn", "u")).attributes()).containsEntry("cn", "u");
+    }
+
+    @Test
+    @DisplayName("INSERT: the n-th top-level value of every VALUES row binds the n-th column, function calls included")
+    void sqlInsertRows() {
+        assertThat(SqlEvidence.update("db", "INSERT INTO t (a, b, password) VALUES (?, LOWER(?), ?)",
+                new Object[]{"x", "y", "S3cret!"}, 1).params()).containsExactly("x", "y", "***");
+        assertThat(SqlEvidence.update("db", "INSERT INTO accounts (created_at, username, password) VALUES (NOW(), ?, ?)",
+                new Object[]{"jdoe", "S3cret!"}, 1).params()).containsExactly("jdoe", "***");
+        assertThat(SqlEvidence.update("db", "INSERT INTO t (u, password) VALUES (?, ?), (?, ?)",
+                new Object[]{"a", "S1", "b", "S2"}, 2).params()).containsExactly("a", "***", "b", "***");
+        assertThat(SqlEvidence.update("db", "INSERT INTO t (a, password) VALUES ('x,y', LOWER(?))",
+                new Object[]{"S3cret!"}, 1).params()).containsExactly("***");
+    }
+
+    @Test
+    @DisplayName("SQL comments neither count as placeholders nor hide a comparison")
+    void sqlComments() {
+        assertThat(SqlEvidence.failed("db", "SELECT * FROM t -- who?\n WHERE password = ?",
+                new Object[]{"S3cret!"}).params()).containsExactly("***");
+        assertThat(SqlEvidence.failed("db", "SELECT * FROM t /* a? */ WHERE password = /* why? */ ?",
+                new Object[]{"S3cret!"}).params()).containsExactly("***");
+        assertThat(SqlEvidence.failed("db", null, new Object[]{"v"}).params()).containsExactly("v");
+    }
+
+    @Test
+    @DisplayName("XML: the whole content of a secret element is masked (CDATA, child elements, after a BOM)")
+    void xmlContent() {
+        assertThat((String) http(Map.of(), "<login><password><![CDATA[p4ss]]></password></login>", null).requestBody())
+                .isEqualTo("<login><password>***</password></login>");
+        assertThat((String) http(Map.of(), "<password>\n  <value>p4ss</value>\n</password>", null).requestBody())
+                .isEqualTo("<password>***</password>");
+        assertThat((String) http(Map.of(), "﻿<login><password>p4ss</password></login>", null).requestBody())
+                .doesNotContain("p4ss").contains("<password>***</password>");
+        assertThat((String) http(Map.of(), "<a><password/><b>keep</b><Password x=\"1\">p4ss", null).requestBody())
+                .contains("<b>keep</b>").doesNotContain("p4ss");
+    }
+
+    @Test
+    @DisplayName("JSON text that does not parse strictly is still masked, never returned as it was")
+    void malformedJson() {
+        assertThat((String) http(Map.of(), "{\"password\":\"p4ss\",}", null).requestBody())
+                .isEqualTo("{\"password\":\"***\",}");
+        assertThat((String) http(Map.of(), "{\"a\":1} {\"password\":\"p4ss\"}", null).requestBody())
+                .isEqualTo("{\"a\":1} {\"password\":\"***\"}");
+        assertThat((String) http(Map.of(), "{/* c */ \"apiKey\": 12345, 'token': true, }", null).requestBody())
+                .doesNotContain("12345").doesNotContain("true");
+        assertThat((String) http(Map.of(), "{\"credentials\": {\"user\": \"u\", \"pass\": \"p4ss\"}, \"id\": 1,}", null)
+                .requestBody()).isEqualTo("{\"credentials\": \"***\", \"id\": 1,}");
+        assertThat((String) http(Map.of(), "{\"secret\": [\"p4ss\", {\"x\": \"q\"", null).requestBody())
+                .isEqualTo("{\"secret\": \"***\"");
+    }
+
+    @Test
+    @DisplayName("JSON text keeps exact numbers")
+    void jsonNumbers() {
+        assertThat(http(Map.of(), "{\"n\":1.10,\"big\":12345678901234567890.5}", null).requestBody())
+                .isEqualTo("{\"n\":1.10,\"big\":12345678901234567890.5}");
+    }
+
+    @Test
+    @DisplayName("Structure bodies: sets and arrays are masked, and the result cannot be changed")
+    @SuppressWarnings("unchecked")
+    void structureBodies() {
+        HttpEvidence set = http(Map.of(), Map.of("creds", Set.of(Map.of("password", "p4ss"))), null);
+        assertThat(set.requestBody().toString()).doesNotContain("p4ss");
+        HttpEvidence array = http(Map.of(), Map.of("creds", new Object[]{Map.of("password", "p4ss")}), null);
+        assertThat(array.requestBody().toString()).doesNotContain("p4ss");
+
+        HttpEvidence evidence = http(Map.of(), Map.of("user", Map.of("name", "n")), null);
+        Map<String, Object> body = (Map<String, Object>) evidence.requestBody();
+        assertThatThrownBy(() -> body.put("password", "leak")).isInstanceOf(UnsupportedOperationException.class);
+        assertThatThrownBy(() -> ((Map<String, Object>) body.get("user")).put("password", "leak"))
+                .isInstanceOf(UnsupportedOperationException.class);
+    }
+
+    @Test
+    @DisplayName("Form bodies with valueless names or empty segments are masked")
+    void formEdges() {
+        assertThat(http(Map.of(), "flag&password=p4ss", null).requestBody()).isEqualTo("flag&password=***");
+        assertThat(http(Map.of(), "a=1&&client_secret=p4ss", null).requestBody()).isEqualTo("a=1&&client_secret=***");
+    }
+
+    @Test
+    @DisplayName("Error text and Location headers are sanitised as URLs")
+    void urlsInFreeText() {
+        HttpEvidence evidence = new HttpEvidence("GET", "https://idm.lab/x", Map.of(), null, 302,
+                Map.of("Location", List.of("https://idm.lab/cb?token=zz&q=1")), null, 0,
+                "refused by https://u:pw9@idm.lab/x?token=zz");
+        assertThat(evidence.responseHeaders().get("Location")).containsExactly("https://idm.lab/cb?token=***&q=1");
+        assertThat(evidence.error()).doesNotContain("pw9").doesNotContain("zz");
+    }
+
+    @Test
+    @DisplayName("Null rows and null row entries are tolerated")
+    void nullRows() {
+        SqlEvidence none = SqlEvidence.query("db", "SELECT 1", null, null);
+        assertThat(none.rows()).isNull();
+        assertThat(none.totalRows()).isNull();
+        List<Map<String, Object>> rows = new ArrayList<>();
+        rows.add(null);
+        rows.add(Map.of("id", 1));
+        assertThat(SqlEvidence.query("db", "SELECT id FROM t", new Object[0], rows).rows())
+                .containsExactly(Map.of("id", 1));
+    }
+
+    @Test
+    @DisplayName("Array values show their elements; binary stays its size")
+    void arrayValues() {
+        LdapEvidence ldap = new LdapEvidence(null, "cn=u", "read",
+                Map.of("mail", new String[]{"a@x", "b@x"}, "jpegPhoto", new byte[]{1, 2, 3}), null);
+        assertThat(ldap.attributes()).containsEntry("mail", List.of("a@x", "b@x")).containsEntry("jpegPhoto", "<3 bytes>");
+        SqlEvidence sql = SqlEvidence.query("db", "SELECT * FROM t", new Object[0],
+                List.of(Map.of("TAGS", new String[]{"x", "y"})));
+        assertThat(sql.rows().get(0)).containsEntry("TAGS", List.of("x", "y"));
+    }
+
+    @Test
+    @DisplayName("Building evidence again from its own values adds no second truncation note")
+    void rebuildIsStable() {
+        HttpEvidence once = http(Map.of(), "x".repeat(Evidence.MAX_BODY_CHARS + 10), null);
+        HttpEvidence twice = http(Map.of(), once.requestBody(), null);
+        assertThat(twice.requestBody()).isEqualTo(once.requestBody());
+
+        List<String> members = new ArrayList<>();
+        for (int i = 0; i < 25; i++) {
+            members.add("cn=m" + i);
+        }
+        LdapEvidence first = new LdapEvidence(null, "cn=g", "read", Map.of("member", members), null);
+        LdapEvidence again = new LdapEvidence(null, "cn=g", "read", first.attributes(), null);
+        assertThat(again.attributes()).isEqualTo(first.attributes());
     }
 }

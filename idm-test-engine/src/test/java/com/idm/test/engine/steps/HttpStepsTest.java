@@ -15,6 +15,7 @@ import com.idm.test.engine.ScenarioValidator;
 import com.idm.test.engine.ValidationException;
 import com.idm.test.engine.model.Scenario;
 import com.idm.test.engine.model.StepSpec;
+import com.idm.test.engine.spi.HttpEvidence;
 import com.idm.test.engine.spi.StepOutcome;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -359,5 +360,43 @@ class HttpStepsTest {
         assertThatThrownBy(() -> validator.validate(scenario, "t.yaml"))
                 .isInstanceOf(ValidationException.class)
                 .hasMessageContaining("'wait' is only valid on assertions");
+    }
+
+    @Test
+    @DisplayName("Records the request and response as evidence, with secrets masked")
+    void testEvidence() {
+        stubFor(post(urlEqualTo("/users")).willReturn(aResponse().withStatus(201)
+                .withHeader("Content-Type", "application/json").withBody("{\"id\":7,\"token\":\"t0k\"}")));
+
+        StepOutcome outcome = STEP.execute(params("target", "mock", "method", "POST", "path", "/users",
+                "headers", Map.of("Authorization", "Bearer abc", "Content-Type", "application/json"),
+                "body", "{\"userId\":\"jdoe\",\"password\":\"p\"}"), false);
+
+        HttpEvidence evidence = (HttpEvidence) outcome.evidence();
+        assertThat(evidence.method()).isEqualTo("POST");
+        assertThat(evidence.url()).isEqualTo("http://localhost:" + WIREMOCK.port() + "/users");
+        assertThat(evidence.requestHeaders()).containsEntry("Authorization", List.of("***"));
+        assertThat((String) evidence.requestBody()).contains("\"userId\":\"jdoe\"").contains("\"password\":\"***\"");
+        assertThat(evidence.status()).isEqualTo(201);
+        assertThat((String) evidence.responseBody()).contains("\"token\":\"***\"").doesNotContain("t0k");
+        assertThat(evidence.error()).isNull();
+    }
+
+    @Test
+    @DisplayName("A connection error records the request and the error, with no response")
+    void testEvidenceOnConnectionError() {
+        StepOutcome outcome = STEP.execute(params("target", "down", "method", "GET", "path", "/x"), false);
+
+        assertThat(outcome.success()).isFalse();
+        HttpEvidence evidence = (HttpEvidence) outcome.evidence();
+        assertThat(evidence.status()).isNull();
+        assertThat(evidence.error()).isNotBlank();
+    }
+
+    @Test
+    @DisplayName("Nothing sent, no evidence: unknown target or unsupported method")
+    void testNoEvidenceWhenNothingSent() {
+        assertThat(STEP.execute(params("target", "nope", "method", "GET", "path", "/x"), false).evidence()).isNull();
+        assertThat(STEP.execute(params("target", "mock", "method", "BREW", "path", "/x"), false).evidence()).isNull();
     }
 }

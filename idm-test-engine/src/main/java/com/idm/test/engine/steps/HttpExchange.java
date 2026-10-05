@@ -5,6 +5,7 @@ import com.idm.test.connector.rest.client.RestAuthenticator;
 import com.idm.test.connector.rest.config.RestProperties;
 import com.idm.test.connector.rest.model.TextResponse;
 import com.idm.test.core.model.OperationResult;
+import com.idm.test.engine.spi.HttpEvidence;
 import com.idm.test.engine.spi.StepOutcome;
 
 import java.util.LinkedHashMap;
@@ -75,8 +76,23 @@ final class HttpExchange {
         return new Prepared(method, url, (String) rawBody, headers, null);
     }
 
-    static OperationResult<TextResponse> send(IdmRestConnector connector, Prepared request) {
-        return connector.exchangeText(request.method(), request.url(), request.body(), request.headers());
+    /** A request that went out: the connector's result and the evidence of the exchange. */
+    record Sent(OperationResult<TextResponse> result, HttpEvidence evidence) {
+    }
+
+    static Sent send(IdmRestConnector connector, Prepared request) {
+        long started = System.currentTimeMillis();
+        OperationResult<TextResponse> result =
+                connector.exchangeText(request.method(), request.url(), request.body(), request.headers());
+        long millis = System.currentTimeMillis() - started;
+        TextResponse response = result.isSuccess() ? result.getData().orElse(null) : null;
+        HttpEvidence evidence = new HttpEvidence(request.method(), request.url(),
+                HttpEvidence.headersOf(request.headers()), request.body(),
+                response == null ? null : response.status(),
+                response == null ? null : response.headers(),
+                response == null ? null : response.body(),
+                millis, response == null ? result.getMessage() : null);
+        return new Sent(result, evidence);
     }
 
     /** The {status, headers, body} view both steps expose. */

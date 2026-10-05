@@ -3,6 +3,7 @@ package com.idm.test.engine.spi;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -11,6 +12,7 @@ import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
 @DisplayName("Evidence masking and size limits")
 class EvidenceTest {
@@ -274,5 +276,72 @@ class EvidenceTest {
         LdapEvidence first = new LdapEvidence(null, "cn=g", "read", Map.of("member", members), null);
         LdapEvidence again = new LdapEvidence(null, "cn=g", "read", first.attributes(), null);
         assertThat(again.attributes()).isEqualTo(first.attributes());
+    }
+
+    private static final Duration FAST = Duration.ofSeconds(2);
+
+    private static String hex(int length) {
+        StringBuilder text = new StringBuilder(length);
+        for (int i = 0; i < length; i++) {
+            text.append("0123456789abcdef".charAt(i % 16));
+        }
+        return text.toString();
+    }
+
+    @Test
+    @DisplayName("Masking stays fast on 40 000-character XML, form and JSON bodies")
+    void longBodiesAreFast() {
+        String run = hex(40_000);
+        String base64url = "aZ-_".repeat(10_000);
+        assertTimeoutPreemptively(FAST, () -> {
+            assertThat((String) http(Map.of(), "<a>" + run + "</a>", null).requestBody()).startsWith("<a>0123");
+            assertThat((String) http(Map.of(), "<doc><data>" + base64url + "</data></doc>", null).requestBody())
+                    .startsWith("<doc><data>aZ-_");
+            // Masked over the whole body, before the 16 384-character cut.
+            assertThat(EvidenceMasking.text("<a v=\"" + run + "\" password=\"p4ss\"/>"))
+                    .endsWith(" password=\"***\"/>").doesNotContain("p4ss");
+            assertThat((String) http(Map.of(), "<" + "password".repeat(5_000) + " x=\"1\">p4ss", null).requestBody())
+                    .doesNotContain("p4ss");
+            assertThat(EvidenceMasking.text("<ns:" + run + ">x</ns:" + run + ">")).contains(">x<");
+            assertThat(EvidenceMasking.text("a=1&" + run + "&password=p4ss"))
+                    .endsWith("&password=***");
+            assertThat(EvidenceMasking.text("{\"k\": " + run + ", \"password\": \"p4ss\",}"))
+                    .doesNotContain("p4ss");
+        });
+    }
+
+    @Test
+    @DisplayName("Placeholder detection stays fast with thousands of comparisons and rows")
+    void manyPlaceholdersAreFast() {
+        int count = 3_000;
+        StringBuilder where = new StringBuilder("SELECT * FROM t WHERE password = ?");
+        StringBuilder insert = new StringBuilder("INSERT INTO t (u, password) VALUES (?, ?)");
+        for (int i = 0; i < count; i++) {
+            where.append(" AND c = ?");
+            insert.append(", (?, ?)");
+        }
+        Object[] whereParams = new Object[count + 1];
+        Object[] insertParams = new Object[2 * (count + 1)];
+        java.util.Arrays.fill(whereParams, "v");
+        java.util.Arrays.fill(insertParams, "v");
+        assertTimeoutPreemptively(FAST, () -> {
+            List<Object> masked = SqlEvidence.failed("db", where.toString(), whereParams).params();
+            assertThat(masked.get(0)).isEqualTo("***");
+            assertThat(masked.subList(1, masked.size())).containsOnly("v");
+            List<Object> rows = SqlEvidence.failed("db", insert.toString(), insertParams).params();
+            assertThat(rows.get(rows.size() - 1)).isEqualTo("***");
+            assertThat(rows.get(rows.size() - 2)).isEqualTo("v");
+        });
+    }
+
+    @Test
+    @DisplayName("MySQL # comments and backslash-escaped quotes do not shift placeholders")
+    void mysqlCommentsAndEscapes() {
+        assertThat(SqlEvidence.failed("db", "SELECT * FROM t # c?\n WHERE password = ?",
+                new Object[]{"S1"}).params()).containsExactly("***");
+        assertThat(SqlEvidence.update("db", "INSERT INTO t (u, password) VALUES (?, 'it\\'s ?'), (?, ?)",
+                new Object[]{"a", "b", "S2"}, 2).params()).containsExactly("a", "b", "***");
+        assertThat(SqlEvidence.failed("db", "SELECT * FROM #tmp WHERE password = ?",
+                new Object[]{"S1"}).params()).containsExactly("***");
     }
 }

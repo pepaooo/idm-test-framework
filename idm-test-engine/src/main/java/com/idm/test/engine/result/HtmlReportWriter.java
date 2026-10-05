@@ -15,7 +15,6 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 
 /**
  * Renders a run's results as one self-contained HTML page: inline CSS and JavaScript, nothing

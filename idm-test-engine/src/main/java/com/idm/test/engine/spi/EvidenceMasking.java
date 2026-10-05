@@ -17,7 +17,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 
 /** Masking and truncation for the evidence records' constructors. */
 final class EvidenceMasking {
@@ -29,14 +28,19 @@ final class EvidenceMasking {
 
     private static final char BOM = '\uFEFF';
 
-    /** The opening tag of an element whose local name is a secret (not self-closing). */
-    private static final Pattern XML_SECRET_OPEN = Pattern.compile(
-            "<((?:[\\w.-]+:)?[\\w.-]*(?:" + Secrets.NAMES.stream().map(Pattern::quote).collect(Collectors.joining("|"))
-                    + ")[\\w.-]*)(?:\\s[^<>]*?)?(?<!/)>",
-            Pattern.CASE_INSENSITIVE);
+    /*
+     * Every pattern below is linear in the text: names are matched possessively and may only start
+     * where a name can start, so a long run of name characters is never re-scanned from each of its
+     * positions. Masking runs before truncation, over bodies of any size.
+     */
+
+    /** An opening tag (not self-closing); group 1 is the qualified name, group 2 the local name. */
+    private static final Pattern XML_OPEN =
+            Pattern.compile("<((?:[\\w.-]++:)?+([\\w.-]++))(?:\\s[^<>]*+)?+(?<!/)>");
     private static final Pattern XML_ATTRIBUTE =
-            Pattern.compile("([\\w.:-]+)(\\s*=\\s*)(\"[^\"]*\"|'[^']*')");
-    private static final Pattern FORM_PAIR = Pattern.compile("([^=&]+)=([^&]*)");
+            Pattern.compile("(?<![\\w.:-])([\\w.:-]++)(\\s*+=\\s*+)(\"[^\"]*+\"|'[^']*+')");
+    /** A name=value pair at the start of the text or right after an {@code &}. */
+    private static final Pattern FORM_PAIR = Pattern.compile("(?<![^&])([^=&]++)=([^&]*+)");
     private static final String MORE_VALUES = " more values";
     private static final String TRUNCATED = "… [truncated, ";
 
@@ -114,9 +118,14 @@ final class EvidenceMasking {
      */
     private static String xml(String text) {
         StringBuilder out = new StringBuilder(text.length());
-        Matcher open = XML_SECRET_OPEN.matcher(text);
+        Matcher open = XML_OPEN.matcher(text);
         int position = 0;
-        while (position < text.length() && open.find(position)) {
+        int search = 0;
+        while (search < text.length() && open.find(search)) {
+            search = open.end();
+            if (!Secrets.isSecret(open.group(2))) {
+                continue;
+            }
             out.append(text, position, open.end());
             Matcher close = Pattern.compile("</" + Pattern.quote(open.group(1)) + "\\s*>", Pattern.CASE_INSENSITIVE)
                     .matcher(text);
@@ -127,6 +136,7 @@ final class EvidenceMasking {
             } else {
                 position = text.length();
             }
+            search = position;
         }
         out.append(text, position, text.length());
         return XML_ATTRIBUTE.matcher(out).replaceAll(match -> {

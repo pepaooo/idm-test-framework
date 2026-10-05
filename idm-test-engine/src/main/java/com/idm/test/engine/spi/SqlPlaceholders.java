@@ -19,17 +19,36 @@ final class SqlPlaceholders {
     private static final Pattern INSERT = Pattern.compile("(?is)\\binsert\\s+into\\s+[^()]+?\\(");
     private static final Pattern VALUES = Pattern.compile("(?is)\\s*values\\s*\\(");
     private static final Pattern NEXT_ROW = Pattern.compile("\\s*,\\s*\\(");
-    private static final Pattern COMPARISON = Pattern.compile("(?is)([\\w.]+)\\s*(?:=|<>|!=|\\blike)\\s*$");
 
     private SqlPlaceholders() {
     }
 
-    /** Indexes of the {@code ?} placeholders bound to a secret-named column. */
+    /**
+     * Indexes of the {@code ?} placeholders bound to a secret-named column. MySQL reads {@code #} as
+     * a line comment and {@code \'} as an escaped quote, other databases do not; when the statement
+     * holds either, every reading is analysed and the results are combined, so a secret is masked
+     * whichever dialect runs it (at worst a parameter is masked that need not be).
+     */
     static Set<Integer> secret(String sql) {
         if (sql == null) {
             return Set.of();
         }
-        String plain = plain(sql);
+        Set<Integer> secret = new HashSet<>(analyse(plain(sql, false, false)));
+        boolean hash = sql.indexOf('#') >= 0;
+        boolean backslash = sql.indexOf('\\') >= 0;
+        if (hash) {
+            secret.addAll(analyse(plain(sql, true, false)));
+        }
+        if (backslash) {
+            secret.addAll(analyse(plain(sql, false, true)));
+        }
+        if (hash && backslash) {
+            secret.addAll(analyse(plain(sql, true, true)));
+        }
+        return secret;
+    }
+
+    private static Set<Integer> analyse(String plain) {
         List<Integer> positions = new ArrayList<>();
         for (int i = 0; i < plain.length(); i++) {
             if (plain.charAt(i) == '?') {
@@ -39,12 +58,8 @@ final class SqlPlaceholders {
         Set<Integer> secretPositions = new HashSet<>();
         insertValues(plain, secretPositions);
         for (int position : positions) {
-            Matcher comparison = COMPARISON.matcher(plain.substring(0, position));
-            if (comparison.find()) {
-                String column = comparison.group(1);
-                if (Secrets.isSecret(column.substring(column.lastIndexOf('.') + 1))) {
-                    secretPositions.add(position);
-                }
+            if (comparedToSecret(plain, position)) {
+                secretPositions.add(position);
             }
         }
         Set<Integer> secret = new HashSet<>();
@@ -57,11 +72,56 @@ final class SqlPlaceholders {
     }
 
     /**
+     * Whether the {@code ?} at {@code position} follows {@code column =}, {@code <>}, {@code !=} or
+     * {@code LIKE} with a secret-named (optionally qualified) column. It reads backwards from the
+     * {@code ?} and never past the previous {@code ?}, so all placeholders together take one pass.
+     */
+    static boolean comparedToSecret(String plain, int position) {
+        int i = skipSpaceBack(plain, position - 1);
+        if (i < 0) {
+            return false;
+        }
+        char c = plain.charAt(i);
+        if (c == '=') {
+            i--;
+            if (i >= 0 && plain.charAt(i) == '!') {
+                i--;
+            }
+        } else if (c == '>' && i > 0 && plain.charAt(i - 1) == '<') {
+            i -= 2;
+        } else if (i >= 3 && plain.regionMatches(true, i - 3, "like", 0, 4) && (i == 3 || !isWord(plain.charAt(i - 4)))) {
+            i -= 4;
+        } else {
+            return false;
+        }
+        int end = skipSpaceBack(plain, i) + 1;
+        int start = end;
+        while (start > 0 && (isWord(plain.charAt(start - 1)) || plain.charAt(start - 1) == '.')) {
+            start--;
+        }
+        String column = plain.substring(start, end);
+        return !column.isEmpty() && Secrets.isSecret(column.substring(column.lastIndexOf('.') + 1));
+    }
+
+    private static int skipSpaceBack(String text, int from) {
+        int i = from;
+        while (i >= 0 && Character.isWhitespace(text.charAt(i))) {
+            i--;
+        }
+        return i;
+    }
+
+    private static boolean isWord(char c) {
+        return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_';
+    }
+
+    /**
      * The statement with positions kept: {@code '…'} literals and {@code --} / {@code /* *}{@code /}
      * comments become spaces, and identifier quotes ({@code "}, {@code `}, {@code [ ]}) become
-     * spaces while the quoted name stays.
+     * spaces while the quoted name stays. {@code hashComments} also blanks {@code # …} line comments;
+     * {@code backslashEscapes} lets {@code \} escape the next character inside a literal.
      */
-    static String plain(String sql) {
+    static String plain(String sql, boolean hashComments, boolean backslashEscapes) {
         char[] out = sql.toCharArray();
         int i = 0;
         while (i < out.length) {
@@ -69,6 +129,10 @@ final class SqlPlaceholders {
             if (c == '\'') {
                 int end = i + 1;
                 while (end < out.length) {
+                    if (backslashEscapes && out[end] == '\\') {
+                        end += 2;
+                        continue;
+                    }
                     if (out[end] == '\'') {
                         if (end + 1 < out.length && out[end + 1] == '\'') {
                             end += 2;
@@ -79,7 +143,7 @@ final class SqlPlaceholders {
                     end++;
                 }
                 i = blank(out, i, end + 1);
-            } else if (c == '-' && i + 1 < out.length && out[i + 1] == '-') {
+            } else if ((c == '-' && i + 1 < out.length && out[i + 1] == '-') || (c == '#' && hashComments)) {
                 int end = i;
                 while (end < out.length && out[end] != '\n') {
                     end++;

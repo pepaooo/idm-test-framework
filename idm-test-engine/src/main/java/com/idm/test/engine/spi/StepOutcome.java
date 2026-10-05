@@ -9,15 +9,26 @@ package com.idm.test.engine.spi;
  *                step produces nothing worth capturing. Use plain values — String, Number,
  *                Boolean, Map or List — so a scenario can reach into them by path.
  * @param isFinal whether waiting cannot change this failure; always false on success
+ * @param evidence what the step sent and received, or null (see Evidence)
  * <p>
  * A step never schedules teardown. Cleanup is written by the author in the scenario's
  * {@code cleanup:} block.
  */
-public record StepOutcome(boolean success, String message, Object value, boolean isFinal) {
+public record StepOutcome(boolean success, String message, Object value, boolean isFinal, Evidence evidence) {
+
+    /** An outcome without evidence. */
+    public StepOutcome(boolean success, String message, Object value, boolean isFinal) {
+        this(success, message, value, isFinal, null);
+    }
 
     /** An outcome that waiting may still change: every success, and an ordinary failure. */
     public StepOutcome(boolean success, String message, Object value) {
         this(success, message, value, false);
+    }
+
+    /** This outcome, carrying what the step sent and received. */
+    public StepOutcome withEvidence(Evidence evidence) {
+        return new StepOutcome(success, message, value, isFinal, evidence);
     }
 
     public static StepOutcome success(String message) {

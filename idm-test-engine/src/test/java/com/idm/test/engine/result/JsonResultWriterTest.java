@@ -1,5 +1,6 @@
 package com.idm.test.engine.result;
 
+import com.idm.test.engine.spi.SqlEvidence;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -84,5 +85,23 @@ class JsonResultWriterTest {
                 .contains("\"description\" : \"Checks provisioning\"")
                 .contains("\"description\" : \"Create the user\"")
                 .contains("\"description\" : \"Remove the user\"");
+    }
+
+    @Test
+    @DisplayName("Writes a step's evidence with its kind, and leaves the key out when there is none")
+    void testWritesEvidence(@TempDir Path dir) throws Exception {
+        StepResult withEvidence = new StepResult(0, "db.verify", Map.of(), true, 5, "ok", null, null, null,
+                SqlEvidence.query("hr", "SELECT status FROM users WHERE username = ?", new Object[]{"jdoe"},
+                        List.of(Map.of("STATUS", "ACTIVE"))));
+        StepResult without = new StepResult(1, "ldap.delete", Map.of(), true, 5, "ok", null, null, null);
+        ScenarioResult scenario = new ScenarioResult("S", "s.yaml", true, 10, List.of(withEvidence, without), null);
+
+        Path target = dir.resolve("r.json");
+        JsonResultWriter.write(List.of(scenario), target);
+
+        String json = Files.readString(target);
+        assertThat(json).contains("\"kind\" : \"sql\"").contains("\"database\" : \"hr\"")
+                .contains("\"totalRows\" : 1").contains("\"STATUS\" : \"ACTIVE\"");
+        assertThat(json.split("\"evidence\"", -1)).hasSize(2);
     }
 }

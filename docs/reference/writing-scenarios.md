@@ -852,6 +852,35 @@ rewritten after every scenario, so an interrupted run still has one.
   value under an ordinary key appears as written — keep secrets in target and database settings.
 - **Printing** or saving as PDF expands every scenario.
 
+**Evidence.** Under each step the report shows what the step sent and received, in an
+**Evidence** section that is open on a failed step. The JSON results hold the same evidence under
+the step's `evidence` key (`"kind": "http"`, `"sql"` or `"ldap"`).
+
+| Step | Evidence |
+|---|---|
+| `http.request`, `http.verify`, `rest.request`, `rest.verify` | method, URL, request headers and body, status, response headers and body, time; on a connection error, the request and the error |
+| `db.verify` | the SQL, its parameters and the rows returned |
+| `db.execute` | the SQL, its parameters and the number of rows changed |
+| `ldap.create`, `ldap.update` | the DN and the attributes written |
+| `ldap.delete` | the DN |
+| `ldap.verify` | with `expect`, every attribute read; with `exists`, whether the entry was there |
+
+- **Last attempt only:** a step with `wait:` keeps the evidence of its last attempt.
+- **Nothing sent, nothing shown:** a malformed parameter or an unknown target, database or
+  directory records no evidence, nor does a cleanup entry.
+- **Masking**, before anything is recorded, using the same names as the parameter masking above:
+  headers with such names (`Authorization`, `Cookie`, `Set-Cookie`, `X-Api-Key`, …); values under
+  such keys in JSON bodies; such elements and attributes in XML or SOAP bodies (including CDATA and
+  child elements); such `name=value` pairs in form bodies; `Location` and `Content-Location`
+  header values and connection error text (URL credentials and secret query values); such LDAP
+  attributes (`userPassword`, `unicodePwd`); database columns with such names; and SQL parameters
+  bound to such a column in `INSERT … (cols) VALUES (?, …)` or `col = ?` / `<>` / `!=` / `LIKE ?`.
+  Any other SQL parameter is shown as given, so don't put a secret in `params` of a statement
+  written another way, and a secret inside free text appears as written.
+- **Size limits:** bodies are cut at 16 384 characters, at most 20 rows are kept (the report
+  says how many more there were), each database value is cut at 1 024 characters, and an LDAP
+  attribute shows at most 20 values.
+
 Each scenario record has:
 - its source file, status, duration and `description` (null when none)
 - every step: its type, its `description` (null when none), the **resolved** parameters

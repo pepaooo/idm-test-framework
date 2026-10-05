@@ -262,7 +262,7 @@ public final class HtmlReportWriter {
             .http{display:grid;grid-template-columns:1fr 1fr;gap:8px}.http .label{font-size:12px;color:var(--muted)}
             @media (max-width:700px){.http{grid-template-columns:1fr}}
             table.rows{border-collapse:collapse;margin:4px 0}table.rows th,table.rows td{border:1px solid var(--line);\
-            padding:2px 6px;text-align:left;vertical-align:top}
+            padding:2px 6px;text-align:left;vertical-align:top;word-break:break-word;overflow-wrap:anywhere}
             .more,.sql-params,.dn{color:var(--muted);font-size:12px}
             @media print{.controls{display:none}details.scenario{break-inside:avoid-page}}
             """;

@@ -10,8 +10,10 @@ import com.idm.test.engine.spi.SqlEvidence;
 
 import java.net.URI;
 import java.util.Collection;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static com.idm.test.engine.result.HtmlReportWriter.duration;
 import static com.idm.test.engine.result.HtmlReportWriter.esc;
@@ -90,7 +92,7 @@ final class EvidenceHtml {
         if (headers == null) {
             return;
         }
-        headers.forEach((name, values) -> html.append(esc(name + ": " + String.join(", ", values))).append('\n'));
+        headers.forEach((name, values) -> html.append(esc(name + ": " + String.join(", ", values == null ? List.<String>of() : values))).append('\n'));
     }
 
     private static void appendBody(StringBuilder html, Object body) {
@@ -132,16 +134,22 @@ final class EvidenceHtml {
             html.append("<div>no rows</div>\n");
             return;
         }
+        Set<String> columns = new LinkedHashSet<>();
+        sql.rows().forEach(row -> columns.addAll(row.keySet()));
         html.append("<table class=\"rows\"><tr>");
-        sql.rows().get(0).keySet().forEach(column -> html.append("<th>").append(esc(column)).append("</th>"));
+        columns.forEach(column -> html.append("<th>").append(esc(column)).append("</th>"));
         html.append("</tr>\n");
         for (Map<String, Object> row : sql.rows()) {
             html.append("<tr>");
-            row.values().forEach(value -> html.append("<td>").append(esc(String.valueOf(value))).append("</td>"));
+            for (String column : columns) {
+                html.append("<td>").append(row.containsKey(column) ? esc(String.valueOf(row.get(column))) : "")
+                        .append("</td>");
+            }
             html.append("</tr>\n");
         }
         html.append("</table>\n");
-        int more = sql.totalRows() - sql.rows().size();
+        int total = sql.totalRows() != null ? sql.totalRows() : sql.rows().size();
+        int more = total - sql.rows().size();
         if (more > 0) {
             html.append("<div class=\"more\">… ").append(more).append(" more rows</div>\n");
         }

@@ -295,4 +295,66 @@ class HtmlReportWriterTest {
         assertThat(html).contains("<div class=\"evidence\"></div>")
                 .contains("details.scenario, details.evidence");
     }
+
+    @Test
+    @DisplayName("Hostile text is escaped in every evidence field")
+    void testEscapingEverywhere() {
+        String h = "<script>alert(1)</script>";
+        HttpEvidence http = new HttpEvidence("GET", "https://hr.lab/x", Map.of("X-Note", List.of(h)), h, 200,
+                Map.of(), "ok", 5, null);
+        SqlEvidence sql = SqlEvidence.query("hr", "SELECT '" + h + "'", new Object[]{h},
+                List.of(Map.of(h, h)));
+        LdapEvidence ldap = LdapEvidence.written(null, "cn=" + h, "create", Map.of(h, List.of(h, "b")));
+        for (Evidence evidence : List.of(http, sql, ldap)) {
+            assertThat(renderStep(withEvidence(false, null, evidence))).doesNotContain("<script>alert")
+                    .contains("&lt;script&gt;alert(1)&lt;/script&gt;");
+        }
+    }
+
+    @Test
+    @DisplayName("Rows with a missing total, differing keys or no rows still render")
+    void testRowsEdgeCases() {
+        SqlEvidence noTotal = new SqlEvidence("hr", "SELECT 1", List.of(), List.of(Map.of("A", 1)), null, null);
+        assertThat(renderStep(withEvidence(true, null, noTotal))).contains("<table class=\"rows\">")
+                .doesNotContain("more rows");
+
+        Map<String, Object> first = new java.util.LinkedHashMap<>();
+        first.put("A", 1);
+        first.put("B", 2);
+        Map<String, Object> second = new java.util.LinkedHashMap<>();
+        second.put("B", 3);
+        second.put("C", 4);
+        String html = renderStep(withEvidence(true, null,
+                SqlEvidence.query("hr", "SELECT *", new Object[0], List.of(first, second))));
+        assertThat(html).contains("<tr><th>A</th><th>B</th><th>C</th></tr>")
+                .contains("<tr><td>1</td><td>2</td><td></td></tr>")
+                .contains("<tr><td></td><td>3</td><td>4</td></tr>");
+
+        assertThat(renderStep(withEvidence(true, null,
+                SqlEvidence.query("hr", "SELECT 1", new Object[0], List.of())))).contains("no rows");
+    }
+
+    @Test
+    @DisplayName("Structure body, unparseable URL, null header values and failed SQL")
+    void testOtherEvidenceShapes() {
+        Map<String, List<String>> headers = new java.util.LinkedHashMap<>();
+        headers.put("X-Null", null);
+        HttpEvidence http = new HttpEvidence("POST", "not a url", headers, Map.of("a", 1), 201, null, null, 3, null);
+        assertThat(renderStep(withEvidence(true, null, http))).contains("POST not a url → 201")
+                .contains("&quot;a&quot; : 1").contains("X-Null: ");
+
+        assertThat(renderStep(withEvidence(false, null, SqlEvidence.failed("hr", "SELECT x", new Object[0]))))
+                .contains("SQL · 0 parameters · no result");
+    }
+
+    @Test
+    @DisplayName("LDAP exists and delete summaries")
+    void testLdapSummaries() {
+        assertThat(renderStep(withEvidence(true, null, LdapEvidence.exists(null, "cn=u", true))))
+                .contains("exists cn=u · present");
+        assertThat(renderStep(withEvidence(true, null, LdapEvidence.exists(null, "cn=u", false))))
+                .contains("exists cn=u · no entry");
+        assertThat(renderStep(withEvidence(true, null, LdapEvidence.deleted(null, "cn=u"))))
+                .contains("delete cn=u<");
+    }
 }

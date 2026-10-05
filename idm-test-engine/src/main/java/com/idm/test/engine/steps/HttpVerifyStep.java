@@ -84,7 +84,13 @@ public final class HttpVerifyStep implements StepType {
         if (request.isFailure()) {
             return request.failure();
         }
-        OperationResult<TextResponse> result = HttpExchange.send(connector, request);
+        HttpExchange.Sent sent = HttpExchange.send(connector, request);
+        return judge(checks, request, sent.result(), captureRequested).withEvidence(sent.evidence());
+    }
+
+    /** Evaluates the checks against the response; every outcome is about the exchange just made. */
+    private static StepOutcome judge(List<DeferredExpression> checks, HttpExchange.Prepared request,
+                                     OperationResult<TextResponse> result, boolean captureRequested) {
         if (!result.isSuccess() || result.getData().isEmpty()) {
             return StepOutcome.failure("http.verify failed for " + request.url() + ": " + result.getMessage());
         }

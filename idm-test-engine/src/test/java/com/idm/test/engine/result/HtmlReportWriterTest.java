@@ -1,5 +1,9 @@
 package com.idm.test.engine.result;
 
+import com.idm.test.engine.spi.Evidence;
+import com.idm.test.engine.spi.HttpEvidence;
+import com.idm.test.engine.spi.LdapEvidence;
+import com.idm.test.engine.spi.SqlEvidence;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -8,6 +12,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
@@ -197,5 +202,159 @@ class HtmlReportWriterTest {
         HtmlReportWriter.write(RUN, List.of(passed()), target);
 
         assertThat(Files.readString(target, StandardCharsets.UTF_8)).contains("<!DOCTYPE html>").contains("✔");
+    }
+
+    private static StepResult withEvidence(boolean success, Integer attempts, Evidence evidence) {
+        return new StepResult(0, "probe", Map.of(), success, 10, "msg", attempts,
+                attempts == null ? null : 1_000L, null, evidence);
+    }
+
+    private static String renderStep(StepResult step) {
+        return render(new ScenarioResult("S", "s.yaml", step.success(), 10, List.of(step), List.of(), null, null));
+    }
+
+    private static HttpEvidence httpEvidence(Integer status, Object responseBody) {
+        return new HttpEvidence("GET", "https://hr.lab/api/users/jdoe?x=1",
+                Map.of("Authorization", List.of("Bearer abc")), null, status,
+                status == null ? null : Map.of("Content-Type", List.of("application/json")), responseBody, 84,
+                status == null ? "Connection refused" : null);
+    }
+
+    @Test
+    @DisplayName("HTTP evidence: open on a failed step, request and response side by side, secrets masked")
+    void testHttpEvidence() {
+        String html = renderStep(withEvidence(false, 12, httpEvidence(200, "{\"status\":\"PENDING\"}")));
+
+        assertThat(html).contains("<details class=\"evidence\" open>")
+                .contains("GET /api/users/jdoe?x=1 → 200 · 84 ms (last attempt)")
+                .contains("<div class=\"http\">")
+                .contains("Authorization: ***").doesNotContain("Bearer abc")
+                .contains("&quot;status&quot; : &quot;PENDING&quot;");
+    }
+
+    @Test
+    @DisplayName("Evidence on a passed step is closed")
+    void testPassedEvidenceClosed() {
+        String html = renderStep(withEvidence(true, null, httpEvidence(200, "ok")));
+
+        assertThat(html).contains("<details class=\"evidence\">").doesNotContain("class=\"evidence\" open");
+    }
+
+    @Test
+    @DisplayName("No response shows the error")
+    void testNoResponse() {
+        String html = renderStep(withEvidence(false, null, httpEvidence(null, null)));
+
+        assertThat(html).contains("GET /api/users/jdoe?x=1 → no response").contains("no response: Connection refused");
+    }
+
+    @Test
+    @DisplayName("SQL evidence: statement, parameters, rows table and the rows left out")
+    void testSqlEvidence() {
+        List<Map<String, Object>> rows = new ArrayList<>();
+        for (int i = 0; i < 25; i++) {
+            rows.add(Map.of("ID", i));
+        }
+        String html = renderStep(withEvidence(true, null,
+                SqlEvidence.query("hr", "SELECT id FROM t WHERE username = ?", new Object[]{"jdoe"}, rows)));
+
+        assertThat(html).contains("SQL · 1 parameter · 25 rows")
+                .contains("SELECT id FROM t WHERE username = ?")
+                .contains("params: [&quot;jdoe&quot;]")
+                .contains("<table class=\"rows\">")
+                .contains("… 5 more rows");
+        assertThat(renderStep(withEvidence(true, null, SqlEvidence.update("hr", "DELETE FROM t", new Object[0], 3))))
+                .contains("SQL · 0 parameters · updated 3 rows");
+    }
+
+    @Test
+    @DisplayName("LDAP evidence: operation, DN and an attribute table")
+    void testLdapEvidence() {
+        String html = renderStep(withEvidence(true, null, LdapEvidence.written(null, "cn=u,ou=users", "create",
+                Map.of("sn", "U", "member", List.of("cn=a", "cn=b")))));
+
+        assertThat(html).contains("create cn=u,ou=users · 2 attributes")
+                .contains("cn=a<br>cn=b");
+        assertThat(renderStep(withEvidence(false, null, LdapEvidence.absent(null, "cn=x", "read"))))
+                .contains("read cn=x · no entry");
+    }
+
+    @Test
+    @DisplayName("Evidence text is escaped")
+    void testEvidenceEscaped() {
+        String html = renderStep(withEvidence(false, null, httpEvidence(500, "<script>alert(1)</script>")));
+
+        assertThat(html).contains("&lt;script&gt;alert(1)&lt;/script&gt;").doesNotContain("<script>alert");
+    }
+
+    @Test
+    @DisplayName("A step without evidence keeps the empty slot; Expand all covers evidence")
+    void testNoEvidenceSlot() {
+        String html = renderStep(withEvidence(true, null, null));
+
+        assertThat(html).contains("<div class=\"evidence\"></div>")
+                .contains("details.scenario, details.evidence");
+    }
+
+    @Test
+    @DisplayName("Hostile text is escaped in every evidence field")
+    void testEscapingEverywhere() {
+        String h = "<script>alert(1)</script>";
+        HttpEvidence http = new HttpEvidence("GET", "https://hr.lab/x", Map.of("X-Note", List.of(h)), h, 200,
+                Map.of(), "ok", 5, null);
+        SqlEvidence sql = SqlEvidence.query("hr", "SELECT '" + h + "'", new Object[]{h},
+                List.of(Map.of(h, h)));
+        LdapEvidence ldap = LdapEvidence.written(null, "cn=" + h, "create", Map.of(h, List.of(h, "b")));
+        for (Evidence evidence : List.of(http, sql, ldap)) {
+            assertThat(renderStep(withEvidence(false, null, evidence))).doesNotContain("<script>alert")
+                    .contains("&lt;script&gt;alert(1)&lt;/script&gt;");
+        }
+    }
+
+    @Test
+    @DisplayName("Rows with a missing total, differing keys or no rows still render")
+    void testRowsEdgeCases() {
+        SqlEvidence noTotal = new SqlEvidence("hr", "SELECT 1", List.of(), List.of(Map.of("A", 1)), null, null);
+        assertThat(renderStep(withEvidence(true, null, noTotal))).contains("<table class=\"rows\">")
+                .doesNotContain("more rows");
+
+        Map<String, Object> first = new java.util.LinkedHashMap<>();
+        first.put("A", 1);
+        first.put("B", 2);
+        Map<String, Object> second = new java.util.LinkedHashMap<>();
+        second.put("B", 3);
+        second.put("C", 4);
+        String html = renderStep(withEvidence(true, null,
+                SqlEvidence.query("hr", "SELECT *", new Object[0], List.of(first, second))));
+        assertThat(html).contains("<tr><th>A</th><th>B</th><th>C</th></tr>")
+                .contains("<tr><td>1</td><td>2</td><td></td></tr>")
+                .contains("<tr><td></td><td>3</td><td>4</td></tr>");
+
+        assertThat(renderStep(withEvidence(true, null,
+                SqlEvidence.query("hr", "SELECT 1", new Object[0], List.of())))).contains("no rows");
+    }
+
+    @Test
+    @DisplayName("Structure body, unparseable URL, null header values and failed SQL")
+    void testOtherEvidenceShapes() {
+        Map<String, List<String>> headers = new java.util.LinkedHashMap<>();
+        headers.put("X-Null", null);
+        HttpEvidence http = new HttpEvidence("POST", "not a url", headers, Map.of("a", 1), 201, null, null, 3, null);
+        assertThat(renderStep(withEvidence(true, null, http))).contains("POST not a url → 201")
+                .contains("&quot;a&quot; : 1").contains("X-Null: ");
+
+        assertThat(renderStep(withEvidence(false, null, SqlEvidence.failed("hr", "SELECT x", new Object[0]))))
+                .contains("SQL · 0 parameters · no result");
+    }
+
+    @Test
+    @DisplayName("LDAP exists and delete summaries")
+    void testLdapSummaries() {
+        assertThat(renderStep(withEvidence(true, null, LdapEvidence.exists(null, "cn=u", true))))
+                .contains("exists cn=u · present");
+        assertThat(renderStep(withEvidence(true, null, LdapEvidence.exists(null, "cn=u", false))))
+                .contains("exists cn=u · no entry");
+        assertThat(renderStep(withEvidence(true, null, LdapEvidence.deleted(null, "cn=u"))))
+                .contains("delete cn=u<");
     }
 }

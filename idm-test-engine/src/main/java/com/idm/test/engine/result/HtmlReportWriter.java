@@ -13,11 +13,8 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 
 /**
  * Renders a run's results as one self-contained HTML page: inline CSS and JavaScript, nothing
@@ -28,10 +25,6 @@ import java.util.Map;
 public final class HtmlReportWriter {
 
     private static final ObjectMapper JSON = new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT);
-    private static final List<String> SECRET_KEYS =
-            List.of("password", "passwd", "pwd", "secret", "token", "authorization", "credential",
-                    "apikey", "api_key", "api-key", "cookie");
-    private static final String MASK = "***";
     private static final DateTimeFormatter STARTED =
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss z").withZone(ZoneId.systemDefault());
 
@@ -175,30 +168,13 @@ public final class HtmlReportWriter {
             html.append("<details class=\"params\"><summary>Parameters</summary><pre>")
                     .append(esc(json(mask(step.resolvedParams())))).append("</pre></details>\n");
         }
-        html.append("<div class=\"evidence\"></div>\n</li>\n");
+        EvidenceHtml.append(html, step);
+        html.append("</li>\n");
     }
 
-    /** A copy with every value under a secret-looking key, at any depth, replaced by {@value #MASK}. */
+    /** A copy with every value under a secret-looking key, at any depth, replaced by {@code ***}. */
     static Object mask(Object value) {
-        if (value instanceof Map<?, ?> map) {
-            Map<String, Object> copy = new LinkedHashMap<>();
-            map.forEach((key, inner) -> {
-                String name = String.valueOf(key);
-                copy.put(name, isSecret(name) ? MASK : mask(inner));
-            });
-            return copy;
-        }
-        if (value instanceof List<?> list) {
-            List<Object> copy = new ArrayList<>(list.size());
-            list.forEach(inner -> copy.add(mask(inner)));
-            return copy;
-        }
-        return value;
-    }
-
-    private static boolean isSecret(String key) {
-        String lower = key.toLowerCase(Locale.ROOT);
-        return SECRET_KEYS.stream().anyMatch(lower::contains);
+        return Secrets.maskByKey(value);
     }
 
     private static String json(Object value) {
@@ -280,15 +256,23 @@ public final class HtmlReportWriter {
             ul.cleanup{padding-left:0;list-style:none}ul.cleanup li{padding:4px 0;border-top:1px dashed var(--line)}
             .status{font-size:11px;font-weight:600;padding:1px 6px;border-radius:4px;border:1px solid var(--line)}
             li.succeeded .status{color:var(--ok)}li.failed .status{color:var(--ko)}li.skipped .status{color:var(--muted)}
+            details.evidence{margin-left:22px}details.evidence>summary{cursor:pointer}
+            details.evidence pre{background:var(--card);padding:8px;border-radius:6px;overflow:auto;\
+            white-space:pre-wrap;word-break:break-word;margin:4px 0}
+            .http{display:grid;grid-template-columns:1fr 1fr;gap:8px}.http .label{font-size:12px;color:var(--muted)}
+            @media (max-width:700px){.http{grid-template-columns:1fr}}
+            table.rows{border-collapse:collapse;margin:4px 0}table.rows th,table.rows td{border:1px solid var(--line);\
+            padding:2px 6px;text-align:left;vertical-align:top;word-break:break-word;overflow-wrap:anywhere}
+            .more,.sql-params,.dn{color:var(--muted);font-size:12px}
             @media print{.controls{display:none}details.scenario{break-inside:avoid-page}}
             """;
 
     private static final String JS = """
-            function setAll(open){document.querySelectorAll('details.scenario').forEach(function(d){d.open=open;});}
+            function setAll(open){document.querySelectorAll('details.scenario, details.evidence').forEach(function(d){d.open=open;});}
             function onlyFailed(button){var on=button.getAttribute('aria-pressed')!=='true';
             button.setAttribute('aria-pressed',String(on));
             document.querySelectorAll('details.scenario.passed').forEach(function(d){d.hidden=on;});}
             window.addEventListener('beforeprint',function(){document.querySelectorAll('details').forEach(function(d){d.open=true;});
-document.querySelectorAll('details.scenario').forEach(function(d){d.hidden=false;});});
+document.querySelectorAll('details.scenario, details.evidence').forEach(function(d){d.hidden=false;});});
             """;
 }

@@ -54,12 +54,14 @@ public final class HttpRequestStep implements StepType {
         if (request.isFailure()) {
             return request.failure();
         }
-        OperationResult<TextResponse> result = HttpExchange.send(connector, request);
+        HttpExchange.Sent sent = HttpExchange.send(connector, request);
+        OperationResult<TextResponse> result = sent.result();
         if (!result.isSuccess() || result.getData().isEmpty()) {
-            return StepOutcome.failure("http.request failed for " + request.url() + ": " + result.getMessage());
+            return StepOutcome.failure("http.request failed for " + request.url() + ": " + result.getMessage())
+                    .withEvidence(sent.evidence());
         }
         TextResponse response = result.getData().get();
         return StepOutcome.success(request.method() + " " + request.url() + " returned " + response.status(),
-                HttpExchange.capture(response));
+                HttpExchange.capture(response)).withEvidence(sent.evidence());
     }
 }

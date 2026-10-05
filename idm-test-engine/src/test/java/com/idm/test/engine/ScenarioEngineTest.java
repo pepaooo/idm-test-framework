@@ -9,6 +9,8 @@ import com.idm.test.engine.result.CleanupStatus;
 import com.idm.test.engine.result.ScenarioResult;
 import com.idm.test.engine.result.StepResult;
 import com.idm.test.engine.spi.DeferredExpression;
+import com.idm.test.engine.spi.Evidence;
+import com.idm.test.engine.spi.LdapEvidence;
 import com.idm.test.engine.spi.StepOutcome;
 import com.idm.test.engine.spi.StepType;
 import com.idm.test.utils.data.TestDataGenerator;
@@ -1006,5 +1008,76 @@ class ScenarioEngineTest {
 
         ScenarioResult plain = engine.run(scenario(new StepSpec("a", params("dn", "x"))), "t.yaml");
         assertThat(plain.failureSummary()).isEqualTo("t.yaml, step 1 (a): a went wrong");
+    }
+
+    private static final Evidence FIRST = LdapEvidence.exists(null, "cn=first", false);
+    private static final Evidence LAST = LdapEvidence.exists(null, "cn=last", true);
+
+    @Test
+    @DisplayName("A step's evidence is recorded in its result, failed or not")
+    void testEvidenceRecorded() {
+        StepType probe = new StepType() {
+            public String name() { return "probe"; }
+            public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
+                return StepOutcome.failure("no").withEvidence(LAST);
+            }
+        };
+
+        ScenarioResult result = engineWith(probe).run(scenario(new StepSpec("probe", Map.of("dn", "x"))), "t.yaml");
+
+        assertThat(result.steps().get(0).evidence()).isEqualTo(LAST);
+    }
+
+    @Test
+    @DisplayName("Under wait:, only the last attempt's evidence is kept")
+    void testOnlyLastAttemptEvidence() {
+        AtomicInteger calls = new AtomicInteger();
+        StepType probe = new StepType() {
+            public String name() { return "probe"; }
+            public boolean retryable() { return true; }
+            public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
+                return calls.getAndIncrement() < 2
+                        ? StepOutcome.failure("not yet").withEvidence(FIRST)
+                        : StepOutcome.success("arrived").withEvidence(LAST);
+            }
+        };
+
+        ScenarioResult result = engineWith(probe).run(scenario(new StepSpec("probe",
+                Map.of("dn", "x", "wait", Map.of("timeout", "5s", "poll", "1s")))), "t.yaml");
+
+        assertThat(result.steps().get(0).attempts()).isEqualTo(3);
+        assertThat(result.steps().get(0).evidence()).isEqualTo(LAST);
+    }
+
+    @Test
+    @DisplayName("A step that throws records no evidence")
+    void testThrowingStepHasNoEvidence() {
+        StepType probe = new StepType() {
+            public String name() { return "probe"; }
+            public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
+                throw new IllegalStateException("boom");
+            }
+        };
+
+        ScenarioResult result = engineWith(probe).run(scenario(new StepSpec("probe", Map.of("dn", "x"))), "t.yaml");
+
+        assertThat(result.steps().get(0).evidence()).isNull();
+    }
+
+    @Test
+    @DisplayName("A missing as: capture keeps the step's evidence")
+    void testMissingCaptureKeepsEvidence() {
+        StepType probe = new StepType() {
+            public String name() { return "probe"; }
+            public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
+                return StepOutcome.success("ok").withEvidence(LAST);
+            }
+        };
+
+        ScenarioResult result = engineWith(probe).run(scenario(
+                new StepSpec("probe", Map.of("dn", "x", "as", "v"))), "t.yaml");
+
+        assertThat(result.steps().get(0).success()).isFalse();
+        assertThat(result.steps().get(0).evidence()).isEqualTo(LAST);
     }
 }

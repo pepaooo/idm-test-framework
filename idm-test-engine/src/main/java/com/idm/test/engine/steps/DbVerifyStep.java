@@ -4,6 +4,7 @@ import com.idm.test.connector.database.client.MultiDatabaseConnector;
 import com.idm.test.connector.database.client.ValueComparison;
 import com.idm.test.core.model.ErrorType;
 import com.idm.test.core.model.OperationResult;
+import com.idm.test.engine.spi.SqlEvidence;
 import com.idm.test.engine.spi.StepOutcome;
 import com.idm.test.engine.spi.StepType;
 
@@ -77,16 +78,19 @@ public final class DbVerifyStep implements StepType {
             // row that provisioning has not created yet), so only configuration errors are final.
             return result.getErrorType().filter(ErrorType.CONFIGURATION_ERROR::equals).isPresent()
                     ? StepOutcome.finalFailure(message)
-                    : StepOutcome.failure(message);
+                    : StepOutcome.failure(message)
+                            .withEvidence(SqlEvidence.failed(database, query, arguments));
         }
 
         List<Map<String, Object>> rows = result.getData().orElse(List.of());
+        SqlEvidence evidence = SqlEvidence.query(database, query, arguments, rows);
 
         if (expect.containsKey(ROW_COUNT)) {
             Object expectedCount = expect.get(ROW_COUNT);
             if (!ValueComparison.equal(expectedCount, rows.size())) {
                 return StepOutcome.failure("db.verify on '" + database + "' expected "
-                        + expectedCount + " row(s) but the query returned " + rows.size());
+                        + expectedCount + " row(s) but the query returned " + rows.size())
+                        .withEvidence(evidence);
             }
         }
 
@@ -97,7 +101,8 @@ public final class DbVerifyStep implements StepType {
                 return StepOutcome.failure("db.verify on '" + database
                         + "' uses a row matcher, which needs exactly one row, but the query "
                         + "returned " + rows.size()
-                        + ". Narrow the query, or assert rowCount instead.");
+                        + ". Narrow the query, or assert rowCount instead.")
+                        .withEvidence(evidence);
             }
 
             // Matched against the map executeQuery returned, which is case-insensitive on
@@ -111,15 +116,16 @@ public final class DbVerifyStep implements StepType {
                 if (!ValueComparison.equal(column.getValue(), actualValue)) {
                     return StepOutcome.failure("db.verify on '" + database
                             + "' found a mismatch for column '" + column.getKey()
-                            + "': expected=" + column.getValue() + ", actual=" + actualValue);
+                            + "': expected=" + column.getValue() + ", actual=" + actualValue)
+                            .withEvidence(evidence);
                 }
             }
         }
 
         String message = "verified " + rows.size() + " row(s) on '" + database + "'";
-        return captureRequested
+        return (captureRequested
                 ? StepOutcome.success(message, rows)
-                : StepOutcome.success(message);
+                : StepOutcome.success(message)).withEvidence(evidence);
     }
 
     /**

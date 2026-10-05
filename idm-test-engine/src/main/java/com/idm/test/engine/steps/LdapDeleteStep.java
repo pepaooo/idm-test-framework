@@ -3,6 +3,7 @@ package com.idm.test.engine.steps;
 import com.idm.test.connector.ldap.client.EdirectoryConnector;
 import com.idm.test.connector.ldap.client.LdapDirectories;
 import com.idm.test.core.model.OperationResult;
+import com.idm.test.engine.spi.LdapEvidence;
 import com.idm.test.engine.spi.StepOutcome;
 import com.idm.test.engine.spi.StepType;
 
@@ -58,15 +59,18 @@ public final class LdapDeleteStep implements StepType {
                     + " exists: " + exists.getMessage());
         }
         if (!Boolean.TRUE.equals(exists.getData().orElse(false))) {
-            return StepOutcome.failure("ldap.delete found no entry at " + where + " to delete");
+            return StepOutcome.failure("ldap.delete found no entry at " + where + " to delete")
+                    .withEvidence(LdapEvidence.absent(LdapTarget.requested(params), dn, "delete"));
         }
 
+        LdapEvidence deleted = LdapEvidence.deleted(LdapTarget.requested(params), dn);
         OperationResult<Void> result = connector.delete(dn);
 
         if (!result.isSuccess()) {
-            return StepOutcome.failure("ldap.delete failed for " + where + ": " + result.getMessage());
+            return StepOutcome.failure("ldap.delete failed for " + where + ": " + result.getMessage())
+                    .withEvidence(deleted);
         }
 
-        return StepOutcome.success("deleted " + where, dn);
+        return StepOutcome.success("deleted " + where, dn).withEvidence(deleted);
     }
 }

@@ -4,6 +4,7 @@ import com.idm.test.connector.ldap.client.EdirectoryConnector;
 import com.idm.test.connector.ldap.client.LdapDirectories;
 import com.idm.test.connector.ldap.model.LdapUser;
 import com.idm.test.core.model.OperationResult;
+import com.idm.test.engine.spi.LdapEvidence;
 import com.idm.test.engine.spi.StepOutcome;
 import com.idm.test.engine.spi.StepType;
 import com.idm.test.utils.ldap.EmbeddedLdapServer;
@@ -22,6 +23,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -190,31 +192,25 @@ class LdapStepsTest {
     }
 
     @Test
-    @DisplayName("ldap.verify should skip the follow-up read when no capture is requested")
-    void testVerifySkipsReadWhenNoCaptureRequested() {
-        // A mocked connector, unlike the rest of this file's embedded directory: the point of
-        // this test is to prove read() is never called, which an embedded directory can't
-        // observe directly.
+    @DisplayName("ldap.verify reads the entry once per attempt and compares that read")
+    void testVerifyReadsOnce() {
         EdirectoryConnector mockConnector = mock(EdirectoryConnector.class);
-        when(mockConnector.verifyAttributes(any(), any()))
-                .thenReturn(OperationResult.success(true));
+        when(mockConnector.readAttributes(any()))
+                .thenReturn(OperationResult.success(Map.of("givenName", "Ada")));
 
         StepOutcome outcome = new LdapVerifyStep(only(mockConnector)).execute(Map.of(
                 "dn", "cn=x,ou=users", "expect", Map.of("givenName", "Ada")), false);
 
-        assertThat(outcome.success()).isTrue();
+        assertThat(outcome.success()).as(outcome.message()).isTrue();
         assertThat(outcome.value()).isNull();
-        verify(mockConnector, never()).read(any());
-        verify(mockConnector, never()).readAttributes(any());
+        verify(mockConnector, times(1)).readAttributes(any());
+        verify(mockConnector, never()).verifyAttributes(any(), any());
     }
 
     @Test
-    @DisplayName("ldap.verify should fail, not fabricate an empty capture, when verification "
-            + "passes but the follow-up read for a requested capture fails")
-    void testVerifyFailsWhenCaptureReadFailsAfterSuccessfulVerify() {
+    @DisplayName("ldap.verify fails with the read's message, and no capture or evidence, when the read fails")
+    void testVerifyFailsWhenReadFails() {
         EdirectoryConnector mockConnector = mock(EdirectoryConnector.class);
-        when(mockConnector.verifyAttributes(any(), any()))
-                .thenReturn(OperationResult.success(true));
         when(mockConnector.readAttributes(any()))
                 .thenReturn(OperationResult.<Map<String, Object>>failure("connection dropped"));
 
@@ -223,7 +219,51 @@ class LdapStepsTest {
 
         assertThat(outcome.success()).isFalse();
         assertThat(outcome.value()).isNull();
+        assertThat(outcome.evidence()).isNull();
         assertThat(outcome.message()).contains("cn=x,ou=users").contains("connection dropped");
+    }
+
+    @Test
+    @DisplayName("LDAP steps record what they wrote, read or deleted, with userPassword masked")
+    void testLdapEvidence() {
+        String dn = "cn=ada.evidence,ou=users";
+        StepOutcome created = new LdapCreateStep(directories).execute(Map.of("dn", dn,
+                "attributes", Map.of("cn", "ada.evidence", "sn", "Lovelace", "userPassword", "S3cret!")), false);
+        LdapEvidence written = (LdapEvidence) created.evidence();
+        assertThat(written.operation()).isEqualTo("create");
+        assertThat(written.attributes()).containsEntry("userPassword", "***").containsEntry("sn", "Lovelace");
+
+        StepOutcome updated = new LdapUpdateStep(directories).execute(Map.of("dn", dn,
+                "attributes", Map.of("title", "Engineer")), false);
+        assertThat(((LdapEvidence) updated.evidence()).operation()).isEqualTo("update");
+
+        StepOutcome mismatch = new LdapVerifyStep(directories).execute(Map.of("dn", dn,
+                "expect", Map.of("title", "Manager")), false);
+        assertThat(mismatch.success()).isFalse();
+        LdapEvidence read = (LdapEvidence) mismatch.evidence();
+        assertThat(read.operation()).isEqualTo("read");
+        assertThat(read.attributes()).containsEntry("title", "Engineer");
+
+        StepOutcome exists = new LdapVerifyStep(directories).execute(Map.of("dn", dn, "exists", true), false);
+        assertThat(((LdapEvidence) exists.evidence()).present()).isTrue();
+
+        StepOutcome deleted = new LdapDeleteStep(directories).execute(Map.of("dn", dn), false);
+        assertThat(((LdapEvidence) deleted.evidence()).operation()).isEqualTo("delete");
+
+        StepOutcome missing = new LdapVerifyStep(directories).execute(Map.of("dn", dn,
+                "expect", Map.of("title", "Engineer")), false);
+        assertThat(((LdapEvidence) missing.evidence()).present()).isFalse();
+
+        StepOutcome deleteMissing = new LdapDeleteStep(directories).execute(Map.of("dn", dn), false);
+        assertThat(((LdapEvidence) deleteMissing.evidence()).present()).isFalse();
+    }
+
+    @Test
+    @DisplayName("Final failures before any I/O record no evidence")
+    void testNoEvidenceBeforeIo() {
+        assertThat(new LdapVerifyStep(directories).execute(Map.of("dn", "cn=x,ou=users"), false).evidence()).isNull();
+        assertThat(new LdapCreateStep(directories).execute(Map.of("dn", "cn=x,ou=users",
+                "attributes", Map.of("cn", "x", "sn", "X", "ou", List.of())), false).evidence()).isNull();
     }
 
     @Test
@@ -679,6 +719,6 @@ class LdapStepsTest {
                     "ldap.verify for cn=x,ou=users: attribute 'groupMembership' " + problem);
         });
 
-        verify(mockConnector, never()).verifyAttributes(any(), any());
+        verify(mockConnector, never()).readAttributes(any());
     }
 }

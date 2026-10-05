@@ -7,6 +7,7 @@ import com.idm.test.connector.rest.client.IdmRestConnector;
 import com.idm.test.connector.rest.client.RestAuthenticator;
 import com.idm.test.connector.rest.config.RestClientConfiguration;
 import com.idm.test.connector.rest.config.RestProperties;
+import com.idm.test.engine.spi.HttpEvidence;
 import com.idm.test.engine.spi.StepOutcome;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -489,5 +490,36 @@ class RestStepsTest {
                 "expect", Map.of("status", 200)), false);
         assertThat(refused.success()).isFalse();
         assertThat(refused.isFinal()).isFalse();
+    }
+
+    @Test
+    @DisplayName("rest.request records the JSON request and response as structures, secrets masked")
+    @SuppressWarnings("unchecked")
+    void testRequestEvidence() {
+        stubFor(post(urlEqualTo("/users")).willReturn(aResponse().withStatus(201)
+                .withHeader("Content-Type", "application/json").withBody("{\"id\":1,\"apiKey\":\"k9\"}")));
+
+        StepOutcome outcome = new RestRequestStep(CONNECTOR, PROPERTIES, RestAuthenticator.withoutOAuth()).execute(Map.of(
+                "target", "idm", "method", "POST", "path", "/users",
+                "body", Map.of("userId", "jdoe", "password", "p")), false);
+
+        HttpEvidence evidence = (HttpEvidence) outcome.evidence();
+        assertThat((Map<String, Object>) evidence.requestBody()).containsEntry("userId", "jdoe").containsEntry("password", "***");
+        assertThat(evidence.status()).isEqualTo(201);
+        assertThat(String.valueOf(evidence.responseBody())).contains("***").doesNotContain("k9");
+    }
+
+    @Test
+    @DisplayName("A failed rest.verify keeps the response body it compared")
+    void testVerifyEvidenceOnMismatch() {
+        stubFor(get(urlEqualTo("/users/1")).willReturn(aResponse().withStatus(200)
+                .withHeader("Content-Type", "application/json").withBody("{\"status\":\"PENDING\"}")));
+
+        StepOutcome outcome = new RestVerifyStep(CONNECTOR, PROPERTIES, RestAuthenticator.withoutOAuth()).execute(Map.of(
+                "target", "idm", "path", "/users/1",
+                "expect", Map.of("body", Map.of("status", "ACTIVE"))), false);
+
+        assertThat(outcome.success()).isFalse();
+        assertThat(String.valueOf(((HttpEvidence) outcome.evidence()).responseBody())).contains("PENDING");
     }
 }

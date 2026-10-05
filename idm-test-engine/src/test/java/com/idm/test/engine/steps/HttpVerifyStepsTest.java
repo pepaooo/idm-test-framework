@@ -381,4 +381,17 @@ class HttpVerifyStepsTest {
             assertThat(step.attempts()).as(bad.toString()).isEqualTo(1);
         }
     }
+
+    @Test
+    @DisplayName("A failed check keeps the response it judged as evidence")
+    void testEvidenceOnFailedCheck() {
+        stubJson(200, "{\"department\":\"HR\"}");
+
+        StepResult step = run(params("check", List.of("js:{ response.json.department === 'Finance' }")));
+
+        assertThat(step.success()).isFalse();
+        com.idm.test.engine.spi.HttpEvidence evidence = (com.idm.test.engine.spi.HttpEvidence) step.evidence();
+        assertThat(evidence.status()).isEqualTo(200);
+        assertThat((String) evidence.responseBody()).contains("HR");
+    }
 }

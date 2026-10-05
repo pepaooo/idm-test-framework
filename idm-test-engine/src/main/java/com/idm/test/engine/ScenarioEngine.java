@@ -170,7 +170,8 @@ public final class ScenarioEngine {
             StepOutcome outcome = type.execute(resolved, captureRequested);
             outcome = bind(scope, asName, outcome, step.type());
             return new StepResult(index, step.type(), reportable(resolved), outcome.success(),
-                    System.currentTimeMillis() - started, outcome.message(), null, null, description);
+                    System.currentTimeMillis() - started, outcome.message(), null, null, description,
+                    outcome.evidence());
         }
 
         AtomicInteger attempts = new AtomicInteger();
@@ -224,7 +225,7 @@ public final class ScenarioEngine {
         }
 
         return new StepResult(index, step.type(), reportable(resolved), success, elapsed, message,
-                attempts.get(), waitedMillis, description);
+                attempts.get(), waitedMillis, description, outcome == null ? null : outcome.evidence());
     }
 
     private Object defer(Object value, Map<String, Object> scope) {
@@ -301,7 +302,7 @@ public final class ScenarioEngine {
         }
         if (outcome.value() == null) {
             return StepOutcome.failure("step '" + stepType + "' declares as: '" + asName
-                    + "' but produced no value to capture");
+                    + "' but produced no value to capture").withEvidence(outcome.evidence());
         }
         scope.put(String.valueOf(asName), outcome.value());
         return outcome;

@@ -90,9 +90,12 @@ public final class RestVerifyStep implements StepType {
             return authFailure;
         }
 
-        OperationResult<RestResponse> result =
-                connector.exchange(method, url, null, headers);
+        RestExchange.Sent sent = RestExchange.send(connector, method, url, null, headers);
+        return judge(sent.result(), expect, method, url, captureRequested).withEvidence(sent.evidence());
+    }
 
+    private static StepOutcome judge(OperationResult<RestResponse> result, Map<String, Object> expect, String method,
+                                     String url, boolean captureRequested) {
         if (!result.isSuccess() || result.getData().isEmpty()) {
             return StepOutcome.failure(
                     "rest.verify failed for " + url + ": " + result.getMessage());

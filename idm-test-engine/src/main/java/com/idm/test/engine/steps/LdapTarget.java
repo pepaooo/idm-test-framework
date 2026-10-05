@@ -45,6 +45,12 @@ final class LdapTarget {
         return new LdapTarget(connector.get(), suffix, null);
     }
 
+    /** The {@code directory:} the step named, or null when it relies on the default. */
+    static String requested(Map<String, Object> params) {
+        Object directory = params.get("directory");
+        return directory == null ? null : String.valueOf(directory);
+    }
+
     private static LdapTarget failed(String message) {
         return new LdapTarget(null, "", StepOutcome.finalFailure(message));
     }

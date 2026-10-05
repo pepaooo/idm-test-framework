@@ -28,10 +28,6 @@ import java.util.Map;
 public final class HtmlReportWriter {
 
     private static final ObjectMapper JSON = new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT);
-    private static final List<String> SECRET_KEYS =
-            List.of("password", "passwd", "pwd", "secret", "token", "authorization", "credential",
-                    "apikey", "api_key", "api-key", "cookie");
-    private static final String MASK = "***";
     private static final DateTimeFormatter STARTED =
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss z").withZone(ZoneId.systemDefault());
 
@@ -178,27 +174,9 @@ public final class HtmlReportWriter {
         html.append("<div class=\"evidence\"></div>\n</li>\n");
     }
 
-    /** A copy with every value under a secret-looking key, at any depth, replaced by {@value #MASK}. */
+    /** A copy with every value under a secret-looking key, at any depth, replaced by {@code ***}. */
     static Object mask(Object value) {
-        if (value instanceof Map<?, ?> map) {
-            Map<String, Object> copy = new LinkedHashMap<>();
-            map.forEach((key, inner) -> {
-                String name = String.valueOf(key);
-                copy.put(name, isSecret(name) ? MASK : mask(inner));
-            });
-            return copy;
-        }
-        if (value instanceof List<?> list) {
-            List<Object> copy = new ArrayList<>(list.size());
-            list.forEach(inner -> copy.add(mask(inner)));
-            return copy;
-        }
-        return value;
-    }
-
-    private static boolean isSecret(String key) {
-        String lower = key.toLowerCase(Locale.ROOT);
-        return SECRET_KEYS.stream().anyMatch(lower::contains);
+        return Secrets.maskByKey(value);
     }
 
     private static String json(Object value) {

@@ -859,6 +859,7 @@ the step's `evidence` key (`"kind": "http"`, `"sql"` or `"ldap"`).
 | Step | Evidence |
 |---|---|
 | `http.request`, `http.verify`, `rest.request`, `rest.verify` | method, URL, request headers and body, status, response headers and body, time; on a connection error, the request and the error |
+| `roles.grant`, `roles.revoke`, `resources.grant`, `resources.revoke` | the endpoint, the `SOAPAction`, the request and response envelopes, the status and the time, shown like an HTTP exchange; on a SOAP fault, the fault envelope; when the service could not be reached, or answered with an error that is not a SOAP message, the request and the error |
 | `db.verify` | the SQL, its parameters and the rows returned |
 | `db.execute` | the SQL, its parameters and the number of rows changed |
 | `ldap.create`, `ldap.update` | the DN and the attributes written |
@@ -880,7 +881,7 @@ the step's `evidence` key (`"kind": "http"`, `"sql"` or `"ldap"`).
   name/value pairs are not masked either, for example an XDS
   `<attr attr-name="nspmDistributionPassword"><value>…</value></attr>` or JSON
   `{"name": "password", "value": "…"}`, because masking goes by the element or key name, not by a
-  sibling's value.
+  sibling's value. The Role and Resource service credentials (sent as an HTTP header) are never recorded.
 - **Size limits:** bodies are cut at 16 384 characters, at most 20 rows are kept (the report
   says how many more there were), each database value is cut at 1 024 characters, and an LDAP
   attribute shows at most 20 values.

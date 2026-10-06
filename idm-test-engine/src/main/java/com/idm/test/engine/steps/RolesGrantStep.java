@@ -3,6 +3,7 @@ package com.idm.test.engine.steps;
 import com.idm.test.connector.soap.client.RoleServiceConnector;
 import com.idm.test.connector.soap.generated.role.RequestRolesAssignmentResponse;
 import com.idm.test.core.model.OperationResult;
+import com.idm.test.engine.spi.HttpEvidence;
 import com.idm.test.engine.spi.StepOutcome;
 import com.idm.test.engine.spi.StepType;
 
@@ -61,10 +62,11 @@ public final class RolesGrantStep implements StepType {
         OperationResult<RequestRolesAssignmentResponse> result = connector.assignRoles(
                 user, roles.toArray(new String[0]),
                 reason == null ? null : String.valueOf(reason));
+        HttpEvidence evidence = SoapExchanges.evidence(connector.lastExchange(), result);
 
         if (!result.isSuccess() || result.getData().isEmpty()) {
             return StepOutcome.failure(
-                    "roles.grant failed for " + user + ": " + result.getMessage());
+                    "roles.grant failed for " + user + ": " + result.getMessage()).withEvidence(evidence);
         }
 
         List<String> assignments = SoapDns.of(result.getData().get().getResult());
@@ -77,10 +79,10 @@ public final class RolesGrantStep implements StepType {
             // list, would be the vacuous-assertion trap: a grant that verified it granted
             // nothing.
             return StepOutcome.failure("roles.grant for " + user + " requested " + roles
-                    + " but the role service returned no assignment DNs");
+                    + " but the role service returned no assignment DNs").withEvidence(evidence);
         }
 
         return StepOutcome.success(
-                "granted " + roles + " to " + user, assignments);
+                "granted " + roles + " to " + user, assignments).withEvidence(evidence);
     }
 }

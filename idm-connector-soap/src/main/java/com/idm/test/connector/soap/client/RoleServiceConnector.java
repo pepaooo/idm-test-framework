@@ -10,6 +10,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
+import java.util.Optional;
+
 /**
  * NetIQ Identity Manager Role Service SOAP connector.
  * Uses JAX-WS generated stubs from idmprov-role.wsdl.
@@ -33,6 +35,7 @@ public class RoleServiceConnector {
     private final IRemoteRole roleServicePort;
     private final String serviceUrl;
     private final ObjectFactory objectFactory;
+    private final SoapCapture capture;
 
     public RoleServiceConnector(SoapProperties soapProperties) {
         this.serviceUrl = soapProperties.getUrl();
@@ -49,6 +52,7 @@ public class RoleServiceConnector {
             serviceUrl
         );
         SoapCredentials.apply(bindingProvider, soapProperties);
+        this.capture = SoapCapture.installOn(bindingProvider);
 
         log.info("RoleServiceConnector initialized with endpoint: {}", serviceUrl);
     }
@@ -65,6 +69,7 @@ public class RoleServiceConnector {
             String userDn,
             String[] roleDns,
             String reason) {
+        capture.clear();
 
         log.debug("Assigning {} role(s) to user: {}", roleDns.length, userDn);
 
@@ -151,6 +156,7 @@ public class RoleServiceConnector {
      * @return operation result containing removal response
      */
     public OperationResult<RemoveRolesResponse> removeRoles(String[] roleDns) {
+        capture.clear();
 
         log.debug("Removing {} role assignment(s)", roleDns.length);
 
@@ -219,6 +225,7 @@ public class RoleServiceConnector {
      * @return operation result containing user information with associated roles
      */
     public OperationResult<GetUserResponse> getAssignedRoles(String userDn) {
+        capture.clear();
         log.debug("Getting assigned roles for user: {}", userDn);
 
         try {
@@ -270,5 +277,13 @@ public class RoleServiceConnector {
      */
     private ErrorType determineErrorType(Exception e) {
         return SoapErrorTypes.classify(e);
+    }
+
+    /**
+     * The envelopes, endpoint and status of this thread's last call, for a step's evidence; empty
+     * before any call, or when the last call failed before anything was sent.
+     */
+    public Optional<SoapExchange> lastExchange() {
+        return capture.last();
     }
 }

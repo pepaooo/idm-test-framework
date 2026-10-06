@@ -3,6 +3,7 @@ package com.idm.test.engine.steps;
 import com.idm.test.connector.soap.client.ResourceServiceConnector;
 import com.idm.test.connector.soap.generated.resource.RequestResourceGrantResponse;
 import com.idm.test.core.model.OperationResult;
+import com.idm.test.engine.spi.HttpEvidence;
 import com.idm.test.engine.spi.StepOutcome;
 import com.idm.test.engine.spi.StepType;
 
@@ -54,14 +55,15 @@ public final class ResourcesGrantStep implements StepType {
 
         OperationResult<RequestResourceGrantResponse> result =
                 connector.grantResource(user, resource, reason);
+        HttpEvidence evidence = SoapExchanges.evidence(connector.lastExchange(), result);
 
         if (!result.isSuccess() || result.getData().isEmpty()) {
             return StepOutcome.failure(
-                    "resources.grant failed for " + user + ": " + result.getMessage());
+                    "resources.grant failed for " + user + ": " + result.getMessage()).withEvidence(evidence);
         }
 
         String requestId = SoapValues.of(result.getData().get().getResult());
 
-        return StepOutcome.success("granted " + resource + " to " + user, requestId);
+        return StepOutcome.success("granted " + resource + " to " + user, requestId).withEvidence(evidence);
     }
 }

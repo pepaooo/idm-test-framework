@@ -6,6 +6,7 @@ import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
 import com.idm.test.connector.soap.client.ResourceServiceConnector;
 import com.idm.test.connector.soap.client.RoleServiceConnector;
 import com.idm.test.connector.soap.config.SoapProperties;
+import com.idm.test.engine.spi.HttpEvidence;
 import com.idm.test.engine.spi.StepOutcome;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -326,5 +327,110 @@ class SoapStepsTest {
         assertThat(resourceRevoke.isFinal()).isTrue();
         assertThat(resourceRevoke.message()).isEqualTo(
                 "resources.revoke cannot run: no Resource service is configured (idm.test.soap.resource-url)");
+    }
+
+    private static HttpEvidence evidence(StepOutcome outcome) {
+        return (HttpEvidence) outcome.evidence();
+    }
+
+    @Test
+    @DisplayName("roles.grant records the SOAP request and response as evidence")
+    void testGrantEvidence() {
+        stubAssignmentReturning(ASSIGNMENT_DN);
+
+        StepOutcome outcome = new RolesGrantStep(roleConnector).execute(Map.of(
+                "user", USER_DN, "roles", List.of(ROLE_DN)), false);
+
+        assertThat(outcome.success()).as(outcome.message()).isTrue();
+        HttpEvidence evidence = evidence(outcome);
+        assertThat(evidence.method()).isEqualTo("POST");
+        assertThat(evidence.url()).endsWith(ROLE_PATH);
+        assertThat(evidence.requestHeaders()).containsOnlyKeys("SOAPAction");
+        assertThat(evidence.requestHeaders().get("SOAPAction")).hasSize(1).allSatisfy(v -> assertThat(v).isNotBlank());
+        assertThat((String) evidence.requestBody()).contains("requestRolesAssignment").contains(USER_DN);
+        assertThat(evidence.status()).isEqualTo(200);
+        assertThat((String) evidence.responseBody()).contains(ASSIGNMENT_DN);
+        assertThat(evidence.error()).isNull();
+    }
+
+    @Test
+    @DisplayName("A SOAP fault fails the step as before and its evidence shows the fault")
+    void testFaultEvidence() {
+        stubFor(post(urlEqualTo(ROLE_PATH)).willReturn(aResponse()
+                .withStatus(500)
+                .withHeader("Content-Type", "text/xml; charset=utf-8")
+                .withBody("<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
+                        + "<soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\">"
+                        + "<soap:Body><soap:Fault><faultcode>soap:Server</faultcode>"
+                        + "<faultstring>Invalid name</faultstring></soap:Fault></soap:Body></soap:Envelope>")));
+
+        StepOutcome outcome = new RolesGrantStep(roleConnector).execute(Map.of(
+                "user", USER_DN, "roles", List.of(ROLE_DN)), false);
+
+        assertThat(outcome.success()).isFalse();
+        assertThat(outcome.message()).startsWith("roles.grant failed for " + USER_DN + ": ");
+        assertThat(evidence(outcome).status()).isEqualTo(500);
+        assertThat((String) evidence(outcome).responseBody()).contains("Invalid name");
+    }
+
+    @Test
+    @DisplayName("An unreachable service records the request and the error, with no response")
+    void testUnreachableEvidence() {
+        SoapProperties properties = new SoapProperties();
+        properties.setUrl("http://localhost:1" + ROLE_PATH);
+
+        StepOutcome outcome = new RolesGrantStep(new RoleServiceConnector(properties)).execute(Map.of(
+                "user", USER_DN, "roles", List.of(ROLE_DN)), false);
+
+        assertThat(outcome.success()).isFalse();
+        assertThat(evidence(outcome).status()).isNull();
+        assertThat(evidence(outcome).error()).isNotBlank();
+        assertThat((String) evidence(outcome).requestBody()).contains(USER_DN);
+    }
+
+    @Test
+    @DisplayName("roles.revoke, resources.grant and resources.revoke record evidence too")
+    void testOtherStepsEvidence() {
+        stubRemovalReturning(ASSIGNMENT_DN);
+        HttpEvidence revoke = evidence(new RolesRevokeStep(roleConnector).execute(Map.of(
+                "assignments", List.of(ASSIGNMENT_DN)), false));
+        assertThat((String) revoke.requestBody()).contains("removeRoles");
+
+        stubResourceGrantReturning(REQUEST_ID);
+        HttpEvidence grant = evidence(new ResourcesGrantStep(resourceConnector).execute(Map.of(
+                "user", USER_DN, "resource", RESOURCE_DN), false));
+        assertThat(grant.url()).endsWith(RESOURCE_PATH);
+        assertThat(grant.status()).isEqualTo(200);
+
+        stubResourceRevokeReturning(REQUEST_ID);
+        HttpEvidence resourceRevoke = evidence(new ResourcesRevokeStep(resourceConnector).execute(Map.of(
+                "user", USER_DN, "resource", RESOURCE_DN), false));
+        assertThat((String) resourceRevoke.responseBody()).contains(REQUEST_ID);
+    }
+
+    @Test
+    @DisplayName("Nothing sent, no evidence: an empty roles list")
+    void testNoEvidenceWhenNothingSent() {
+        StepOutcome outcome = new RolesGrantStep(roleConnector).execute(Map.of(
+                "user", USER_DN, "roles", List.of()), false);
+
+        assertThat(outcome.success()).isFalse();
+        assertThat(outcome.evidence()).isNull();
+    }
+
+    @Test
+    @DisplayName("A secret-named element in an envelope is masked in the evidence")
+    void testEnvelopeSecretMasked() {
+        stubFor(post(urlEqualTo(ROLE_PATH)).willReturn(aResponse()
+                .withStatus(200)
+                .withHeader("Content-Type", "text/xml; charset=utf-8")
+                .withBody(assignmentEnvelope(ASSIGNMENT_DN).replace("</tns:result>",
+                        "</tns:result><tns:password>p4ss</tns:password>"))));
+
+        StepOutcome outcome = new RolesGrantStep(roleConnector).execute(Map.of(
+                "user", USER_DN, "roles", List.of(ROLE_DN)), false);
+
+        assertThat((String) evidence(outcome).responseBody())
+                .contains("<tns:password>***</tns:password>").doesNotContain("p4ss");
     }
 }

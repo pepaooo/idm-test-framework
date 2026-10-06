@@ -3,6 +3,7 @@ package com.idm.test.engine.steps;
 import com.idm.test.connector.soap.client.RoleServiceConnector;
 import com.idm.test.connector.soap.generated.role.RemoveRolesResponse;
 import com.idm.test.core.model.OperationResult;
+import com.idm.test.engine.spi.HttpEvidence;
 import com.idm.test.engine.spi.StepOutcome;
 import com.idm.test.engine.spi.StepType;
 
@@ -55,13 +56,14 @@ public final class RolesRevokeStep implements StepType {
 
         OperationResult<RemoveRolesResponse> result =
                 connector.removeRoles(assignments.toArray(new String[0]));
+        HttpEvidence evidence = SoapExchanges.evidence(connector.lastExchange(), result);
 
         if (!result.isSuccess() || result.getData().isEmpty()) {
             return StepOutcome.failure("roles.revoke failed for " + assignments
-                    + ": " + result.getMessage());
+                    + ": " + result.getMessage()).withEvidence(evidence);
         }
 
         return StepOutcome.success("revoked " + assignments,
-                SoapDns.of(result.getData().get().getResult()));
+                SoapDns.of(result.getData().get().getResult())).withEvidence(evidence);
     }
 }

@@ -18,6 +18,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
+import java.util.Optional;
+
 /**
  * NetIQ Identity Applications resource service connector.
  * Uses JAX-WS generated stubs from idmprov-resource.wsdl.
@@ -37,6 +39,7 @@ public class ResourceServiceConnector {
 
     private final IRemoteResource resourcePort;
     private final ObjectFactory objectFactory;
+    private final SoapCapture capture;
 
     public ResourceServiceConnector(SoapProperties soapProperties) {
         this.objectFactory = new ObjectFactory();
@@ -49,6 +52,7 @@ public class ResourceServiceConnector {
                 BindingProvider.ENDPOINT_ADDRESS_PROPERTY,
                 soapProperties.getResourceUrl());
         SoapCredentials.apply(bindingProvider, soapProperties);
+        this.capture = SoapCapture.installOn(bindingProvider);
 
         log.info("ResourceServiceConnector initialized with endpoint: {}",
                 soapProperties.getResourceUrl());
@@ -64,6 +68,7 @@ public class ResourceServiceConnector {
      */
     public OperationResult<RequestResourceGrantResponse> grantResource(
             String userDn, String resourceDn, String reason) {
+        capture.clear();
 
         log.debug("Granting resource {} to user {}", resourceDn, userDn);
 
@@ -118,6 +123,7 @@ public class ResourceServiceConnector {
      */
     public OperationResult<RequestResourceRevokeResponse> revokeResource(
             String userDn, String resourceDn, String reason) {
+        capture.clear();
 
         log.debug("Revoking resource {} from user {}", resourceDn, userDn);
 
@@ -167,5 +173,13 @@ public class ResourceServiceConnector {
      */
     private static String valueOf(JAXBElement<String> element) {
         return element == null ? null : element.getValue();
+    }
+
+    /**
+     * The envelopes, endpoint and status of this thread's last call, for a step's evidence; empty
+     * before any call, or when the last call failed before anything was sent.
+     */
+    public Optional<SoapExchange> lastExchange() {
+        return capture.last();
     }
 }

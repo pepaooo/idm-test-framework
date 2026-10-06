@@ -345,6 +345,8 @@ class SoapStepsTest {
         HttpEvidence evidence = evidence(outcome);
         assertThat(evidence.method()).isEqualTo("POST");
         assertThat(evidence.url()).endsWith(ROLE_PATH);
+        assertThat(evidence.requestHeaders()).containsOnlyKeys("SOAPAction");
+        assertThat(evidence.requestHeaders().get("SOAPAction")).hasSize(1).allSatisfy(v -> assertThat(v).isNotBlank());
         assertThat((String) evidence.requestBody()).contains("requestRolesAssignment").contains(USER_DN);
         assertThat(evidence.status()).isEqualTo(200);
         assertThat((String) evidence.responseBody()).contains(ASSIGNMENT_DN);

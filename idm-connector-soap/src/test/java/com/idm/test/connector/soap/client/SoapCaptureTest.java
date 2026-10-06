@@ -88,6 +88,7 @@ class SoapCaptureTest {
         SoapExchange exchange = connector.lastExchange().orElseThrow();
         assertThat(exchange.endpoint()).isEqualTo(roleUrl());
         String sentAction = WIREMOCK.getAllServeEvents().get(0).getRequest().getHeader("SOAPAction");
+        assertThat(exchange.soapAction()).isNotBlank();
         assertThat(unquoted(exchange.soapAction())).isEqualTo(unquoted(sentAction));
         assertThat(exchange.requestEnvelope()).contains("requestRolesAssignment").contains(USER_DN);
         assertThat(exchange.status()).isEqualTo(200);
@@ -141,6 +142,23 @@ class SoapCaptureTest {
 
         SoapExchange exchange = connector.lastExchange().orElseThrow();
         assertThat(exchange.requestEnvelope()).contains("removeRoles").doesNotContain("requestRolesAssignment");
+    }
+
+    @Test
+    @DisplayName("A call that fails before sending clears the previous exchange")
+    void failedBeforeSendClearsSlot() {
+        stubAssignment();
+        RoleServiceConnector connector = connector(roleUrl(), null, null);
+        connector.assignRoles(USER_DN, new String[]{ROLE_DN}, null);
+        assertThat(connector.lastExchange()).isPresent();
+
+        try {
+            connector.assignRoles(USER_DN, null, null);
+        } catch (RuntimeException expected) {
+            // failing before anything is sent is the point of this test
+        }
+
+        assertThat(connector.lastExchange()).isEmpty();
     }
 
     @Test

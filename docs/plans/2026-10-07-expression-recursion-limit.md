@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** A `js:{ … }` expression that recurses without end fails its step with `expression recursed too deeply and was stopped: js:{ … }` instead of escaping as a `StackOverflowError`.
+**Goal:** A `js:{ … }` expression that recurses without end fails its step with `expression nested or recursed too deeply and was stopped: js:{ … }` instead of escaping as a `StackOverflowError`.
 
-**Architecture:** `ExpressionEvaluator.doEvaluate` runs Rhino in interpreted mode with a maximum interpreter stack depth of 1 000 frames, turns Rhino's "Exceeded maximum stack depth" error into an `ExpressionException`, and catches `StackOverflowError` (recursion through Java, e.g. a getter calling a list helper) as a backstop with the same message.
+**Architecture:** `ExpressionEvaluator.doEvaluate` runs Rhino in interpreted mode with a maximum interpreter stack depth of 700 frames, turns Rhino's "Exceeded maximum stack depth" error into an `ExpressionException`, and catches `StackOverflowError` (recursion through Java, e.g. a getter calling a list helper) as a backstop with the same message.
 
 **Tech Stack:** Java 21, Mozilla Rhino 1.8.0 (`Context.setInterpretedMode`, `setMaximumInterpreterStackDepth`), JUnit 5, AssertJ, WireMock.
 
@@ -12,8 +12,8 @@
 
 ## Global Constraints
 
-- Interpreted mode with `MAX_STACK_DEPTH = 1_000` frames (`setInterpretedMode(true)` must precede `setMaximumInterpreterStackDepth`, which throws otherwise).
-- Message, exactly: `expression recursed too deeply and was stopped: js:{ <expression> }`, as an `ExpressionException`, for both Rhino's depth error and a `StackOverflowError`.
+- Interpreted mode with `MAX_STACK_DEPTH = 700` frames, below the ~870 where the default instruction budget would stop recursion (revised during implementation, jangulo 2026-10-07) (`setInterpretedMode(true)` must precede `setMaximumInterpreterStackDepth`, which throws otherwise).
+- Message, exactly: `expression nested or recursed too deeply and was stopped: js:{ <expression> }`, as an `ExpressionException`, for both Rhino's depth error and a `StackOverflowError`.
 - Unchanged: the instruction budget and its message, the sandbox, the list helpers' limits, `validate`, the public signatures.
 - A recursive expression fails its step like other expression errors; the scenario continues to cleanup and records its result.
 - Commit trailer: a blank line, `ITF-42`, then `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
@@ -29,7 +29,7 @@
 - Docs: `docs/architecture/capabilities.md` (the "Expression restrictions" row), `docs/reference/writing-scenarios.md` (the `js:{ … }` bullet list near the top, ~lines 57-70)
 
 **Interfaces:**
-- Produces: `static final int MAX_STACK_DEPTH = 1_000` in `ExpressionEvaluator` (package-private is enough).
+- Produces: `static final int MAX_STACK_DEPTH = 700` in `ExpressionEvaluator` (package-private is enough).
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -41,7 +41,7 @@
     void testRecursionStopped() {
         assertThatThrownBy(() -> evaluator.evaluate("(function f() { return f(); })()", Map.of()))
                 .isInstanceOf(ExpressionEvaluator.ExpressionException.class)
-                .hasMessage("expression recursed too deeply and was stopped: js:{ (function f() { return f(); })() }");
+                .hasMessage("expression nested or recursed too deeply and was stopped: js:{ (function f() { return f(); })() }");
 
         assertThatThrownBy(() -> evaluator.evaluate(
                 "(function () { function a() { return b(); } function b() { return a(); } return a(); })()", Map.of()))
@@ -126,7 +126,7 @@ In `ExpressionEvaluator`, next to `DEFAULT_INSTRUCTION_BUDGET`:
      * Frames an expression may nest before it is stopped. Deep enough for any reasonable
      * recursion; endless recursion reaches it long before the Java stack overflows.
      */
-    static final int MAX_STACK_DEPTH = 1_000;
+    static final int MAX_STACK_DEPTH = 700;
 ```
 
 In `doEvaluate`, right after `cx.setLanguageVersion(Context.VERSION_ES6);`:
@@ -165,7 +165,7 @@ Replace the catch chain with (keep the existing order and messages for the other
 
     private static ExpressionException recursedTooDeeply(String expression, Throwable cause) {
         return new ExpressionException(
-                "expression recursed too deeply and was stopped: js:{ " + expression + " }", cause);
+                "expression nested or recursed too deeply and was stopped: js:{ " + expression + " }", cause);
     }
 ```
 
@@ -173,7 +173,7 @@ If `ListHelpers` wraps exceptions thrown by a re-entered getter (check how it ca
 
 - [ ] **Step 4: Docs**
 
-`docs/architecture/capabilities.md`, the "Expression restrictions" row's last column: after `Default instruction threshold 100,000;` insert ` recursion depth 1,000 frames;`.
+`docs/architecture/capabilities.md`, the "Expression restrictions" row's last column: after `Default instruction threshold 100,000;` insert ` recursion depth 700 frames;`.
 
 `docs/reference/writing-scenarios.md`, in the bullet list under **An expression:** (the bullets starting "The expression must be the **whole** value"), add a bullet:
 

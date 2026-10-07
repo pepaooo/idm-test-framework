@@ -31,6 +31,14 @@ public final class ExpressionEvaluator {
     /** Enough for any reasonable expression; a runaway loop exceeds it in milliseconds. */
     private static final int DEFAULT_INSTRUCTION_BUDGET = 100_000;
 
+    /**
+     * Frames an expression may nest before it is stopped. Deep enough for any reasonable
+     * recursion; endless recursion reaches it long before the Java stack overflows. It sits
+     * below the roughly 870 frames at which the default instruction budget would stop
+     * recursion (Rhino charges about 100 units per call), so recursion gets its own message.
+     */
+    static final int MAX_STACK_DEPTH = 700;
+
     private final ContextFactory contextFactory;
     private final int instructionBudget;
 
@@ -48,7 +56,8 @@ public final class ExpressionEvaluator {
      * @param variables  scenario variables, made available by name
      * @return a plain Java value — String, Double, Boolean, Map, List or null
      * @throws ExpressionException on a syntax error, a sandbox violation, an unknown variable,
-     *                             an expression that exceeds its instruction budget, a result
+     *                             an expression that exceeds its instruction budget or nests or
+     *                             recurses deeper than {@link #MAX_STACK_DEPTH}, a result
      *                             that cannot be converted back to a plain Java value, or a
      *                             foreign Rhino Context already open on this thread
      */
@@ -59,7 +68,8 @@ public final class ExpressionEvaluator {
     /**
      * Like {@link #evaluate}, plus the notes the list helpers recorded while the expression ran.
      *
-     * @throws ExpressionException as {@link #evaluate} does
+     * @throws ExpressionException as {@link #evaluate} does, including for an expression that
+     *                             nests or recurses too deeply
      */
     public Explained evaluateExplained(String expression, Map<String, Object> variables) {
         Context current = Context.getCurrentContext();
@@ -95,7 +105,8 @@ public final class ExpressionEvaluator {
      * (embedded, unterminated, empty) that this method does not repeat.
      *
      * @param expression a JavaScript expression, as extracted from a {@code js:{ ... }} value
-     * @throws ExpressionException on a syntax error, with the expression text in the message, or
+     * @throws ExpressionException on a syntax error or an expression nested too deeply to
+     *                             compile, with the expression text in the message, or
      *                             a foreign Rhino Context already open on this thread (see
      *                             {@link #evaluate})
      */
@@ -114,6 +125,9 @@ public final class ExpressionEvaluator {
             // this method promises: a syntax error throws here, and a well-formed expression's
             // compiled Script is simply discarded.
             cx.compileString(expression, "expression", 1, null);
+        } catch (StackOverflowError e) {
+            throw new ExpressionException(
+                    "invalid expression js:{ " + expression + " }: it is nested too deeply", e);
         } catch (RuntimeException e) {
             throw new ExpressionException(
                     "invalid expression js:{ " + expression + " }: " + e.getMessage(), e);
@@ -130,6 +144,13 @@ public final class ExpressionEvaluator {
             // entry. Setting it again here is harmless when it already was.
             cx.setInstructionObserverThreshold(instructionBudget);
             cx.setLanguageVersion(Context.VERSION_ES6);
+
+            // Interpreted mode makes recursion depth countable: Rhino stops an expression that
+            // nests deeper than MAX_STACK_DEPTH with its own error instead of overflowing the
+            // Java stack. The instruction budget still applies but counts work differently in
+            // this mode, so slightly more work fits in it than before.
+            cx.setInterpretedMode(true);
+            cx.setMaximumInterpreterStackDepth(MAX_STACK_DEPTH);
 
             // A fresh scope per evaluation: nothing one expression defines is visible to the next.
             Scriptable scope = cx.initStandardObjects();
@@ -153,12 +174,26 @@ public final class ExpressionEvaluator {
                     "expression ran too long and was stopped: js:{ " + expression + " }", e);
         } catch (ExpressionException e) {
             throw e;
+        } catch (StackOverflowError e) {
+            // Recursion the interpreter cannot count, through Java, such as a getter that calls
+            // a list helper on its own object. The stack has unwound by now; Context.exit() below
+            // still runs, and the next evaluation gets a fresh scope.
+            throw recursedTooDeeply(expression, e);
         } catch (RuntimeException e) {
+            if (e instanceof org.mozilla.javascript.EvaluatorException
+                    && String.valueOf(e.getMessage()).contains("Exceeded maximum stack depth")) {
+                throw recursedTooDeeply(expression, e);
+            }
             throw new ExpressionException(
                     "could not evaluate js:{ " + expression + " }: " + e.getMessage(), e);
         } finally {
             Context.exit();
         }
+    }
+
+    private static ExpressionException recursedTooDeeply(String expression, Throwable cause) {
+        return new ExpressionException(
+                "expression nested or recursed too deeply and was stopped: js:{ " + expression + " }", cause);
     }
 
     /**

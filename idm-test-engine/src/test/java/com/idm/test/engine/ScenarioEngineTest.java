@@ -1080,4 +1080,19 @@ class ScenarioEngineTest {
         assertThat(result.steps().get(0).success()).isFalse();
         assertThat(result.steps().get(0).evidence()).isEqualTo(LAST);
     }
+
+    @Test
+    @DisplayName("A recursive expression in a parameter fails its step; cleanup still runs and a result is recorded")
+    void testRecursiveExpressionFailsStep() {
+        ScenarioEngine engine = engineWith(recordingAction("a"), recordingAction("undo"));
+
+        ScenarioResult result = engine.run(withCleanup(
+                List.of(new StepSpec("a", Map.of("dn", "js:{ (function f() { return 1 + f(); })() }"))),
+                new StepSpec("undo", Map.of("dn", "x"))), "t.yaml");
+
+        assertThat(result.success()).isFalse();
+        assertThat(result.steps().get(0).success()).isFalse();
+        assertThat(result.steps().get(0).message()).contains("recursed too deeply");
+        assertThat(events).contains("run:undo:x");
+    }
 }

@@ -495,4 +495,57 @@ class ExpressionEvaluatorTest {
         Explained faked = explain("var __checkNotes = ['fake']; containsAll(['a'], 'b')", Map.of());
         assertThat(faked.notes()).containsExactly("containsAll: missing [b]");
     }
+
+    @Test
+    @DisplayName("Endless recursion is stopped with an expression error, and the evaluator still works")
+    void testRecursionStopped() {
+        assertThatThrownBy(() -> evaluator.evaluate("(function f() { return 1 + f(); })()", Map.of()))
+                .isInstanceOf(ExpressionEvaluator.ExpressionException.class)
+                .hasMessage("expression nested or recursed too deeply and was stopped: js:{ (function f() { return 1 + f(); })() }");
+
+        assertThatThrownBy(() -> evaluator.evaluate(
+                "(function () { function a() { return 1 + b(); } function b() { return 1 + a(); } return a(); })()", Map.of()))
+                .isInstanceOf(ExpressionEvaluator.ExpressionException.class)
+                .hasMessageContaining("recursed too deeply");
+
+        // The tail-call form is stopped by the depth limit too.
+        assertThatThrownBy(() -> evaluator.evaluate("(function f() { return f(); })()", Map.of()))
+                .isInstanceOf(ExpressionEvaluator.ExpressionException.class);
+
+        assertThat(evaluator.evaluate("1 + 1", Map.of())).isEqualTo(2.0);
+    }
+
+    @Test
+    @DisplayName("Recursion through a list helper is stopped too, never as a StackOverflowError")
+    void testRecursionThroughHelperStopped() {
+        String expression = "(function () {"
+                + " var o = {};"
+                + " Object.defineProperty(o, 'x', { enumerable: true, get: function () { return containsAll([o], [o]); } });"
+                + " return containsAll([o], [o]);"
+                + " })()";
+
+        assertThatThrownBy(() -> evaluator.evaluate(expression, Map.of()))
+                .isInstanceOf(ExpressionEvaluator.ExpressionException.class);
+        assertThat(evaluator.evaluate("containsAll(['a'], 'a')", Map.of())).isEqualTo(true);
+    }
+
+    @Test
+    @DisplayName("A very deeply nested expression fails validation and evaluation cleanly")
+    void testDeeplyNestedExpression() {
+        String expression = "x" + "+x".repeat(5_000);
+
+        assertThatThrownBy(() -> evaluator.validate(expression))
+                .isInstanceOf(ExpressionEvaluator.ExpressionException.class)
+                .hasMessageContaining("invalid expression");
+        assertThatThrownBy(() -> evaluator.evaluate(expression, Map.of("x", 1)))
+                .isInstanceOf(ExpressionEvaluator.ExpressionException.class);
+    }
+
+    @Test
+    @DisplayName("Legitimate recursion well under the limit still works")
+    void testModerateRecursionAllowed() {
+        assertThat(evaluator.evaluate(
+                "(function count(n) { return n === 0 ? 0 : 1 + count(n - 1); })(500)", Map.of()))
+                .isEqualTo(500.0);
+    }
 }

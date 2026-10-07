@@ -450,4 +450,15 @@ class HttpVerifyStepsTest {
         assertThat(evidence.status()).isEqualTo(200);
         assertThat((String) evidence.responseBody()).contains("HR");
     }
+
+    @Test
+    @DisplayName("A recursive check fails the step with the recursion message")
+    void testRecursiveCheckFails() {
+        stubJson(200, "{}");
+
+        StepResult step = run(params("check", "js:{ (function f() { return 1 + f(); })() }"));
+
+        assertThat(step.success()).isFalse();
+        assertThat(step.message()).contains("check 1 of 1 failed: ").contains("recursed too deeply");
+    }
 }

@@ -701,8 +701,8 @@ class LdapStepsTest {
         Map<Object, String> cases = new java.util.LinkedHashMap<>();
         cases.put(List.of(), "is an empty list, which a misspelled attribute name would also satisfy; "
                 + "to assert values are absent use { excludes: [...] }");
-        cases.put(Map.of("contain", "a"), "has unknown matcher keys [contain]; use contains and/or excludes");
-        cases.put(Map.of(), "is an empty map; use contains and/or excludes");
+        cases.put(Map.of("contain", "a"), "has unknown matcher keys [contain]; use equals, contains, excludes, count, matches or ignoreCase");
+        cases.put(Map.of(), "is an empty map; use equals, contains, excludes, count, matches or ignoreCase");
         cases.put(Map.of("excludes", List.of()), "has an empty 'excludes'");
         cases.put(Map.of("contains", List.of("a", List.of("b"))),
                 "has a null, map or list value in 'contains'; give plain values");

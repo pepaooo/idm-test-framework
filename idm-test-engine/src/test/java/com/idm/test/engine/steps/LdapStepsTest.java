@@ -770,4 +770,16 @@ class LdapStepsTest {
         verify(mockConnector, never()).update(any(), any());
         verify(mockConnector, never()).create(any());
     }
+
+    @Test
+    @DisplayName("ldap.update's overlap message never quotes a secret value")
+    void testSecretOverlapNotQuoted() {
+        StepOutcome outcome = new LdapUpdateStep(only(mock(EdirectoryConnector.class))).execute(Map.of(
+                "dn", "cn=x,ou=users",
+                "attributes", Map.of("userPassword", Map.of("add", "S3cret!", "remove", "S3cret!"))), false);
+
+        assertThat(outcome.success()).isFalse();
+        assertThat(outcome.message()).doesNotContain("S3cret!")
+                .isEqualTo("ldap.update for cn=x,ou=users: attribute 'userPassword' lists the same value in both 'add' and 'remove'");
+    }
 }

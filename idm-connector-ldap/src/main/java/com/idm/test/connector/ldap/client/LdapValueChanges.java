@@ -21,10 +21,11 @@ public final class LdapValueChanges {
     }
 
     /**
+     * @param attribute the attribute's name; the values of a secret-named one are never quoted
      * @return {@code null} when {@code value} is not a change (not a map) or is a well-formed one,
      *         else what is wrong with it, as a fragment to follow the attribute's name
      */
-    public static String shapeProblem(Object value) {
+    public static String shapeProblem(String attribute, Object value) {
         if (!(value instanceof Map<?, ?> change)) {
             return null;
         }
@@ -63,7 +64,9 @@ public final class LdapValueChanges {
                 }
             }
             if (!overlap.isEmpty()) {
-                return "lists " + overlap + " in both 'add' and 'remove'";
+                return SecretNames.isSecret(attribute)
+                        ? "lists the same value in both 'add' and 'remove'"
+                        : "lists " + overlap + " in both 'add' and 'remove'";
             }
         }
         return null;

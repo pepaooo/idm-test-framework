@@ -15,24 +15,24 @@ class LdapValueChangesTest {
     @Test
     @DisplayName("Well-formed changes, and anything that is not a map, have no problem")
     void wellFormed() {
-        assertThat(LdapValueChanges.shapeProblem(Map.of("add", "a"))).isNull();
-        assertThat(LdapValueChanges.shapeProblem(Map.of("add", List.of("a"), "remove", "b"))).isNull();
-        assertThat(LdapValueChanges.shapeProblem("plain")).isNull();
-        assertThat(LdapValueChanges.shapeProblem(List.of("a"))).isNull();
+        assertThat(LdapValueChanges.shapeProblem("seeAlso", Map.of("add", "a"))).isNull();
+        assertThat(LdapValueChanges.shapeProblem("seeAlso", Map.of("add", List.of("a"), "remove", "b"))).isNull();
+        assertThat(LdapValueChanges.shapeProblem("seeAlso", "plain")).isNull();
+        assertThat(LdapValueChanges.shapeProblem("seeAlso", List.of("a"))).isNull();
     }
 
     @Test
     @DisplayName("Each malformed change is named")
     void malformed() {
-        assertThat(LdapValueChanges.shapeProblem(Map.of())).isEqualTo("is an empty map; use add and/or remove");
-        assertThat(LdapValueChanges.shapeProblem(Map.of("ad", "a"))).isEqualTo("has unknown keys [ad]; use add and/or remove");
-        assertThat(LdapValueChanges.shapeProblem(Map.of("add", List.of()))).isEqualTo("has an empty 'add'");
+        assertThat(LdapValueChanges.shapeProblem("seeAlso", Map.of())).isEqualTo("is an empty map; use add and/or remove");
+        assertThat(LdapValueChanges.shapeProblem("seeAlso", Map.of("ad", "a"))).isEqualTo("has unknown keys [ad]; use add and/or remove");
+        assertThat(LdapValueChanges.shapeProblem("seeAlso", Map.of("add", List.of()))).isEqualTo("has an empty 'add'");
         Map<String, Object> nullRemove = new HashMap<>();
         nullRemove.put("remove", null);
-        assertThat(LdapValueChanges.shapeProblem(nullRemove)).isEqualTo("has an empty 'remove'");
-        assertThat(LdapValueChanges.shapeProblem(Map.of("add", List.of("a", List.of("b")))))
+        assertThat(LdapValueChanges.shapeProblem("seeAlso", nullRemove)).isEqualTo("has an empty 'remove'");
+        assertThat(LdapValueChanges.shapeProblem("seeAlso", Map.of("add", List.of("a", List.of("b")))))
                 .isEqualTo("has a null, map or list value in 'add'; give plain values");
-        assertThat(LdapValueChanges.shapeProblem(Map.of("add", "cn=a,o=x", "remove", "CN=A,O=X")))
+        assertThat(LdapValueChanges.shapeProblem("seeAlso", Map.of("add", "cn=a,o=x", "remove", "CN=A,O=X")))
                 .isEqualTo("lists [cn=a,o=x] in both 'add' and 'remove'");
     }
 
@@ -64,5 +64,12 @@ class LdapValueChangesTest {
         assertThat(LdapValueChanges.offending("add", "ENGINEER", "Engineer")).containsExactly("ENGINEER");
         assertThat(SecretNames.isSecret("unicodePwd")).isTrue();
         assertThat(SecretNames.isSecret("seeAlso")).isFalse();
+    }
+
+    @Test
+    @DisplayName("The overlap message does not quote the values of a secret-named attribute")
+    void secretOverlap() {
+        assertThat(LdapValueChanges.shapeProblem("userPassword", Map.of("add", "S3cret!", "remove", "S3cret!")))
+                .isEqualTo("lists the same value in both 'add' and 'remove'");
     }
 }

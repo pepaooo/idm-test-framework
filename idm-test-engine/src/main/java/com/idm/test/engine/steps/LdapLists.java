@@ -29,7 +29,7 @@ final class LdapLists {
                 if (!update) {
                     return prefix + "uses add/remove, which only apply to ldap.update";
                 }
-                String changeProblem = LdapValueChanges.shapeProblem(value);
+                String changeProblem = LdapValueChanges.shapeProblem(attribute.getKey(), value);
                 if (changeProblem != null) {
                     return prefix + changeProblem;
                 }

@@ -1,5 +1,7 @@
 package com.idm.test.engine.expr;
 
+import java.util.ArrayList;
+import com.idm.test.engine.spi.Explained;
 import com.idm.test.engine.expr.ExpressionEvaluator.ExpressionException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -263,5 +265,104 @@ class ExpressionEvaluatorTest {
         Object result = evaluator.evaluate("({ name: user.firstName, tags: ['a', 'b'] })", scope());
 
         assertThat(result).isEqualTo(Map.of("name", "ada", "tags", List.of("a", "b")));
+    }
+
+    private Explained explain(String expression, Map<String, Object> variables) {
+        return evaluator.evaluateExplained(expression, variables);
+    }
+
+    @Test
+    @DisplayName("containsAll: every value present, single values or lists, compared as text")
+    void testContainsAll() {
+        Map<String, Object> vars = Map.of("groups", List.of("HR", "VPN", 42));
+        assertThat(evaluator.evaluate("containsAll(groups, ['VPN', 'HR'])", vars)).isEqualTo(true);
+        assertThat(evaluator.evaluate("containsAll(groups, 'HR')", vars)).isEqualTo(true);
+        assertThat(evaluator.evaluate("containsAll(groups, '42')", vars)).isEqualTo(true);
+        assertThat(evaluator.evaluate("containsAll('HR', 'HR')", Map.of())).isEqualTo(true);
+        assertThat(evaluator.evaluate("containsAll(groups, 'hr')", vars)).isEqualTo(false);
+
+        Explained missing = explain("containsAll(groups, ['HR', 'Finance'])", vars);
+        assertThat(missing.value()).isEqualTo(false);
+        assertThat(missing.notes()).containsExactly("containsAll: missing [Finance]");
+    }
+
+    @Test
+    @DisplayName("excludesAll: none present; an absent list excludes everything")
+    void testExcludesAll() {
+        Map<String, Object> vars = Map.of("groups", List.of("HR", "VPN"));
+        assertThat(evaluator.evaluate("excludesAll(groups, ['Finance'])", vars)).isEqualTo(true);
+        assertThat(evaluator.evaluate("excludesAll(null, 'X')", Map.of())).isEqualTo(true);
+        assertThat(evaluator.evaluate("excludesAll(undefined, 'X')", Map.of())).isEqualTo(true);
+
+        Explained found = explain("excludesAll(groups, ['Finance', 'VPN'])", vars);
+        assertThat(found.value()).isEqualTo(false);
+        assertThat(found.notes()).containsExactly("excludesAll: found [VPN]");
+    }
+
+    @Test
+    @DisplayName("sameMembers: same values in any order, duplicates ignored")
+    void testSameMembers() {
+        Map<String, Object> vars = Map.of("groups", List.of("HR", "VPN", "HR"));
+        assertThat(evaluator.evaluate("sameMembers(groups, ['VPN', 'HR'])", vars)).isEqualTo(true);
+
+        Explained differs = explain("sameMembers(groups, ['HR', 'Finance'])", vars);
+        assertThat(differs.value()).isEqualTo(false);
+        assertThat(differs.notes()).containsExactly("sameMembers: missing [Finance]; unexpected [VPN]");
+
+        assertThat(explain("sameMembers(groups, ['HR', 'VPN', 'X'])", vars).notes())
+                .containsExactly("sameMembers: missing [X]");
+    }
+
+    @Test
+    @DisplayName("Objects compare by content, whatever their key order; arrays element by element")
+    void testObjectsByContent() {
+        Map<String, Object> vars = Map.of("roles", List.of(
+                Map.of("id", 1, "role", "HR"), Map.of("id", 2, "role", "VPN")));
+        assertThat(evaluator.evaluate("containsAll(roles, [{role: 'HR', id: '1'}])", vars)).isEqualTo(true);
+        assertThat(evaluator.evaluate("containsAll(roles, [{role: 'HR', id: 2}])", vars)).isEqualTo(false);
+        assertThat(evaluator.evaluate("containsAll([[1, 2]], [['1', '2']])", Map.of())).isEqualTo(true);
+        assertThat(evaluator.evaluate("containsAll([[1, 2]], [[2, 1]])", Map.of())).isEqualTo(false);
+    }
+
+    @Test
+    @DisplayName("Notes show at most ten values, then how many more")
+    void testNoteCap() {
+        List<Object> twelve = new ArrayList<>();
+        for (int i = 1; i <= 12; i++) {
+            twelve.add("v" + i);
+        }
+        Explained capped = explain("containsAll([], wanted)", Map.of("wanted", twelve));
+        assertThat(capped.notes()).containsExactly(
+                "containsAll: missing [v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, … 2 more]");
+    }
+
+    @Test
+    @DisplayName("Notes: in call order, none when true, none carried into the next evaluation")
+    void testNotesLifecycle() {
+        Explained two = explain("containsAll(['a'], 'b') || excludesAll(['a'], 'a')", Map.of());
+        assertThat(two.value()).isEqualTo(false);
+        assertThat(two.notes()).containsExactly("containsAll: missing [b]", "excludesAll: found [a]");
+
+        Explained ok = explain("containsAll(['a'], 'a')", Map.of());
+        assertThat(ok.value()).isEqualTo(true);
+        assertThat(ok.notes()).isEmpty();
+
+        assertThat(explain("1 + 1", Map.of()).notes()).isEmpty();
+        assertThat(evaluator.evaluate("1 + 1", Map.of())).isEqualTo(2.0);
+    }
+
+    @Test
+    @DisplayName("Helpers run inside the sandbox and the instruction budget")
+    void testHelpersSandboxed() {
+        ExpressionEvaluator tight = new ExpressionEvaluator(5_000);
+        List<Object> many = new ArrayList<>();
+        for (int i = 0; i < 2_000; i++) {
+            many.add("v" + i);
+        }
+        assertThatThrownBy(() -> tight.evaluate("sameMembers(many, many)", Map.of("many", many)))
+                .isInstanceOf(ExpressionEvaluator.ExpressionException.class)
+                .hasMessageContaining("ran too long");
+        assertThatThrownBy(() -> evaluator.evaluate("java.lang.System.exit(0)", Map.of()))
+                .isInstanceOf(ExpressionEvaluator.ExpressionException.class);
     }
 }

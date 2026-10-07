@@ -1,5 +1,6 @@
 package com.idm.test.engine.spi;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -20,4 +21,13 @@ public interface DeferredExpression {
      * @throws RuntimeException when the expression throws, or produces {@code undefined}
      */
     Object evaluate(Map<String, Object> bindings);
+
+    /**
+     * Like {@link #evaluate}, plus the notes the list helpers recorded ({@code containsAll:
+     * missing [VPN]}), so a step can say why a check was false. Implementations that cannot
+     * collect notes return none.
+     */
+    default Explained explain(Map<String, Object> bindings) {
+        return new Explained(evaluate(bindings), List.of());
+    }
 }

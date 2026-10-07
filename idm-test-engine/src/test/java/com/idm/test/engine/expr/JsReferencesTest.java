@@ -112,4 +112,13 @@ class JsReferencesTest {
     void testGeneratorMethodKeyIgnored() {
         assertThat(JsReferences.freeNames("({ *gen() { yield 1; } })")).isEmpty();
     }
+
+    @Test
+    @DisplayName("The list helpers are built-ins, not references")
+    void testHelpersAreGlobals() {
+        assertThat(JsReferences.freeNames("containsAll(response.json.groups, ['HR'])"))
+                .containsExactly("response");
+        assertThat(JsReferences.freeNames("excludesAll(a, b) && sameMembers(a, b)"))
+                .containsExactlyInAnyOrder("a", "b");
+    }
 }

@@ -163,6 +163,7 @@ public final class JsReferences {
                 names.add(String.valueOf(id));
             }
             names.add("arguments");
+            names.addAll(ExpressionEvaluator.HELPERS);
             return Set.copyOf(names);
         } finally {
             Context.exit();

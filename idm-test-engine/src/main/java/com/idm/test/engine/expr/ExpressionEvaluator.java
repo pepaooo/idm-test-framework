@@ -1,11 +1,15 @@
 package com.idm.test.engine.expr;
 
+import com.idm.test.engine.spi.Explained;
 import org.mozilla.javascript.Context;
 import org.mozilla.javascript.ContextFactory;
 import org.mozilla.javascript.Scriptable;
 import org.mozilla.javascript.ScriptableObject;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Evaluates one JavaScript expression against a set of scenario variables.
@@ -20,6 +24,68 @@ import java.util.Map;
  * already covers date arithmetic, capitalisation, padding, conditionals and JSON.
  */
 public final class ExpressionEvaluator {
+
+    /** Built-in functions every expression can call; scenario names may not reuse them. */
+    public static final Set<String> HELPERS = Set.of("containsAll", "excludesAll", "sameMembers");
+
+    /**
+     * The list helpers. Values compare by canonical text: a primitive as String(v), an object as
+     * its sorted keys with their values' canonical text, an array element by element. A helper
+     * that returns false records one note in __checkNotes, which evaluateExplained reads back.
+     */
+    private static final String PRELUDE = """
+            var __checkNotes = [];
+            function __canon(v) {
+              if (v === null || v === undefined) return String(v);
+              if (Array.isArray(v)) return '[' + v.map(__canon).join(',') + ']';
+              if (typeof v === 'object') {
+                return '{' + Object.keys(v).sort().map(function (k) {
+                  return JSON.stringify(k) + ':' + __canon(v[k]);
+                }).join(',') + '}';
+              }
+              return String(v);
+            }
+            function __list(v) {
+              return v === null || v === undefined ? [] : (Array.isArray(v) ? v : [v]);
+            }
+            function __select(from, against, wantPresent) {
+              var keys = against.map(__canon), seen = {}, out = [];
+              from.forEach(function (v) {
+                var c = __canon(v);
+                if (seen[c]) return;
+                seen[c] = true;
+                if ((keys.indexOf(c) >= 0) === wantPresent) out.push(c);
+              });
+              return out;
+            }
+            function __show(values) {
+              var shown = values.slice(0, 10);
+              if (values.length > 10) shown.push('\\u2026 ' + (values.length - 10) + ' more');
+              return '[' + shown.join(', ') + ']';
+            }
+            function containsAll(list, values) {
+              var missing = __select(__list(values), __list(list), false);
+              if (missing.length === 0) return true;
+              __checkNotes.push('containsAll: missing ' + __show(missing));
+              return false;
+            }
+            function excludesAll(list, values) {
+              var found = __select(__list(values), __list(list), true);
+              if (found.length === 0) return true;
+              __checkNotes.push('excludesAll: found ' + __show(found));
+              return false;
+            }
+            function sameMembers(list, values) {
+              var a = __list(list), b = __list(values);
+              var missing = __select(b, a, false), unexpected = __select(a, b, false);
+              if (missing.length === 0 && unexpected.length === 0) return true;
+              var parts = [];
+              if (missing.length) parts.push('missing ' + __show(missing));
+              if (unexpected.length) parts.push('unexpected ' + __show(unexpected));
+              __checkNotes.push('sameMembers: ' + parts.join('; '));
+              return false;
+            }
+            """;
 
     /** Enough for any reasonable expression; a runaway loop exceeds it in milliseconds. */
     private static final int DEFAULT_INSTRUCTION_BUDGET = 100_000;
@@ -46,6 +112,15 @@ public final class ExpressionEvaluator {
      *                             foreign Rhino Context already open on this thread
      */
     public Object evaluate(String expression, Map<String, Object> variables) {
+        return evaluateExplained(expression, variables).value();
+    }
+
+    /**
+     * Like {@link #evaluate}, plus the notes the list helpers recorded while the expression ran.
+     *
+     * @throws ExpressionException as {@link #evaluate} does
+     */
+    public Explained evaluateExplained(String expression, Map<String, Object> variables) {
         Context current = Context.getCurrentContext();
         if (current != null && current.getFactory() != contextFactory) {
             // A Context created by unrelated code (a different ExpressionEvaluator, or some other
@@ -106,7 +181,7 @@ public final class ExpressionEvaluator {
         }
     }
 
-    private Object doEvaluate(String expression, Map<String, Object> variables) {
+    private Explained doEvaluate(String expression, Map<String, Object> variables) {
         Context cx = contextFactory.enterContext();
         try {
             // Belt and braces: onContextCreated only runs the first time a Context is created,
@@ -124,7 +199,12 @@ public final class ExpressionEvaluator {
             // wraps a Java object anyway, which is the point of it.
             cx.setClassShutter(className -> false);
 
-            return JsValues.fromJs(cx.evaluateString(scope, expression, "expression", 1, null));
+            // The helpers are defined after the scenario's names, so they always mean the
+            // built-ins; the validator refuses scenario names that would collide with them.
+            cx.evaluateString(scope, PRELUDE, "helpers", 1, null);
+
+            Object value = JsValues.fromJs(cx.evaluateString(scope, expression, "expression", 1, null));
+            return new Explained(value, notesIn(scope));
 
         } catch (InstructionBudgetExceeded e) {
             throw new ExpressionException(
@@ -137,6 +217,15 @@ public final class ExpressionEvaluator {
         } finally {
             Context.exit();
         }
+    }
+
+    private static List<String> notesIn(Scriptable scope) {
+        Object notes = JsValues.fromJs(ScriptableObject.getProperty(scope, "__checkNotes"));
+        List<String> result = new ArrayList<>();
+        if (notes instanceof List<?> list) {
+            list.forEach(note -> result.add(String.valueOf(note)));
+        }
+        return result;
     }
 
     /**

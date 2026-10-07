@@ -2,6 +2,7 @@ package com.idm.test.engine;
 
 import com.idm.test.engine.expr.ExpressionEvaluator;
 import com.idm.test.engine.spi.DeferredExpression;
+import com.idm.test.engine.spi.Explained;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -29,9 +30,14 @@ final class ScopedExpression implements DeferredExpression {
 
     @Override
     public Object evaluate(Map<String, Object> bindings) {
+        return explain(bindings).value();
+    }
+
+    @Override
+    public Explained explain(Map<String, Object> bindings) {
         Map<String, Object> variables = new LinkedHashMap<>(scope);
         variables.putAll(bindings);
-        return evaluator.evaluate(body, variables);
+        return evaluator.evaluateExplained(body, variables);
     }
 
     @Override

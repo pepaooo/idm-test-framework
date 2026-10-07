@@ -8,6 +8,7 @@ import com.idm.test.connector.rest.config.RestProperties;
 import com.idm.test.connector.rest.model.TextResponse;
 import com.idm.test.core.model.OperationResult;
 import com.idm.test.engine.spi.DeferredExpression;
+import com.idm.test.engine.spi.Explained;
 import com.idm.test.engine.spi.StepOutcome;
 import com.idm.test.engine.spi.StepType;
 
@@ -105,19 +106,23 @@ public final class HttpVerifyStep implements StepType {
             String hint = bound.xmlNullReason() != null && check.source().contains("response.xml")
                     ? " (response.xml is null: " + TokenFailureText.safe(bound.xmlNullReason(), null) + ")"
                     : "";
-            Object value;
+            Explained explained;
             try {
-                value = check.evaluate(Map.of("response", bound.response()));
+                explained = check.explain(Map.of("response", bound.response()));
             } catch (RuntimeException e) {
                 String error = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
                 return StepOutcome.failure(label + " failed: " + TokenFailureText.safe(error, null) + context(response) + hint);
             }
+            Object value = explained.value();
             if (!(value instanceof Boolean passed)) {
                 return StepOutcome.finalFailure(
                         label + " must return true or false, got " + TokenFailureText.safe(describe(value), null));
             }
             if (!passed) {
-                return StepOutcome.failure(label + " is false: " + check.source() + context(response) + hint);
+                String notes = explained.notes().isEmpty()
+                        ? ""
+                        : " — " + TokenFailureText.safe(String.join("; ", explained.notes()), null);
+                return StepOutcome.failure(label + " is false: " + check.source() + notes + context(response) + hint);
             }
         }
 

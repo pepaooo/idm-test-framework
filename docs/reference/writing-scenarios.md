@@ -436,6 +436,19 @@ misspelled column), ends the wait at once. Numbers compare by value, so `1` matc
     expect: { rowCount: 0 }
 ```
 
+**Checking several rows.** Put the condition in the query: the database compares with its own
+rules (collation, case, types) and returns only what the check needs.
+
+| To check that the user… | Query | `expect` |
+|---|---|---|
+| has READ and WRITE (others allowed) | `SELECT COUNT(*) AS n FROM user_permission WHERE username = ? AND permission IN ('READ', 'WRITE')` | `row: { n: 2 }` |
+| does not have ADMIN | `SELECT 1 FROM user_permission WHERE username = ? AND permission = 'ADMIN'` | `rowCount: 0` |
+| has exactly READ and WRITE | `SELECT COUNT(*) AS total, SUM(CASE WHEN permission IN ('READ', 'WRITE') THEN 1 ELSE 0 END) AS wanted FROM user_permission WHERE username = ?` | `row: { total: 2, wanted: 2 }` |
+| has three groups | `SELECT COUNT(*) AS n FROM user_group WHERE username = ?` | `row: { n: 3 }` |
+| has a mail address like `jdoe@…` | `SELECT 1 FROM users WHERE username = ? AND mail LIKE 'jdoe@%'` | `rowCount: 1` |
+
+`row:` matches column names ignoring case, so `n` matches a database that returns `N`.
+
 ### SOAP: roles and resources
 
 These steps call the Identity Manager Role and Resource services. Unlike the LDAP steps, they take
@@ -705,6 +718,38 @@ reads as
           name: 'Ana',
           role: ['Admin', 'HR'],
           manager: '' } }
+```
+
+**Checking lists.** Three functions make list checks short, and say what was wrong when they fail:
+
+| Function | True when |
+|---|---|
+| `containsAll(list, values)` | every one of `values` is in `list` (others allowed) |
+| `excludesAll(list, values)` | none of `values` is in `list` |
+| `sameMembers(list, values)` | both hold the same values, in any order |
+
+- Either argument may be one value or a list; a missing list (`null`, `undefined`) is empty, so
+  `excludesAll(response.json.groups, 'Finance')` passes when there are no groups.
+- Values compare as text, so `42` matches `'42'`; case matters (lower-case both sides with
+  `.toLowerCase()` to ignore it). Objects compare by content, whatever their key order.
+- A failing check says why: `check 1 of 1 is false: js:{ … } — containsAll: missing [VPN]`.
+- The names work in every `js:{ … }`, and are reserved: no fixture, `set:` or `as:` may use them.
+
+```yaml
+- http.verify:
+    target: idm
+    method: GET
+    path: "/users/${user.userId}/groups"
+    check:
+      - "js:{ containsAll(response.json.groups, ['HR', 'VPN']) }"
+      - "js:{ excludesAll(response.json.groups, 'Finance') }"
+    wait: { timeout: 2m, poll: 5s }
+
+- http.verify:
+    target: idm
+    method: GET
+    path: "/users/${user.userId}.xml"
+    check: "js:{ sameMembers(response.xml.user.role, ['Admin', 'HR']) }"
 ```
 
 **Captures:** the `response` map of the passing attempt.

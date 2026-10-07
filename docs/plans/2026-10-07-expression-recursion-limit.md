@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** A `js:{ … }` expression that recurses without end fails its step with `expression recursed too deeply and was stopped: js:{ … }` instead of escaping as a `StackOverflowError`.
+**Goal:** A `js:{ … }` expression that recurses without end fails its step with `expression nested or recursed too deeply and was stopped: js:{ … }` instead of escaping as a `StackOverflowError`.
 
 **Architecture:** `ExpressionEvaluator.doEvaluate` runs Rhino in interpreted mode with a maximum interpreter stack depth of 700 frames, turns Rhino's "Exceeded maximum stack depth" error into an `ExpressionException`, and catches `StackOverflowError` (recursion through Java, e.g. a getter calling a list helper) as a backstop with the same message.
 
@@ -13,7 +13,7 @@
 ## Global Constraints
 
 - Interpreted mode with `MAX_STACK_DEPTH = 700` frames, below the ~870 where the default instruction budget would stop recursion (revised during implementation, jangulo 2026-10-07) (`setInterpretedMode(true)` must precede `setMaximumInterpreterStackDepth`, which throws otherwise).
-- Message, exactly: `expression recursed too deeply and was stopped: js:{ <expression> }`, as an `ExpressionException`, for both Rhino's depth error and a `StackOverflowError`.
+- Message, exactly: `expression nested or recursed too deeply and was stopped: js:{ <expression> }`, as an `ExpressionException`, for both Rhino's depth error and a `StackOverflowError`.
 - Unchanged: the instruction budget and its message, the sandbox, the list helpers' limits, `validate`, the public signatures.
 - A recursive expression fails its step like other expression errors; the scenario continues to cleanup and records its result.
 - Commit trailer: a blank line, `ITF-42`, then `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
@@ -41,7 +41,7 @@
     void testRecursionStopped() {
         assertThatThrownBy(() -> evaluator.evaluate("(function f() { return f(); })()", Map.of()))
                 .isInstanceOf(ExpressionEvaluator.ExpressionException.class)
-                .hasMessage("expression recursed too deeply and was stopped: js:{ (function f() { return f(); })() }");
+                .hasMessage("expression nested or recursed too deeply and was stopped: js:{ (function f() { return f(); })() }");
 
         assertThatThrownBy(() -> evaluator.evaluate(
                 "(function () { function a() { return b(); } function b() { return a(); } return a(); })()", Map.of()))
@@ -165,7 +165,7 @@ Replace the catch chain with (keep the existing order and messages for the other
 
     private static ExpressionException recursedTooDeeply(String expression, Throwable cause) {
         return new ExpressionException(
-                "expression recursed too deeply and was stopped: js:{ " + expression + " }", cause);
+                "expression nested or recursed too deeply and was stopped: js:{ " + expression + " }", cause);
     }
 ```
 

@@ -56,7 +56,8 @@ public final class ExpressionEvaluator {
      * @param variables  scenario variables, made available by name
      * @return a plain Java value — String, Double, Boolean, Map, List or null
      * @throws ExpressionException on a syntax error, a sandbox violation, an unknown variable,
-     *                             an expression that exceeds its instruction budget, a result
+     *                             an expression that exceeds its instruction budget or nests or
+     *                             recurses deeper than {@link #MAX_STACK_DEPTH}, a result
      *                             that cannot be converted back to a plain Java value, or a
      *                             foreign Rhino Context already open on this thread
      */
@@ -67,7 +68,8 @@ public final class ExpressionEvaluator {
     /**
      * Like {@link #evaluate}, plus the notes the list helpers recorded while the expression ran.
      *
-     * @throws ExpressionException as {@link #evaluate} does
+     * @throws ExpressionException as {@link #evaluate} does, including for an expression that
+     *                             nests or recurses too deeply
      */
     public Explained evaluateExplained(String expression, Map<String, Object> variables) {
         Context current = Context.getCurrentContext();
@@ -103,7 +105,8 @@ public final class ExpressionEvaluator {
      * (embedded, unterminated, empty) that this method does not repeat.
      *
      * @param expression a JavaScript expression, as extracted from a {@code js:{ ... }} value
-     * @throws ExpressionException on a syntax error, with the expression text in the message, or
+     * @throws ExpressionException on a syntax error or an expression nested too deeply to
+     *                             compile, with the expression text in the message, or
      *                             a foreign Rhino Context already open on this thread (see
      *                             {@link #evaluate})
      */
@@ -122,6 +125,9 @@ public final class ExpressionEvaluator {
             // this method promises: a syntax error throws here, and a well-formed expression's
             // compiled Script is simply discarded.
             cx.compileString(expression, "expression", 1, null);
+        } catch (StackOverflowError e) {
+            throw new ExpressionException(
+                    "invalid expression js:{ " + expression + " }: it is nested too deeply", e);
         } catch (RuntimeException e) {
             throw new ExpressionException(
                     "invalid expression js:{ " + expression + " }: " + e.getMessage(), e);
@@ -141,7 +147,8 @@ public final class ExpressionEvaluator {
 
             // Interpreted mode makes recursion depth countable: Rhino stops an expression that
             // nests deeper than MAX_STACK_DEPTH with its own error instead of overflowing the
-            // Java stack. The instruction budget works the same in this mode.
+            // Java stack. The instruction budget still applies but counts work differently in
+            // this mode, so slightly more work fits in it than before.
             cx.setInterpretedMode(true);
             cx.setMaximumInterpreterStackDepth(MAX_STACK_DEPTH);
 
@@ -173,7 +180,8 @@ public final class ExpressionEvaluator {
             // still runs, and the next evaluation gets a fresh scope.
             throw recursedTooDeeply(expression, e);
         } catch (RuntimeException e) {
-            if (String.valueOf(e.getMessage()).contains("Exceeded maximum stack depth")) {
+            if (e instanceof org.mozilla.javascript.EvaluatorException
+                    && String.valueOf(e.getMessage()).contains("Exceeded maximum stack depth")) {
                 throw recursedTooDeeply(expression, e);
             }
             throw new ExpressionException(
@@ -185,7 +193,7 @@ public final class ExpressionEvaluator {
 
     private static ExpressionException recursedTooDeeply(String expression, Throwable cause) {
         return new ExpressionException(
-                "expression recursed too deeply and was stopped: js:{ " + expression + " }", cause);
+                "expression nested or recursed too deeply and was stopped: js:{ " + expression + " }", cause);
     }
 
     /**

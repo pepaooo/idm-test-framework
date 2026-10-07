@@ -322,7 +322,7 @@ public class EdirectoryConnector {
         } catch (org.springframework.ldap.NoSuchAttributeException e) {
             return refused(dn, attributes, LdapValueChanges.REMOVE, e);
         } catch (Exception e) {
-            String detail = changesSecret(attributes) ? "the directory refused the request" : e.getMessage();
+            String detail = touchesSecret(attributes) ? "the directory refused the request" : e.getMessage();
             log.error("Failed to update LDAP user '{}': {}", dn, detail);
             return OperationResult.<Void>builder()
                     .success(false)
@@ -355,7 +355,7 @@ public class EdirectoryConnector {
         String message;
         if (explanation != null) {
             message = explanation;
-        } else if (changesSecret(attributes)) {
+        } else if (touchesSecret(attributes)) {
             message = "Failed to update user: the directory refused the add/remove ("
                     + (LdapValueChanges.ADD.equals(key) ? "LDAP 20" : "LDAP 16") + ")";
         } else {
@@ -370,9 +370,9 @@ public class EdirectoryConnector {
                 .build();
     }
 
-    private static boolean changesSecret(Map<String, Object> attributes) {
+    private static boolean touchesSecret(Map<String, Object> attributes) {
         return attributes.entrySet().stream()
-                .anyMatch(entry -> entry.getValue() instanceof Map<?, ?> && SecretNames.isSecret(entry.getKey()));
+                .anyMatch(entry -> SecretNames.isSecret(entry.getKey()));
     }
 
     private String explain(String dn, Map<String, Object> attributes, String key) {

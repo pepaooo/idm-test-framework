@@ -42,7 +42,8 @@ public final class LdapValueMatcher {
      * @return {@code null} when {@code actual} satisfies {@code expected}, else the failure message
      */
     public static String match(String attribute, Object expected, Object actual) {
-        String problem = shapeProblem(expected);
+        boolean secret = SecretNames.isSecret(attribute);
+        String problem = shapeProblem(expected, secret);
         if (problem != null) {
             // A malformed matcher would otherwise compare nothing and pass.
             return "Attribute '" + attribute + "' " + problem;
@@ -52,7 +53,7 @@ public final class LdapValueMatcher {
         if (expected instanceof Map<?, ?> matcher) {
             boolean ignoreCase = Boolean.TRUE.equals(matcher.get(IGNORE_CASE));
             if (matcher.containsKey(EQUALS)) {
-                String mismatch = exactSet(attribute, values(matcher.get(EQUALS)), actualValues, ignoreCase);
+                String mismatch = exactSet(attribute, values(matcher.get(EQUALS)), actualValues, ignoreCase, secret);
                 if (mismatch != null) {
                     return mismatch;
                 }
@@ -61,6 +62,9 @@ public final class LdapValueMatcher {
                 List<Object> wanted = distinct(values(matcher.get(CONTAINS)), ignoreCase);
                 List<Object> missing = absentFrom(wanted, actualValues, ignoreCase);
                 if (!missing.isEmpty()) {
+                    if (secret) {
+                        return "Attribute '" + attribute + "': does not contain all the expected values";
+                    }
                     return "Attribute '" + attribute + "': expected to contain " + wanted
                             + "; missing " + missing + "; actual=" + actual;
                 }
@@ -69,6 +73,9 @@ public final class LdapValueMatcher {
                 List<Object> unwanted = distinct(values(matcher.get(EXCLUDES)), ignoreCase);
                 List<Object> found = presentIn(unwanted, actualValues, ignoreCase);
                 if (!found.isEmpty()) {
+                    if (secret) {
+                        return "Attribute '" + attribute + "': contains values that were expected to be absent";
+                    }
                     return "Attribute '" + attribute + "': expected not to contain " + unwanted
                             + "; found " + found;
                 }
@@ -77,14 +84,17 @@ public final class LdapValueMatcher {
                 long wanted = ((Number) matcher.get(COUNT)).longValue();
                 if (actualValues.size() != wanted) {
                     return "Attribute '" + attribute + "': expected " + wanted + (wanted == 1 ? " value" : " values")
-                            + ", found " + actualValues.size() + (actualValues.isEmpty() ? "" : ": " + actualValues);
+                            + ", found " + actualValues.size()
+                            + (actualValues.isEmpty() || secret ? "" : ": " + actualValues);
                 }
             }
             if (matcher.containsKey(MATCHES)) {
                 for (Object pattern : values(matcher.get(MATCHES))) {
                     Pattern compiled = Pattern.compile((String) pattern);
                     if (actualValues.stream().noneMatch(value -> compiled.matcher(String.valueOf(value)).matches())) {
-                        return "Attribute '" + attribute + "': no value matches " + pattern + "; actual=" + actual;
+                        return secret
+                                ? "Attribute '" + attribute + "': no value matches the pattern"
+                                : "Attribute '" + attribute + "': no value matches " + pattern + "; actual=" + actual;
                     }
                 }
             }
@@ -92,23 +102,29 @@ public final class LdapValueMatcher {
         }
 
         if (expected instanceof Collection<?> list) {
-            return exactSet(attribute, new ArrayList<>(list), actualValues, false);
+            return exactSet(attribute, new ArrayList<>(list), actualValues, false, secret);
         }
 
         boolean matches = expected == null
                 ? actualValues.isEmpty()
                 : actualValues.size() == 1 && sameValue(expected, actualValues.get(0));
-        return matches ? null
+        if (matches) {
+            return null;
+        }
+        return secret ? "Attribute '" + attribute + "': does not have the expected values"
                 : "Attribute '" + attribute + "': expected=" + expected + ", actual=" + actual;
     }
 
     private static String exactSet(String attribute, List<Object> expected, List<Object> actualValues,
-                                   boolean ignoreCase) {
+                                   boolean ignoreCase, boolean secret) {
         List<Object> wanted = distinct(expected, ignoreCase);
         List<Object> missing = absentFrom(wanted, actualValues, ignoreCase);
         List<Object> unexpected = absentFrom(actualValues, wanted, ignoreCase);
         if (missing.isEmpty() && unexpected.isEmpty()) {
             return null;
+        }
+        if (secret) {
+            return "Attribute '" + attribute + "': does not have the expected values";
         }
         StringBuilder message = new StringBuilder("Attribute '" + attribute + "': expected exactly "
                 + wanted + " in any order");
@@ -126,6 +142,18 @@ public final class LdapValueMatcher {
      *         fragment to follow the attribute's name
      */
     public static String shapeProblem(Object expected) {
+        return shapeProblem(expected, false);
+    }
+
+    /**
+     * As {@link #shapeProblem(Object)}, but for a secret-named attribute the fragment never quotes
+     * a value or a pattern.
+     */
+    public static String shapeProblem(String attribute, Object expected) {
+        return shapeProblem(expected, SecretNames.isSecret(attribute));
+    }
+
+    private static String shapeProblem(Object expected, boolean secret) {
         if (expected instanceof Map<?, ?> matcher) {
             if (matcher.isEmpty()) {
                 return "is an empty map; " + KEY_HINT;
@@ -152,10 +180,11 @@ public final class LdapValueMatcher {
                 }
             }
             if (matcher.containsKey(COUNT) && !wholeNonNegative(matcher.get(COUNT))) {
-                return "has a 'count' that is not a non-negative whole number: " + matcher.get(COUNT);
+                return "has a 'count' that is not a non-negative whole number"
+                        + (secret ? "" : ": " + matcher.get(COUNT));
             }
             if (matcher.containsKey(MATCHES)) {
-                String patternProblem = patternProblem(matcher.get(MATCHES));
+                String patternProblem = patternProblem(matcher.get(MATCHES), secret);
                 if (patternProblem != null) {
                     return patternProblem;
                 }
@@ -174,7 +203,8 @@ public final class LdapValueMatcher {
                 List<Object> overlap = presentIn(distinct(values(matcher.get(CONTAINS)), ignoreCase),
                         values(matcher.get(EXCLUDES)), ignoreCase);
                 if (!overlap.isEmpty()) {
-                    return "lists " + overlap + " in both 'contains' and 'excludes'";
+                    return "lists " + (secret ? "the same value" : overlap.toString())
+                            + " in both 'contains' and 'excludes'";
                 }
             }
             return null;
@@ -191,7 +221,7 @@ public final class LdapValueMatcher {
         return null;
     }
 
-    private static String patternProblem(Object raw) {
+    private static String patternProblem(Object raw, boolean secret) {
         List<Object> patterns = values(raw);
         if (patterns.isEmpty()) {
             return "has an empty 'matches'";
@@ -203,7 +233,8 @@ public final class LdapValueMatcher {
             try {
                 Pattern.compile(text);
             } catch (PatternSyntaxException e) {
-                return "has an invalid 'matches' pattern '" + text + "': " + e.getDescription();
+                return "has an invalid 'matches' pattern" + (secret ? "" : " '" + text + "'")
+                        + ": " + e.getDescription();
             }
         }
         return null;

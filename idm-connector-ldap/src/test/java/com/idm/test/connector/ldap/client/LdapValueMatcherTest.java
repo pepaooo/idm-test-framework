@@ -255,4 +255,40 @@ class LdapValueMatcherTest {
         assertThat(LdapValueMatcher.shapeProblem(Map.of("contains", "Sales", "excludes", "SALES"))).isNull();
         assertThat(LdapValueMatcher.shapeProblem(Map.of("count", java.math.BigInteger.TWO))).isNull();
     }
+
+    @Test
+    @DisplayName("Messages for a secret-named attribute never show expected or actual values")
+    void secretNamedAttributeMessagesHideValues() {
+        String a = "S3cretAlpha";
+        String b = "S3cretBeta";
+        String attr = "apiToken";
+        Map<String, Object> contradictory = Map.of("contains", a, "excludes", a);
+        Map<String, Object> badPattern = Map.of("matches", "[" + a);
+        Map<String, Object> badCount = Map.of("count", a);
+        List<String> messages = Arrays.asList(
+                LdapValueMatcher.match(attr, a, b),
+                LdapValueMatcher.match(attr, a, null),
+                LdapValueMatcher.match(attr, List.of(a, b), List.of(b)),
+                LdapValueMatcher.match(attr, Map.of("equals", a), b),
+                LdapValueMatcher.match(attr, Map.of("contains", List.of(a)), List.of(b)),
+                LdapValueMatcher.match(attr, Map.of("excludes", a), List.of(a, b)),
+                LdapValueMatcher.match(attr, Map.of("count", 2), List.of(a)),
+                LdapValueMatcher.match(attr, Map.of("matches", "^x.*$"), List.of(a)),
+                LdapValueMatcher.match(attr, contradictory, a),
+                LdapValueMatcher.match(attr, badPattern, a),
+                LdapValueMatcher.match(attr, badCount, a),
+                LdapValueMatcher.shapeProblem(attr, contradictory),
+                LdapValueMatcher.shapeProblem(attr, badPattern),
+                LdapValueMatcher.shapeProblem(attr, badCount));
+        assertThat(messages).doesNotContainNull();
+        for (String message : messages) {
+            assertThat(message).doesNotContain(a).doesNotContain(b).startsWith(
+                    message.startsWith("Attribute") ? "Attribute 'apiToken'" : "");
+        }
+        assertThat(messages.get(0)).isEqualTo("Attribute 'apiToken': does not have the expected values");
+        assertThat(messages.get(6)).isEqualTo("Attribute 'apiToken': expected 2 values, found 1");
+        assertThat(messages.get(7)).isEqualTo("Attribute 'apiToken': no value matches the pattern");
+        assertThat(messages.get(11)).isEqualTo("lists the same value in both 'contains' and 'excludes'");
+        assertThat(messages.get(12)).startsWith("has an invalid 'matches' pattern: ");
+    }
 }

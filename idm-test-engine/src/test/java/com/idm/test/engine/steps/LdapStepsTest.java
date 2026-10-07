@@ -128,6 +128,24 @@ class LdapStepsTest {
     }
 
     @Test
+    @DisplayName("ldap.verify should refuse to verify userPassword, without quoting a value or reading the directory")
+    void testVerifyRejectsUserPassword() {
+        EdirectoryConnector mockConnector = mock(EdirectoryConnector.class);
+
+        for (Object expectation : List.of("S3cretValue!", Map.of("count", 0), Map.of("equals", "S3cretValue!"))) {
+            StepOutcome outcome = new LdapVerifyStep(only(mockConnector)).execute(Map.of(
+                    "dn", "cn=a,ou=users",
+                    "expect", Map.of("USERPASSWORD", expectation)), false);
+
+            assertThat(outcome.isFinal()).isTrue();
+            assertThat(outcome.success()).isFalse();
+            assertThat(outcome.message()).contains("'userPassword' cannot be verified")
+                    .doesNotContain("S3cretValue!");
+        }
+        verify(mockConnector, never()).readAttributes(any());
+    }
+
+    @Test
     @DisplayName("Only the assertion step is retryable")
     void testRetryability() {
         assertThat(new LdapCreateStep(directories).retryable()).isFalse();

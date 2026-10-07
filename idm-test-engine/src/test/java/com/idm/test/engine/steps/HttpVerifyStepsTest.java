@@ -118,6 +118,18 @@ class HttpVerifyStepsTest {
     }
 
     @Test
+    @DisplayName("A misspelled values argument fails the check instead of passing")
+    void testMissingValuesFails() {
+        stubJson(200, "{\"groups\":[\"HR\"]}");
+
+        StepResult step = run(params("check", "js:{ excludesAll(response.json.groups, response.json.blocked) }"));
+
+        assertThat(step.success()).isFalse();
+        assertThat(step.message()).contains("check 1 of 1 failed:")
+                .contains("excludesAll: the values to look for are undefined");
+    }
+
+    @Test
     @DisplayName("Helpers read XML elements whether they occur once or several times")
     void testHelpersOnXml() {
         stubBody("application/xml", "<user><role>Admin</role><role>HR</role></user>");

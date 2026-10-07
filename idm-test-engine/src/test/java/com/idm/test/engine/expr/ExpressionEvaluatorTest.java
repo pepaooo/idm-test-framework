@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Timeout;
 import org.mozilla.javascript.Context;
 import org.mozilla.javascript.ContextFactory;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -15,6 +16,7 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
 @DisplayName("ExpressionEvaluator")
 class ExpressionEvaluatorTest {
@@ -352,18 +354,105 @@ class ExpressionEvaluatorTest {
     }
 
     @Test
-    @DisplayName("Helpers run inside the sandbox and the instruction budget")
+    @DisplayName("Helpers are not counted against the budget, but the expression calling them is; the sandbox holds")
     void testHelpersSandboxed() {
         ExpressionEvaluator tight = new ExpressionEvaluator(5_000);
         List<Object> many = new ArrayList<>();
         for (int i = 0; i < 2_000; i++) {
             many.add("v" + i);
         }
-        assertThatThrownBy(() -> tight.evaluate("sameMembers(many, many)", Map.of("many", many)))
+        assertThat(tight.evaluate("sameMembers(many, many)", Map.of("many", many))).isEqualTo(true);
+        assertThatThrownBy(() -> tight.evaluate(
+                "var n = 0; while (true) { containsAll(many, 'v1'); n++; } n", Map.of("many", many)))
                 .isInstanceOf(ExpressionEvaluator.ExpressionException.class)
                 .hasMessageContaining("ran too long");
         assertThatThrownBy(() -> evaluator.evaluate("java.lang.System.exit(0)", Map.of()))
                 .isInstanceOf(ExpressionEvaluator.ExpressionException.class);
+        assertThat(evaluator.evaluate("typeof containsAll.getClass", Map.of())).isEqualTo("undefined");
+        assertThat(evaluator.evaluate("typeof sameMembers", Map.of())).isEqualTo("function");
+    }
+
+    @Test
+    @DisplayName("Lists of thousands fit the default budget, well under a second")
+    void testLongListsAtDefaultBudget() {
+        List<Object> strings = new ArrayList<>();
+        for (int i = 0; i < 5_000; i++) {
+            strings.add("value-" + i);
+        }
+        List<Object> objects = new ArrayList<>();
+        for (int i = 0; i < 1_000; i++) {
+            objects.add(Map.of("id", i, "name", "n" + i));
+        }
+        Map<String, Object> vars = Map.of("strings", strings, "objects", objects);
+        assertTimeoutPreemptively(Duration.ofSeconds(2), () -> {
+            assertThat(evaluator.evaluate("containsAll(strings, ['value-1', 'value-4999'])", vars)).isEqualTo(true);
+            assertThat(evaluator.evaluate("excludesAll(strings, 'zz')", vars)).isEqualTo(true);
+            assertThat(evaluator.evaluate("sameMembers(strings, strings)", vars)).isEqualTo(true);
+            assertThat(evaluator.evaluate("containsAll(objects, {name: 'n999', id: '999'})", vars)).isEqualTo(true);
+            assertThat(evaluator.evaluate("sameMembers(objects, objects)", vars)).isEqualTo(true);
+            assertThat(explain("containsAll([], strings)", vars).notes()).containsExactly(
+                    "containsAll: missing [value-0, value-1, value-2, value-3, value-4, value-5, value-6, "
+                            + "value-7, value-8, value-9, … 4990 more]");
+        });
+    }
+
+    @Test
+    @DisplayName("A missing, undefined or null values argument is an error; a missing list is empty")
+    void testMissingValuesIsAnError() {
+        Map<String, Object> vars = Map.of("groups", List.of("HR"));
+        for (String helper : List.of("containsAll", "excludesAll", "sameMembers")) {
+            for (String values : List.of("undefined", "null", "expected.grups")) {
+                String expression = helper + "(groups, " + values + ")";
+                Map<String, Object> scope = Map.of("groups", List.of("HR"), "expected", Map.of());
+                assertThatThrownBy(() -> evaluator.evaluate(expression, scope))
+                        .as(expression)
+                        .isInstanceOf(ExpressionException.class)
+                        .hasMessageContaining("could not evaluate js:{ " + expression + " }")
+                        .hasMessageContaining(helper + ": the values to look for are undefined");
+            }
+            assertThatThrownBy(() -> evaluator.evaluate(helper + "(groups)", vars))
+                    .isInstanceOf(ExpressionException.class)
+                    .hasMessageContaining(helper + ": the values to look for are undefined");
+        }
+        assertThat(evaluator.evaluate("excludesAll(undefined, 'X')", Map.of())).isEqualTo(true);
+        assertThat(evaluator.evaluate("containsAll(null, [])", Map.of())).isEqualTo(true);
+        assertThat(evaluator.evaluate("sameMembers(undefined, [])", Map.of())).isEqualTo(true);
+    }
+
+    @Test
+    @DisplayName("Top-level primitives compare as JavaScript's String(v)")
+    void testTopLevelText() {
+        assertThat(evaluator.evaluate("containsAll([42, 42.0, true, 1.5], ['42', 'true', '1.5'])", Map.of()))
+                .isEqualTo(true);
+        assertThat(evaluator.evaluate("containsAll([42], '42.0')", Map.of())).isEqualTo(false);
+        assertThat(evaluator.evaluate("containsAll(['x'], ['x', 'x'])", Map.of())).isEqualTo(true);
+        assertThat(explain("containsAll(['a'], [7, true, 'b'])", Map.of()).notes())
+                .containsExactly("containsAll: missing [7, true, b]");
+    }
+
+    @Test
+    @DisplayName("Values under secret-looking keys are shown as *** in notes, but still compared")
+    void testSecretsMaskedInNotes() {
+        Explained e = explain("containsAll([], [{user: 'a', password: 'S3cr3t', apiToken: {v: 1}}])", Map.of());
+        assertThat(e.notes()).containsExactly("containsAll: missing [{apiToken: ***, password: ***, user: \"a\"}]");
+        assertThat(evaluator.evaluate("containsAll([{password: 'a'}], [{password: 'b'}])", Map.of()))
+                .isEqualTo(false);
+        assertThat(evaluator.evaluate("containsAll([{password: 'a'}], [{password: 'a'}])", Map.of()))
+                .isEqualTo(true);
+    }
+
+    @Test
+    @DisplayName("A self-referencing or exponentially duplicated value is an error, not a hang")
+    void testRunawayValues() {
+        assertThatThrownBy(() -> evaluator.evaluate("var o = {}; o.self = o; containsAll([o], 'x')", Map.of()))
+                .isInstanceOf(ExpressionException.class)
+                .hasMessageContaining("nested more than");
+        assertTimeoutPreemptively(Duration.ofSeconds(5), () ->
+                assertThatThrownBy(() -> evaluator.evaluate(
+                        "var a = {}; for (var i = 0; i < 25; i++) { a = {x: a, y: a}; } containsAll([a], 'x')",
+                        Map.of()))
+                        .isInstanceOf(ExpressionException.class)
+                        .hasMessageContaining("values in total"));
     }
 
     @Test
@@ -399,9 +488,11 @@ class ExpressionEvaluatorTest {
     }
 
     @Test
-    @DisplayName("An expression overwriting the notes does not break explain")
+    @DisplayName("An expression can neither fake nor break the notes")
     void testNotesOverwritten() {
         Explained e = explain("(function () { __checkNotes = undefined; return 1; })()", Map.of());
         assertThat(e.notes()).isEmpty();
+        Explained faked = explain("var __checkNotes = ['fake']; containsAll(['a'], 'b')", Map.of());
+        assertThat(faked.notes()).containsExactly("containsAll: missing [b]");
     }
 }

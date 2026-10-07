@@ -6,8 +6,6 @@ import org.mozilla.javascript.ContextFactory;
 import org.mozilla.javascript.Scriptable;
 import org.mozilla.javascript.ScriptableObject;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -20,88 +18,15 @@ import java.util.Set;
  * never terminates. Steps remain the only things in a scenario that do anything, which is what
  * keeps a scenario's step list its complete execution order.
  * <p>
- * Expressions are plain ES6. There is deliberately no helper object: standard JavaScript
- * already covers date arithmetic, capitalisation, padding, conditionals and JSON.
+ * Expressions are plain ES6: standard JavaScript already covers date arithmetic,
+ * capitalisation, padding, conditionals and JSON. The one addition is the three list helpers
+ * ({@link #HELPERS}), global functions implemented in Java by {@link ListHelpers}; there is no
+ * helper object.
  */
 public final class ExpressionEvaluator {
 
     /** Built-in functions every expression can call; scenario names may not reuse them. */
     public static final Set<String> HELPERS = Set.of("containsAll", "excludesAll", "sameMembers");
-
-    /**
-     * The list helpers. Values compare by canonical text: a primitive as String(v), an object as
-     * its sorted keys with their values' canonical text, an array element by element. A helper
-     * that returns false records one note in __checkNotes, which evaluateExplained reads back.
-     */
-    private static final String PRELUDE = """
-            var __checkNotes = [];
-            function __plain(v) {
-              return v instanceof Date || v instanceof RegExp;
-            }
-            function __key(v, nested) {
-              if (Array.isArray(v)) {
-                return '\u0001[' + v.map(function (e) { return __key(e, true); }).join(',') + ']';
-              }
-              if (v !== null && typeof v === 'object' && !__plain(v)) {
-                return '\u0001{' + Object.keys(v).sort().map(function (k) {
-                  return JSON.stringify(k) + ':' + __key(v[k], true);
-                }).join(',') + '}';
-              }
-              return nested ? JSON.stringify(String(v)) : String(v);
-            }
-            function __disp(v, nested) {
-              if (Array.isArray(v)) {
-                return '[' + v.map(function (e) { return __disp(e, true); }).join(', ') + ']';
-              }
-              if (v !== null && typeof v === 'object' && !__plain(v)) {
-                return '{' + Object.keys(v).sort().map(function (k) {
-                  return k + ': ' + __disp(v[k], true);
-                }).join(', ') + '}';
-              }
-              return nested && typeof v === 'string' ? JSON.stringify(v) : String(v);
-            }
-            function __list(v) {
-              return v === null || v === undefined ? [] : (Array.isArray(v) ? v : [v]);
-            }
-            function __select(from, against, wantPresent) {
-              var known = Object.create(null), seen = Object.create(null), out = [];
-              against.forEach(function (v) { known['k' + __key(v, false)] = true; });
-              from.forEach(function (v) {
-                var c = 'k' + __key(v, false);
-                if (seen[c]) return;
-                seen[c] = true;
-                if ((known[c] === true) === wantPresent) out.push(__disp(v, false));
-              });
-              return out;
-            }
-            function __show(values) {
-              var shown = values.slice(0, 10);
-              if (values.length > 10) shown.push('\\u2026 ' + (values.length - 10) + ' more');
-              return '[' + shown.join(', ') + ']';
-            }
-            function containsAll(list, values) {
-              var missing = __select(__list(values), __list(list), false);
-              if (missing.length === 0) return true;
-              __checkNotes.push('containsAll: missing ' + __show(missing));
-              return false;
-            }
-            function excludesAll(list, values) {
-              var found = __select(__list(values), __list(list), true);
-              if (found.length === 0) return true;
-              __checkNotes.push('excludesAll: found ' + __show(found));
-              return false;
-            }
-            function sameMembers(list, values) {
-              var a = __list(list), b = __list(values);
-              var missing = __select(b, a, false), unexpected = __select(a, b, false);
-              if (missing.length === 0 && unexpected.length === 0) return true;
-              var parts = [];
-              if (missing.length) parts.push('missing ' + __show(missing));
-              if (unexpected.length) parts.push('unexpected ' + __show(unexpected));
-              __checkNotes.push('sameMembers: ' + parts.join('; '));
-              return false;
-            }
-            """;
 
     /** Enough for any reasonable expression; a runaway loop exceeds it in milliseconds. */
     private static final int DEFAULT_INSTRUCTION_BUDGET = 100_000;
@@ -216,11 +141,12 @@ public final class ExpressionEvaluator {
             cx.setClassShutter(className -> false);
 
             // The helpers are defined after the scenario's names, so they always mean the
-            // built-ins; the validator refuses scenario names that would collide with them.
-            cx.evaluateString(scope, PRELUDE, "helpers", 1, null);
+            // built-ins; the validator refuses scenario names that would collide with them. Their
+            // notes are collected in Java, out of the expression's reach.
+            ListHelpers helpers = ListHelpers.defineIn(cx, scope);
 
             Object value = JsValues.fromJs(cx.evaluateString(scope, expression, "expression", 1, null));
-            return new Explained(value, notesIn(scope));
+            return new Explained(value, helpers.notes());
 
         } catch (InstructionBudgetExceeded e) {
             throw new ExpressionException(
@@ -233,20 +159,6 @@ public final class ExpressionEvaluator {
         } finally {
             Context.exit();
         }
-    }
-
-    private static List<String> notesIn(Scriptable scope) {
-        List<String> result = new ArrayList<>();
-        Object notes;
-        try {
-            notes = JsValues.fromJs(ScriptableObject.getProperty(scope, "__checkNotes"));
-        } catch (RuntimeException e) {
-            return result;
-        }
-        if (notes instanceof List<?> list) {
-            list.forEach(note -> result.add(String.valueOf(note)));
-        }
-        return result;
     }
 
     /**

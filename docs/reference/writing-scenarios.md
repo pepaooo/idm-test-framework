@@ -441,13 +441,14 @@ rules (collation, case, types) and returns only what the check needs.
 
 | To check that the user… | Query | `expect` |
 |---|---|---|
-| has READ and WRITE (others allowed) | `SELECT COUNT(*) AS n FROM user_permission WHERE username = ? AND permission IN ('READ', 'WRITE')` | `row: { n: 2 }` |
+| has READ and WRITE (others allowed) | `SELECT COUNT(DISTINCT permission) AS n FROM user_permission WHERE username = ? AND permission IN ('READ', 'WRITE')` | `row: { n: 2 }` |
 | does not have ADMIN | `SELECT 1 FROM user_permission WHERE username = ? AND permission = 'ADMIN'` | `rowCount: 0` |
-| has exactly READ and WRITE | `SELECT COUNT(*) AS total, SUM(CASE WHEN permission IN ('READ', 'WRITE') THEN 1 ELSE 0 END) AS wanted FROM user_permission WHERE username = ?` | `row: { total: 2, wanted: 2 }` |
+| has exactly READ and WRITE | `SELECT COUNT(DISTINCT permission) AS total, COUNT(DISTINCT CASE WHEN permission IN ('READ', 'WRITE') THEN permission END) AS wanted FROM user_permission WHERE username = ?` | `row: { total: 2, wanted: 2 }` |
 | has three groups | `SELECT COUNT(*) AS n FROM user_group WHERE username = ?` | `row: { n: 3 }` |
 | has a mail address like `jdoe@…` | `SELECT 1 FROM users WHERE username = ? AND mail LIKE 'jdoe@%'` | `rowCount: 1` |
 
 `row:` matches column names ignoring case, so `n` matches a database that returns `N`.
+`COUNT(DISTINCT …)` keeps duplicate rows (READ twice, no WRITE) from passing.
 
 ### SOAP: roles and resources
 
@@ -728,11 +729,18 @@ reads as
 | `excludesAll(list, values)` | none of `values` is in `list` |
 | `sameMembers(list, values)` | both hold the same values, in any order |
 
-- Either argument may be one value or a list; a missing list (`null`, `undefined`) is empty, so
+- Either argument may be one value or a list. A missing list (`null`, `undefined`) is empty, so
   `excludesAll(response.json.groups, 'Finance')` passes when there are no groups.
+- A missing values argument (`null`, `undefined`, usually a misspelled name such as
+  `expected.grups`) is an error, not an empty list, so the check cannot pass by comparing nothing:
+  `check 1 of 1 failed: … containsAll: the values to look for are undefined`.
+- Lists of thousands of values are fine: the functions do not count against an expression's
+  run-time limit.
 - Values compare as text, so `42` matches `'42'`; case matters (lower-case both sides with
   `.toLowerCase()` to ignore it). Objects compare by content, whatever their key order.
 - A failing check says why: `check 1 of 1 is false: js:{ … } — containsAll: missing [VPN]`.
+  The note shows the compared values; inside an object, values under secret-looking keys
+  (`password`, `token`, …) show as `***`.
 - The names work in every `js:{ … }`, and are reserved: no fixture, `set:` or `as:` may use them.
 
 ```yaml

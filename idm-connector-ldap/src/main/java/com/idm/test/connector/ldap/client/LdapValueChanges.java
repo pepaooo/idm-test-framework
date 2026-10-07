@@ -75,7 +75,7 @@ public final class LdapValueChanges {
         boolean add = ADD.equals(key);
         List<Object> result = new ArrayList<>();
         for (Object value : values(wanted)) {
-            boolean present = current.stream().anyMatch(other -> LdapValueMatcher.sameValue(value, other));
+            boolean present = current.stream().anyMatch(other -> LdapValueMatcher.sameValue(value, other, true));
             if (present == add) {
                 result.add(value);
             }
@@ -88,6 +88,13 @@ public final class LdapValueChanges {
         return ADD.equals(key)
                 ? "cannot add " + offending + " to " + attribute + ": the entry already has " + pronoun
                 : "cannot remove " + offending + " from " + attribute + ": the entry does not have " + pronoun;
+    }
+
+    /** As {@link #reason}, for a secret-named attribute: no values, and no claim about the entry. */
+    static String secretReason(String key, String attribute) {
+        return ADD.equals(key)
+                ? "cannot add to " + attribute + ": the directory refused it because a value already exists"
+                : "cannot remove from " + attribute + ": the directory refused it because a value is missing";
     }
 
     static List<Object> values(Object value) {

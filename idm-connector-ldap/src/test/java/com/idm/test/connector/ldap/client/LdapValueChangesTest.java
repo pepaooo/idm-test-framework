@@ -53,4 +53,16 @@ class LdapValueChangesTest {
         assertThat(LdapValueChanges.reason("remove", "seeAlso", List.of("cn=a", "cn=b")))
                 .isEqualTo("cannot remove [cn=a, cn=b] from seeAlso: the entry does not have them");
     }
+
+    @Test
+    @DisplayName("Secret reasons carry no values; offending ignores case")
+    void secretReasonsAndCase() {
+        assertThat(LdapValueChanges.secretReason("add", "userPassword"))
+                .isEqualTo("cannot add to userPassword: the directory refused it because a value already exists");
+        assertThat(LdapValueChanges.secretReason("remove", "userPassword"))
+                .isEqualTo("cannot remove from userPassword: the directory refused it because a value is missing");
+        assertThat(LdapValueChanges.offending("add", "ENGINEER", "Engineer")).containsExactly("ENGINEER");
+        assertThat(SecretNames.isSecret("unicodePwd")).isTrue();
+        assertThat(SecretNames.isSecret("seeAlso")).isFalse();
+    }
 }

@@ -322,10 +322,11 @@ public class EdirectoryConnector {
         } catch (org.springframework.ldap.NoSuchAttributeException e) {
             return refused(dn, attributes, LdapValueChanges.REMOVE, e);
         } catch (Exception e) {
-            log.error("Failed to update LDAP user '{}': {}", dn, e.getMessage());
+            String detail = changesSecret(attributes) ? "the directory refused the request" : e.getMessage();
+            log.error("Failed to update LDAP user '{}': {}", dn, detail);
             return OperationResult.<Void>builder()
                     .success(false)
-                    .message("Failed to update user: " + e.getMessage())
+                    .message("Failed to update user: " + detail)
                     .errorType(ErrorType.LDAP_ERROR)
                     .throwable(e)
                     .build();
@@ -345,31 +346,48 @@ public class EdirectoryConnector {
     /**
      * The directory refused an add of an existing value (LDAP 20) or a remove of a missing one
      * (LDAP 16). The entry is read once, only here, to say which values; when that is not
-     * possible, the directory's own message stands.
+     * possible, the directory's own message stands. Values of secret-named attributes are never
+     * quoted, and the directory's message (which may quote them) is not used when such an
+     * attribute is part of an add/remove change.
      */
     private OperationResult<Void> refused(String dn, Map<String, Object> attributes, String key, Exception e) {
         String explanation = explain(dn, attributes, key);
-        log.error("Failed to update LDAP user '{}': {}", dn, explanation != null ? explanation : e.getMessage());
+        String message;
+        if (explanation != null) {
+            message = explanation;
+        } else if (changesSecret(attributes)) {
+            message = "Failed to update user: the directory refused the add/remove ("
+                    + (LdapValueChanges.ADD.equals(key) ? "LDAP 20" : "LDAP 16") + ")";
+        } else {
+            message = "Failed to update user: " + e.getMessage();
+        }
+        log.error("Failed to update LDAP user '{}': {}", dn, message);
         return OperationResult.<Void>builder()
                 .success(false)
-                .message(explanation != null ? explanation : "Failed to update user: " + e.getMessage())
+                .message(message)
                 .errorType(ErrorType.LDAP_ERROR)
                 .throwable(e)
                 .build();
     }
 
+    private static boolean changesSecret(Map<String, Object> attributes) {
+        return attributes.entrySet().stream()
+                .anyMatch(entry -> entry.getValue() instanceof Map<?, ?> && SecretNames.isSecret(entry.getKey()));
+    }
+
     private String explain(String dn, Map<String, Object> attributes, String key) {
         OperationResult<Map<String, Object>> read = readAttributes(dn);
-        if (!read.isSuccess() || read.getData().isEmpty()) {
-            return null;
-        }
-        Map<String, Object> actual = read.getData().get();
+        Map<String, Object> actual = read.isSuccess() ? read.getData().orElse(null) : null;
         List<String> reasons = new ArrayList<>();
         attributes.forEach((attribute, value) -> {
             if (value instanceof Map<?, ?> change && change.containsKey(key)) {
-                List<Object> offending = LdapValueChanges.offending(key, change.get(key), actual.get(attribute));
-                if (!offending.isEmpty()) {
-                    reasons.add(LdapValueChanges.reason(key, attribute, offending));
+                if (SecretNames.isSecret(attribute)) {
+                    reasons.add(LdapValueChanges.secretReason(key, attribute));
+                } else if (actual != null) {
+                    List<Object> offending = LdapValueChanges.offending(key, change.get(key), actual.get(attribute));
+                    if (!offending.isEmpty()) {
+                        reasons.add(LdapValueChanges.reason(key, attribute, offending));
+                    }
                 }
             }
         });

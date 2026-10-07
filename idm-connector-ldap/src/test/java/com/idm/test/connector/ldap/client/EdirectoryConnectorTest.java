@@ -622,4 +622,63 @@ class EdirectoryConnectorTest {
 
         connector.delete(dn);
     }
+
+    @Test
+    @DisplayName("A case-differing add of an existing value still gets the precise message")
+    void testUpdateAddExistingIgnoresCase() {
+        String dn = createMultiValued("multi.addcase");
+
+        OperationResult<Void> result = connector.update(dn, Map.of("ou", Map.of("add", "ENGINEERING")));
+
+        assertThat(result.isSuccess()).isFalse();
+        assertThat(result.getMessage()).isEqualTo("cannot add [ENGINEERING] to ou: the entry already has it");
+
+        connector.delete(dn);
+    }
+
+    @Test
+    @DisplayName("Several refused attributes are joined with '; '")
+    void testUpdateSeveralAttributesRefused() {
+        String dn = createMultiValued("multi.several");
+
+        OperationResult<Void> result = connector.update(dn, new java.util.TreeMap<>(Map.of(
+                "ou", Map.of("add", "Engineering"), "seeAlso", Map.of("add", DEV))));
+
+        assertThat(result.isSuccess()).isFalse();
+        assertThat(result.getMessage()).isEqualTo("cannot add [Engineering] to ou: the entry already has it; "
+                + "cannot add [" + DEV + "] to seeAlso: the entry already has it");
+
+        connector.delete(dn);
+    }
+
+    @Test
+    @DisplayName("When the explanation finds nothing, the directory's message stands")
+    void testUpdateRefusalFallsBackToDirectoryMessage() {
+        String dn = createMultiValued("multi.fallback");
+
+        // The directory treats surrounding spaces as insignificant; the explanation does not.
+        OperationResult<Void> result = connector.update(dn, Map.of("ou", Map.of("add", "Engineering ")));
+
+        assertThat(result.isSuccess()).isFalse();
+        assertThat(result.getMessage()).startsWith("Failed to update user: ");
+
+        connector.delete(dn);
+    }
+
+    @Test
+    @DisplayName("A refused change to userPassword names the attribute and never quotes a value")
+    void testUpdateSecretRefusalQuotesNoValue() {
+        String dn = createMultiValued("multi.secret");
+
+        OperationResult<Void> removed = connector.update(dn,
+                Map.of("userPassword", Map.of("remove", "n0t-the-password")));
+        assertThat(removed.isSuccess()).isFalse();
+        assertThat(removed.getMessage()).contains("userPassword").doesNotContain("n0t-the-password").doesNotContain("[");
+
+        OperationResult<Void> added = connector.update(dn, Map.of("userPassword", Map.of("add", "s3cr3t")));
+        assertThat(added.isSuccess()).as(String.valueOf(added.getMessage())).isFalse();
+        assertThat(added.getMessage()).contains("userPassword").doesNotContain("s3cr3t").doesNotContain("[");
+
+        connector.delete(dn);
+    }
 }

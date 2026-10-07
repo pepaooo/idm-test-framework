@@ -47,6 +47,27 @@ steps:
           excludes: ["cn=vpn-users,ou=groups,o=data"]
       wait: true
 
+  - ldap.update:
+      description: Put the user back in the VPN group and take them out of developers
+      dn: "${createdDn}"
+      attributes:
+        seeAlso:
+          add: ["cn=vpn-users,ou=groups,o=data"]
+          remove: ["cn=developers,ou=groups,o=data"]
+
+  - ldap.verify:
+      description: One group left, matched in another spelling; two departments, any case
+      dn: "${createdDn}"
+      expect:
+        seeAlso:
+          equals: ["CN=VPN-Users,OU=Groups,O=Data"]
+          count: 1
+        ou:
+          contains: [engineering]
+          ignoreCase: true
+          count: 2
+          matches: "(?i)sec.*"
+
 cleanup:
   - ldap.delete:
       dn: "${createdDn}"

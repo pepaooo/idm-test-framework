@@ -750,4 +750,32 @@ class ScenarioValidatorTest {
         assertThatThrownBy(() -> validator.validate(onlyDescription, "d.yaml"))
                 .hasMessageContaining("a set: step needs at least one name to bind");
     }
+
+    @Test
+    @DisplayName("A check calling the list helpers validates")
+    void testHelpersInDeferredCheck() {
+        Scenario valid = scenario(new StepSpec("probe.verify",
+                Map.of("check", "js:{ containsAll(response.groups, ['HR']) }")));
+
+        assertThatCode(() -> deferredValidator.validate(valid, "ok.yaml")).doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("A fixture, set: or as: named like a helper is rejected")
+    void testHelperNamesReserved() {
+        Scenario fixture = new Scenario("Test", null,
+                Map.of("containsAll", new FixtureSpec("random-user", Map.of())),
+                List.of(new StepSpec("ldap.create", Map.of("dn", "x"))));
+        assertThatThrownBy(() -> validator.validate(fixture, "bad.yaml"))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("'containsAll' is a built-in helper name; choose another");
+
+        Scenario set = scenario(new StepSpec("set", Map.of("sameMembers", "x")));
+        assertThatThrownBy(() -> validator.validate(set, "bad.yaml"))
+                .hasMessageContaining("'sameMembers' is a built-in helper name; choose another");
+
+        Scenario as = scenario(new StepSpec("ldap.create", Map.of("dn", "x", "as", "excludesAll")));
+        assertThatThrownBy(() -> validator.validate(as, "bad.yaml"))
+                .hasMessageContaining("'excludesAll' is a built-in helper name; choose another");
+    }
 }

@@ -21,7 +21,9 @@ ITF-41 asked for set matchers (contains, excludes, an exact set in any order) in
 2. **`http.verify`: helper functions inside checks** (`containsAll`, `excludesAll`, `sameMembers`),
    rather than a declarative `expect:` or `rest.verify` matchers.
 3. **Values compare as text, case-sensitive** (`String(a) === String(b)`); objects by content.
-4. **A JavaScript prelude in the evaluator,** with failure notes returned to the step.
+4. **Helpers implemented in Java, called from expressions, not counted against the instruction
+   budget; notes collected in Java** and returned to the step. (revised after final review, jangulo 2026-10-07) The first version was a
+   JavaScript prelude, which ran out of budget at about 480 strings or 110 objects.
 
 ## 3. The helpers
 
@@ -33,28 +35,44 @@ Available in every `js:{ … }` expression (checks, `set:`, parameters):
 | `excludesAll(list, values)` | none of `values` is in `list` |
 | `sameMembers(list, values)` | both hold the same values, in any order; duplicates ignored |
 
-- **Arguments:** each may be a single value or an array; `null` or `undefined` is an empty list.
-  So `excludesAll(response.json.groups, 'X')` passes when `groups` is absent, and
+- **Arguments:** each may be a single value or an array. A `null` or `undefined` list is an empty
+  list, so `excludesAll(response.json.groups, 'X')` passes when `groups` is absent, and
   `containsAll(response.xml.user.role, 'HR')` works whether `role` occurs once or several times.
+  A missing, `null` or `undefined` *values* argument is an error (revised after final review, jangulo 2026-10-07): the helper
+  throws `containsAll: the values to look for are undefined` (likewise `excludesAll:`,
+  `sameMembers:`), which fails the expression with the usual `could not evaluate js:{ … }: …`
+  (in `http.verify`, `check N of M failed: …`). Otherwise a misspelled `expected.grups` would make
+  `containsAll` and `excludesAll` pass without comparing anything.
 - **Equality:** two values are equal when their canonical text is equal:
   - a primitive's text is `String(value)` (`42` equals `'42'`, `true` equals `'true'`; case matters)
   - an object's text is its keys sorted, each with its value's canonical text; an array's is its
     elements' canonical text in order — so `{id: 1, role: 'HR'}` equals `{role: 'HR', id: '1'}`
+  - inside an array or object, a primitive's text is JSON-quoted and composites carry a marker, so
+    `['a,b']` differs from `['a', 'b']` and `[1]` from `'[1]'`, while `1` still equals `'1'` at every
+    depth; prototype names (`constructor`, `__proto__`) are ordinary values
 - **Failure notes:** when a helper returns `false` it records one note:
   - `containsAll: missing [VPN]`
   - `excludesAll: found [Finance]`
   - `sameMembers: missing [VPN]; unexpected [Finance]` (either part left out when empty)
 
-  Each list shows at most 10 values, then `… N more`. Values are shown as their canonical text.
+  Each list shows at most 10 values, then `… N more`. Top-level strings show as themselves,
+  nested strings JSON-quoted, objects as `{key: value}`; values under secret-looking keys
+  (`Secrets.isSecret`) show as `***` (revised after final review, jangulo 2026-10-07). Masking affects the note only, not the
+  comparison.
 - **Reserved names:** a fixture, `set:` or `as:` named `containsAll`, `excludesAll` or
   `sameMembers` is rejected at validation: `'containsAll' is a built-in helper name; choose another`.
 
 ## 4. Components
 
 - **`ExpressionEvaluator`** (engine `expr`):
-  - a fixed JavaScript prelude defines the three helpers and a per-evaluation `__checkNotes` array in
-    the evaluation scope, before the expression runs, under the same sandbox (`ClassShutter` denies
-    every class) and the same instruction budget
+  - **`ListHelpers`** (package-private, `expr`) (revised after final review, jangulo 2026-10-07): per evaluation, defines three
+    Rhino function objects (`BaseFunction`) named `containsAll`, `excludesAll`, `sameMembers` in the
+    evaluation scope, after the scenario variables, and keeps that evaluation's notes in a Java list.
+    The functions work on the JavaScript values directly and expose no Java object or class, so the
+    sandbox (`ClassShutter` denies every class) is unchanged. Their work is not counted against the
+    instruction budget (the expression calling them still is); instead one evaluation's helper calls
+    may visit at most 1,000,000 values, nested at most 100 levels, or the helper throws. There is no
+    `__checkNotes` variable, so an expression can neither fake nor break the notes
   - `public Explained evaluateExplained(String expression, Map<String, Object> variables)` returns
     `record Explained(Object value, List<String> notes)` (notes in call order; empty when none)
   - `evaluate(...)` is unchanged in behaviour and ignores notes
@@ -78,10 +96,10 @@ Available in every `js:{ … }` expression (checks, `set:`, parameters):
   names, a JSON example and an XML example.
 - **§`db.verify`:** a "Checking several rows" subsection with recipes and the reason (the database
   compares with its own rules, in one query):
-  - has READ and WRITE (others allowed): `COUNT(*) … WHERE permission IN ('READ','WRITE')` →
+  - has READ and WRITE (others allowed): `COUNT(DISTINCT permission) … WHERE permission IN ('READ','WRITE')` →
     `row: { n: 2 }`
   - lacks ADMIN: `… WHERE permission = 'ADMIN'` → `rowCount: 0`
-  - exactly READ and WRITE: `COUNT(*) AS total, SUM(CASE WHEN permission IN ('READ','WRITE') THEN 1 ELSE 0 END) AS wanted` → `row: { total: 2, wanted: 2 }`
+  - exactly READ and WRITE: `COUNT(DISTINCT permission) AS total, COUNT(DISTINCT CASE WHEN permission IN ('READ','WRITE') THEN permission END) AS wanted` → `row: { total: 2, wanted: 2 }` (`DISTINCT` so duplicate rows cannot pass; revised after final review, jangulo 2026-10-07)
   - a count: `COUNT(*) AS n` → `row: { n: 3 }`
   - a pattern: `WHERE mail LIKE 'jdoe@%'` → `rowCount: 1`
   - column aliases are case-insensitive in `row:` matching, as today
@@ -95,8 +113,10 @@ Available in every `js:{ … }` expression (checks, `set:`, parameters):
   `sameMembers`
 - the notes' exact text, the 10-value cap with `… N more`, notes empty for a true result, notes not
   leaking from one evaluation into the next
-- `evaluate` still returns plain values; helpers count against the instruction budget; the sandbox
-  still blocks Java classes
+- `evaluate` still returns plain values; the sandbox still blocks Java classes; the helpers are not
+  counted against the budget, but an expression looping over them is; 5,000 strings and 1,000
+  objects finish at the default budget well under a second; a missing values argument is an error;
+  secret-looking keys are masked in notes (revised after final review, jangulo 2026-10-07)
 
 **`JsReferencesTest` / `ScenarioValidatorTest`:** a check calling the helpers validates with no
 undeclared-name error; a fixture, `set:` or `as:` named like a helper is rejected with the message.

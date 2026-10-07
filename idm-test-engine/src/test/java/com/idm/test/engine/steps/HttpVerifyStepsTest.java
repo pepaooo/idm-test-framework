@@ -95,6 +95,62 @@ class HttpVerifyStepsTest {
     }
 
     @Test
+    @DisplayName("A containsAll check passes, and a failing one names the missing values")
+    void testContainsAllNote() {
+        stubJson(200, "{\"groups\":[\"HR\",\"Finance\"]}");
+
+        assertThat(run(params("check", "js:{ containsAll(response.json.groups, ['HR']) }")).success()).isTrue();
+
+        StepResult step = run(params("check", "js:{ containsAll(response.json.groups, ['HR', 'VPN']) }"));
+        assertThat(step.success()).isFalse();
+        assertThat(step.message()).contains(
+                "check 1 of 1 is false: js:{ containsAll(response.json.groups, ['HR', 'VPN']) } — containsAll: missing [VPN] (status 200, body: ");
+    }
+
+    @Test
+    @DisplayName("A failing sameMembers check names missing and unexpected values")
+    void testSameMembersNote() {
+        stubJson(200, "{\"groups\":[\"HR\",\"Finance\"]}");
+
+        StepResult step = run(params("check", "js:{ sameMembers(response.json.groups, ['HR', 'VPN']) }"));
+
+        assertThat(step.message()).contains("— sameMembers: missing [VPN]; unexpected [Finance]");
+    }
+
+    @Test
+    @DisplayName("A misspelled values argument fails the check instead of passing")
+    void testMissingValuesFails() {
+        stubJson(200, "{\"groups\":[\"HR\"]}");
+
+        StepResult step = run(params("check", "js:{ excludesAll(response.json.groups, response.json.blocked) }"));
+
+        assertThat(step.success()).isFalse();
+        assertThat(step.message()).contains("check 1 of 1 failed:")
+                .contains("excludesAll: the values to look for are undefined");
+    }
+
+    @Test
+    @DisplayName("Helpers read XML elements whether they occur once or several times")
+    void testHelpersOnXml() {
+        stubBody("application/xml", "<user><role>Admin</role><role>HR</role></user>");
+        assertThat(run(params("check", "js:{ containsAll(response.xml.user.role, ['HR', 'Admin']) }")).success()).isTrue();
+
+        stubBody("application/xml", "<user><role>HR</role></user>");
+        assertThat(run(params("check", "js:{ containsAll(response.xml.user.role, 'HR') }")).success()).isTrue();
+    }
+
+    @Test
+    @DisplayName("A false check without helpers keeps today's message")
+    void testPlainFalseUnchanged() {
+        stubJson(200, "{\"department\":\"HR\"}");
+
+        StepResult step = run(params("check", "js:{ response.json.department === 'Finance' }"));
+
+        assertThat(step.message()).contains("is false: js:{ response.json.department === 'Finance' } (status 200")
+                .doesNotContain(" — ");
+    }
+
+    @Test
     @DisplayName("Passes when every check is true, and reads status and json")
     void testChecksPass() {
         stubJson(200, "{\"department\":\"Finance\"}");

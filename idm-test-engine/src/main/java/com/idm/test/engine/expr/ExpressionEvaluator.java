@@ -1,11 +1,13 @@
 package com.idm.test.engine.expr;
 
+import com.idm.test.engine.spi.Explained;
 import org.mozilla.javascript.Context;
 import org.mozilla.javascript.ContextFactory;
 import org.mozilla.javascript.Scriptable;
 import org.mozilla.javascript.ScriptableObject;
 
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Evaluates one JavaScript expression against a set of scenario variables.
@@ -16,10 +18,15 @@ import java.util.Map;
  * never terminates. Steps remain the only things in a scenario that do anything, which is what
  * keeps a scenario's step list its complete execution order.
  * <p>
- * Expressions are plain ES6. There is deliberately no helper object: standard JavaScript
- * already covers date arithmetic, capitalisation, padding, conditionals and JSON.
+ * Expressions are plain ES6: standard JavaScript already covers date arithmetic,
+ * capitalisation, padding, conditionals and JSON. The one addition is the three list helpers
+ * ({@link #HELPERS}), global functions implemented in Java by {@link ListHelpers}; there is no
+ * helper object.
  */
 public final class ExpressionEvaluator {
+
+    /** Built-in functions every expression can call; scenario names may not reuse them. */
+    public static final Set<String> HELPERS = Set.of("containsAll", "excludesAll", "sameMembers");
 
     /** Enough for any reasonable expression; a runaway loop exceeds it in milliseconds. */
     private static final int DEFAULT_INSTRUCTION_BUDGET = 100_000;
@@ -46,6 +53,15 @@ public final class ExpressionEvaluator {
      *                             foreign Rhino Context already open on this thread
      */
     public Object evaluate(String expression, Map<String, Object> variables) {
+        return evaluateExplained(expression, variables).value();
+    }
+
+    /**
+     * Like {@link #evaluate}, plus the notes the list helpers recorded while the expression ran.
+     *
+     * @throws ExpressionException as {@link #evaluate} does
+     */
+    public Explained evaluateExplained(String expression, Map<String, Object> variables) {
         Context current = Context.getCurrentContext();
         if (current != null && current.getFactory() != contextFactory) {
             // A Context created by unrelated code (a different ExpressionEvaluator, or some other
@@ -106,7 +122,7 @@ public final class ExpressionEvaluator {
         }
     }
 
-    private Object doEvaluate(String expression, Map<String, Object> variables) {
+    private Explained doEvaluate(String expression, Map<String, Object> variables) {
         Context cx = contextFactory.enterContext();
         try {
             // Belt and braces: onContextCreated only runs the first time a Context is created,
@@ -124,7 +140,13 @@ public final class ExpressionEvaluator {
             // wraps a Java object anyway, which is the point of it.
             cx.setClassShutter(className -> false);
 
-            return JsValues.fromJs(cx.evaluateString(scope, expression, "expression", 1, null));
+            // The helpers are defined after the scenario's names, so they always mean the
+            // built-ins; the validator refuses scenario names that would collide with them. Their
+            // notes are collected in Java, out of the expression's reach.
+            ListHelpers helpers = ListHelpers.defineIn(cx, scope);
+
+            Object value = JsValues.fromJs(cx.evaluateString(scope, expression, "expression", 1, null));
+            return new Explained(value, helpers.notes());
 
         } catch (InstructionBudgetExceeded e) {
             throw new ExpressionException(

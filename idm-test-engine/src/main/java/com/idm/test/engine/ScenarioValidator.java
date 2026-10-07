@@ -118,6 +118,11 @@ public final class ScenarioValidator {
         }
 
         for (Map.Entry<String, FixtureSpec> fixture : scenario.fixtures().entrySet()) {
+            if (ExpressionEvaluator.HELPERS.contains(fixture.getKey())) {
+                throw new ValidationException(sourceName, "fixture '" + fixture.getKey()
+                        + "' is a built-in helper name; choose another");
+            }
+
             String generator = fixture.getValue().generate();
             if (generator != null && !generatorNames.contains(generator)) {
                 throw new ValidationException(sourceName,
@@ -263,6 +268,11 @@ public final class ScenarioValidator {
     private static void requireFreshBinding(
             String name, Set<String> known, String sourceName, int index, String stepType,
             String keyword) {
+        if (ExpressionEvaluator.HELPERS.contains(name)) {
+            throw new ValidationException(sourceName, index, stepType,
+                    keyword + " '" + name + "' is a built-in helper name; choose another");
+        }
+
         if (known.contains(name)) {
             throw new ValidationException(sourceName, index, stepType,
                     keyword + " '" + name + "' shadows an existing name — '" + name

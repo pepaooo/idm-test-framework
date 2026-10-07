@@ -141,9 +141,9 @@ class LdapValueMatcherTest {
         assertThat(LdapValueMatcher.shapeProblem(List.of("a", List.of("b"))))
                 .isEqualTo("has a null, map or list value inside its list; give plain values");
         assertThat(LdapValueMatcher.shapeProblem(Map.of()))
-                .isEqualTo("is an empty map; use contains and/or excludes");
+                .isEqualTo("is an empty map; use equals, contains, excludes, count, matches or ignoreCase");
         assertThat(LdapValueMatcher.shapeProblem(Map.of("contain", "a")))
-                .isEqualTo("has unknown matcher keys [contain]; use contains and/or excludes");
+                .isEqualTo("has unknown matcher keys [contain]; use equals, contains, excludes, count, matches or ignoreCase");
         assertThat(LdapValueMatcher.shapeProblem(Map.of("contains", List.of())))
                 .isEqualTo("has an empty 'contains'");
         Map<String, Object> nullExcludes = new HashMap<>();
@@ -164,6 +164,131 @@ class LdapValueMatcherTest {
         assertThat(LdapValueMatcher.match("groupMembership", List.of(), null))
                 .startsWith("Attribute 'groupMembership' is an empty list");
         assertThat(LdapValueMatcher.match("groupMembership", Map.of(), List.of(DEV)))
-                .isEqualTo("Attribute 'groupMembership' is an empty map; use contains and/or excludes");
+                .isEqualTo("Attribute 'groupMembership' is an empty map; use equals, contains, excludes, count, matches or ignoreCase");
+    }
+
+    @Test
+    @DisplayName("equals is the exact set, like a plain list")
+    void equalsKey() {
+        assertThat(LdapValueMatcher.match("ou", Map.of("equals", List.of("b", "a")), List.of("a", "b"))).isNull();
+        assertThat(LdapValueMatcher.match("ou", Map.of("equals", "a"), "a")).isNull();
+        assertThat(LdapValueMatcher.match("ou", Map.of("equals", List.of("a")), List.of("a", "b")))
+                .isEqualTo("Attribute 'ou': expected exactly [a] in any order; unexpected [b]");
+    }
+
+    @Test
+    @DisplayName("count compares the number of values; an absent attribute has none")
+    void countKey() {
+        assertThat(LdapValueMatcher.match("groupMembership", Map.of("count", 2), List.of("a", "b"))).isNull();
+        assertThat(LdapValueMatcher.match("groupMembership", Map.of("count", 0), null)).isNull();
+        assertThat(LdapValueMatcher.match("groupMembership", Map.of("count", 3), List.of("a", "b")))
+                .isEqualTo("Attribute 'groupMembership': expected 3 values, found 2: [a, b]");
+        assertThat(LdapValueMatcher.match("groupMembership", Map.of("count", 1), null))
+                .isEqualTo("Attribute 'groupMembership': expected 1 value, found 0");
+        assertThat(LdapValueMatcher.match("groupMembership", Map.of("count", 2L), List.of("a", "b"))).isNull();
+    }
+
+    @Test
+    @DisplayName("matches needs each pattern to match the whole of some value")
+    void matchesKey() {
+        assertThat(LdapValueMatcher.match("mail", Map.of("matches", "^jdoe@.*$"), List.of("x@y.com", "jdoe@a.com")))
+                .isNull();
+        assertThat(LdapValueMatcher.match("mail", Map.of("matches", "^jdoe@.*$"), "x@y.com"))
+                .isEqualTo("Attribute 'mail': no value matches ^jdoe@.*$; actual=x@y.com");
+        assertThat(LdapValueMatcher.match("mail", Map.of("matches", "^jdoe@.*$"), null))
+                .isEqualTo("Attribute 'mail': no value matches ^jdoe@.*$; actual=null");
+        assertThat(LdapValueMatcher.match("mail", Map.of("matches", "jdoe"), "jdoe@a.com"))
+                .as("the whole value must match").isNotNull();
+        assertThat(LdapValueMatcher.match("ou", Map.of("matches", List.of("^a.*", "^b.*")), List.of("ax", "bx"))).isNull();
+        assertThat(LdapValueMatcher.match("ou", Map.of("matches", List.of("^a.*", "^b.*")), List.of("ax")))
+                .isEqualTo("Attribute 'ou': no value matches ^b.*; actual=[ax]");
+        assertThat(LdapValueMatcher.match("mail", Map.of("matches", "(?i)JDOE.*"), "jdoe@a.com")).isNull();
+    }
+
+    @Test
+    @DisplayName("ignoreCase applies to equals, contains and excludes")
+    void ignoreCaseKey() {
+        assertThat(LdapValueMatcher.match("title", Map.of("equals", "Senior Engineer", "ignoreCase", true),
+                "senior engineer")).isNull();
+        assertThat(LdapValueMatcher.match("title", Map.of("equals", "Senior Engineer"), "senior engineer")).isNotNull();
+        assertThat(LdapValueMatcher.match("title", Map.of("equals", "A", "ignoreCase", false), "a")).isNotNull();
+        assertThat(LdapValueMatcher.match("ou", Map.of("contains", List.of("SALES"), "ignoreCase", true),
+                List.of("sales", "hr"))).isNull();
+        assertThat(LdapValueMatcher.match("ou", Map.of("excludes", "SALES", "ignoreCase", true), "sales"))
+                .isEqualTo("Attribute 'ou': expected not to contain [SALES]; found [SALES]");
+    }
+
+    @Test
+    @DisplayName("Keys combine: every one must hold")
+    void combined() {
+        Map<String, Object> matcher = Map.of("contains", "cn=vpn,o=x", "count", 2, "ignoreCase", true);
+        assertThat(LdapValueMatcher.match("groupMembership", matcher, List.of("CN=VPN,O=X", "cn=dev,o=x"))).isNull();
+        assertThat(LdapValueMatcher.match("groupMembership", matcher, List.of("CN=VPN,O=X", "cn=dev,o=x", "cn=hr,o=x")))
+                .isEqualTo("Attribute 'groupMembership': expected 2 values, found 3: [CN=VPN,O=X, cn=dev,o=x, cn=hr,o=x]");
+    }
+
+    @Test
+    @DisplayName("shapeProblem names each malformed new key")
+    void malformedNewKeys() {
+        assertThat(LdapValueMatcher.shapeProblem(Map.of("count", 3.0)))
+                .isEqualTo("has a 'count' that is not a non-negative whole number: 3.0");
+        assertThat(LdapValueMatcher.shapeProblem(Map.of("count", "3")))
+                .isEqualTo("has a 'count' that is not a non-negative whole number: 3");
+        assertThat(LdapValueMatcher.shapeProblem(Map.of("count", -1)))
+                .isEqualTo("has a 'count' that is not a non-negative whole number: -1");
+        assertThat(LdapValueMatcher.shapeProblem(Map.of("matches", List.of()))).isEqualTo("has an empty 'matches'");
+        assertThat(LdapValueMatcher.shapeProblem(Map.of("matches", 5)))
+                .isEqualTo("has a 'matches' that is not a regular expression or a list of them");
+        assertThat(LdapValueMatcher.shapeProblem(Map.of("matches", "[")))
+                .startsWith("has an invalid 'matches' pattern '[': ");
+        assertThat(LdapValueMatcher.shapeProblem(Map.of("equals", "a", "ignoreCase", "yes")))
+                .isEqualTo("has an 'ignoreCase' that is not true or false");
+        assertThat(LdapValueMatcher.shapeProblem(Map.of("ignoreCase", true)))
+                .isEqualTo("has an 'ignoreCase' with no equals, contains or excludes to apply to");
+        assertThat(LdapValueMatcher.shapeProblem(Map.of("count", 1, "ignoreCase", true)))
+                .isEqualTo("has an 'ignoreCase' with no equals, contains or excludes to apply to");
+        assertThat(LdapValueMatcher.shapeProblem(Map.of("equals", List.of()))).isEqualTo("has an empty 'equals'");
+        assertThat(LdapValueMatcher.shapeProblem(Map.of("equals", List.of("a", Map.of()))))
+                .isEqualTo("has a null, map or list value in 'equals'; give plain values");
+        assertThat(LdapValueMatcher.shapeProblem(Map.of("contains", "Sales", "excludes", "SALES", "ignoreCase", true)))
+                .isEqualTo("lists [Sales] in both 'contains' and 'excludes'");
+        assertThat(LdapValueMatcher.shapeProblem(Map.of("contains", "Sales", "excludes", "SALES"))).isNull();
+        assertThat(LdapValueMatcher.shapeProblem(Map.of("count", java.math.BigInteger.TWO))).isNull();
+    }
+
+    @Test
+    @DisplayName("Messages for a secret-named attribute never show expected or actual values")
+    void secretNamedAttributeMessagesHideValues() {
+        String a = "S3cretAlpha";
+        String b = "S3cretBeta";
+        String attr = "apiToken";
+        Map<String, Object> contradictory = Map.of("contains", a, "excludes", a);
+        Map<String, Object> badPattern = Map.of("matches", "[" + a);
+        Map<String, Object> badCount = Map.of("count", a);
+        List<String> messages = Arrays.asList(
+                LdapValueMatcher.match(attr, a, b),
+                LdapValueMatcher.match(attr, a, null),
+                LdapValueMatcher.match(attr, List.of(a, b), List.of(b)),
+                LdapValueMatcher.match(attr, Map.of("equals", a), b),
+                LdapValueMatcher.match(attr, Map.of("contains", List.of(a)), List.of(b)),
+                LdapValueMatcher.match(attr, Map.of("excludes", a), List.of(a, b)),
+                LdapValueMatcher.match(attr, Map.of("count", 2), List.of(a)),
+                LdapValueMatcher.match(attr, Map.of("matches", "^x.*$"), List.of(a)),
+                LdapValueMatcher.match(attr, contradictory, a),
+                LdapValueMatcher.match(attr, badPattern, a),
+                LdapValueMatcher.match(attr, badCount, a),
+                LdapValueMatcher.shapeProblem(attr, contradictory),
+                LdapValueMatcher.shapeProblem(attr, badPattern),
+                LdapValueMatcher.shapeProblem(attr, badCount));
+        assertThat(messages).doesNotContainNull();
+        for (String message : messages) {
+            assertThat(message).doesNotContain(a).doesNotContain(b).startsWith(
+                    message.startsWith("Attribute") ? "Attribute 'apiToken'" : "");
+        }
+        assertThat(messages.get(0)).isEqualTo("Attribute 'apiToken': does not have the expected values");
+        assertThat(messages.get(6)).isEqualTo("Attribute 'apiToken': expected 2 values, found 1");
+        assertThat(messages.get(7)).isEqualTo("Attribute 'apiToken': no value matches the pattern");
+        assertThat(messages.get(11)).isEqualTo("lists the same value in both 'contains' and 'excludes'");
+        assertThat(messages.get(12)).startsWith("has an invalid 'matches' pattern: ");
     }
 }

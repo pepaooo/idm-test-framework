@@ -128,6 +128,24 @@ class LdapStepsTest {
     }
 
     @Test
+    @DisplayName("ldap.verify should refuse to verify userPassword, without quoting a value or reading the directory")
+    void testVerifyRejectsUserPassword() {
+        EdirectoryConnector mockConnector = mock(EdirectoryConnector.class);
+
+        for (Object expectation : List.of("S3cretValue!", Map.of("count", 0), Map.of("equals", "S3cretValue!"))) {
+            StepOutcome outcome = new LdapVerifyStep(only(mockConnector)).execute(Map.of(
+                    "dn", "cn=a,ou=users",
+                    "expect", Map.of("USERPASSWORD", expectation)), false);
+
+            assertThat(outcome.isFinal()).isTrue();
+            assertThat(outcome.success()).isFalse();
+            assertThat(outcome.message()).contains("'userPassword' cannot be verified")
+                    .doesNotContain("S3cretValue!");
+        }
+        verify(mockConnector, never()).readAttributes(any());
+    }
+
+    @Test
     @DisplayName("Only the assertion step is retryable")
     void testRetryability() {
         assertThat(new LdapCreateStep(directories).retryable()).isFalse();
@@ -701,8 +719,8 @@ class LdapStepsTest {
         Map<Object, String> cases = new java.util.LinkedHashMap<>();
         cases.put(List.of(), "is an empty list, which a misspelled attribute name would also satisfy; "
                 + "to assert values are absent use { excludes: [...] }");
-        cases.put(Map.of("contain", "a"), "has unknown matcher keys [contain]; use contains and/or excludes");
-        cases.put(Map.of(), "is an empty map; use contains and/or excludes");
+        cases.put(Map.of("contain", "a"), "has unknown matcher keys [contain]; use equals, contains, excludes, count, matches or ignoreCase");
+        cases.put(Map.of(), "is an empty map; use equals, contains, excludes, count, matches or ignoreCase");
         cases.put(Map.of("excludes", List.of()), "has an empty 'excludes'");
         cases.put(Map.of("contains", List.of("a", List.of("b"))),
                 "has a null, map or list value in 'contains'; give plain values");
@@ -720,5 +738,66 @@ class LdapStepsTest {
         });
 
         verify(mockConnector, never()).readAttributes(any());
+    }
+
+    @Test
+    @DisplayName("ldap.update adds and removes single values, records them as written, and reports strict failures")
+    void testUpdateAddRemove() {
+        String dn = "cn=ada.addremove,ou=users";
+        String a = "cn=a,ou=groups,dc=test,dc=com";
+        String b = "cn=b,ou=groups,dc=test,dc=com";
+        new LdapCreateStep(directories).execute(Map.of("dn", dn,
+                "attributes", Map.of("cn", "ada.addremove", "sn", "Lovelace", "seeAlso", List.of(a))), false);
+
+        StepOutcome updated = new LdapUpdateStep(directories).execute(Map.of("dn", dn,
+                "attributes", Map.of("seeAlso", Map.of("add", b, "remove", a))), false);
+        assertThat(updated.success()).as(updated.message()).isTrue();
+        assertThat(String.valueOf(((LdapEvidence) updated.evidence()).attributes().get("seeAlso"))).contains("add");
+        assertThat(new LdapVerifyStep(directories).execute(Map.of("dn", dn,
+                "expect", Map.of("seeAlso", Map.of("equals", b, "count", 1))), false).success()).isTrue();
+
+        StepOutcome refused = new LdapUpdateStep(directories).execute(Map.of("dn", dn,
+                "attributes", Map.of("seeAlso", Map.of("add", b))), false);
+        assertThat(refused.success()).isFalse();
+        assertThat(refused.message())
+                .isEqualTo("ldap.update failed for " + dn + ": cannot add [" + b + "] to seeAlso: the entry already has it");
+
+        connector.delete(dn);
+    }
+
+    @Test
+    @DisplayName("Malformed add/remove fails before the directory is called; ldap.create refuses add/remove")
+    void testAddRemoveRejectedBeforeIo() {
+        EdirectoryConnector mockConnector = mock(EdirectoryConnector.class);
+        LdapDirectories mocked = only(mockConnector);
+
+        StepOutcome empty = new LdapUpdateStep(mocked).execute(Map.of("dn", "cn=x,ou=users",
+                "attributes", Map.of("seeAlso", Map.of("add", List.of()))), false);
+        assertThat(empty.message()).isEqualTo("ldap.update for cn=x,ou=users: attribute 'seeAlso' has an empty 'add'");
+
+        StepOutcome unknown = new LdapUpdateStep(mocked).execute(Map.of("dn", "cn=x,ou=users",
+                "attributes", Map.of("seeAlso", Map.of("append", "a"))), false);
+        assertThat(unknown.message())
+                .isEqualTo("ldap.update for cn=x,ou=users: attribute 'seeAlso' has unknown keys [append]; use add and/or remove");
+
+        StepOutcome create = new LdapCreateStep(mocked).execute(Map.of("dn", "cn=x,ou=users",
+                "attributes", Map.of("cn", "x", "sn", "X", "seeAlso", Map.of("add", "a"))), false);
+        assertThat(create.message())
+                .isEqualTo("ldap.create for cn=x,ou=users: attribute 'seeAlso' uses add/remove, which only apply to ldap.update");
+
+        verify(mockConnector, never()).update(any(), any());
+        verify(mockConnector, never()).create(any());
+    }
+
+    @Test
+    @DisplayName("ldap.update's overlap message never quotes a secret value")
+    void testSecretOverlapNotQuoted() {
+        StepOutcome outcome = new LdapUpdateStep(only(mock(EdirectoryConnector.class))).execute(Map.of(
+                "dn", "cn=x,ou=users",
+                "attributes", Map.of("userPassword", Map.of("add", "S3cret!", "remove", "S3cret!"))), false);
+
+        assertThat(outcome.success()).isFalse();
+        assertThat(outcome.message()).doesNotContain("S3cret!")
+                .isEqualTo("ldap.update for cn=x,ou=users: attribute 'userPassword' lists the same value in both 'add' and 'remove'");
     }
 }

@@ -180,6 +180,13 @@ public final class LdapVerifyStep implements StepType {
             // DbVerifyStep.rejectMalformedExpect guards for its row matcher, found for the
             // eighth time in this project.
             for (Map.Entry<?, ?> attribute : expect.entrySet()) {
+                // readAttributes never returns userPassword, so any expectation on it would pass
+                // or fail without reflecting the directory, and a failure would quote the value.
+                if ("userPassword".equalsIgnoreCase(String.valueOf(attribute.getKey()))) {
+                    return StepOutcome.finalFailure("ldap.verify for " + where
+                            + ": attribute 'userPassword' cannot be verified; passwords are never "
+                            + "read back from the directory");
+                }
                 if (attribute.getValue() == null) {
                     return StepOutcome.finalFailure("ldap.verify for " + where
                             + " has a null expected value for attribute '" + attribute.getKey()
@@ -187,7 +194,7 @@ public final class LdapVerifyStep implements StepType {
                             + "and would verify nothing. Check for a typo, or assert exists: "
                             + "false to check for absence instead.");
                 }
-                String problem = LdapValueMatcher.shapeProblem(attribute.getValue());
+                String problem = LdapValueMatcher.shapeProblem(String.valueOf(attribute.getKey()), attribute.getValue());
                 if (problem != null) {
                     return StepOutcome.finalFailure("ldap.verify for " + where + ": attribute '"
                             + attribute.getKey() + "' " + problem);

@@ -243,8 +243,30 @@ first: a multi-valued attribute is captured as a list, so writing it back restor
 If the attribute was absent when captured, the capture has no such key, so restore it in cleanup
 with `[]` (which removes it) instead of a `${…}` reference.
 
-**Fails when:** `attributes` is empty, a list holds `null`, a map or a list, or the directory refuses
-the change (no such entry, a schema violation, insufficient rights).
+**Adding or removing values:** give an attribute a map with `add` and/or `remove` (each one value
+or a list) to change some values and keep the rest, in the same request as any replaced attributes:
+
+```yaml
+- ldap.update:
+    dn: "${createdDn}"
+    attributes:
+      groupMembership:
+        add: ["cn=VPN,ou=groups,o=data"]
+        remove: ["cn=Finance,ou=groups,o=data"]
+      title: Engineer
+```
+
+Adding a value the entry already has, or removing one it does not have, fails the step and
+changes nothing (`cannot add [cn=VPN,ou=groups,o=data] to groupMembership: the entry already has
+it`). The named values are matched the way the directory does: ignoring case, and for DNs
+also ignoring spacing. For secret-named attributes (`userPassword`,
+`unicodePwd`, …) a refused add/remove names the attribute but never its values. `add`/`remove`
+only apply to `ldap.update`; `ldap.create` refuses them. An empty `add` or `remove`, unknown keys,
+or the same value in both fail the step before the directory is contacted.
+
+**Fails when:** `attributes` is empty, or a list holds `null`, a map or a list. It also fails when the
+directory refuses the change (no such entry, a schema violation, insufficient rights), or refuses an
+add/remove as above.
 
 ```yaml
 - ldap.update:
@@ -297,15 +319,24 @@ compared as a set, since LDAP keeps no order.
 | a list, `ou: [Engineering, Security]` | the attribute has exactly these values, in any order |
 | `{ contains: [...] }` | every listed value is present; other values are ignored |
 | `{ excludes: [...] }` | none of the listed values is present; an absent attribute passes |
-| `{ contains: [...], excludes: [...] }` | both |
+| `{ equals: [...] }` | the attribute has exactly these values, in any order (the same as a plain list; use it to add `ignoreCase`) |
+| `{ count: 3 }` | the attribute has this many values; an absent attribute has 0 |
+| `{ matches: "^jdoe@.*$" }` | each pattern (one, or a list) matches the whole of at least one value; Java regular expressions, case-sensitive unless the pattern sets an inline flag such as `(?i)` |
+| `{ ignoreCase: true, … }` | `equals`, `contains` and `excludes` compare text ignoring case (DNs always do) |
+| several keys together, e.g. `{ contains: [...], count: 3 }` | every key given holds |
 
 - `contains` and `excludes` take a list or a single value.
+- `count` must be a non-negative whole number (not `3.0`, `"3"` or `-1`). An invalid regular expression, an empty
+  `matches`, or `ignoreCase` without `equals`/`contains`/`excludes` ends the wait at once like the
+  other malformed forms.
 - When both sides are DNs, they compare as DNs: `CN=Finance, OU=Groups, O=Data` matches
-  `cn=finance,ou=groups,o=data`. Other values compare as text, exactly.
+  `cn=finance,ou=groups,o=data`. Other values compare as text, exactly unless `ignoreCase: true`.
 - A value is only a match for an attribute with **one** value: on an entry with two `cn` values,
   `cn: jdoe` fails. Use `cn: { contains: [jdoe] }`.
 - `excludes` cannot tell a misspelled attribute name from an absent attribute, so it passes for
   either. Pair it with a `contains` on the same attribute, or another check in the same step.
+- `userPassword` cannot be verified: it is never read back from the directory, so the step fails at
+  once if `expect` names it. Messages for other secret-named attributes never show values.
 
 ```yaml
 - roles.revoke:
@@ -323,9 +354,11 @@ compared as a set, since LDAP keeps no order.
 **Fails when:** an attribute differs, or the entry is present or absent contrary to `exists`.
 These are retried under `wait:`. Giving both or neither of `expect`/`exists`, an empty `expect`,
 a non-boolean `exists`, an `expect` value of `null` (usually a misspelled attribute name), or a
-malformed value form (an empty list; a map with keys other than `contains`/`excludes` or with
-neither; an empty `contains`/`excludes`; a `null`, map or list inside a list; the same value in
-both `contains` and `excludes`) ends the wait at once.
+malformed value form (an empty list; a map with keys other than `equals`, `contains`, `excludes`,
+`count`, `matches` and `ignoreCase`, or with none of them; an empty `equals`, `contains`,
+`excludes` or `matches`; a `count` that is not a whole number; an invalid regular expression;
+`ignoreCase` without `equals`/`contains`/`excludes`; a `null`, map or list inside a list; the same
+value in both `contains` and `excludes`) ends the wait at once.
 
 ```yaml
 - ldap.verify:

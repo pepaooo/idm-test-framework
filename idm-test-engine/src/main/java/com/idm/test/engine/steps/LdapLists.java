@@ -1,11 +1,13 @@
 package com.idm.test.engine.steps;
 
+import com.idm.test.connector.ldap.client.LdapValueChanges;
+
 import java.util.Collection;
 import java.util.Map;
 
 /**
- * Checks the lists an {@code ldap.create} or {@code ldap.update} writes as multi-valued
- * attributes, before the directory is called.
+ * Checks the lists, and the add/remove changes, an {@code ldap.create} or {@code ldap.update}
+ * writes as multi-valued attributes, before the directory is called.
  */
 final class LdapLists {
 
@@ -13,18 +15,30 @@ final class LdapLists {
     }
 
     /**
-     * @param step       the step name, for the message
-     * @param where      the entry, as the step names it
-     * @param emptyAllowed whether an empty list is meaningful (it removes the attribute in an update)
-     * @return the failure message, or {@code null} when every list can be written
+     * @param step   the step name, for the message
+     * @param where  the entry, as the step names it
+     * @param update whether this is ldap.update: an empty list is meaningful there (it removes the
+     *               attribute), and so is an add/remove map; ldap.create allows neither
+     * @return the failure message, or {@code null} when every value can be written
      */
-    static String problem(String step, String where, Map<String, Object> attributes, boolean emptyAllowed) {
+    static String problem(String step, String where, Map<String, Object> attributes, boolean update) {
         for (Map.Entry<String, Object> attribute : attributes.entrySet()) {
-            if (!(attribute.getValue() instanceof Collection<?> values)) {
+            String prefix = step + " for " + where + ": attribute '" + attribute.getKey() + "' ";
+            Object value = attribute.getValue();
+            if (value instanceof Map<?, ?>) {
+                if (!update) {
+                    return prefix + "uses add/remove, which only apply to ldap.update";
+                }
+                String changeProblem = LdapValueChanges.shapeProblem(attribute.getKey(), value);
+                if (changeProblem != null) {
+                    return prefix + changeProblem;
+                }
                 continue;
             }
-            String prefix = step + " for " + where + ": attribute '" + attribute.getKey() + "' ";
-            if (values.isEmpty() && !emptyAllowed) {
+            if (!(value instanceof Collection<?> values)) {
+                continue;
+            }
+            if (values.isEmpty() && !update) {
                 return prefix + "has an empty list; there is nothing to write";
             }
             if (values.stream().anyMatch(v -> v == null || v instanceof Map<?, ?> || v instanceof Collection<?>)) {

@@ -68,6 +68,8 @@ A parameter's value can be:
   - The result may be text, a number, a boolean, a list or a map. If the result contains
     `undefined` anywhere, the step fails, naming where (`result.dn`, `result[1]`). A misspelled
     property such as `user.userid` reads as `undefined`. Write `null` when you mean "no value".
+  - An expression that runs too long or recurses too deeply is stopped, and its step fails with
+    `expression ran too long…` or `expression recursed too deeply…`.
   - The syntax and the names an expression reads are checked when the file loads.
 
 **Names come from three places:**

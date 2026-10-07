@@ -31,6 +31,14 @@ public final class ExpressionEvaluator {
     /** Enough for any reasonable expression; a runaway loop exceeds it in milliseconds. */
     private static final int DEFAULT_INSTRUCTION_BUDGET = 100_000;
 
+    /**
+     * Frames an expression may nest before it is stopped. Deep enough for any reasonable
+     * recursion; endless recursion reaches it long before the Java stack overflows. It sits
+     * below the roughly 870 frames at which the default instruction budget would stop
+     * recursion (Rhino charges about 100 units per call), so recursion gets its own message.
+     */
+    static final int MAX_STACK_DEPTH = 700;
+
     private final ContextFactory contextFactory;
     private final int instructionBudget;
 
@@ -131,6 +139,12 @@ public final class ExpressionEvaluator {
             cx.setInstructionObserverThreshold(instructionBudget);
             cx.setLanguageVersion(Context.VERSION_ES6);
 
+            // Interpreted mode makes recursion depth countable: Rhino stops an expression that
+            // nests deeper than MAX_STACK_DEPTH with its own error instead of overflowing the
+            // Java stack. The instruction budget works the same in this mode.
+            cx.setInterpretedMode(true);
+            cx.setMaximumInterpreterStackDepth(MAX_STACK_DEPTH);
+
             // A fresh scope per evaluation: nothing one expression defines is visible to the next.
             Scriptable scope = cx.initStandardObjects();
             variables.forEach((name, value) ->
@@ -153,12 +167,25 @@ public final class ExpressionEvaluator {
                     "expression ran too long and was stopped: js:{ " + expression + " }", e);
         } catch (ExpressionException e) {
             throw e;
+        } catch (StackOverflowError e) {
+            // Recursion the interpreter cannot count, through Java, such as a getter that calls
+            // a list helper on its own object. The stack has unwound by now; Context.exit() below
+            // still runs, and the next evaluation gets a fresh scope.
+            throw recursedTooDeeply(expression, e);
         } catch (RuntimeException e) {
+            if (String.valueOf(e.getMessage()).contains("Exceeded maximum stack depth")) {
+                throw recursedTooDeeply(expression, e);
+            }
             throw new ExpressionException(
                     "could not evaluate js:{ " + expression + " }: " + e.getMessage(), e);
         } finally {
             Context.exit();
         }
+    }
+
+    private static ExpressionException recursedTooDeeply(String expression, Throwable cause) {
+        return new ExpressionException(
+                "expression recursed too deeply and was stopped: js:{ " + expression + " }", cause);
     }
 
     /**

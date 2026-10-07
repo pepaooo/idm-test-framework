@@ -29,7 +29,7 @@ Only `ExpressionEvaluator.doEvaluate` (engine module, `com.idm.test.engine.expr`
 
 - **Interpreted mode and a depth limit:** `cx.setInterpretedMode(true)` (the Rhino 1.8 API; the
   older equivalent is optimization level −1) and
-  `cx.setMaximumInterpreterStackDepth(MAX_STACK_DEPTH)`, a new constant of **1 000** frames.
+  `cx.setMaximumInterpreterStackDepth(MAX_STACK_DEPTH)`, a new constant of **700** frames. (Revised during implementation, jangulo 2026-10-07: Rhino charges ~100 instruction units per call, so the 100 000 budget stops recursion near 870 frames; the limit sits below that so recursion gets its own message.)
 - **Message:** Rhino's "Exceeded maximum stack depth" error, and a `StackOverflowError`, both
   become `ExpressionException("expression recursed too deeply and was stopped: js:{ <expression> }")`.
 - **Safety net:** a `catch (StackOverflowError e)` around evaluation, alongside the existing
@@ -47,7 +47,7 @@ records its result.
 ## 4. Documentation
 
 - `docs/architecture/capabilities.md`, the "Expression restrictions" row: add the recursion depth
-  of 1 000 frames.
+  of 700 frames.
 - `docs/reference/writing-scenarios.md`, where expression limits are described (the `js:{ … }`
   section): one line that an expression running too long or recursing too deeply is stopped and
   fails its step.

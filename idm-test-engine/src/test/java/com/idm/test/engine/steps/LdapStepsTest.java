@@ -721,4 +721,53 @@ class LdapStepsTest {
 
         verify(mockConnector, never()).readAttributes(any());
     }
+
+    @Test
+    @DisplayName("ldap.update adds and removes single values, records them as written, and reports strict failures")
+    void testUpdateAddRemove() {
+        String dn = "cn=ada.addremove,ou=users";
+        String a = "cn=a,ou=groups,dc=test,dc=com";
+        String b = "cn=b,ou=groups,dc=test,dc=com";
+        new LdapCreateStep(directories).execute(Map.of("dn", dn,
+                "attributes", Map.of("cn", "ada.addremove", "sn", "Lovelace", "seeAlso", List.of(a))), false);
+
+        StepOutcome updated = new LdapUpdateStep(directories).execute(Map.of("dn", dn,
+                "attributes", Map.of("seeAlso", Map.of("add", b, "remove", a))), false);
+        assertThat(updated.success()).as(updated.message()).isTrue();
+        assertThat(String.valueOf(((LdapEvidence) updated.evidence()).attributes().get("seeAlso"))).contains("add");
+        assertThat(new LdapVerifyStep(directories).execute(Map.of("dn", dn,
+                "expect", Map.of("seeAlso", Map.of("equals", b, "count", 1))), false).success()).isTrue();
+
+        StepOutcome refused = new LdapUpdateStep(directories).execute(Map.of("dn", dn,
+                "attributes", Map.of("seeAlso", Map.of("add", b))), false);
+        assertThat(refused.success()).isFalse();
+        assertThat(refused.message())
+                .isEqualTo("ldap.update failed for " + dn + ": cannot add [" + b + "] to seeAlso: the entry already has it");
+
+        connector.delete(dn);
+    }
+
+    @Test
+    @DisplayName("Malformed add/remove fails before the directory is called; ldap.create refuses add/remove")
+    void testAddRemoveRejectedBeforeIo() {
+        EdirectoryConnector mockConnector = mock(EdirectoryConnector.class);
+        LdapDirectories mocked = only(mockConnector);
+
+        StepOutcome empty = new LdapUpdateStep(mocked).execute(Map.of("dn", "cn=x,ou=users",
+                "attributes", Map.of("seeAlso", Map.of("add", List.of()))), false);
+        assertThat(empty.message()).isEqualTo("ldap.update for cn=x,ou=users: attribute 'seeAlso' has an empty 'add'");
+
+        StepOutcome unknown = new LdapUpdateStep(mocked).execute(Map.of("dn", "cn=x,ou=users",
+                "attributes", Map.of("seeAlso", Map.of("append", "a"))), false);
+        assertThat(unknown.message())
+                .isEqualTo("ldap.update for cn=x,ou=users: attribute 'seeAlso' has unknown keys [append]; use add and/or remove");
+
+        StepOutcome create = new LdapCreateStep(mocked).execute(Map.of("dn", "cn=x,ou=users",
+                "attributes", Map.of("cn", "x", "sn", "X", "seeAlso", Map.of("add", "a"))), false);
+        assertThat(create.message())
+                .isEqualTo("ldap.create for cn=x,ou=users: attribute 'seeAlso' uses add/remove, which only apply to ldap.update");
+
+        verify(mockConnector, never()).update(any(), any());
+        verify(mockConnector, never()).create(any());
+    }
 }

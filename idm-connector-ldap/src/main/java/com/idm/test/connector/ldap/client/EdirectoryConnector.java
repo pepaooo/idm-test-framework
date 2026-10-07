@@ -20,6 +20,9 @@ import javax.naming.directory.Attribute;
 import javax.naming.directory.Attributes;
 import javax.naming.directory.BasicAttribute;
 import javax.naming.directory.BasicAttributes;
+import javax.naming.directory.DirContext;
+import javax.naming.directory.ModificationItem;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -273,10 +276,13 @@ public class EdirectoryConnector {
     }
 
     /**
-     * Updates user attributes in LDAP.
+     * Updates attributes in one modify request. A plain value or list replaces the attribute (an
+     * empty list removes it); a {@code { add: …, remove: … }} map adds or removes those values and
+     * leaves the others. The directory applies the request entirely or not at all. When it refuses
+     * because a value to add exists or a value to remove does not, the message says which.
      *
      * @param dn the distinguished name
-     * @param attributes map of attribute names to values
+     * @param attributes map of attribute names to new values or add/remove changes
      * @return operation result indicating success or failure
      */
     public OperationResult<Void> update(String dn, Map<String, Object> attributes) {
@@ -285,26 +291,24 @@ public class EdirectoryConnector {
         try {
             Name name = LdapNameBuilder.newInstance(dn).build();
 
-            // Create modification items
-            javax.naming.directory.ModificationItem[] mods =
-                new javax.naming.directory.ModificationItem[attributes.size()];
-
-            int i = 0;
+            List<ModificationItem> mods = new ArrayList<>();
             for (Map.Entry<String, Object> entry : attributes.entrySet()) {
-                // A collection is several values; an empty one replaces the attribute with
-                // nothing, which removes it.
-                javax.naming.directory.Attribute attr;
-                if (entry.getValue() instanceof Collection<?> values) {
-                    attr = new BasicAttribute(entry.getKey());
-                    values.forEach(attr::add);
+                if (entry.getValue() instanceof Map<?, ?> change) {
+                    if (change.containsKey(LdapValueChanges.ADD)) {
+                        mods.add(new ModificationItem(DirContext.ADD_ATTRIBUTE,
+                                attributeOf(entry.getKey(), change.get(LdapValueChanges.ADD))));
+                    }
+                    if (change.containsKey(LdapValueChanges.REMOVE)) {
+                        mods.add(new ModificationItem(DirContext.REMOVE_ATTRIBUTE,
+                                attributeOf(entry.getKey(), change.get(LdapValueChanges.REMOVE))));
+                    }
                 } else {
-                    attr = new BasicAttribute(entry.getKey(), entry.getValue());
+                    mods.add(new ModificationItem(DirContext.REPLACE_ATTRIBUTE,
+                            attributeOf(entry.getKey(), entry.getValue())));
                 }
-                mods[i++] = new javax.naming.directory.ModificationItem(
-                    javax.naming.directory.DirContext.REPLACE_ATTRIBUTE, attr);
             }
 
-            ldapTemplate.modifyAttributes(name, mods);
+            ldapTemplate.modifyAttributes(name, mods.toArray(new ModificationItem[0]));
 
             log.info("LDAP user updated successfully: {}", dn);
 
@@ -313,6 +317,10 @@ public class EdirectoryConnector {
                     .message("User updated successfully")
                     .build();
 
+        } catch (org.springframework.ldap.AttributeInUseException e) {
+            return refused(dn, attributes, LdapValueChanges.ADD, e);
+        } catch (org.springframework.ldap.NoSuchAttributeException e) {
+            return refused(dn, attributes, LdapValueChanges.REMOVE, e);
         } catch (Exception e) {
             log.error("Failed to update LDAP user '{}': {}", dn, e.getMessage());
             return OperationResult.<Void>builder()
@@ -322,6 +330,50 @@ public class EdirectoryConnector {
                     .throwable(e)
                     .build();
         }
+    }
+
+    /** A collection is several values (an empty one, none); anything else is one value. */
+    private static Attribute attributeOf(String name, Object value) {
+        if (value instanceof Collection<?> values) {
+            Attribute attribute = new BasicAttribute(name);
+            values.forEach(attribute::add);
+            return attribute;
+        }
+        return new BasicAttribute(name, value);
+    }
+
+    /**
+     * The directory refused an add of an existing value (LDAP 20) or a remove of a missing one
+     * (LDAP 16). The entry is read once, only here, to say which values; when that is not
+     * possible, the directory's own message stands.
+     */
+    private OperationResult<Void> refused(String dn, Map<String, Object> attributes, String key, Exception e) {
+        String explanation = explain(dn, attributes, key);
+        log.error("Failed to update LDAP user '{}': {}", dn, explanation != null ? explanation : e.getMessage());
+        return OperationResult.<Void>builder()
+                .success(false)
+                .message(explanation != null ? explanation : "Failed to update user: " + e.getMessage())
+                .errorType(ErrorType.LDAP_ERROR)
+                .throwable(e)
+                .build();
+    }
+
+    private String explain(String dn, Map<String, Object> attributes, String key) {
+        OperationResult<Map<String, Object>> read = readAttributes(dn);
+        if (!read.isSuccess() || read.getData().isEmpty()) {
+            return null;
+        }
+        Map<String, Object> actual = read.getData().get();
+        List<String> reasons = new ArrayList<>();
+        attributes.forEach((attribute, value) -> {
+            if (value instanceof Map<?, ?> change && change.containsKey(key)) {
+                List<Object> offending = LdapValueChanges.offending(key, change.get(key), actual.get(attribute));
+                if (!offending.isEmpty()) {
+                    reasons.add(LdapValueChanges.reason(key, attribute, offending));
+                }
+            }
+        });
+        return reasons.isEmpty() ? null : String.join("; ", reasons);
     }
 
     /**

@@ -570,4 +570,56 @@ class EdirectoryConnectorTest {
         });
         assertThat(classes).containsExactlyInAnyOrder("top", "person", "organizationalPerson");
     }
+
+    private static final String FINANCE = "cn=finance,ou=groups,dc=test,dc=com";
+
+    @Test
+    @DisplayName("update adds and removes values in one request, alongside a replace")
+    void testUpdateAddsAndRemovesValues() {
+        String dn = createMultiValued("multi.addremove");
+
+        OperationResult<Void> result = connector.update(dn, Map.of(
+                "seeAlso", Map.of("add", List.of(FINANCE), "remove", List.of(VPN)),
+                "title", "Engineer"));
+
+        assertThat(result.isSuccess()).as(result.getMessage()).isTrue();
+        Map<String, Object> read = connector.readAttributes(dn).getData().orElseThrow();
+        assertThat((List<?>) read.get("seeAlso")).map(String::valueOf).containsExactlyInAnyOrder(DEV, FINANCE);
+        assertThat(read.get("title")).isEqualTo("Engineer");
+
+        connector.delete(dn);
+    }
+
+    @Test
+    @DisplayName("Adding a value the entry has fails, says which, and changes nothing")
+    void testUpdateAddExistingFails() {
+        String dn = createMultiValued("multi.addexisting");
+
+        OperationResult<Void> result = connector.update(dn, Map.of(
+                "seeAlso", Map.of("add", "CN=Developers,OU=Groups,DC=test,DC=com"),
+                "title", "Never"));
+
+        assertThat(result.isSuccess()).isFalse();
+        assertThat(result.getMessage())
+                .isEqualTo("cannot add [CN=Developers,OU=Groups,DC=test,DC=com] to seeAlso: the entry already has it");
+        Map<String, Object> read = connector.readAttributes(dn).getData().orElseThrow();
+        assertThat(read).doesNotContainKey("title");
+        assertThat((List<?>) read.get("seeAlso")).hasSize(2);
+
+        connector.delete(dn);
+    }
+
+    @Test
+    @DisplayName("Removing a value the entry lacks fails and says which")
+    void testUpdateRemoveMissingFails() {
+        String dn = createMultiValued("multi.removemissing");
+
+        OperationResult<Void> result = connector.update(dn, Map.of("seeAlso", Map.of("remove", List.of(FINANCE))));
+
+        assertThat(result.isSuccess()).isFalse();
+        assertThat(result.getMessage())
+                .isEqualTo("cannot remove [" + FINANCE + "] from seeAlso: the entry does not have it");
+
+        connector.delete(dn);
+    }
 }

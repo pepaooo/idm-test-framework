@@ -122,7 +122,7 @@ public final class ScenarioValidator {
                 throw new ValidationException(sourceName, "fixture '" + fixture.getKey()
                         + "' is a built-in helper name; choose another");
             }
-  
+
             String generator = fixture.getValue().generate();
             if (generator != null && !generatorNames.contains(generator)) {
                 throw new ValidationException(sourceName,
@@ -272,7 +272,7 @@ public final class ScenarioValidator {
             throw new ValidationException(sourceName, index, stepType,
                     keyword + " '" + name + "' is a built-in helper name; choose another");
         }
-  
+
         if (known.contains(name)) {
             throw new ValidationException(sourceName, index, stepType,
                     keyword + " '" + name + "' shadows an existing name — '" + name

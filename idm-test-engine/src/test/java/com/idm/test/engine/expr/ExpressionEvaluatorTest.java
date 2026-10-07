@@ -1,14 +1,14 @@
 package com.idm.test.engine.expr;
 
-import java.util.ArrayList;
-import com.idm.test.engine.spi.Explained;
 import com.idm.test.engine.expr.ExpressionEvaluator.ExpressionException;
+import com.idm.test.engine.spi.Explained;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.mozilla.javascript.Context;
 import org.mozilla.javascript.ContextFactory;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -364,5 +364,44 @@ class ExpressionEvaluatorTest {
                 .hasMessageContaining("ran too long");
         assertThatThrownBy(() -> evaluator.evaluate("java.lang.System.exit(0)", Map.of()))
                 .isInstanceOf(ExpressionEvaluator.ExpressionException.class);
+    }
+
+    @Test
+    @DisplayName("Prototype-named values are ordinary values")
+    void testPrototypeNames() {
+        Explained e = explain("containsAll(['a'], 'constructor')", Map.of());
+        assertThat(e.value()).isEqualTo(false);
+        assertThat(e.notes()).containsExactly("containsAll: missing [constructor]");
+        assertThat(evaluator.evaluate("containsAll(['__proto__', 'toString'], ['toString', '__proto__'])", Map.of()))
+                .isEqualTo(true);
+        assertThat(evaluator.evaluate("containsAll(['a'], ['__proto__'])", Map.of())).isEqualTo(false);
+        assertThat(evaluator.evaluate("excludesAll(['a'], ['valueOf'])", Map.of())).isEqualTo(true);
+    }
+
+    @Test
+    @DisplayName("Nested text is unambiguous; the text rule still applies at every depth")
+    void testNestedCanonical() {
+        assertThat(evaluator.evaluate("sameMembers([['a,b']], [['a','b']])", Map.of())).isEqualTo(false);
+        assertThat(evaluator.evaluate("containsAll([[1]], '[1]')", Map.of())).isEqualTo(false);
+        assertThat(evaluator.evaluate("containsAll([[1, 2]], [['1', '2']])", Map.of())).isEqualTo(true);
+        assertThat(evaluator.evaluate("containsAll([{id: 1}], [{id: '1'}])", Map.of())).isEqualTo(true);
+        Explained e = explain("containsAll([], [{id: 1, n: 'x'}])", Map.of());
+        assertThat(e.notes()).containsExactly("containsAll: missing [{id: 1, n: \"x\"}]");
+    }
+
+    @Test
+    @DisplayName("Dates compare by their text")
+    void testDates() {
+        assertThat(evaluator.evaluate(
+                "containsAll([new Date(0)], [new Date(0)])", Map.of())).isEqualTo(true);
+        assertThat(evaluator.evaluate(
+                "containsAll([new Date(0)], [new Date(1000)])", Map.of())).isEqualTo(false);
+    }
+
+    @Test
+    @DisplayName("An expression overwriting the notes does not break explain")
+    void testNotesOverwritten() {
+        Explained e = explain("(function () { __checkNotes = undefined; return 1; })()", Map.of());
+        assertThat(e.notes()).isEmpty();
     }
 }

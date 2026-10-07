@@ -35,26 +35,42 @@ public final class ExpressionEvaluator {
      */
     private static final String PRELUDE = """
             var __checkNotes = [];
-            function __canon(v) {
-              if (v === null || v === undefined) return String(v);
-              if (Array.isArray(v)) return '[' + v.map(__canon).join(',') + ']';
-              if (typeof v === 'object') {
-                return '{' + Object.keys(v).sort().map(function (k) {
-                  return JSON.stringify(k) + ':' + __canon(v[k]);
+            function __plain(v) {
+              return v instanceof Date || v instanceof RegExp;
+            }
+            function __key(v, nested) {
+              if (Array.isArray(v)) {
+                return '\u0001[' + v.map(function (e) { return __key(e, true); }).join(',') + ']';
+              }
+              if (v !== null && typeof v === 'object' && !__plain(v)) {
+                return '\u0001{' + Object.keys(v).sort().map(function (k) {
+                  return JSON.stringify(k) + ':' + __key(v[k], true);
                 }).join(',') + '}';
               }
-              return String(v);
+              return nested ? JSON.stringify(String(v)) : String(v);
+            }
+            function __disp(v, nested) {
+              if (Array.isArray(v)) {
+                return '[' + v.map(function (e) { return __disp(e, true); }).join(', ') + ']';
+              }
+              if (v !== null && typeof v === 'object' && !__plain(v)) {
+                return '{' + Object.keys(v).sort().map(function (k) {
+                  return k + ': ' + __disp(v[k], true);
+                }).join(', ') + '}';
+              }
+              return nested && typeof v === 'string' ? JSON.stringify(v) : String(v);
             }
             function __list(v) {
               return v === null || v === undefined ? [] : (Array.isArray(v) ? v : [v]);
             }
             function __select(from, against, wantPresent) {
-              var keys = against.map(__canon), seen = {}, out = [];
+              var known = Object.create(null), seen = Object.create(null), out = [];
+              against.forEach(function (v) { known['k' + __key(v, false)] = true; });
               from.forEach(function (v) {
-                var c = __canon(v);
+                var c = 'k' + __key(v, false);
                 if (seen[c]) return;
                 seen[c] = true;
-                if ((keys.indexOf(c) >= 0) === wantPresent) out.push(c);
+                if ((known[c] === true) === wantPresent) out.push(__disp(v, false));
               });
               return out;
             }
@@ -220,8 +236,13 @@ public final class ExpressionEvaluator {
     }
 
     private static List<String> notesIn(Scriptable scope) {
-        Object notes = JsValues.fromJs(ScriptableObject.getProperty(scope, "__checkNotes"));
         List<String> result = new ArrayList<>();
+        Object notes;
+        try {
+            notes = JsValues.fromJs(ScriptableObject.getProperty(scope, "__checkNotes"));
+        } catch (RuntimeException e) {
+            return result;
+        }
         if (notes instanceof List<?> list) {
             list.forEach(note -> result.add(String.valueOf(note)));
         }

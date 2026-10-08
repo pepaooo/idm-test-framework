@@ -246,19 +246,19 @@ still leads the failure summary. See
 
 ## What exists today
 
-Verified on 2026-09-25 with `./mvnw clean test` at `fb35547`:
+Verified on 2026-10-07 with `./mvnw clean test` at `76cc190` (0 failures, errors or skips):
 
 | Module | Tests |
 |---|---|
 | idm-test-core | 34 |
 | idm-test-utils | 51 |
-| idm-test-engine | 302 |
-| idm-connector-ldap | 18 |
-| idm-connector-database | 21 |
-| idm-connector-rest | 36 |
-| idm-connector-soap | 18 |
-| idm-test-scenarios | 111 |
-| **Total** | **591** |
+| idm-test-engine | 490 |
+| idm-connector-ldap | 71 |
+| idm-connector-database | 23 |
+| idm-connector-rest | 61 |
+| idm-connector-soap | 26 |
+| idm-test-scenarios | 158 |
+| **Total** | **914** |
 
 The scenarios module holds the Java workflow tests (provisioning, role assignment, modification,
 deprovisioning and multi-system flows), a corpus of 21 YAML scenarios converted from them, and the

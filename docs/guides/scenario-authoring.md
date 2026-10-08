@@ -88,7 +88,7 @@ A guarded read such as `typeof created === 'undefined' ? null : created.dn` stil
 
 ## 4. Steps
 
-The framework has 13 step types across LDAP, databases, the SOAP role and resource services,
+The framework has 14 step types across LDAP, databases, the SOAP role and resource services,
 REST and raw HTTP. Every step's parameters, what `as:` captures, how it fails and an example
 are in the [authoring reference](../reference/writing-scenarios.md#4-step-reference), which a
 test keeps in step with the code.

@@ -88,6 +88,17 @@ idm:
       max-active: 8
 ```
 
+| Key | Default | Meaning |
+|---|---|---|
+| `url` | — | `ldap://host:389` or `ldaps://host:636` |
+| `base-dn` | — | the base every `ldap.*` step's DN is relative to |
+| `user-dn`, `password` | — | the bind account; both blank binds anonymously |
+| `pooled` | `true` | pool connections (Spring LDAP `PoolingContextSource`) |
+| `min-idle` | `1` | idle connections kept open |
+| `max-active` | `8` | connections in use at once |
+| `max-total` | `8` | connections in total |
+| `max-wait` | `-1` | milliseconds to wait for a free connection; `-1` waits indefinitely |
+
 **Environment Variables:**
 - `IDM_LDAP_URL` - LDAP server URL
 - `IDM_LDAP_BASE_DN` - Base DN for searches
@@ -158,6 +169,18 @@ idm:
         max-pool-size: 5
 ```
 
+| Key | Default | Meaning |
+|---|---|---|
+| `jdbc-url`, `username`, `password` | — | the connection |
+| `driver-class-name` | — | the JDBC driver class, for example `org.postgresql.Driver`; set it for every database |
+| `max-pool-size` | `10` | connections at most (HikariCP) |
+| `min-idle` | `2` | idle connections kept |
+| `connection-timeout` | `30000` | milliseconds to wait for a connection |
+| `idle-timeout` | `600000` | milliseconds before an idle connection closes |
+| `max-lifetime` | `1800000` | milliseconds before a connection is replaced |
+
+A database's pool opens the first time a step uses it (except the embedded `test-db`).
+
 **Environment Variables per Database:**
 - `<NAME>_DB_URL` - JDBC connection URL
 - `<NAME>_DB_USER` - Database username
@@ -179,15 +202,22 @@ idm:
   test:
     soap:
       url: ${IDM_SOAP_URL:https://idm.company.com:8543/IDMProv/role/service}
+      resource-url: https://idm.company.com:8543/IDMProv/resource/service
       username: ${IDM_SOAP_USER}
       password: ${IDM_SOAP_PASSWORD}
-      connection-timeout: 10000
-      read-timeout: 30000
-      message-logging: false
 ```
 
+| Key | Used by | Meaning |
+|---|---|---|
+| `url` | `roles.grant`, `roles.revoke` | the Role service endpoint; without it, those steps fail without calling anything |
+| `resource-url` | `resources.grant`, `resources.revoke` | the Resource service endpoint; without it, those steps fail without calling anything |
+| `username`, `password` | both services | HTTP Basic credentials; set both, or neither for an unauthenticated endpoint (only one fails at startup) |
+| `connection-timeout`, `read-timeout`, `message-logging` | — | accepted but **not applied** by the connectors today; the JAX-WS defaults are used |
+
 **Environment Variables:**
-- `IDM_SOAP_URL` - SOAP service endpoint
+- `IDM_SOAP_URL` - Role service endpoint
+- `IDM_TEST_SOAP_RESOURCE_URL` - Resource service endpoint (Spring's naming; the shipped
+  `application.yml` has no placeholder for it)
 - `IDM_SOAP_USER` - Service username
 - `IDM_SOAP_PASSWORD` - Service password
 
@@ -214,8 +244,11 @@ idm:
         read-timeout: 45000
 ```
 
-**Authentication.** `rest.request`, `rest.verify` and `http.request` authenticate with the
-target's settings, and nothing is written in the scenario:
+`connect-timeout` and `read-timeout` are accepted but **not applied** to requests today; the HTTP
+client's defaults are used.
+
+**Authentication.** `rest.request`, `rest.verify`, `http.request` and `http.verify` authenticate
+with the target's settings, and nothing is written in the scenario:
 
 | Target settings | Header sent |
 |---|---|
@@ -273,6 +306,11 @@ idm:
       database-provision-timeout-seconds: 180
       rest-provision-timeout-seconds: 300
 ```
+
+Only `default-timeout-seconds` and `default-poll-interval-seconds` affect YAML scenarios: they are
+the wait used by `wait: true`, and by a `wait:` map that leaves `timeout` or `poll` out. The
+shipped `test` profile sets them to 60 s and 1 s. The other keys are bound but not used by the
+YAML runners (the Java workflow tests pass their own timeouts).
 
 ## TLS certificates (LDAPS, HTTPS)
 

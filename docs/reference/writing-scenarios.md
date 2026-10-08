@@ -34,6 +34,11 @@ cleanup:                                      # optional; always runs afterwards
 | `steps` | yes | the ordered list of steps; each entry is a map with one key, the step type, whose value holds its parameters |
 | `cleanup` | no | steps that run after `steps`, whether they passed or failed (see [Cleanup](#6-cleanup)) |
 
+- **Each entry in `steps` and `cleanup` is a map with exactly one key**, the step type (or
+  `set`). Two keys in one entry, or a bare value, is rejected when the file loads.
+- **Other top-level keys are ignored, not rejected.** A misspelled `cleanp:` or `fixture:` is
+  silently skipped, so check the spelling of the five keys above.
+
 **Where files go** (all under `idm-test-scenarios/src/test/resources/`):
 
 | Folder | Run by | Against |
@@ -71,6 +76,8 @@ A parameter's value can be:
   - An expression that runs too long, or nests or recurses too deeply, is stopped, and its step fails with
     `expression ran too long…` or `expression nested or recursed too deeply…`.
   - The syntax and the names an expression reads are checked when the file loads.
+  - Every expression can call three list functions, `containsAll`, `excludesAll` and
+    `sameMembers`; see **Checking lists** under [`http.verify`](#httpverify).
 
 **Names come from three places:**
 
@@ -85,8 +92,12 @@ A parameter's value can be:
 - `cleanup:` is the exception: its entries see every name bound anywhere in `steps:`. If the step
   that binds a name never ran, the cleanup entry that uses it is skipped (see
   [Cleanup](#6-cleanup)).
-- `as:` accepts a plain new name (`createdDn`, `granted_roles`). If a step has nothing to capture
-  and you declare `as:`, the step fails. Each step's **Captures** line below says what it binds.
+- `as:` accepts a plain new name (`createdDn`, `granted_roles`): a letter or underscore, then
+  letters, digits or underscores. If a step has nothing to capture and you declare `as:`, the step
+  fails. Each step's **Captures** line below says what it binds.
+- A fixture, `set:` or `as:` name can't reuse a name already bound (it would shadow it), and can't
+  be one of the list functions' names (`containsAll`, `excludesAll`, `sameMembers`). Both are
+  rejected when the file loads.
 
 `set:` is written as a step:
 
@@ -140,7 +151,8 @@ fixtures:
 
 Every step is either an **action** (it changes something, and runs once) or an **assertion** (it
 checks something, and accepts [`wait:`](#5-waiting) to retry until it passes). Every step accepts
-`as:`; assertions also accept `wait:`. The tables below list each step's own parameters.
+`as:` and `description:`; assertions also accept `wait:`. The tables below list each step's own
+parameters.
 
 **How a step can fail.** A failed action stops the scenario. A failed assertion stops it too,
 unless `wait:` is set, in which case it is retried until it passes or the wait times out. Some
@@ -605,6 +617,12 @@ are retried under `wait:`. That includes an API answering `401` or `403`, becaus
 appears once a role grant has propagated. An unknown target, a malformed `expect` (empty, unknown
 keys, an empty or `null` field) or misconfigured or rejected credentials end the wait at once.
 
+**How `body` compares:** each listed field must be present with the given value; nested maps are
+compared field by field, so you list only what matters. Values compare like `db.verify` (`1`
+matches `1.0`, `"200"` matches `200`). A **list** field must equal the response's list exactly,
+in the same order. To check part of a list, or a list in any order, use `http.verify` with
+`containsAll` or `sameMembers` (see **Checking lists** there).
+
 ```yaml
 - rest.verify:
     target: idm
@@ -820,6 +838,8 @@ Provisioning is asynchronous, so assertions can retry. Only assertions (`ldap.ve
 | `wait: { timeout: 30s, poll: 2s }` | retry every `poll` until it passes or `timeout` expires |
 
 - **Durations** are a positive whole number with `s`, `m` or `h` (`30s`, `5m`, `1h`).
+- **`timeout` and `poll` may each be left out** of the map; the missing one takes its configured
+  default (`wait: { timeout: 10m }` polls at the default interval).
 - **The defaults for `wait: true`** come from `idm.test.executor.default-timeout-seconds` and
   `default-poll-interval-seconds`: 60 s / 1 s in the `test` profile, 5 min / 5 s otherwise, unless
   your environment overrides them.
@@ -886,6 +906,31 @@ reference; this section says where to look.
   runner refuses before running, are in the
   [real-environment README](../../idm-test-scenarios/src/test/resources/scenarios-real/README.md).
 
+**Every setting that affects a scenario, at a glance.** All live under `idm.test` in
+`application.yml` (or a profile file), and each can be set from the environment with Spring's
+naming (`idm.test.soap.resource-url` → `IDM_TEST_SOAP_RESOURCE_URL`). Details and examples are in
+the [configuration reference](configuration.md).
+
+| Setting | Used by | Meaning |
+|---|---|---|
+| `ldap.url`, `ldap.base-dn`, `ldap.user-dn`, `ldap.password` | `ldap.*` | the directory named `default`; DNs in steps are relative to `base-dn`. Blank user DN and password bind anonymously |
+| `ldap.pooled`, `ldap.min-idle`, `ldap.max-active`, `ldap.max-total`, `ldap.max-wait` | `ldap.*` | connection pooling for that directory |
+| `directories.<name>.*` (same keys as `ldap.*`) | `ldap.*` with `directory: <name>` | further directories, such as Active Directory |
+| `default-directory` | `ldap.*` without `directory:` | which directory those steps use |
+| `databases.<name>.jdbc-url`, `username`, `password`, `driver-class-name` | `db.*` with `database: <name>` | a named database |
+| `databases.<name>.max-pool-size`, `min-idle`, `connection-timeout`, `idle-timeout`, `max-lifetime` | `db.*` | its connection pool (milliseconds for the times) |
+| `soap.url` | `roles.*` | the Role service endpoint |
+| `soap.resource-url` | `resources.*` | the Resource service endpoint |
+| `soap.username`, `soap.password` | `roles.*`, `resources.*` | HTTP Basic credentials; set both or neither |
+| `rest.<target>.base-url` | `rest.*`, `http.*` with `target: <target>` | the target's base URL; the step's `path` is appended |
+| `rest.<target>.username`, `password` | `rest.*`, `http.*` | Basic authentication for that target |
+| `rest.<target>.use-oauth`, `oauth-client-name` | `rest.*`, `http.*` | an OAuth2 client-credentials token from that `spring.security.oauth2.client.registration` entry |
+| `executor.default-timeout-seconds`, `executor.default-poll-interval-seconds` | `wait: true`, and a `wait:` map that leaves `timeout` or `poll` out | the default wait |
+
+Not settable from a scenario, by design: URLs, credentials and pool sizes. The command line
+chooses what runs: `-Dtest=<runner>` and `-Dscenario=<file or glob>`; see
+[running tests](running-tests.md).
+
 ## 8. What validation rejects at load
 
 Every file is checked before any step runs, so a typo fails in seconds rather than after minutes of
@@ -907,6 +952,14 @@ waiting. Each message names the file and the step. Real examples:
 | a `description` that is a `js:{…}` expression | `demo.yaml, step 2 (roles.grant): 'description' must be text; js:{ … } is not allowed here` |
 | missing `name` | `demo.yaml: 'name' is required` |
 | a `check:` that isn't `js:{ … }`, or an empty list | `demo.yaml, step 1 (http.verify): 'check' must be js:{ … } expressions; got "status is 200"` |
+| an entry with two step types, or no map | `demo.yaml: step 2 must be a map with exactly one step type, …` |
+| a scenario with no steps | `demo.yaml: a scenario needs at least one step` |
+| an `as:` that isn't a plain name | `demo.yaml, step 1 (ldap.create): 'as: ${x}' is not a valid name — as: must be a literal identifier …` |
+| a `set:` or `as:` name already bound | `demo.yaml, step 3 (ldap.create): as: 'user' shadows an existing name — 'user' is already bound by a fixture, an earlier as:, or an earlier set: entry` |
+| a fixture, `set:` or `as:` named like a list function | `demo.yaml, step 2 (set): set: 'containsAll' is a built-in helper name; choose another` |
+| a `set:` with nothing to bind | `demo.yaml, step 1 (set): a set: step needs at least one name to bind` |
+| `set:` in `cleanup:` | `demo.yaml: cleanup entry 1 (set): set: is not allowed in cleanup — nothing runs after cleanup to read a binding` |
+| an expression nested too deeply to compile | `demo.yaml, step 1 (ldap.create): invalid expression js:{ … }: it is nested too deeply` |
 
 Some mistakes can only be found when the step runs: a misspelled property on a bound name
 (`${user.userid}`), a value of the wrong shape (`expect` as text instead of a map), or a DN the

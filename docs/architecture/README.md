@@ -41,7 +41,7 @@ YAML and compiled test classes are inputs. JSON and Surefire reports are file ou
 | Engine | Scope, ordered execution, waiting, capture and cleanup lifecycle | [ScenarioEngine](../../idm-test-engine/src/main/java/com/idm/test/engine/ScenarioEngine.java) |
 | Value handling | Fixture generation, interpolation and restricted expression evaluation | [Engine source directory](../../idm-test-engine/src/main/java/com/idm/test/engine/) |
 | Step interface | Declare metadata and execute one operation | [StepType](../../idm-test-engine/src/main/java/com/idm/test/engine/spi/StepType.java) |
-| Steps | Adapt the LDAP, database, SOAP and REST/HTTP connectors to YAML (13 step types) | [Step implementations](../../idm-test-engine/src/main/java/com/idm/test/engine/steps/) |
+| Steps | Adapt the LDAP, database, SOAP and REST/HTTP connectors to YAML (14 step types) | [Step implementations](../../idm-test-engine/src/main/java/com/idm/test/engine/steps/) |
 | Core | Shared operation result/error model and polling utility | [Core sources](../../idm-test-core/src/main/java/com/idm/test/core/) |
 | Results | Scenario/step data and JSON serialization | [Result sources](../../idm-test-engine/src/main/java/com/idm/test/engine/result/) |
 

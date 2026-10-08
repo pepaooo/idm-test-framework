@@ -71,7 +71,7 @@ idm-test-framework/
 ├── pom.xml                  # Maven parent POM (multi-module)
 ├── idm-test-core/           # TestExecutor (waitUntil, executeWithRetry), OperationResult, ErrorType
 ├── idm-test-utils/          # Test data generators, assertions, EmbeddedLdapServer
-├── idm-test-engine/         # YAML scenario engine: loader, validator, engine, 13 step types (Spring-free)
+├── idm-test-engine/         # YAML scenario engine: loader, validator, engine, 14 step types (Spring-free)
 ├── idm-connector-ldap/      # eDirectory/LDAP (EdirectoryConnector)
 ├── idm-connector-database/  # Multi-DB raw SQL (MultiDatabaseConnector)
 ├── idm-connector-rest/      # IdmRestConnector, RestAuthenticator (basic/OAuth2), JDK HTTP client

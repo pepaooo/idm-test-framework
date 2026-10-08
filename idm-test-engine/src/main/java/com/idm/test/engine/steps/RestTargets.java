@@ -1,5 +1,6 @@
 package com.idm.test.engine.steps;
 
+import com.idm.test.connector.rest.client.Timeouts;
 import com.idm.test.connector.rest.config.RestProperties;
 
 import java.util.TreeSet;
@@ -24,17 +25,18 @@ final class RestTargets {
 
     /**
      * @param baseUrl the target's base URL, or null when resolution failed
+     * @param timeouts the target's connect and read timeouts, or null when resolution failed
      * @param error   a message naming the step, the target, and what was wrong, or null on
      *                success
      */
-    record Resolution(String baseUrl, String error) {
+    record Resolution(String baseUrl, Timeouts timeouts, String error) {
 
-        static Resolution ok(String baseUrl) {
-            return new Resolution(baseUrl, null);
+        static Resolution ok(String baseUrl, Timeouts timeouts) {
+            return new Resolution(baseUrl, timeouts, null);
         }
 
         static Resolution failed(String error) {
-            return new Resolution(null, error);
+            return new Resolution(null, null, error);
         }
 
         boolean isFailure() {
@@ -63,6 +65,19 @@ final class RestTargets {
                     + "' is configured but has no base-url");
         }
 
-        return Resolution.ok(baseUrl);
+        String timeoutProblem = timeoutProblem(stepName, target, "connect-timeout", config.getConnectTimeout());
+        if (timeoutProblem == null) {
+            timeoutProblem = timeoutProblem(stepName, target, "read-timeout", config.getReadTimeout());
+        }
+        if (timeoutProblem != null) {
+            return Resolution.failed(timeoutProblem);
+        }
+        return Resolution.ok(baseUrl, Timeouts.ofMillis(config.getConnectTimeout(), config.getReadTimeout()));
+    }
+
+    private static String timeoutProblem(String stepName, String target, String key, Integer millis) {
+        return millis != null && millis <= 0
+                ? stepName + " target '" + target + "' has a " + key + " that is not a positive number of milliseconds"
+                : null;
     }
 }

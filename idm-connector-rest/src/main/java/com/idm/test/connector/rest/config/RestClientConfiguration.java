@@ -99,10 +99,21 @@ public class RestClientConfiguration {
      * @return a new request factory
      */
     public static ClientHttpRequestFactory requestFactory(Duration readTimeout) {
+        return requestFactory(Duration.ofSeconds(10), readTimeout);
+    }
+
+    /**
+     * {@link #requestFactory()} with both timeouts given, for a REST target's
+     * {@code connect-timeout} and {@code read-timeout}.
+     *
+     * @param connectTimeout how long to wait for the connection
+     * @param readTimeout    the overall response deadline (see {@link #requestFactory(Duration)})
+     * @return a new request factory
+     */
+    public static ClientHttpRequestFactory requestFactory(Duration connectTimeout, Duration readTimeout) {
         HttpClient httpClient = HttpClient.newBuilder()
                 .version(HttpClient.Version.HTTP_1_1)
-                // Connection timeout: 10 seconds
-                .connectTimeout(Duration.ofSeconds(10))
+                .connectTimeout(connectTimeout)
                 .build();
 
         JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(httpClient);

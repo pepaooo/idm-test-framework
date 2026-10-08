@@ -52,6 +52,7 @@ public class RoleServiceConnector {
             serviceUrl
         );
         SoapCredentials.apply(bindingProvider, soapProperties);
+        SoapTimeouts.apply(bindingProvider, soapProperties);
         this.capture = SoapCapture.installOn(bindingProvider);
 
         log.info("RoleServiceConnector initialized with endpoint: {}", serviceUrl);

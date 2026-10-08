@@ -2,6 +2,7 @@ package com.idm.test.engine.steps;
 
 import com.idm.test.connector.rest.client.IdmRestConnector;
 import com.idm.test.connector.rest.client.RestAuthenticator;
+import com.idm.test.connector.rest.client.Timeouts;
 import com.idm.test.connector.rest.config.RestProperties;
 import com.idm.test.connector.rest.model.TextResponse;
 import com.idm.test.core.model.OperationResult;
@@ -24,10 +25,11 @@ final class HttpExchange {
     static final Set<String> METHODS = IdmRestConnector.SUPPORTED_METHODS;
 
     /** A request ready to send, or the failure that stops it. */
-    record Prepared(String method, String url, String body, Map<String, String> headers, StepOutcome failure) {
+    record Prepared(String method, String url, String body, Map<String, String> headers,
+                    Timeouts timeouts, StepOutcome failure) {
 
         static Prepared failed(StepOutcome failure) {
-            return new Prepared(null, null, null, null, failure);
+            return new Prepared(null, null, null, null, null, failure);
         }
 
         boolean isFailure() {
@@ -73,7 +75,7 @@ final class HttpExchange {
         if (authFailure != null) {
             return Prepared.failed(authFailure);
         }
-        return new Prepared(method, url, (String) rawBody, headers, null);
+        return new Prepared(method, url, (String) rawBody, headers, resolution.timeouts(), null);
     }
 
     /** A request that went out: the connector's result and the evidence of the exchange. */
@@ -83,7 +85,7 @@ final class HttpExchange {
     static Sent send(IdmRestConnector connector, Prepared request) {
         long started = System.currentTimeMillis();
         OperationResult<TextResponse> result =
-                connector.exchangeText(request.method(), request.url(), request.body(), request.headers());
+                connector.exchangeText(request.method(), request.url(), request.body(), request.headers(), request.timeouts());
         long millis = System.currentTimeMillis() - started;
         TextResponse response = result.isSuccess() ? result.getData().orElse(null) : null;
         HttpEvidence evidence = new HttpEvidence(request.method(), request.url(),

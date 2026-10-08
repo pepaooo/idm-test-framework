@@ -59,7 +59,7 @@ public final class RestRequestStep implements StepType {
 
         RestTargets.Resolution resolution = RestTargets.resolveBaseUrl("rest.request", target, properties);
         if (resolution.isFailure()) {
-            return StepOutcome.failure(resolution.error());
+            return StepOutcome.finalFailure(resolution.error());
         }
 
         String url = resolution.baseUrl() + String.valueOf(params.get("path"));
@@ -76,7 +76,8 @@ public final class RestRequestStep implements StepType {
             return authFailure;
         }
 
-        RestExchange.Sent sent = RestExchange.send(connector, String.valueOf(params.get("method")), url, body, headers);
+        RestExchange.Sent sent = RestExchange.send(connector, String.valueOf(params.get("method")), url, body, headers,
+                resolution.timeouts());
         OperationResult<RestResponse> result = sent.result();
 
         if (!result.isSuccess() || result.getData().isEmpty()) {

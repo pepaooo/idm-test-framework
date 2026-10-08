@@ -1,6 +1,7 @@
 package com.idm.test.connector.rest.client;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.idm.test.connector.rest.config.RestClientConfiguration;
 import com.idm.test.connector.rest.model.IdmUser;
 import com.idm.test.connector.rest.model.RestResponse;
 import com.idm.test.connector.rest.model.TextResponse;
@@ -26,6 +27,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * IdM REST API connector using Spring's RestClient.
@@ -52,8 +54,30 @@ public class IdmRestConnector {
     private final RestClient restClient;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
+    /** One client per distinct timeout pair other than the default, created when first needed. */
+    private final Map<Timeouts, RestClient> timeoutClients = new ConcurrentHashMap<>();
+
     public IdmRestConnector(RestClient restClient) {
         this.restClient = restClient;
+    }
+
+    /**
+     * The client for a timeout pair. {@link Timeouts#DEFAULT} (and null) maps to the connector's
+     * own client, which the Spring bean builds with exactly those timeouts (10 s / 30 s); any other
+     * pair gets a client derived from it, so it keeps the base client's customisation.
+     */
+    private RestClient clientFor(Timeouts timeouts) {
+        if (timeouts == null || Timeouts.DEFAULT.equals(timeouts)) {
+            return restClient;
+        }
+        return timeoutClients.computeIfAbsent(timeouts, pair -> restClient.mutate()
+                .requestFactory(RestClientConfiguration.requestFactory(pair.connect(), pair.read()))
+                .build());
+    }
+
+    /** For tests: how many non-default clients exist. */
+    int timeoutClientCount() {
+        return timeoutClients.size();
     }
 
     /**
@@ -325,6 +349,14 @@ public class IdmRestConnector {
      */
     public OperationResult<RestResponse> exchange(
             String method, String url, Object body, Map<String, String> headers) {
+        return exchange(method, url, body, headers, Timeouts.DEFAULT);
+    }
+
+    /**
+     * {@link #exchange(String, String, Object, Map)} with the target's timeouts.
+     */
+    public OperationResult<RestResponse> exchange(
+            String method, String url, Object body, Map<String, String> headers, Timeouts timeouts) {
 
         log.debug("{} request to: {}", method, url);
 
@@ -334,7 +366,7 @@ public class IdmRestConnector {
         }
 
         try {
-            RestClient.RequestBodySpec spec = restClient
+            RestClient.RequestBodySpec spec = clientFor(timeouts)
                     .method(httpMethod)
                     .uri(url)
                     .accept(MediaType.APPLICATION_JSON);
@@ -397,6 +429,14 @@ public class IdmRestConnector {
      */
     public OperationResult<TextResponse> exchangeText(
             String method, String url, String body, Map<String, String> headers) {
+        return exchangeText(method, url, body, headers, Timeouts.DEFAULT);
+    }
+
+    /**
+     * {@link #exchangeText(String, String, String, Map)} with the target's timeouts.
+     */
+    public OperationResult<TextResponse> exchangeText(
+            String method, String url, String body, Map<String, String> headers, Timeouts timeouts) {
 
         log.debug("{} request to: {}", method, url);
 
@@ -406,7 +446,7 @@ public class IdmRestConnector {
         }
 
         try {
-            RestClient.RequestBodySpec spec = restClient.method(httpMethod).uri(url);
+            RestClient.RequestBodySpec spec = clientFor(timeouts).method(httpMethod).uri(url);
 
             String contentType = null;
             boolean acceptGiven = false;

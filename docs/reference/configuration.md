@@ -205,6 +205,8 @@ idm:
       resource-url: https://idm.company.com:8543/IDMProv/resource/service
       username: ${IDM_SOAP_USER}
       password: ${IDM_SOAP_PASSWORD}
+      connection-timeout: 10000
+      read-timeout: 30000
 ```
 
 | Key | Used by | Meaning |
@@ -212,7 +214,7 @@ idm:
 | `url` | `roles.grant`, `roles.revoke` | the Role service endpoint; without it, those steps fail without calling anything |
 | `resource-url` | `resources.grant`, `resources.revoke` | the Resource service endpoint; without it, those steps fail without calling anything |
 | `username`, `password` | both services | HTTP Basic credentials; set both, or neither for an unauthenticated endpoint (only one fails at startup) |
-| `connection-timeout`, `read-timeout`, `message-logging` | — | accepted but **not applied** by the connectors today; the JAX-WS defaults are used |
+| `connection-timeout`, `read-timeout` | both services | milliseconds to connect, and to wait for data from the service (defaults 10 000 and 30 000); must be positive, or startup fails. A call that exceeds them fails its step. For SOAP, `read-timeout` limits each wait for the next data, not the whole call |
 
 **Environment Variables:**
 - `IDM_SOAP_URL` - Role service endpoint
@@ -244,8 +246,10 @@ idm:
         read-timeout: 45000
 ```
 
-`connect-timeout` and `read-timeout` are accepted but **not applied** to requests today; the HTTP
-client's defaults are used.
+`connect-timeout` and `read-timeout` (milliseconds; defaults 10 000 and 30 000) apply to every
+`rest.*` and `http.*` step on that target. `read-timeout` is the overall deadline for the response.
+A request that exceeds it fails like an unreachable server (retried under `wait:`); a value that is
+not positive fails the step at once, before anything is sent.
 
 **Authentication.** `rest.request`, `rest.verify`, `http.request` and `http.verify` authenticate
 with the target's settings, and nothing is written in the scenario:
@@ -300,17 +304,15 @@ idm:
     executor:
       default-timeout-seconds: 300        # 5 minutes
       default-poll-interval-seconds: 5
-      max-retries: 3
-      retry-delay-ms: 1000
       ldap-provision-timeout-seconds: 120
       database-provision-timeout-seconds: 180
-      rest-provision-timeout-seconds: 300
 ```
 
-Only `default-timeout-seconds` and `default-poll-interval-seconds` affect YAML scenarios: they are
-the wait used by `wait: true`, and by a `wait:` map that leaves `timeout` or `poll` out. The
-shipped `test` profile sets them to 60 s and 1 s. The other keys are bound but not used by the
-YAML runners (the Java workflow tests pass their own timeouts).
+`default-timeout-seconds` and `default-poll-interval-seconds` are the wait used by YAML
+scenarios' `wait: true`, and by a `wait:` map that leaves `timeout` or `poll` out (the shipped
+`test` profile sets them to 60 s and 1 s). `ldap-provision-timeout-seconds` and
+`database-provision-timeout-seconds` are how long the Java workflow tests wait for provisioning to
+reach the directory and the databases.
 
 ## TLS certificates (LDAPS, HTTPS)
 
@@ -495,7 +497,7 @@ idm:
 
 Give `username` and `password` for basic authentication, `use-oauth: true` with
 `oauth-client-name` for OAuth2, or neither for an unauthenticated API. `connect-timeout` and
-`read-timeout` are accepted but not yet applied; the shared client uses 10 s and 30 s.
+`read-timeout` (milliseconds; defaults 10 000 and 30 000) are applied per target; see above.
 
 2. Use it from a scenario by name. Nothing else needs wiring: the steps resolve the base URL and
    add the `Authorization` header from these settings.

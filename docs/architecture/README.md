@@ -51,9 +51,9 @@ The engine depends on core, utils and the LDAP, database, SOAP and REST connecto
 
 LDAP uses Spring `LdapTemplate` and configured context sources. JDBC uses a named map of `JdbcTemplate` objects, each backed by a Hikari pool. Queries are raw SQL; there is no domain entity persistence layer.
 
-The REST module includes the configured Spring `RestClient`, `IdmRestConnector` and `RestAuthenticator`. The client runs on the JDK `HttpClient` pinned to HTTP/1.1, with a 10-second connect timeout and a 30-second overall read deadline; per-target timeouts are not applied. `RestAuthenticator` turns a target's settings into its `Authorization` header: basic, or an OAuth2 client-credentials token from Spring Security's authorized-client manager, or none.
+The REST module includes the configured Spring `RestClient`, `IdmRestConnector` and `RestAuthenticator`. The client runs on the JDK `HttpClient` pinned to HTTP/1.1, with a default 10-second connect timeout and 30-second overall read deadline; each target's `connect-timeout`/`read-timeout` apply (one client per distinct pair). `RestAuthenticator` turns a target's settings into its `Authorization` header: basic, or an OAuth2 client-credentials token from Spring Security's authorized-client manager, or none.
 
-SOAP role and resource connectors use WSDL-generated JAX-WS ports. Constructors set endpoint addresses and, when `idm.test.soap.username`/`password` are set, HTTP basic authentication; declared timeouts are not applied. The resource connector is conditional on `idm.test.soap.resource-url`, absent from the default scenario configuration. These distinctions matter when assessing real-environment readiness.
+SOAP role and resource connectors use WSDL-generated JAX-WS ports. Constructors set endpoint addresses and, when `idm.test.soap.username`/`password` are set, HTTP basic authentication; `connection-timeout`/`read-timeout` are applied to both ports. The resource connector is conditional on `idm.test.soap.resource-url`, absent from the default scenario configuration. These distinctions matter when assessing real-environment readiness.
 
 ## 5. Execution flow
 

@@ -139,7 +139,6 @@ idm:
       # Connection settings
       connection-timeout: 10000  # 10 seconds
       read-timeout: 30000        # 30 seconds
-      message-logging: false     # Enable for debugging SOAP messages
 
     # ============================================================
     # REST API Configuration
@@ -190,14 +189,9 @@ idm:
       # Default poll interval for waitUntil operations
       default-poll-interval-seconds: 5
 
-      # Retry configuration
-      max-retries: 3
-      retry-delay-ms: 1000
-
       # Async provisioning wait times
       ldap-provision-timeout-seconds: 120    # 2 minutes for LDAP
       database-provision-timeout-seconds: 180 # 3 minutes for databases
-      rest-provision-timeout-seconds: 300     # 5 minutes for REST APIs
 
 # =================================================================
 # LOGGING CONFIGURATION
@@ -246,7 +240,6 @@ idm:
 
     soap:
       url: https://dev-idm.company.com:8543/IDMProv/role/service
-      message-logging: true  # Enable detailed logging in dev
 
     rest:
       idm:
@@ -343,7 +336,6 @@ idm:
 
     soap:
       url: https://idm.company.com:8543/IDMProv/role/service
-      message-logging: false
 
     rest:
       idm:

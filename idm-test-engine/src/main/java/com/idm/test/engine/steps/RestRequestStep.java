@@ -59,7 +59,7 @@ public final class RestRequestStep implements StepType {
 
         RestTargets.Resolution resolution = RestTargets.resolveBaseUrl("rest.request", target, properties);
         if (resolution.isFailure()) {
-            return StepOutcome.failure(resolution.error());
+            return StepOutcome.finalFailure(resolution.error());
         }
 
         String url = resolution.baseUrl() + String.valueOf(params.get("path"));

@@ -67,6 +67,10 @@ class HttpStepsTest {
         slow.setBaseUrl("http://localhost:" + WIREMOCK.port());
         slow.setReadTimeout(500);
         properties.getRest().put("slow", slow);
+        RestProperties.RestApiConfig badConnect = new RestProperties.RestApiConfig();
+        badConnect.setBaseUrl("http://localhost:" + WIREMOCK.port());
+        badConnect.setConnectTimeout(-1);
+        properties.getRest().put("badconnect", badConnect);
         return properties;
     }
 
@@ -414,5 +418,16 @@ class HttpStepsTest {
 
         assertThat(outcome.success()).isFalse();
         assertThat(System.currentTimeMillis() - started).isLessThan(1_500);
+    }
+
+    @Test
+    @DisplayName("A non-positive connect-timeout is a final failure, before anything is sent")
+    void testNonPositiveConnectTimeoutFinal() {
+        StepOutcome outcome = STEP.execute(params("target", "badconnect", "method", "GET", "path", "/x"), false);
+
+        assertThat(outcome.success()).isFalse();
+        assertThat(outcome.isFinal()).isTrue();
+        assertThat(outcome.message()).contains("connect-timeout").contains("not a positive number of milliseconds");
+        WIREMOCK.verify(0, anyRequestedFor(anyUrl()));
     }
 }

@@ -61,11 +61,16 @@ public class IdmRestConnector {
         this.restClient = restClient;
     }
 
+    /**
+     * The client for a timeout pair. {@link Timeouts#DEFAULT} (and null) maps to the connector's
+     * own client, which the Spring bean builds with exactly those timeouts (10 s / 30 s); any other
+     * pair gets a client derived from it, so it keeps the base client's customisation.
+     */
     private RestClient clientFor(Timeouts timeouts) {
         if (timeouts == null || Timeouts.DEFAULT.equals(timeouts)) {
             return restClient;
         }
-        return timeoutClients.computeIfAbsent(timeouts, pair -> RestClient.builder()
+        return timeoutClients.computeIfAbsent(timeouts, pair -> restClient.mutate()
                 .requestFactory(RestClientConfiguration.requestFactory(pair.connect(), pair.read()))
                 .build());
     }

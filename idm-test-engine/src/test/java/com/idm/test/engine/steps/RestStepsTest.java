@@ -561,4 +561,19 @@ class RestStepsTest {
         WIREMOCK.verify(0, com.github.tomakehurst.wiremock.client.WireMock.anyRequestedFor(
                 com.github.tomakehurst.wiremock.client.WireMock.anyUrl()));
     }
+
+    @Test
+    @DisplayName("rest.request on a target with a non-positive timeout is a final failure, before anything is sent")
+    void testRequestNonPositiveTimeoutFinal() {
+        StepOutcome outcome = new RestRequestStep(CONNECTOR, PROPERTIES, RestAuthenticator.withoutOAuth()).execute(Map.of(
+                "target", "broken", "method", "GET", "path", "/users/1"), false);
+
+        assertThat(outcome.success()).isFalse();
+        assertThat(outcome.isFinal()).isTrue();
+        assertThat(outcome.message())
+                .isEqualTo("rest.request target 'broken' has a read-timeout that is not a positive number of milliseconds");
+        assertThat(outcome.evidence()).isNull();
+        WIREMOCK.verify(0, com.github.tomakehurst.wiremock.client.WireMock.anyRequestedFor(
+                com.github.tomakehurst.wiremock.client.WireMock.anyUrl()));
+    }
 }

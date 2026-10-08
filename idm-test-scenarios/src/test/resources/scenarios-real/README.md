@@ -206,3 +206,11 @@ nothing about OpenText IdM: the SOAP services are WireMock stubs.
 
 A team with its own eDirectory / IdM environment (containers, VMs or a shared lab) points
 this runner at it with the `IDM_TEST_*` variables described above. No code change is needed.
+
+**Timeouts.** SOAP and REST calls give up after 10 s to connect and 30 s waiting for the service
+by default (before ITF-43 the SOAP calls had no limit). If your Role or Resource service, or a REST
+target, is slower than that, raise the limit from the environment rather than in YAML, in
+milliseconds: `IDM_TEST_SOAP_READTIMEOUT=120000`, or `IDM_TEST_REST_<TARGET>_READTIMEOUT=120000`
+for one target (`IDM_TEST_REST_IDM_READTIMEOUT`). A `roles.*` or `resources.*` step that times out
+fails without retrying, although the service may still complete the request, so check the lab
+before re-running it.

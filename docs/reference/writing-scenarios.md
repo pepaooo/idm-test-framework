@@ -922,7 +922,7 @@ the [configuration reference](configuration.md).
 | `soap.url` | `roles.*` | the Role service endpoint |
 | `soap.resource-url` | `resources.*` | the Resource service endpoint |
 | `soap.username`, `soap.password` | `roles.*`, `resources.*` | HTTP Basic credentials; set both or neither |
-| `soap.connection-timeout`, `soap.read-timeout` | `roles.*`, `resources.*` | milliseconds to connect and to wait for the response (10 000 / 30 000); a call that exceeds them fails its step |
+| `soap.connection-timeout`, `soap.read-timeout` | `roles.*`, `resources.*` | milliseconds to connect and to wait for data from the service (10 000 / 30 000); a call that exceeds them fails its step |
 | `rest.<target>.base-url` | `rest.*`, `http.*` with `target: <target>` | the target's base URL; the step's `path` is appended |
 | `rest.<target>.username`, `password` | `rest.*`, `http.*` | Basic authentication for that target |
 | `rest.<target>.use-oauth`, `oauth-client-name` | `rest.*`, `http.*` | an OAuth2 client-credentials token from that `spring.security.oauth2.client.registration` entry |

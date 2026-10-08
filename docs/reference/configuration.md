@@ -214,7 +214,7 @@ idm:
 | `url` | `roles.grant`, `roles.revoke` | the Role service endpoint; without it, those steps fail without calling anything |
 | `resource-url` | `resources.grant`, `resources.revoke` | the Resource service endpoint; without it, those steps fail without calling anything |
 | `username`, `password` | both services | HTTP Basic credentials; set both, or neither for an unauthenticated endpoint (only one fails at startup) |
-| `connection-timeout`, `read-timeout` | both services | milliseconds to connect, and to wait for a response (defaults 10 000 and 30 000); must be positive, or startup fails. A call that exceeds them fails its step |
+| `connection-timeout`, `read-timeout` | both services | milliseconds to connect, and to wait for data from the service (defaults 10 000 and 30 000); must be positive, or startup fails. A call that exceeds them fails its step. For SOAP, `read-timeout` limits each wait for the next data, not the whole call |
 
 **Environment Variables:**
 - `IDM_SOAP_URL` - Role service endpoint

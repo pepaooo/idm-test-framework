@@ -52,7 +52,7 @@ getters); `configuration.md` wrongly says they are unused.
     `exchangeText(method, url, body, headers, Timeouts)`; the existing methods use the client the
     connector was built with
   - a thread-safe cache, one `RestClient` per distinct `Timeouts`, built with
-    `RestClient.builder().requestFactory(requestFactory(connect, read))`; `Timeouts.DEFAULT` (and
+    `restClient.mutate().requestFactory(requestFactory(connect, read))` (derived from the connector's own client, so it keeps its setup); `Timeouts.DEFAULT` (and
     `null`) use the client the connector was built with
 - **Steps:** `rest.request`, `rest.verify`, `http.request` and `http.verify` pass their target's
   `connect-timeout` / `read-timeout` (`RestProperties.RestApiConfig`, milliseconds; a missing value

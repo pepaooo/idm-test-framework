@@ -90,7 +90,7 @@ public final class RestVerifyStep implements StepType {
             return authFailure;
         }
 
-        RestExchange.Sent sent = RestExchange.send(connector, method, url, null, headers);
+        RestExchange.Sent sent = RestExchange.send(connector, method, url, null, headers, resolution.timeouts());
         return judge(sent.result(), expect, method, url, captureRequested).withEvidence(sent.evidence());
     }
 

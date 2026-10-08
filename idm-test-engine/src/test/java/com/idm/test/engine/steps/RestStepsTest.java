@@ -50,6 +50,14 @@ class RestStepsTest {
         RestProperties.RestApiConfig config = new RestProperties.RestApiConfig();
         config.setBaseUrl("http://localhost:" + WIREMOCK.port());
         properties.getRest().put("idm", config);
+        RestProperties.RestApiConfig slow = new RestProperties.RestApiConfig();
+        slow.setBaseUrl("http://localhost:" + WIREMOCK.port());
+        slow.setReadTimeout(500);
+        properties.getRest().put("slow", slow);
+        RestProperties.RestApiConfig broken = new RestProperties.RestApiConfig();
+        broken.setBaseUrl("http://localhost:" + WIREMOCK.port());
+        broken.setReadTimeout(0);
+        properties.getRest().put("broken", broken);
         return properties;
     }
 
@@ -521,5 +529,36 @@ class RestStepsTest {
 
         assertThat(outcome.success()).isFalse();
         assertThat(String.valueOf(((HttpEvidence) outcome.evidence()).responseBody())).contains("PENDING");
+    }
+
+    @Test
+    @DisplayName("A target's read-timeout applies to rest.request; a default target still waits")
+    void testTargetReadTimeout() {
+        stubFor(get(urlEqualTo("/users/1")).willReturn(aResponse().withStatus(200)
+                .withHeader("Content-Type", "application/json").withBody("{}").withFixedDelay(2_000)));
+        RestRequestStep step = new RestRequestStep(CONNECTOR, PROPERTIES, RestAuthenticator.withoutOAuth());
+
+        long started = System.currentTimeMillis();
+        StepOutcome slow = step.execute(Map.of("target", "slow", "method", "GET", "path", "/users/1"), false);
+        assertThat(slow.success()).isFalse();
+        assertThat(System.currentTimeMillis() - started).isLessThan(1_500);
+        assertThat(slow.evidence()).isNotNull();
+
+        assertThat(step.execute(Map.of("target", "idm", "method", "GET", "path", "/users/1"), false).success()).isTrue();
+    }
+
+    @Test
+    @DisplayName("A non-positive timeout is a final failure, before anything is sent")
+    void testNonPositiveTimeoutFinal() {
+        StepOutcome outcome = new RestVerifyStep(CONNECTOR, PROPERTIES, RestAuthenticator.withoutOAuth()).execute(Map.of(
+                "target", "broken", "path", "/users/1", "expect", Map.of("status", 200)), false);
+
+        assertThat(outcome.success()).isFalse();
+        assertThat(outcome.isFinal()).isTrue();
+        assertThat(outcome.message())
+                .isEqualTo("rest.verify target 'broken' has a read-timeout that is not a positive number of milliseconds");
+        assertThat(outcome.evidence()).isNull();
+        WIREMOCK.verify(0, com.github.tomakehurst.wiremock.client.WireMock.anyRequestedFor(
+                com.github.tomakehurst.wiremock.client.WireMock.anyUrl()));
     }
 }

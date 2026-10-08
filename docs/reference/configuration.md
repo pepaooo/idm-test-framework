@@ -246,8 +246,10 @@ idm:
         read-timeout: 45000
 ```
 
-`connect-timeout` and `read-timeout` are accepted but **not applied** to requests today; the HTTP
-client's defaults are used.
+`connect-timeout` and `read-timeout` (milliseconds; defaults 10 000 and 30 000) apply to every
+`rest.*` and `http.*` step on that target. `read-timeout` is the overall deadline for the response.
+A request that exceeds it fails like an unreachable server (retried under `wait:`); a value that is
+not positive fails the step at once, before anything is sent.
 
 **Authentication.** `rest.request`, `rest.verify`, `http.request` and `http.verify` authenticate
 with the target's settings, and nothing is written in the scenario:

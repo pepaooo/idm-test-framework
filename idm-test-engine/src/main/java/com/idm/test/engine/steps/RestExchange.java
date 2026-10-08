@@ -1,6 +1,7 @@
 package com.idm.test.engine.steps;
 
 import com.idm.test.connector.rest.client.IdmRestConnector;
+import com.idm.test.connector.rest.client.Timeouts;
 import com.idm.test.connector.rest.model.RestResponse;
 import com.idm.test.core.model.OperationResult;
 import com.idm.test.engine.spi.HttpEvidence;
@@ -18,9 +19,10 @@ final class RestExchange {
     private RestExchange() {
     }
 
-    static Sent send(IdmRestConnector connector, String method, String url, Object body, Map<String, String> headers) {
+    static Sent send(IdmRestConnector connector, String method, String url, Object body,
+                     Map<String, String> headers, Timeouts timeouts) {
         long started = System.currentTimeMillis();
-        OperationResult<RestResponse> result = connector.exchange(method, url, body, headers);
+        OperationResult<RestResponse> result = connector.exchange(method, url, body, headers, timeouts);
         long millis = System.currentTimeMillis() - started;
         String upper = method == null ? "" : method.toUpperCase(Locale.ROOT);
         if (!IdmRestConnector.SUPPORTED_METHODS.contains(upper)) {

@@ -63,6 +63,10 @@ class HttpStepsTest {
         RestProperties.RestApiConfig down = new RestProperties.RestApiConfig();
         down.setBaseUrl("http://localhost:1");
         properties.getRest().put("down", down);
+        RestProperties.RestApiConfig slow = new RestProperties.RestApiConfig();
+        slow.setBaseUrl("http://localhost:" + WIREMOCK.port());
+        slow.setReadTimeout(500);
+        properties.getRest().put("slow", slow);
         return properties;
     }
 
@@ -398,5 +402,17 @@ class HttpStepsTest {
     void testNoEvidenceWhenNothingSent() {
         assertThat(STEP.execute(params("target", "nope", "method", "GET", "path", "/x"), false).evidence()).isNull();
         assertThat(STEP.execute(params("target", "mock", "method", "BREW", "path", "/x"), false).evidence()).isNull();
+    }
+
+    @Test
+    @DisplayName("A target's read-timeout applies to http.request")
+    void testTargetReadTimeout() {
+        stubFor(get(urlEqualTo("/x")).willReturn(aResponse().withStatus(200).withFixedDelay(2_000)));
+
+        long started = System.currentTimeMillis();
+        StepOutcome outcome = STEP.execute(params("target", "slow", "method", "GET", "path", "/x"), false);
+
+        assertThat(outcome.success()).isFalse();
+        assertThat(System.currentTimeMillis() - started).isLessThan(1_500);
     }
 }

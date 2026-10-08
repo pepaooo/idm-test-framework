@@ -76,7 +76,8 @@ public final class RestRequestStep implements StepType {
             return authFailure;
         }
 
-        RestExchange.Sent sent = RestExchange.send(connector, String.valueOf(params.get("method")), url, body, headers);
+        RestExchange.Sent sent = RestExchange.send(connector, String.valueOf(params.get("method")), url, body, headers,
+                resolution.timeouts());
         OperationResult<RestResponse> result = sent.result();
 
         if (!result.isSuccess() || result.getData().isEmpty()) {

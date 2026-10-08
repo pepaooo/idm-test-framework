@@ -205,6 +205,8 @@ idm:
       resource-url: https://idm.company.com:8543/IDMProv/resource/service
       username: ${IDM_SOAP_USER}
       password: ${IDM_SOAP_PASSWORD}
+      connection-timeout: 10000
+      read-timeout: 30000
 ```
 
 | Key | Used by | Meaning |
@@ -212,7 +214,7 @@ idm:
 | `url` | `roles.grant`, `roles.revoke` | the Role service endpoint; without it, those steps fail without calling anything |
 | `resource-url` | `resources.grant`, `resources.revoke` | the Resource service endpoint; without it, those steps fail without calling anything |
 | `username`, `password` | both services | HTTP Basic credentials; set both, or neither for an unauthenticated endpoint (only one fails at startup) |
-| `connection-timeout`, `read-timeout`, `message-logging` | — | accepted but **not applied** by the connectors today; the JAX-WS defaults are used |
+| `connection-timeout`, `read-timeout` | both services | milliseconds to connect, and to wait for a response (defaults 10 000 and 30 000); must be positive, or startup fails. A call that exceeds them fails its step |
 
 **Environment Variables:**
 - `IDM_SOAP_URL` - Role service endpoint

@@ -32,19 +32,16 @@ public class SoapProperties {
     private String password;
 
     /**
-     * Connection timeout in milliseconds
+     * Connection timeout in milliseconds, applied to the Role and Resource service ports;
+     * must be positive.
      */
     private int connectionTimeout = 10000; // 10 seconds
 
     /**
-     * Read timeout in milliseconds
+     * Read timeout in milliseconds (how long to wait for a response), applied to the Role and
+     * Resource service ports; must be positive.
      */
     private int readTimeout = 30000; // 30 seconds
-
-    /**
-     * Enable message logging for debugging
-     */
-    private boolean messageLogging = false;
 
     public SoapProperties() {
     }
@@ -95,13 +92,5 @@ public class SoapProperties {
 
     public void setReadTimeout(int readTimeout) {
         this.readTimeout = readTimeout;
-    }
-
-    public boolean isMessageLogging() {
-        return messageLogging;
-    }
-
-    public void setMessageLogging(boolean messageLogging) {
-        this.messageLogging = messageLogging;
     }
 }

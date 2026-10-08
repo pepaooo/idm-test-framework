@@ -52,6 +52,7 @@ public class ResourceServiceConnector {
                 BindingProvider.ENDPOINT_ADDRESS_PROPERTY,
                 soapProperties.getResourceUrl());
         SoapCredentials.apply(bindingProvider, soapProperties);
+        SoapTimeouts.apply(bindingProvider, soapProperties);
         this.capture = SoapCapture.installOn(bindingProvider);
 
         log.info("ResourceServiceConnector initialized with endpoint: {}",

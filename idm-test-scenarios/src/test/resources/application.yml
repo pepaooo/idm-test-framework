@@ -139,7 +139,6 @@ idm:
       # Connection settings
       connection-timeout: 10000  # 10 seconds
       read-timeout: 30000        # 30 seconds
-      message-logging: false     # Enable for debugging SOAP messages
 
     # ============================================================
     # REST API Configuration
@@ -246,7 +245,6 @@ idm:
 
     soap:
       url: https://dev-idm.company.com:8543/IDMProv/role/service
-      message-logging: true  # Enable detailed logging in dev
 
     rest:
       idm:
@@ -343,7 +341,6 @@ idm:
 
     soap:
       url: https://idm.company.com:8543/IDMProv/role/service
-      message-logging: false
 
     rest:
       idm:

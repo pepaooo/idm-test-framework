@@ -125,7 +125,6 @@ class ConfigurationTest {
         System.out.println("  URL: " + soapProperties.getUrl());
         System.out.println("  Connection Timeout: " + soapProperties.getConnectionTimeout() + "ms");
         System.out.println("  Read Timeout: " + soapProperties.getReadTimeout() + "ms");
-        System.out.println("  Message Logging: " + soapProperties.isMessageLogging());
     }
 
     @Test

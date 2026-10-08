@@ -6,7 +6,7 @@ import java.time.Duration;
 
 /**
  * Configuration properties for TestExecutor behavior.
- * Controls timeouts, retry policies, and async operation settings.
+ * Controls the wait timeouts and poll interval for async operations.
  * <p>
  * Example configuration in application.yml:
  * <pre>
@@ -15,11 +15,8 @@ import java.time.Duration;
  *     executor:
  *       default-timeout-seconds: 300
  *       default-poll-interval-seconds: 5
- *       max-retries: 3
- *       retry-delay-ms: 1000
  *       ldap-provision-timeout-seconds: 120
  *       database-provision-timeout-seconds: 180
- *       rest-provision-timeout-seconds: 300
  * </pre>
  */
 @ConfigurationProperties(prefix = "idm.test.executor")
@@ -36,16 +33,6 @@ public class TestExecutorProperties {
     private int defaultPollIntervalSeconds = 5;
 
     /**
-     * Maximum number of retries for failed operations.
-     */
-    private int maxRetries = 3;
-
-    /**
-     * Delay between retries (in milliseconds).
-     */
-    private long retryDelayMs = 1000;
-
-    /**
      * Timeout for LDAP provisioning operations (in seconds).
      */
     private int ldapProvisionTimeoutSeconds = 120; // 2 minutes
@@ -54,11 +41,6 @@ public class TestExecutorProperties {
      * Timeout for database provisioning operations (in seconds).
      */
     private int databaseProvisionTimeoutSeconds = 180; // 3 minutes
-
-    /**
-     * Timeout for REST API provisioning operations (in seconds).
-     */
-    private int restProvisionTimeoutSeconds = 300; // 5 minutes
 
     // Getters and setters
 
@@ -86,26 +68,6 @@ public class TestExecutorProperties {
         return Duration.ofSeconds(defaultPollIntervalSeconds);
     }
 
-    public int getMaxRetries() {
-        return maxRetries;
-    }
-
-    public void setMaxRetries(int maxRetries) {
-        this.maxRetries = maxRetries;
-    }
-
-    public long getRetryDelayMs() {
-        return retryDelayMs;
-    }
-
-    public void setRetryDelayMs(long retryDelayMs) {
-        this.retryDelayMs = retryDelayMs;
-    }
-
-    public Duration getRetryDelay() {
-        return Duration.ofMillis(retryDelayMs);
-    }
-
     public int getLdapProvisionTimeoutSeconds() {
         return ldapProvisionTimeoutSeconds;
     }
@@ -128,17 +90,5 @@ public class TestExecutorProperties {
 
     public Duration getDatabaseProvisionTimeout() {
         return Duration.ofSeconds(databaseProvisionTimeoutSeconds);
-    }
-
-    public int getRestProvisionTimeoutSeconds() {
-        return restProvisionTimeoutSeconds;
-    }
-
-    public void setRestProvisionTimeoutSeconds(int restProvisionTimeoutSeconds) {
-        this.restProvisionTimeoutSeconds = restProvisionTimeoutSeconds;
-    }
-
-    public Duration getRestProvisionTimeout() {
-        return Duration.ofSeconds(restProvisionTimeoutSeconds);
     }
 }

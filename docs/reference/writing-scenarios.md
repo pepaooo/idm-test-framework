@@ -922,12 +922,14 @@ the [configuration reference](configuration.md).
 | `soap.url` | `roles.*` | the Role service endpoint |
 | `soap.resource-url` | `resources.*` | the Resource service endpoint |
 | `soap.username`, `soap.password` | `roles.*`, `resources.*` | HTTP Basic credentials; set both or neither |
+| `soap.connection-timeout`, `soap.read-timeout` | `roles.*`, `resources.*` | milliseconds to connect and to wait for the response (10 000 / 30 000); a call that exceeds them fails its step |
 | `rest.<target>.base-url` | `rest.*`, `http.*` with `target: <target>` | the target's base URL; the step's `path` is appended |
 | `rest.<target>.username`, `password` | `rest.*`, `http.*` | Basic authentication for that target |
 | `rest.<target>.use-oauth`, `oauth-client-name` | `rest.*`, `http.*` | an OAuth2 client-credentials token from that `spring.security.oauth2.client.registration` entry |
+| `rest.<target>.connect-timeout`, `read-timeout` | `rest.*`, `http.*` | milliseconds to connect and to wait for the response (10 000 / 30 000); a slow response fails the attempt |
 | `executor.default-timeout-seconds`, `executor.default-poll-interval-seconds` | `wait: true`, and a `wait:` map that leaves `timeout` or `poll` out | the default wait |
 
-Not settable from a scenario, by design: URLs, credentials and pool sizes. The command line
+Not settable from a scenario, by design: URLs, credentials, timeouts and pool sizes. The command line
 chooses what runs: `-Dtest=<runner>` and `-Dscenario=<file or glob>`; see
 [running tests](running-tests.md).
 

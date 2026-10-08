@@ -304,17 +304,15 @@ idm:
     executor:
       default-timeout-seconds: 300        # 5 minutes
       default-poll-interval-seconds: 5
-      max-retries: 3
-      retry-delay-ms: 1000
       ldap-provision-timeout-seconds: 120
       database-provision-timeout-seconds: 180
-      rest-provision-timeout-seconds: 300
 ```
 
-Only `default-timeout-seconds` and `default-poll-interval-seconds` affect YAML scenarios: they are
-the wait used by `wait: true`, and by a `wait:` map that leaves `timeout` or `poll` out. The
-shipped `test` profile sets them to 60 s and 1 s. The other keys are bound but not used by the
-YAML runners (the Java workflow tests pass their own timeouts).
+`default-timeout-seconds` and `default-poll-interval-seconds` are the wait used by YAML
+scenarios' `wait: true`, and by a `wait:` map that leaves `timeout` or `poll` out (the shipped
+`test` profile sets them to 60 s and 1 s). `ldap-provision-timeout-seconds` and
+`database-provision-timeout-seconds` are how long the Java workflow tests wait for provisioning to
+reach the directory and the databases.
 
 ## TLS certificates (LDAPS, HTTPS)
 
@@ -499,7 +497,7 @@ idm:
 
 Give `username` and `password` for basic authentication, `use-oauth: true` with
 `oauth-client-name` for OAuth2, or neither for an unauthenticated API. `connect-timeout` and
-`read-timeout` are accepted but not yet applied; the shared client uses 10 s and 30 s.
+`read-timeout` (milliseconds; defaults 10 000 and 30 000) are applied per target; see above.
 
 2. Use it from a scenario by name. Nothing else needs wiring: the steps resolve the base URL and
    add the `Authorization` header from these settings.

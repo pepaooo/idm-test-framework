@@ -133,15 +133,12 @@ class ConfigurationTest {
         assertThat(executorProperties).isNotNull();
         assertThat(executorProperties.getDefaultTimeoutSeconds()).isPositive();
         assertThat(executorProperties.getDefaultPollIntervalSeconds()).isPositive();
-        assertThat(executorProperties.getMaxRetries()).isPositive();
 
         System.out.println("\nTestExecutor Configuration:");
         System.out.println("  Default Timeout: " + executorProperties.getDefaultTimeoutSeconds() + "s");
         System.out.println("  Poll Interval: " + executorProperties.getDefaultPollIntervalSeconds() + "s");
-        System.out.println("  Max Retries: " + executorProperties.getMaxRetries());
         System.out.println("  LDAP Provision Timeout: " + executorProperties.getLdapProvisionTimeoutSeconds() + "s");
         System.out.println("  Database Provision Timeout: " + executorProperties.getDatabaseProvisionTimeoutSeconds() + "s");
-        System.out.println("  REST Provision Timeout: " + executorProperties.getRestProvisionTimeoutSeconds() + "s");
     }
 
     @Test

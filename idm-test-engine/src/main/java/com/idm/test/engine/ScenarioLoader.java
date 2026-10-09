@@ -4,6 +4,7 @@ import com.idm.test.engine.model.FixtureSpec;
 import com.idm.test.engine.model.Scenario;
 import com.idm.test.engine.model.StepSpec;
 import tools.jackson.core.JacksonException;
+import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.dataformat.yaml.YAMLMapper;
 
 import java.io.IOException;
@@ -18,7 +19,10 @@ import java.util.Map;
  */
 public final class ScenarioLoader {
 
-    private static final YAMLMapper YAML = YAMLMapper.builder().build();
+    private static final YAMLMapper YAML = YAMLMapper.builder()
+            // Jackson 3 rejects a second YAML document; Jackson 2 loaded the first and ignored the rest.
+            .disable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
+            .build();
 
     private ScenarioLoader() {
     }

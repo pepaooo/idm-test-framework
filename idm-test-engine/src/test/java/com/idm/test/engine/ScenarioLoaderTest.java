@@ -277,4 +277,12 @@ class ScenarioLoaderTest {
         assertThat(p.keySet()).containsExactly("t", "f", "yesWord", "noWord", "onWord", "offWord", "nul",
                 "tilde", "empty", "int", "neg", "big", "flt", "exp", "octal", "hex", "date", "quoted", "str");
     }
+
+    @Test
+    @DisplayName("Should load the first document of a multi-document YAML file")
+    void testMultiDocumentLoadsFirst() {
+        Scenario scenario = ScenarioLoader.load(stream("name: First\n---\nname: Second\n"), "multi.yaml");
+
+        assertThat(scenario.name()).isEqualTo("First");
+    }
 }

@@ -16,6 +16,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
+import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.net.ConnectException;
@@ -52,7 +53,12 @@ public class IdmRestConnector {
     private static final MediaType DEFAULT_TEXT = new MediaType("text", "plain", StandardCharsets.UTF_8);
 
     private final RestClient restClient;
-    private final JsonMapper objectMapper = JsonMapper.builder().build();
+    // Not the engine's JsonMappers (different module). It only reads into Object and writes request
+    // bodies, so Jackson 3's alphabetical property sorting does not matter here.
+    private final JsonMapper objectMapper = JsonMapper.builder()
+            // Jackson 3 rejects content after the first value; Jackson 2 read the first and ignored the rest.
+            .disable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
+            .build();
 
     /** One client per distinct timeout pair other than the default, created when first needed. */
     private final Map<Timeouts, RestClient> timeoutClients = new ConcurrentHashMap<>();

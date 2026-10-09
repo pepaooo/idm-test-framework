@@ -48,7 +48,7 @@ Backend-focused **integration testing framework** using JUnit, with no front-end
 ### Supporting Libraries
 - **Logging**: SLF4J 2.0.x + Logback 1.5.x
 - **Configuration**: Spring Boot Configuration Processor
-- **Validation**: Jakarta Validation 3.1.x (Hibernate Validator is not on the classpath)
+- **Validation**: none — no Bean Validation (Jakarta Validation or Hibernate Validator) on the classpath
 - **JSON Processing**: Jackson 3.1.x
 - **XML Processing**: JAXB 4.0.x
 - **Utilities**: Apache Commons Lang3 3.20.x

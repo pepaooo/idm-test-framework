@@ -10,7 +10,7 @@ suite needs nothing else: no Docker, no external services.
 ```
 
 This starts an embedded UnboundID directory and a WireMock server on ephemeral ports, creates an
-H2 schema, and runs every module's tests: 591 on 2026-09-25. Every test runs; none is skipped
+H2 schema, and runs every module's tests: 932 on 2026-10-09. Every test runs; none is skipped
 for a missing service. A connector the context cannot build fails the context, so a broken
 environment is red, never quietly green.
 

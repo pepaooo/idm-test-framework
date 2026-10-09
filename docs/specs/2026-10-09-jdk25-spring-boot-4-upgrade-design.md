@@ -64,15 +64,18 @@ both corpus checks report `0` FAILED.
 - Remove the unused `apacheds.version` property and the `apacheds-all` entry (no module depends on
   it).
 - Keep our own pins for libraries Boot does not manage: Rhino, UnboundID, WireMock, `jaxws-rt` (the
-  dependency and the `jaxws-maven-plugin` and its dependency, 4.0.2) and `commons-pool` 1.6.
-  **Revised during implementation (jangulo 2026-10-09):** the pool-1 `PoolingContextSource`
+  dependency and the `jaxws-maven-plugin` and its dependency, 4.0.2). Each is confirmed to build and
+  pass on Jakarta EE 11 and Java 25; a pin is raised (to its latest patch release of the same major)
+  only if it does not.
+
+  **Revised during implementation (jangulo 2026-10-09):** `commons-pool` 1.6 was also kept at first,
+  but the pool-1 `PoolingContextSource`
   is deprecated and its named successor `PoolingContextSource(ContextSource)` ignores its argument
   in Spring LDAP 4.1.1, so LDAP pooling moves to Spring LDAP's pool2
   `PooledContextSource(ContextSource, PoolConfig)` and `commons-pool` 1.6 is replaced by the
   Boot-managed `commons-pool2`. The `idm.test.ldap.*` pool settings keep their names, defaults and
-  meaning; pool2's JMX registration is turned off, as pool-1 had none. Each is
-  confirmed to build and pass on Jakarta EE 11 and Java 25; a pin is raised (to its latest patch
-  release of the same major) only if it does not.
+  meaning; pool2's JMX registration is turned off, as pool-1 had none.
+
 - Remove any Phase 1 overrides.
 
 ### 4.2 Starters
@@ -141,10 +144,16 @@ affects us, the mapper sets the Jackson 2 behaviour explicitly, with a comment:
   rejected; loader error messages stay recognisable (tests asserting fragments of Jackson's own
   wording change only if that wording changed).
   **Exception (revised during implementation, jangulo 2026-10-09):** Jackson 3 reads YAML 1.2 and
-  no setting restores YAML 1.1 scalar typing. Accepted: unquoted `yes`/`no`/`on`/`off`, `~`,
-  `0755` and `0x1F` are now read as text rather than booleans, null and numbers. No scenario in
-  the corpus or the docs uses them; `writing-scenarios.md` says to write `true`/`false` and
-  `null`.
+  no setting restores YAML 1.1 scalar typing. Only lower-case `true`/`false`, `null` (or an empty
+  value) and plain decimal numbers (`42`, `-7`, `1.5`, `1.0e3`) are typed. Everything else is now
+  text: `yes`/`no`/`on`/`off`, `True`/`TRUE`/`False`/`FALSE`, `Null`/`NULL`, `~`, `+1`, `.5`,
+  `1_000`, leading zeros (`007`, `0755`, `-0755`) and `0x`/`0b` forms. The user accepted this wider
+  set on 2026-10-09. No scenario in the corpus or the docs uses them; `writing-scenarios.md` says
+  to write `true`/`false` and `null`, and `ScenarioLoaderTest.testScalarTyping` pins the set.
+  **Also accepted:** Spring 7's default Jackson 3 converter writes `IdmUser` request bodies with
+  properties in alphabetical order; the JSON means the same.
+  **Restored:** Jackson 3 writes `java.util.Date` / `java.sql.Timestamp` as ISO strings; the engine
+  mappers enable `WRITE_DATES_AS_TIMESTAMPS` so results and evidence keep epoch milliseconds.
 - `http.verify` and `IdmRestConnector`: response bodies parse the same way (numbers, nulls, big
   integers).
 

@@ -4,7 +4,7 @@
 
 [![Java](https://img.shields.io/badge/Java-25-orange.svg)](https://openjdk.org/)
 [![Spring Boot](https://img.shields.io/badge/Spring%20Boot-4.1.1-brightgreen.svg)](https://spring.io/projects/spring-boot)
-[![Tests](https://img.shields.io/badge/tests-931%20passing-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-932%20passing-brightgreen.svg)]()
 [![Docker](https://img.shields.io/badge/Docker-not%20required-lightgrey.svg)]()
 
 Tests provisioning workflows across LDAP, databases, REST APIs and SOAP services. Built on
@@ -68,7 +68,7 @@ Both tiers use the same connectors underneath, so a fix in a connector reaches b
 ```
 
 The suite starts an embedded UnboundID LDAP directory and a WireMock SOAP server on ephemeral
-ports, creates an H2 schema, runs 931 tests, and tears everything down.
+ports, creates an H2 schema, runs 932 tests, and tears everything down.
 
 ```bash
 # One module
@@ -246,19 +246,19 @@ still leads the failure summary. See
 
 ## What exists today
 
-Verified on 2026-10-09 with `./mvnw clean test` on Spring Boot 4.1.1 (0 failures, errors or skips):
+Verified on 2026-10-09, after the ITF-45 upgrade to Java 25 and Spring Boot 4.1.1, with `./mvnw clean test` (0 failures, errors or skips):
 
 | Module | Tests |
 |---|---|
 | idm-test-core | 34 |
 | idm-test-utils | 51 |
-| idm-test-engine | 500 |
+| idm-test-engine | 501 |
 | idm-connector-ldap | 71 |
 | idm-connector-database | 23 |
 | idm-connector-rest | 65 |
 | idm-connector-soap | 29 |
 | idm-test-scenarios | 158 |
-| **Total** | **931** |
+| **Total** | **932** |
 
 The scenarios module holds the Java workflow tests (provisioning, role assignment, modification,
 deprovisioning and multi-system flows), a corpus of 21 YAML scenarios converted from them, and the

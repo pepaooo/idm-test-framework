@@ -35,7 +35,7 @@ Backend-focused **integration testing framework** using JUnit, with no front-end
 ### Testing Framework
 - **JUnit 6**: 6.0.x (Jupiter)
 - **AssertJ**: 3.27.x (fluent assertions)
-- **Mockito**: 5.14.x (minimal usage - only for utilities)
+- **Mockito**: 5.23.x (minimal usage - only for utilities)
 - **Testcontainers**: 2.0.x (containerized test dependencies)
 
 ### Repository Connectors
@@ -48,14 +48,14 @@ Backend-focused **integration testing framework** using JUnit, with no front-end
 ### Supporting Libraries
 - **Logging**: SLF4J 2.0.x + Logback 1.5.x
 - **Configuration**: Spring Boot Configuration Processor
-- **Validation**: Jakarta Validation 3.1.x + Hibernate Validator 8.0.x
+- **Validation**: Jakarta Validation 3.1.x (Hibernate Validator is not on the classpath)
 - **JSON Processing**: Jackson 3.1.x
 - **XML Processing**: JAXB 4.0.x
-- **Utilities**: Apache Commons Lang3 3.17.x
+- **Utilities**: Apache Commons Lang3 3.20.x
 
 ### Embedded Test Servers
-- **LDAP**: Apache Directory Server 2.0.x (embedded for tests)
-- **Database**: H2 2.3.x, PostgreSQL (via Testcontainers)
+- **LDAP**: UnboundID LDAP SDK (embedded for tests, `EmbeddedLdapServer`)
+- **Database**: H2 2.4.x, PostgreSQL (via Testcontainers)
 - **Mock Servers**: WireMock 3.x (for REST/SOAP mocking)
 
 ---
@@ -763,7 +763,7 @@ logging:
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>3.5.6</version>
+        <version>4.1.1</version>
     </parent>
     
     <groupId>com.idm.test</groupId>
@@ -771,7 +771,7 @@ logging:
     <version>1.0.0-SNAPSHOT</version>
     
     <properties>
-        <java.version>21</java.version>
+        <java.version>25</java.version>
     </properties>
     
     <dependencies>
@@ -783,7 +783,7 @@ logging:
         
         <dependency>
             <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-web</artifactId>
+            <artifactId>spring-boot-starter-restclient</artifactId>
         </dependency>
         
         <dependency>
@@ -794,7 +794,7 @@ logging:
         <!-- OAuth2 Client (for token management) -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-oauth2-client</artifactId>
+            <artifactId>spring-boot-starter-security-oauth2-client</artifactId>
         </dependency>
         
         <!-- LDAP -->

@@ -224,4 +224,92 @@ class ScenarioLoaderTest {
                 .hasMessageContaining("cleanup entry 1 (ldap.delete)")
                 .hasMessageContaining("parameters must be a map");
     }
+
+    @Test
+    @DisplayName("Should type YAML scalars in step parameters by YAML 1.2 rules")
+    void testScalarTyping() {
+        Scenario scenario = ScenarioLoader.load(stream("""
+                name: Scalars
+                steps:
+                  - t.step:
+                      t: true
+                      f: false
+                      yesWord: yes
+                      noWord: no
+                      onWord: on
+                      offWord: off
+                      nul: null
+                      tilde: ~
+                      empty:
+                      int: 42
+                      neg: -7
+                      big: 12345678901234567890
+                      flt: 1.5
+                      exp: 1.0e3
+                      octal: 0755
+                      hex: 0x1F
+                      date: 2026-01-01
+                      quoted: "42"
+                      str: hello
+                      capTrue: True
+                      upTrue: TRUE
+                      capFalse: False
+                      upFalse: FALSE
+                      capNull: Null
+                      upNull: NULL
+                      plus: +1
+                      dot: .5
+                      underscore: 1_000
+                      binary: 0b101
+                      leadingZero: 007
+                      negOctal: -0755
+                """), "scalars.yaml");
+
+        Map<String, Object> p = scenario.steps().get(0).params();
+        assertThat(p.get("t")).isEqualTo(Boolean.TRUE);
+        assertThat(p.get("f")).isEqualTo(Boolean.FALSE);
+        // Under Jackson 2 (YAML 1.1) yes/no/on/off were booleans, ~ was null and 0755/0x1F were numbers;
+        // ITF-45 deliberately accepts YAML 1.2, where they stay as text.
+        assertThat(p.get("yesWord")).isEqualTo("yes");
+        assertThat(p.get("noWord")).isEqualTo("no");
+        assertThat(p.get("onWord")).isEqualTo("on");
+        assertThat(p.get("offWord")).isEqualTo("off");
+        assertThat(p).containsEntry("nul", null).containsEntry("empty", null);
+        assertThat(p.get("tilde")).isEqualTo("~");
+        assertThat(p.get("int")).isEqualTo(42);
+        assertThat(p.get("neg")).isEqualTo(-7);
+        assertThat(p.get("big")).isEqualTo(new java.math.BigInteger("12345678901234567890"));
+        assertThat(p.get("flt")).isEqualTo(1.5);
+        assertThat(p.get("exp")).isEqualTo(1000.0);
+        assertThat(p.get("octal")).isEqualTo("0755");
+        assertThat(p.get("hex")).isEqualTo("0x1F");
+        assertThat(p.get("date")).isEqualTo("2026-01-01");
+        assertThat(p.get("quoted")).isEqualTo("42");
+        assertThat(p.get("str")).isEqualTo("hello");
+        // Jackson 3 types only lower-case true/false/null and plain decimal numbers; the rest is text.
+        assertThat(p.get("capTrue")).isEqualTo("True");
+        assertThat(p.get("upTrue")).isEqualTo("TRUE");
+        assertThat(p.get("capFalse")).isEqualTo("False");
+        assertThat(p.get("upFalse")).isEqualTo("FALSE");
+        assertThat(p.get("capNull")).isEqualTo("Null");
+        assertThat(p.get("upNull")).isEqualTo("NULL");
+        assertThat(p.get("plus")).isEqualTo("+1");
+        assertThat(p.get("dot")).isEqualTo(".5");
+        assertThat(p.get("underscore")).isEqualTo("1_000");
+        assertThat(p.get("binary")).isEqualTo("0b101");
+        assertThat(p.get("leadingZero")).isEqualTo("007");
+        assertThat(p.get("negOctal")).isEqualTo("-0755");
+        assertThat(p.keySet()).containsExactly("t", "f", "yesWord", "noWord", "onWord", "offWord", "nul",
+                "tilde", "empty", "int", "neg", "big", "flt", "exp", "octal", "hex", "date", "quoted", "str",
+                "capTrue", "upTrue", "capFalse", "upFalse", "capNull", "upNull", "plus", "dot", "underscore",
+                "binary", "leadingZero", "negOctal");
+    }
+
+    @Test
+    @DisplayName("Should load the first document of a multi-document YAML file")
+    void testMultiDocumentLoadsFirst() {
+        Scenario scenario = ScenarioLoader.load(stream("name: First\n---\nname: Second\n"), "multi.yaml");
+
+        assertThat(scenario.name()).isEqualTo("First");
+    }
 }

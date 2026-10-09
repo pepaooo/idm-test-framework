@@ -39,6 +39,20 @@ class JsonResultWriterTest {
     }
 
     @Test
+    @DisplayName("Should write a java.sql.Timestamp parameter as epoch milliseconds")
+    void testWritesTimestampAsEpochMillis(@TempDir Path dir) throws Exception {
+        StepResult step = new StepResult(0, "db.verify",
+                Map.of("at", new java.sql.Timestamp(1_700_000_000_000L)), true, 5, "ok", null, null, null);
+        ScenarioResult scenario = new ScenarioResult(
+                "Dates", "dates.yaml", true, 10, List.of(step), null);
+
+        Path target = dir.resolve("dates.json");
+        JsonResultWriter.write(List.of(scenario), target);
+
+        assertThat(Files.readString(target)).contains("\"at\" : 1700000000000");
+    }
+
+    @Test
     @DisplayName("Should write a cleanup entry's status and type")
     void testWritesCleanupResults(@TempDir Path dir) throws Exception {
         CleanupResult cleanup = new CleanupResult(
@@ -103,5 +117,46 @@ class JsonResultWriterTest {
         assertThat(json).contains("\"kind\" : \"sql\"").contains("\"database\" : \"hr\"")
                 .contains("\"totalRows\" : 1").contains("\"STATUS\" : \"ACTIVE\"");
         assertThat(json.split("\"evidence\"", -1)).hasSize(2);
+    }
+
+    @Test
+    @DisplayName("Should keep the exact layout: declaration order, ' : ' separators, empty arrays and nulls")
+    void testExactLayout(@TempDir Path dir) throws Exception {
+        ScenarioResult scenario = new ScenarioResult("S", "s.yaml", true, 10, List.of(), null);
+
+        Path target = dir.resolve("layout.json");
+        JsonResultWriter.write(List.of(scenario), target);
+
+        assertThat(Files.readString(target).replace("\r\n", "\n")).isEqualTo("""
+                [ {
+                  "name" : "S",
+                  "sourceName" : "s.yaml",
+                  "success" : true,
+                  "durationMillis" : 10,
+                  "steps" : [ ],
+                  "cleanup" : [ ],
+                  "failureDetail" : null,
+                  "description" : null
+                } ]""");
+    }
+
+    @Test
+    @DisplayName("Should write a step's fields in declaration order")
+    void testStepFieldOrder(@TempDir Path dir) throws Exception {
+        StepResult step = new StepResult(0, "ldap.verify", Map.of("dn", "x"), false, 5, "m", 2, 100L, "d");
+        ScenarioResult scenario = new ScenarioResult("S", "s.yaml", false, 10, List.of(step), null);
+
+        Path target = dir.resolve("order.json");
+        JsonResultWriter.write(List.of(scenario), target);
+
+        String json = Files.readString(target);
+        List<String> keys = List.of("\"index\"", "\"type\"", "\"resolvedParams\"", "\"success\" : false",
+                "\"durationMillis\" : 5", "\"message\"", "\"attempts\"", "\"waitedMillis\"", "\"description\" : \"d\"");
+        int last = json.indexOf("\"steps\"");
+        for (String key : keys) {
+            int at = json.indexOf(key, last);
+            assertThat(at).as(key + " after the previous field").isGreaterThan(last);
+            last = at;
+        }
     }
 }

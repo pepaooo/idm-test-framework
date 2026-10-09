@@ -1,10 +1,11 @@
 package com.idm.test.engine;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import com.idm.test.engine.model.FixtureSpec;
 import com.idm.test.engine.model.Scenario;
 import com.idm.test.engine.model.StepSpec;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.DeserializationFeature;
+import tools.jackson.dataformat.yaml.YAMLMapper;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -18,7 +19,10 @@ import java.util.Map;
  */
 public final class ScenarioLoader {
 
-    private static final ObjectMapper YAML = new ObjectMapper(new YAMLFactory());
+    private static final YAMLMapper YAML = YAMLMapper.builder()
+            // Jackson 3 rejects a second YAML document; Jackson 2 loaded the first and ignored the rest.
+            .disable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
+            .build();
 
     private ScenarioLoader() {
     }
@@ -36,7 +40,7 @@ public final class ScenarioLoader {
         Map<String, Object> root;
         try (InputStream in = yaml) {
             root = YAML.readValue(in, Map.class);
-        } catch (IOException e) {
+        } catch (JacksonException | IOException e) {
             throw new ValidationException(sourceName, "could not parse YAML: " + e.getMessage(), e);
         }
 

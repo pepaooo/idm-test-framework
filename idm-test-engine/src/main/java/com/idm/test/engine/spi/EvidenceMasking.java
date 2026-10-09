@@ -1,9 +1,9 @@
 package com.idm.test.engine.spi;
 
-import com.fasterxml.jackson.databind.DeserializationFeature;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.idm.test.engine.result.ReportUrls;
 import com.idm.test.engine.result.Secrets;
+import tools.jackson.databind.DeserializationFeature;
+import tools.jackson.databind.json.JsonMapper;
 
 import java.lang.reflect.Array;
 import java.net.URLDecoder;
@@ -22,9 +22,10 @@ import java.util.regex.Pattern;
 final class EvidenceMasking {
 
     /** Strict: numbers keep their exact value, and anything after the first value is an error. */
-    private static final ObjectMapper JSON = new ObjectMapper()
+    private static final JsonMapper JSON = JsonMappers.builder()
             .enable(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS)
-            .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
+            .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
+            .build();
 
     private static final char BOM = '\uFEFF';
 

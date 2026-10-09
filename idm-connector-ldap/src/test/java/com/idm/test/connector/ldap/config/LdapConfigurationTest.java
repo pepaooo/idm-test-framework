@@ -5,7 +5,7 @@ import com.idm.test.utils.ldap.EmbeddedLdapServer;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-import org.springframework.ldap.pool.factory.PoolingContextSource;
+import org.springframework.ldap.pool2.factory.PooledContextSource;
 
 import java.net.ServerSocket;
 import java.net.SocketTimeoutException;
@@ -139,8 +139,8 @@ class LdapConfigurationTest {
                     directories(null, Map.of("pooled", pooled)));
 
             directories.template("pooled").orElseThrow().lookup("");
-            PoolingContextSource pool =
-                    (PoolingContextSource) directories.template("pooled").orElseThrow().getContextSource();
+            PooledContextSource pool =
+                    (PooledContextSource) directories.template("pooled").orElseThrow().getContextSource();
             assertThat(pool.getNumIdle()).isGreaterThan(0);
 
             directories.close();

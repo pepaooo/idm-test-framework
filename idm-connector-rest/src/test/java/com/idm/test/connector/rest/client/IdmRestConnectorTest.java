@@ -1,6 +1,5 @@
 package com.idm.test.connector.rest.client;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.client.WireMock;
 import com.idm.test.connector.rest.config.RestClientConfiguration;
@@ -13,6 +12,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import tools.jackson.databind.json.JsonMapper;
 
 import java.util.Map;
 
@@ -35,7 +35,9 @@ class IdmRestConnectorTest {
 
     private static WireMockServer wireMockServer;
     private static String baseUrl;
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    // Not the engine's JsonMappers (different module); it only writes fixture bodies here, so Jackson 3's
+    // alphabetical property sorting does not matter.
+    private final JsonMapper objectMapper = JsonMapper.builder().build();
 
     @BeforeAll
     static void startWireMock() {
@@ -434,5 +436,20 @@ class IdmRestConnectorTest {
         user.setTitle("Software Engineer");
         user.setStatus("ACTIVE");
         return user;
+    }
+
+    @Test
+    @DisplayName("Should parse a JSON body followed by more content as its first value")
+    void testTrailingContentAfterJson() {
+        stubFor(get(urlEqualTo("/api/trailing"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
+                        .withBody("{\"a\":1} {\"b\":2}")));
+
+        OperationResult<RestResponse> result = connector.exchange("GET", baseUrl + "/api/trailing", null, null);
+
+        assertThat(result.isSuccess()).isTrue();
+        assertThat(result.getData().orElseThrow().body()).isEqualTo(Map.of("a", 1));
     }
 }

@@ -22,16 +22,16 @@
             <artifactId>idm-test-core</artifactId>
         </dependency>
 
-        <!-- Spring Boot Web (includes RestClient) -->
+        <!-- RestClient and its HTTP message converters; no web server -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-web</artifactId>
+            <artifactId>spring-boot-starter-restclient</artifactId>
         </dependency>
 
         <!-- Spring Security OAuth2 Client -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-oauth2-client</artifactId>
+            <artifactId>spring-boot-starter-security-oauth2-client</artifactId>
         </dependency>
 
         <!-- Testing -->

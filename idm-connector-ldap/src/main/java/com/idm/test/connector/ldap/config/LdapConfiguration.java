@@ -9,8 +9,9 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.ldap.core.LdapTemplate;
 import org.springframework.ldap.core.support.LdapContextSource;
-import org.springframework.ldap.pool.factory.PoolingContextSource;
-import org.springframework.ldap.pool.validation.DefaultDirContextValidator;
+import org.springframework.ldap.pool2.factory.PoolConfig;
+import org.springframework.ldap.pool2.factory.PooledContextSource;
+import org.springframework.ldap.pool2.validation.DefaultDirContextValidator;
 
 import java.util.Map;
 import java.util.TreeMap;
@@ -83,7 +84,7 @@ public class LdapConfiguration {
         contextSource.setBase(config.getBaseDn());
         contextSource.setUserDn(config.getUserDn());
         contextSource.setPassword(config.getPassword());
-        contextSource.setPooled(false); // PoolingContextSource below does the pooling
+        contextSource.setPooled(false); // PooledContextSource below does the pooling
         contextSource.setReferral("follow");
         try {
             contextSource.afterPropertiesSet();
@@ -93,15 +94,18 @@ public class LdapConfiguration {
 
         LdapTemplate template;
         if (config.isPooled()) {
-            PoolingContextSource pool = new PoolingContextSource();
-            pool.setContextSource(contextSource);
+            PoolConfig poolConfig = new PoolConfig();
+            poolConfig.setTestOnBorrow(true);
+            poolConfig.setTestWhileIdle(true);
+            poolConfig.setMinIdlePerKey(config.getMinIdle());
+            poolConfig.setMaxTotalPerKey(config.getMaxActive()); // the old maxActive was per key too
+            poolConfig.setMaxTotal(config.getMaxTotal());
+            poolConfig.setMaxWaitMillis(config.getMaxWait()); // negative: wait indefinitely, as before
+            // Pool 1 behaviour made explicit: callers block when the pool is exhausted, and no JMX beans.
+            poolConfig.setBlockWhenExhausted(true);
+            poolConfig.setJmxEnabled(false);
+            PooledContextSource pool = new PooledContextSource(contextSource, poolConfig);
             pool.setDirContextValidator(new DefaultDirContextValidator());
-            pool.setTestOnBorrow(true);
-            pool.setTestWhileIdle(true);
-            pool.setMinIdle(config.getMinIdle());
-            pool.setMaxActive(config.getMaxActive());
-            pool.setMaxTotal(config.getMaxTotal());
-            pool.setMaxWait(config.getMaxWait());
             template = new LdapTemplate(pool);
         } else {
             template = new LdapTemplate(contextSource);

@@ -1,7 +1,7 @@
 package com.idm.test.engine.spi;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.idm.test.engine.result.Secrets;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Masking for text that looks like JSON but does not parse strictly (a trailing comma, comments,
@@ -16,7 +16,7 @@ import com.idm.test.engine.result.Secrets;
  */
 final class JsonText {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final JsonMapper JSON = JsonMappers.builder().build();
     private static final String MASKED = "\"" + Secrets.MASK + "\"";
 
     private JsonText() {

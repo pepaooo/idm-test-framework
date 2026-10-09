@@ -461,4 +461,12 @@ class HttpVerifyStepsTest {
         assertThat(step.success()).isFalse();
         assertThat(step.message()).contains("check 1 of 1 failed: ").contains("recursed too deeply");
     }
+
+    @Test
+    @DisplayName("A JSON body followed by more content is read as its first value, as under Jackson 2")
+    void testTrailingContentAfterJson() {
+        stubJson(200, "{\"a\":1} {\"b\":2}");
+
+        assertThat(run(params("check", "js:{ response.json.a === 1 }")).success()).isTrue();
+    }
 }

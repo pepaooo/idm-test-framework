@@ -1,8 +1,9 @@
 package com.idm.test.engine.result;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
+import com.idm.test.engine.spi.JsonMappers;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.SerializationFeature;
+import tools.jackson.databind.json.JsonMapper;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -24,7 +25,7 @@ import java.util.Locale;
  */
 public final class HtmlReportWriter {
 
-    private static final ObjectMapper JSON = new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT);
+    private static final JsonMapper JSON = JsonMappers.builder().enable(SerializationFeature.INDENT_OUTPUT).build();
     private static final DateTimeFormatter STARTED =
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss z").withZone(ZoneId.systemDefault());
 
@@ -180,7 +181,7 @@ public final class HtmlReportWriter {
     private static String json(Object value) {
         try {
             return JSON.writeValueAsString(value);
-        } catch (JsonProcessingException e) {
+        } catch (JacksonException e) {
             return String.valueOf(value);
         }
     }

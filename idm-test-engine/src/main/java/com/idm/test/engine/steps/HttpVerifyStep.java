@@ -1,6 +1,6 @@
 package com.idm.test.engine.steps;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.idm.test.engine.spi.JsonMappers;
 import com.idm.test.connector.rest.client.IdmRestConnector;
 import com.idm.test.connector.rest.client.RestAuthenticator;
 import com.idm.test.connector.rest.client.TokenFailureText;
@@ -11,6 +11,7 @@ import com.idm.test.engine.spi.DeferredExpression;
 import com.idm.test.engine.spi.Explained;
 import com.idm.test.engine.spi.StepOutcome;
 import com.idm.test.engine.spi.StepType;
+import tools.jackson.databind.json.JsonMapper;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -32,7 +33,7 @@ import java.util.Set;
  */
 public final class HttpVerifyStep implements StepType {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final JsonMapper JSON = JsonMappers.builder().build();
 
     private final IdmRestConnector connector;
     private final RestProperties properties;

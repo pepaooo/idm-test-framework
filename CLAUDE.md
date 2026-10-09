@@ -253,7 +253,7 @@ boolean provisioned = testExecutor.waitUntil(
 
 ## Important Notes
 
-- **Java 21 LTS**: Use modern Java features (records, pattern matching, switch expressions)
+- **Java 25 LTS**: Use modern Java features (records, pattern matching, switch expressions)
 - **Spring Boot 3.5.6**: Latest stable version with Spring Framework 6.2.x
 - **No Lombok**: Use Java records instead
 - **Logback for logging**: SLF4J facade with Logback implementation

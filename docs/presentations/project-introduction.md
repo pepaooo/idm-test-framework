@@ -4,7 +4,7 @@ An eight-slide introduction intended for a 10–15-minute walkthrough. Use the [
 
 ## Preparation
 
-Use Java 21. Open the bundled YAML example and an output terminal before presenting. The live demonstration uses embedded fixtures; it does not connect to a real Identity Manager.
+Use Java 25. Open the bundled YAML example and an output terminal before presenting. The live demonstration uses embedded fixtures; it does not connect to a real Identity Manager.
 
 ```bash
 ./mvnw -pl idm-test-scenarios -am test \
@@ -43,7 +43,7 @@ Simplifies the full sequence diagram at docs/architecture/diagrams/scenario-exec
 
 ### 7. Local demonstration and results
 
-Run from the repository root with JDK 21. The full suite baseline on 2026-09-15 at revision 104e388a555f9e22d0c415290ff2edc606402a59 was 320 tests, zero failures/errors/skips. The selected tutorial command was also executed successfully. Show the console and scenario-results.json after the run, if time permits. The suite uses embedded UnboundID, H2 and WireMock; it validates framework behavior rather than a real Identity Manager. Results contain resolved values without redaction; use synthetic data. Sources: docs/reference/running-tests.md; docs/architecture/capabilities.md. Allow two minutes including demo.
+Run from the repository root with JDK 25. The full suite baseline on 2026-09-15 at revision 104e388a555f9e22d0c415290ff2edc606402a59 was 320 tests, zero failures/errors/skips. The selected tutorial command was also executed successfully. Show the console and scenario-results.json after the run, if time permits. The suite uses embedded UnboundID, H2 and WireMock; it validates framework behavior rather than a real Identity Manager. Results contain resolved values without redaction; use synthetic data. Sources: docs/reference/running-tests.md; docs/architecture/capabilities.md. Allow two minutes including demo.
 
 ### 8. Current scope and next steps
 

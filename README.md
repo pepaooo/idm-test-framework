@@ -2,7 +2,7 @@
 
 > **Integration testing for Identity Management systems — write scenarios as YAML or as Java**
 
-[![Java](https://img.shields.io/badge/Java-21-orange.svg)](https://openjdk.org/)
+[![Java](https://img.shields.io/badge/Java-25-orange.svg)](https://openjdk.org/)
 [![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.5.6-brightgreen.svg)](https://spring.io/projects/spring-boot)
 [![Tests](https://img.shields.io/badge/tests-591%20passing-brightgreen.svg)]()
 [![Docker](https://img.shields.io/badge/Docker-not%20required-lightgrey.svg)]()
@@ -61,7 +61,7 @@ Both tiers use the same connectors underneath, so a fix in a connector reaches b
 
 ## Quick start
 
-**Prerequisites:** Java 21 and Maven 3.9+. That is all — Docker is not required.
+**Prerequisites:** Java 25 and Maven 3.9+. That is all — Docker is not required.
 
 ```bash
 ./mvnw clean test
@@ -347,7 +347,7 @@ Organised by how much you should trust it.
 
 | Concern | Choice | Version |
 |---|---|---|
-| Language | Java | 21 |
+| Language | Java | 25 |
 | Framework | Spring Boot | 3.5.6 |
 | Testing | JUnit 5, AssertJ | 5.11.x, 3.26.3 |
 | LDAP | Spring LDAP, UnboundID SDK | 3.2.9, 7.0.1 |

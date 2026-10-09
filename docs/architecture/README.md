@@ -8,7 +8,7 @@ The framework is a set of Java libraries and JUnit tests with a declarative YAML
 
 The design keeps two authoring tiers, reuses connectors, and separates execution from reporting. The YAML engine owns orchestration explicitly; Java workflows orchestrate their own calls. See [ADR 0001](decisions/0001-two-authoring-tiers.md) and [ADR 0002](decisions/0002-purpose-built-engine.md).
 
-Current constraints are Java 21, Maven modules, Spring-based connector wiring and JUnit execution. A CLI, UI, HTML renderer, parallel scenario scheduling and cross-file step reuse are outside the delivered scope. The existence of a connector is not evidence that a corresponding YAML operation exists.
+Current constraints are Java 25, Maven modules, Spring-based connector wiring and JUnit execution. A CLI, UI, HTML renderer, parallel scenario scheduling and cross-file step reuse are outside the delivered scope. The existence of a connector is not evidence that a corresponding YAML operation exists.
 
 ## 2. System context
 

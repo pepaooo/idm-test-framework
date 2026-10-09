@@ -1,6 +1,6 @@
 # Running the tests
 
-Everything below runs from the repository root with Java 21 and the Maven wrapper. The default
+Everything below runs from the repository root with Java 25 and the Maven wrapper. The default
 suite needs nothing else: no Docker, no external services.
 
 ## The default suite

@@ -1,6 +1,6 @@
 # Writing scenarios
 
-This guide describes the current [capability baseline](../architecture/capabilities.md). Begin in the repository root with Java 21. See [running tests](../reference/running-tests.md) if the build environment is not ready.
+This guide describes the current [capability baseline](../architecture/capabilities.md). Begin in the repository root with Java 25. See [running tests](../reference/running-tests.md) if the build environment is not ready.
 
 For a complete lookup of every key, step and rule, see the [authoring reference](../reference/writing-scenarios.md).
 

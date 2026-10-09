@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is an **integration testing framework** for Identity Management (IdM) systems, designed to test provisioning workflows across LDAP, databases, REST APIs, and SOAP services. Think of it as similar to OpenText Identity Validator but built on modern Spring Boot and JUnit 5.
+This is an **integration testing framework** for Identity Management (IdM) systems, designed to test provisioning workflows across LDAP, databases, REST APIs, and SOAP services. Think of it as similar to OpenText Identity Validator but built on modern Spring Boot and JUnit.
 
 **Critical Context**: See `docs/reference/specification.md` for the complete architectural specification and design decisions. This file focuses on day-to-day development commands and architectural principles.
 
@@ -169,7 +169,8 @@ These are in place; add others only when a module needs them:
 - spring-ldap-core + unboundid-ldapsdk (LDAP)
 - spring-boot-starter-jdbc (databases)
 - spring-boot-starter-web-services (SOAP)
-- spring-boot-starter-oauth2-client (OAuth)
+- spring-boot-starter-security-oauth2-client (OAuth)
+- spring-boot-starter-restclient (REST)
 
 ### Database Drivers (as needed)
 - oracle-jdbc (Oracle)
@@ -254,7 +255,7 @@ boolean provisioned = testExecutor.waitUntil(
 ## Important Notes
 
 - **Java 25 LTS**: Use modern Java features (records, pattern matching, switch expressions)
-- **Spring Boot 3.5.6**: Latest stable version with Spring Framework 6.2.x
+- **Spring Boot 4.1.1**: Latest stable version with Spring Framework 7.0.x
 - **No Lombok**: Use Java records instead
 - **Logback for logging**: SLF4J facade with Logback implementation
 - **Maven over Gradle**: Better enterprise tooling support
@@ -262,6 +263,6 @@ boolean provisioned = testExecutor.waitUntil(
 ## Reference
 
 - Full specification: `docs/reference/specification.md`
-- Spring Boot docs: https://docs.spring.io/spring-boot/3.5.6/reference/
-- Spring Framework docs: https://docs.spring.io/spring-framework/6.2.x/reference/
-- JUnit 5 docs: https://junit.org/junit5/docs/current/user-guide/
+- Spring Boot docs: https://docs.spring.io/spring-boot/4.1/reference/
+- Spring Framework docs: https://docs.spring.io/spring-framework/reference/
+- JUnit docs: https://docs.junit.org/current/user-guide/

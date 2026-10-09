@@ -20,36 +20,36 @@ Execute **integration tests against real systems** to validate OpenText Identity
 5. **Downstream validation**: Verify account in target application via JDBC, SOAP API, or REST API
 
 ### Core Principle
-Backend-focused **integration testing framework** using JUnit 5, with no front-end initially. Tests should be executable from IDE, command line, and CI/CD pipelines. **Tests orchestrate their own workflows explicitly** - no hidden orchestration layers.
+Backend-focused **integration testing framework** using JUnit, with no front-end initially. Tests should be executable from IDE, command line, and CI/CD pipelines. **Tests orchestrate their own workflows explicitly** - no hidden orchestration layers.
 
 ---
 
 ## Technology Stack
 
 ### Core Framework
-- **Java**: 21 (LTS) - with planned migration path to Java 25
-- **Spring Boot**: 3.5.6 (latest stable)
-- **Spring Framework**: 6.2.x (bundled with Spring Boot 3.5.6)
+- **Java**: 25 (LTS)
+- **Spring Boot**: 4.1.1 (latest stable)
+- **Spring Framework**: 7.0.x (bundled with Spring Boot 4.1.1)
 - **Build Tool**: Maven 3.9.x (recommended for enterprise compatibility)
 
 ### Testing Framework
-- **JUnit 5**: 5.11.x (Jupiter)
-- **AssertJ**: 3.26.x (fluent assertions)
+- **JUnit 6**: 6.0.x (Jupiter)
+- **AssertJ**: 3.27.x (fluent assertions)
 - **Mockito**: 5.14.x (minimal usage - only for utilities)
-- **Testcontainers**: 1.20.x (containerized test dependencies)
+- **Testcontainers**: 2.0.x (containerized test dependencies)
 
 ### Repository Connectors
-- **LDAP**: Spring LDAP 3.2.x + UnboundID LDAP SDK 7.0.x
+- **LDAP**: Spring LDAP 4.1.x + UnboundID LDAP SDK 7.0.x
 - **Database**: Spring JDBC (JdbcTemplate) - **NO JPA/Hibernate for test queries**
-- **REST**: Spring RestClient 6.2.x on the JDK `HttpClient` (HTTP/1.1)
+- **REST**: Spring RestClient 7.0.x on the JDK `HttpClient` (HTTP/1.1)
 - **SOAP**: generated JAX-WS ports + JAXB 4.0.x (not Spring Web Services' `WebServiceTemplate`)
-- **OAuth**: Spring Security OAuth2 Client 6.5.x (client credentials, via `RestAuthenticator`)
+- **OAuth**: Spring Security OAuth2 Client 7.1.x (client credentials, via `RestAuthenticator`)
 
 ### Supporting Libraries
 - **Logging**: SLF4J 2.0.x + Logback 1.5.x
 - **Configuration**: Spring Boot Configuration Processor
 - **Validation**: Jakarta Validation 3.1.x + Hibernate Validator 8.0.x
-- **JSON Processing**: Jackson 2.17.x
+- **JSON Processing**: Jackson 3.1.x
 - **XML Processing**: JAXB 4.0.x
 - **Utilities**: Apache Commons Lang3 3.17.x
 
@@ -176,7 +176,7 @@ idm-test-framework/
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│              Test Layer (JUnit 5)                           │
+│              Test Layer (JUnit)                           │
 │  Tests orchestrate workflows EXPLICITLY in test code        │
 │  - Each step visible and clear                             │
 │  - Full control over payloads                              │

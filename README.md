@@ -3,12 +3,12 @@
 > **Integration testing for Identity Management systems — write scenarios as YAML or as Java**
 
 [![Java](https://img.shields.io/badge/Java-25-orange.svg)](https://openjdk.org/)
-[![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.5.6-brightgreen.svg)](https://spring.io/projects/spring-boot)
-[![Tests](https://img.shields.io/badge/tests-591%20passing-brightgreen.svg)]()
+[![Spring Boot](https://img.shields.io/badge/Spring%20Boot-4.1.1-brightgreen.svg)](https://spring.io/projects/spring-boot)
+[![Tests](https://img.shields.io/badge/tests-931%20passing-brightgreen.svg)]()
 [![Docker](https://img.shields.io/badge/Docker-not%20required-lightgrey.svg)]()
 
 Tests provisioning workflows across LDAP, databases, REST APIs and SOAP services. Built on
-Spring Boot, JUnit 5 and an embedded directory — the suite runs with no Docker, no external
+Spring Boot, JUnit and an embedded directory — the suite runs with no Docker, no external
 services and no manual setup.
 
 ---
@@ -68,7 +68,7 @@ Both tiers use the same connectors underneath, so a fix in a connector reaches b
 ```
 
 The suite starts an embedded UnboundID LDAP directory and a WireMock SOAP server on ephemeral
-ports, creates an H2 schema, runs 591 tests, and tears everything down.
+ports, creates an H2 schema, runs 931 tests, and tears everything down.
 
 ```bash
 # One module
@@ -246,19 +246,19 @@ still leads the failure summary. See
 
 ## What exists today
 
-Verified on 2026-10-07 with `./mvnw clean test` at `76cc190` (0 failures, errors or skips):
+Verified on 2026-10-09 with `./mvnw clean test` on Spring Boot 4.1.1 (0 failures, errors or skips):
 
 | Module | Tests |
 |---|---|
 | idm-test-core | 34 |
 | idm-test-utils | 51 |
-| idm-test-engine | 490 |
+| idm-test-engine | 500 |
 | idm-connector-ldap | 71 |
 | idm-connector-database | 23 |
-| idm-connector-rest | 61 |
-| idm-connector-soap | 26 |
+| idm-connector-rest | 65 |
+| idm-connector-soap | 29 |
 | idm-test-scenarios | 158 |
-| **Total** | **914** |
+| **Total** | **931** |
 
 The scenarios module holds the Java workflow tests (provisioning, role assignment, modification,
 deprovisioning and multi-system flows), a corpus of 21 YAML scenarios converted from them, and the
@@ -348,15 +348,15 @@ Organised by how much you should trust it.
 | Concern | Choice | Version |
 |---|---|---|
 | Language | Java | 25 |
-| Framework | Spring Boot | 3.5.6 |
-| Testing | JUnit 5, AssertJ | 5.11.x, 3.26.3 |
-| LDAP | Spring LDAP, UnboundID SDK | 3.2.9, 7.0.1 |
-| Database | Spring JDBC, H2 | 2.3.232 |
+| Framework | Spring Boot | 4.1.1 |
+| Testing | JUnit 6, AssertJ | 6.0.3, 3.27.7 |
+| LDAP | Spring LDAP, UnboundID SDK | 4.1.1, 7.0.1 |
+| Database | Spring JDBC, H2 | 2.4.240 |
 | SOAP | JAX-WS, JAXB | — |
-| YAML/JSON | Jackson | 2.19.2 |
+| YAML/JSON | Jackson | 3.1.5 |
 | Expressions | Mozilla Rhino | 1.8.0 |
 | HTTP | JDK HttpClient via Spring RestClient; Spring Security OAuth2 client | — |
-| Containers (optional runner) | Testcontainers | 1.21.4 |
+| Containers (optional runner) | Testcontainers | 2.0.5 |
 | Mocking | WireMock | 3.10.0 |
 
 No Lombok — Java records instead.

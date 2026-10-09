@@ -6,6 +6,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
+import org.springframework.http.HttpHeaders;
+
 /**
  * Normalises HTTP response header names so a scenario can read them without guessing how a
  * server, or the HTTP client, spelled them.
@@ -25,8 +27,25 @@ public final class HeaderNames {
      * @return a new {@link LinkedHashMap}; the input is not modified
      */
     public static Map<String, List<String>> normalize(Map<String, List<String>> headers) {
+        return normalize(headers.entrySet());
+    }
+
+    /**
+     * Same as {@link #normalize(Map)} for Spring's {@link HttpHeaders}, which is no longer a
+     * {@code Map} in Spring Framework 7.
+     *
+     * @param headers the headers as received
+     * @return a new {@link LinkedHashMap}; the input is not modified
+     */
+    public static Map<String, List<String>> normalize(HttpHeaders headers) {
+        return normalize(headers.headerSet());
+    }
+
+    private static Map<String, List<String>> normalize(Iterable<? extends Map.Entry<String, List<String>>> headers) {
         Map<String, List<String>> normalized = new LinkedHashMap<>();
-        headers.forEach((name, values) -> {
+        headers.forEach(header -> {
+            String name = header.getKey();
+            List<String> values = header.getValue();
             if (name.startsWith(":")) {
                 return;
             }

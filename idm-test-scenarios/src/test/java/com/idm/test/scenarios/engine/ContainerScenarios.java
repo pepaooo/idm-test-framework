@@ -10,7 +10,7 @@ import org.springframework.test.annotation.DirtiesContext;
 import org.testcontainers.DockerClientFactory;
 import org.testcontainers.containers.Container.ExecResult;
 import org.testcontainers.containers.GenericContainer;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.images.builder.Transferable;
 import org.testcontainers.utility.MountableFile;
@@ -94,7 +94,7 @@ public class ContainerScenarios extends RealEnvironmentScenarios {
         requireDocker(DockerClientFactory.instance().isDockerAvailable());
 
         GenericContainer<?> ldap = startLdap();
-        PostgreSQLContainer<?> postgres = start(new PostgreSQLContainer<>(POSTGRES_IMAGE), "PostgreSQL");
+        PostgreSQLContainer postgres = start(new PostgreSQLContainer(POSTGRES_IMAGE), "PostgreSQL");
         GenericContainer<?> wiremock = start(new GenericContainer<>(WIREMOCK_IMAGE)
                 .withExposedPorts(WIREMOCK_PORT)
                 .withCommand("--global-response-templating")
@@ -210,7 +210,7 @@ public class ContainerScenarios extends RealEnvironmentScenarios {
         return ldap;
     }
 
-    private static void publish(GenericContainer<?> ldap, PostgreSQLContainer<?> postgres, GenericContainer<?> wiremock) {
+    private static void publish(GenericContainer<?> ldap, PostgreSQLContainer postgres, GenericContainer<?> wiremock) {
         String wiremockBase = "http://" + wiremock.getHost() + ":" + wiremock.getMappedPort(WIREMOCK_PORT);
 
         set("idm.test.ldap.url", "ldap://" + ldap.getHost() + ":" + ldap.getMappedPort(LDAP_PORT));

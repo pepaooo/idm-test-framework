@@ -22,16 +22,22 @@
             <artifactId>idm-test-core</artifactId>
         </dependency>
 
-        <!-- Spring Boot Web (includes RestClient) -->
+        <!-- RestClient and its HTTP message converters; no web server -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-web</artifactId>
+            <artifactId>spring-boot-starter-restclient</artifactId>
         </dependency>
 
         <!-- Spring Security OAuth2 Client -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-oauth2-client</artifactId>
+            <artifactId>spring-boot-starter-security-oauth2-client</artifactId>
+        </dependency>
+
+        <!-- ITF-45: temporary, removed in Task 3 -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
         </dependency>
 
         <!-- Testing -->

@@ -64,7 +64,13 @@ both corpus checks report `0` FAILED.
 - Remove the unused `apacheds.version` property and the `apacheds-all` entry (no module depends on
   it).
 - Keep our own pins for libraries Boot does not manage: Rhino, UnboundID, WireMock, `jaxws-rt` (the
-  dependency and the `jaxws-maven-plugin` and its dependency, 4.0.2) and `commons-pool` 1.6. Each is
+  dependency and the `jaxws-maven-plugin` and its dependency, 4.0.2) and `commons-pool` 1.6.
+  **Revised during implementation (jangulo 2026-10-09):** the pool-1 `PoolingContextSource`
+  is deprecated and its named successor `PoolingContextSource(ContextSource)` ignores its argument
+  in Spring LDAP 4.1.1, so LDAP pooling moves to Spring LDAP's pool2
+  `PooledContextSource(ContextSource, PoolConfig)` and `commons-pool` 1.6 is replaced by the
+  Boot-managed `commons-pool2`. The `idm.test.ldap.*` pool settings keep their names, defaults and
+  meaning; pool2's JMX registration is turned off, as pool-1 had none. Each is
   confirmed to build and pass on Jakarta EE 11 and Java 25; a pin is raised (to its latest patch
   release of the same major) only if it does not.
 - Remove any Phase 1 overrides.

@@ -93,7 +93,7 @@ idm:
 | `url` | — | `ldap://host:389` or `ldaps://host:636` |
 | `base-dn` | — | the base every `ldap.*` step's DN is relative to |
 | `user-dn`, `password` | — | the bind account; both blank binds anonymously |
-| `pooled` | `true` | pool connections (Spring LDAP `PoolingContextSource`) |
+| `pooled` | `true` | pool connections (Spring LDAP `PooledContextSource`) |
 | `min-idle` | `1` | idle connections kept open |
 | `max-active` | `8` | connections in use at once |
 | `max-total` | `8` | connections in total |

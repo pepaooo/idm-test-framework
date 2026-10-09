@@ -40,11 +40,10 @@
             <artifactId>unboundid-ldapsdk</artifactId>
         </dependency>
 
-        <!-- Apache Commons Pool for LDAP connection pooling -->
+        <!-- Apache Commons Pool 2 for LDAP connection pooling -->
         <dependency>
-            <groupId>commons-pool</groupId>
-            <artifactId>commons-pool</artifactId>
-            <version>1.6</version>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-pool2</artifactId>
         </dependency>
 
         <!-- Testing -->

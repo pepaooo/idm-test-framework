@@ -3,7 +3,7 @@ package com.idm.test.connector.ldap.client;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ldap.core.LdapTemplate;
-import org.springframework.ldap.pool.factory.PoolingContextSource;
+import org.springframework.ldap.pool2.factory.PooledContextSource;
 
 import java.util.Collections;
 import java.util.Map;
@@ -56,7 +56,7 @@ public final class LdapDirectories implements AutoCloseable {
     @Override
     public void close() {
         templates.forEach((name, template) -> {
-            if (template.getContextSource() instanceof PoolingContextSource pool) {
+            if (template.getContextSource() instanceof PooledContextSource pool) {
                 try {
                     pool.destroy();
                 } catch (Exception e) {

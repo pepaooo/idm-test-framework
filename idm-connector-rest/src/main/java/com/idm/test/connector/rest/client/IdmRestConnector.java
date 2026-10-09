@@ -1,6 +1,5 @@
 package com.idm.test.connector.rest.client;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.idm.test.connector.rest.config.RestClientConfiguration;
 import com.idm.test.connector.rest.model.IdmUser;
 import com.idm.test.connector.rest.model.RestResponse;
@@ -17,6 +16,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
+import tools.jackson.databind.json.JsonMapper;
 
 import java.net.ConnectException;
 import java.net.SocketTimeoutException;
@@ -52,7 +52,7 @@ public class IdmRestConnector {
     private static final MediaType DEFAULT_TEXT = new MediaType("text", "plain", StandardCharsets.UTF_8);
 
     private final RestClient restClient;
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final JsonMapper objectMapper = JsonMapper.builder().build();
 
     /** One client per distinct timeout pair other than the default, created when first needed. */
     private final Map<Timeouts, RestClient> timeoutClients = new ConcurrentHashMap<>();

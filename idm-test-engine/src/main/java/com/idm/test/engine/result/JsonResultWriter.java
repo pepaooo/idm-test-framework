@@ -1,7 +1,9 @@
 package com.idm.test.engine.result;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
+import com.idm.test.engine.spi.JsonMappers;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.SerializationFeature;
+import tools.jackson.databind.json.JsonMapper;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -17,8 +19,9 @@ import java.util.List;
  */
 public final class JsonResultWriter {
 
-    private static final ObjectMapper JSON = new ObjectMapper()
-            .enable(SerializationFeature.INDENT_OUTPUT);
+    private static final JsonMapper JSON = JsonMappers.builder()
+            .enable(SerializationFeature.INDENT_OUTPUT)
+            .build();
 
     private JsonResultWriter() {
     }
@@ -32,6 +35,9 @@ public final class JsonResultWriter {
             JSON.writeValue(target.toFile(), results);
         } catch (IOException e) {
             throw new UncheckedIOException("Could not write results to " + target, e);
+        } catch (JacksonException e) {
+            throw new UncheckedIOException("Could not write results to " + target,
+                    e.getCause() instanceof IOException io ? io : new IOException(e));
         }
     }
 }

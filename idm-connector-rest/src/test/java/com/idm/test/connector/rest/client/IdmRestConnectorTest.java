@@ -1,6 +1,5 @@
 package com.idm.test.connector.rest.client;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.client.WireMock;
 import com.idm.test.connector.rest.config.RestClientConfiguration;
@@ -13,6 +12,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import tools.jackson.databind.json.JsonMapper;
 
 import java.util.Map;
 
@@ -35,7 +35,7 @@ class IdmRestConnectorTest {
 
     private static WireMockServer wireMockServer;
     private static String baseUrl;
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final JsonMapper objectMapper = JsonMapper.builder().build();
 
     @BeforeAll
     static void startWireMock() {

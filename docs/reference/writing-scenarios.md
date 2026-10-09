@@ -56,6 +56,10 @@ A parameter's value can be:
 
 - **A literal:** text, a number, `true`/`false`, a list, or a map. YAML types are kept, so
   `status: 200` is a number and `exists: true` is a boolean.
+  Files are read as YAML 1.2: write booleans as `true`/`false` and null as `null` (or leave the
+  value empty). `yes`/`no`/`on`/`off`, `~`, and numbers with a leading zero or `0x` are read as
+  text, so `country: NO` and `employeeId: 0755` keep exactly what you wrote. Quote any value you
+  want treated as text regardless.
 - **A reference:** `${path}` inside text, for example `"cn=${user.userId},ou=users"`. The path
   walks names and map keys with dots (`${created.body.id}`). References only look things up: no
   arithmetic, conditions or function calls. Quote any value that starts with `${`.

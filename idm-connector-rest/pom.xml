@@ -34,12 +34,6 @@
             <artifactId>spring-boot-starter-security-oauth2-client</artifactId>
         </dependency>
 
-        <!-- ITF-45: temporary, removed in Task 3 -->
-        <dependency>
-            <groupId>com.fasterxml.jackson.core</groupId>
-            <artifactId>jackson-databind</artifactId>
-        </dependency>
-
         <!-- Testing -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

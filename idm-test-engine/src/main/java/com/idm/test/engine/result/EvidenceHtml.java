@@ -1,12 +1,13 @@
 package com.idm.test.engine.result;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
+import com.idm.test.engine.spi.JsonMappers;
 import com.idm.test.engine.spi.Evidence;
 import com.idm.test.engine.spi.HttpEvidence;
 import com.idm.test.engine.spi.LdapEvidence;
 import com.idm.test.engine.spi.SqlEvidence;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.SerializationFeature;
+import tools.jackson.databind.json.JsonMapper;
 
 import java.net.URI;
 import java.util.Collection;
@@ -21,8 +22,8 @@ import static com.idm.test.engine.result.HtmlReportWriter.esc;
 /** Renders a step's evidence into its slot in the report; the evidence is already masked and cut. */
 final class EvidenceHtml {
 
-    private static final ObjectMapper PRETTY = new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT);
-    private static final ObjectMapper COMPACT = new ObjectMapper();
+    private static final JsonMapper PRETTY = JsonMappers.builder().enable(SerializationFeature.INDENT_OUTPUT).build();
+    private static final JsonMapper COMPACT = JsonMappers.builder().build();
 
     private EvidenceHtml() {
     }
@@ -113,7 +114,7 @@ final class EvidenceHtml {
                 return PRETTY.writeValueAsString(PRETTY.readValue(trimmed, Object.class));
             }
             return PRETTY.writeValueAsString(body);
-        } catch (JsonProcessingException notJson) {
+        } catch (JacksonException notJson) {
             return String.valueOf(body);
         }
     }
@@ -199,7 +200,7 @@ final class EvidenceHtml {
     private static String compact(Object value) {
         try {
             return COMPACT.writeValueAsString(value);
-        } catch (JsonProcessingException e) {
+        } catch (JacksonException e) {
             return String.valueOf(value);
         }
     }

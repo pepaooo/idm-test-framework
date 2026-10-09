@@ -226,7 +226,7 @@ class ScenarioLoaderTest {
     }
 
     @Test
-    @DisplayName("Should type YAML scalars in step parameters exactly as before")
+    @DisplayName("Should type YAML scalars in step parameters by YAML 1.2 rules")
     void testScalarTyping() {
         Scenario scenario = ScenarioLoader.load(stream("""
                 name: Scalars
@@ -256,18 +256,21 @@ class ScenarioLoaderTest {
         Map<String, Object> p = scenario.steps().get(0).params();
         assertThat(p.get("t")).isEqualTo(Boolean.TRUE);
         assertThat(p.get("f")).isEqualTo(Boolean.FALSE);
-        assertThat(p.get("yesWord")).isEqualTo(Boolean.TRUE);
-        assertThat(p.get("noWord")).isEqualTo(Boolean.FALSE);
-        assertThat(p.get("onWord")).isEqualTo(Boolean.TRUE);
-        assertThat(p.get("offWord")).isEqualTo(Boolean.FALSE);
-        assertThat(p).containsEntry("nul", null).containsEntry("tilde", null).containsEntry("empty", null);
+        // Under Jackson 2 (YAML 1.1) yes/no/on/off were booleans, ~ was null and 0755/0x1F were numbers;
+        // ITF-45 deliberately accepts YAML 1.2, where they stay as text.
+        assertThat(p.get("yesWord")).isEqualTo("yes");
+        assertThat(p.get("noWord")).isEqualTo("no");
+        assertThat(p.get("onWord")).isEqualTo("on");
+        assertThat(p.get("offWord")).isEqualTo("off");
+        assertThat(p).containsEntry("nul", null).containsEntry("empty", null);
+        assertThat(p.get("tilde")).isEqualTo("~");
         assertThat(p.get("int")).isEqualTo(42);
         assertThat(p.get("neg")).isEqualTo(-7);
         assertThat(p.get("big")).isEqualTo(new java.math.BigInteger("12345678901234567890"));
         assertThat(p.get("flt")).isEqualTo(1.5);
         assertThat(p.get("exp")).isEqualTo(1000.0);
-        assertThat(p.get("octal")).isEqualTo(493);
-        assertThat(p.get("hex")).isEqualTo(31);
+        assertThat(p.get("octal")).isEqualTo("0755");
+        assertThat(p.get("hex")).isEqualTo("0x1F");
         assertThat(p.get("date")).isEqualTo("2026-01-01");
         assertThat(p.get("quoted")).isEqualTo("42");
         assertThat(p.get("str")).isEqualTo("hello");

@@ -39,6 +39,20 @@ class JsonResultWriterTest {
     }
 
     @Test
+    @DisplayName("Should write a java.sql.Timestamp parameter as epoch milliseconds")
+    void testWritesTimestampAsEpochMillis(@TempDir Path dir) throws Exception {
+        StepResult step = new StepResult(0, "db.verify",
+                Map.of("at", new java.sql.Timestamp(1_700_000_000_000L)), true, 5, "ok", null, null, null);
+        ScenarioResult scenario = new ScenarioResult(
+                "Dates", "dates.yaml", true, 10, List.of(step), null);
+
+        Path target = dir.resolve("dates.json");
+        JsonResultWriter.write(List.of(scenario), target);
+
+        assertThat(Files.readString(target)).contains("\"at\" : 1700000000000");
+    }
+
+    @Test
     @DisplayName("Should write a cleanup entry's status and type")
     void testWritesCleanupResults(@TempDir Path dir) throws Exception {
         CleanupResult cleanup = new CleanupResult(

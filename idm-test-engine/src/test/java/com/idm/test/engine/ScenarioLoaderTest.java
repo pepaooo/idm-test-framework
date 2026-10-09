@@ -251,6 +251,18 @@ class ScenarioLoaderTest {
                       date: 2026-01-01
                       quoted: "42"
                       str: hello
+                      capTrue: True
+                      upTrue: TRUE
+                      capFalse: False
+                      upFalse: FALSE
+                      capNull: Null
+                      upNull: NULL
+                      plus: +1
+                      dot: .5
+                      underscore: 1_000
+                      binary: 0b101
+                      leadingZero: 007
+                      negOctal: -0755
                 """), "scalars.yaml");
 
         Map<String, Object> p = scenario.steps().get(0).params();
@@ -274,8 +286,23 @@ class ScenarioLoaderTest {
         assertThat(p.get("date")).isEqualTo("2026-01-01");
         assertThat(p.get("quoted")).isEqualTo("42");
         assertThat(p.get("str")).isEqualTo("hello");
+        // Jackson 3 types only lower-case true/false/null and plain decimal numbers; the rest is text.
+        assertThat(p.get("capTrue")).isEqualTo("True");
+        assertThat(p.get("upTrue")).isEqualTo("TRUE");
+        assertThat(p.get("capFalse")).isEqualTo("False");
+        assertThat(p.get("upFalse")).isEqualTo("FALSE");
+        assertThat(p.get("capNull")).isEqualTo("Null");
+        assertThat(p.get("upNull")).isEqualTo("NULL");
+        assertThat(p.get("plus")).isEqualTo("+1");
+        assertThat(p.get("dot")).isEqualTo(".5");
+        assertThat(p.get("underscore")).isEqualTo("1_000");
+        assertThat(p.get("binary")).isEqualTo("0b101");
+        assertThat(p.get("leadingZero")).isEqualTo("007");
+        assertThat(p.get("negOctal")).isEqualTo("-0755");
         assertThat(p.keySet()).containsExactly("t", "f", "yesWord", "noWord", "onWord", "offWord", "nul",
-                "tilde", "empty", "int", "neg", "big", "flt", "exp", "octal", "hex", "date", "quoted", "str");
+                "tilde", "empty", "int", "neg", "big", "flt", "exp", "octal", "hex", "date", "quoted", "str",
+                "capTrue", "upTrue", "capFalse", "upFalse", "capNull", "upNull", "plus", "dot", "underscore",
+                "binary", "leadingZero", "negOctal");
     }
 
     @Test

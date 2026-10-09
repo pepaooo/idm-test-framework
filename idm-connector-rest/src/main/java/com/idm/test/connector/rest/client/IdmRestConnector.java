@@ -53,8 +53,8 @@ public class IdmRestConnector {
     private static final MediaType DEFAULT_TEXT = new MediaType("text", "plain", StandardCharsets.UTF_8);
 
     private final RestClient restClient;
-    // Not the engine's JsonMappers (different module). It only reads into Object and writes request
-    // bodies, so Jackson 3's alphabetical property sorting does not matter here.
+    // Not the engine's JsonMappers (different module). It only reads response bodies into Object;
+    // request bodies go through RestClient's own message converters.
     private final JsonMapper objectMapper = JsonMapper.builder()
             // Jackson 3 rejects content after the first value; Jackson 2 read the first and ignored the rest.
             .disable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)

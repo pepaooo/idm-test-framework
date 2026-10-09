@@ -2,6 +2,7 @@ package com.idm.test.engine.spi;
 
 import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.databind.MapperFeature;
+import tools.jackson.databind.cfg.DateTimeFeature;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -21,6 +22,9 @@ public final class JsonMappers {
                 .disable(MapperFeature.SORT_PROPERTIES_ALPHABETICALLY)
                 // Jackson 3 rejects content after the first value; Jackson 2 read the first value and
                 // ignored the rest, and bodies are parsed that way. Strict callers re-enable it.
-                .disable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
+                .disable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
+                // Jackson 3 writes java.util.Date / java.sql.Timestamp as ISO strings; Jackson 2 wrote
+                // epoch milliseconds, which is what results files and evidence carried.
+                .enable(DateTimeFeature.WRITE_DATES_AS_TIMESTAMPS);
     }
 }

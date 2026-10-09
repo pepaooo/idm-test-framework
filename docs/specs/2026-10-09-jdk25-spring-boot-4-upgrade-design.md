@@ -134,6 +134,11 @@ affects us, the mapper sets the Jackson 2 behaviour explicitly, with a comment:
 - The YAML loader: the same scenarios produce the same model; unknown or invalid keys are still
   rejected; loader error messages stay recognisable (tests asserting fragments of Jackson's own
   wording change only if that wording changed).
+  **Exception (revised during implementation, jangulo 2026-10-09):** Jackson 3 reads YAML 1.2 and
+  no setting restores YAML 1.1 scalar typing. Accepted: unquoted `yes`/`no`/`on`/`off`, `~`,
+  `0755` and `0x1F` are now read as text rather than booleans, null and numbers. No scenario in
+  the corpus or the docs uses them; `writing-scenarios.md` says to write `true`/`false` and
+  `null`.
 - `http.verify` and `IdmRestConnector`: response bodies parse the same way (numbers, nulls, big
   integers).
 

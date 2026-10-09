@@ -224,4 +224,54 @@ class ScenarioLoaderTest {
                 .hasMessageContaining("cleanup entry 1 (ldap.delete)")
                 .hasMessageContaining("parameters must be a map");
     }
+
+    @Test
+    @DisplayName("Should type YAML scalars in step parameters exactly as before")
+    void testScalarTyping() {
+        Scenario scenario = ScenarioLoader.load(stream("""
+                name: Scalars
+                steps:
+                  - t.step:
+                      t: true
+                      f: false
+                      yesWord: yes
+                      noWord: no
+                      onWord: on
+                      offWord: off
+                      nul: null
+                      tilde: ~
+                      empty:
+                      int: 42
+                      neg: -7
+                      big: 12345678901234567890
+                      flt: 1.5
+                      exp: 1.0e3
+                      octal: 0755
+                      hex: 0x1F
+                      date: 2026-01-01
+                      quoted: "42"
+                      str: hello
+                """), "scalars.yaml");
+
+        Map<String, Object> p = scenario.steps().get(0).params();
+        assertThat(p.get("t")).isEqualTo(Boolean.TRUE);
+        assertThat(p.get("f")).isEqualTo(Boolean.FALSE);
+        assertThat(p.get("yesWord")).isEqualTo(Boolean.TRUE);
+        assertThat(p.get("noWord")).isEqualTo(Boolean.FALSE);
+        assertThat(p.get("onWord")).isEqualTo(Boolean.TRUE);
+        assertThat(p.get("offWord")).isEqualTo(Boolean.FALSE);
+        assertThat(p).containsEntry("nul", null).containsEntry("tilde", null).containsEntry("empty", null);
+        assertThat(p.get("int")).isEqualTo(42);
+        assertThat(p.get("neg")).isEqualTo(-7);
+        assertThat(p.get("big")).isEqualTo(new java.math.BigInteger("12345678901234567890"));
+        assertThat(p.get("flt")).isEqualTo(1.5);
+        assertThat(p.get("exp")).isEqualTo(1000.0);
+        assertThat(p.get("octal")).isEqualTo(493);
+        assertThat(p.get("hex")).isEqualTo(31);
+        assertThat(p.get("date")).isEqualTo("2026-01-01");
+        assertThat(p.get("quoted")).isEqualTo("42");
+        assertThat(p.get("str")).isEqualTo("hello");
+        assertThat(p.keySet()).containsExactly("t", "f", "yesWord", "noWord", "onWord", "offWord", "nul",
+                "tilde", "empty", "int", "neg", "big", "flt", "exp", "octal", "hex", "date", "quoted", "str");
+    }
 }

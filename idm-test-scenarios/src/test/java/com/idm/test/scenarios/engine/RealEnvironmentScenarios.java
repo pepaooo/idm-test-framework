@@ -171,9 +171,9 @@ public class RealEnvironmentScenarios {
     @Autowired
     private TestDataGenerator testDataGenerator;
 
-    /** The runner's name in the report; ContainerScenarios overrides it. */
+    /** The catalog key of the runner's name in the report; ContainerScenarios overrides it. */
     String runnerName() {
-        return "Real environment";
+        return "runner.name.realEnvironment";
     }
 
     @TestFactory

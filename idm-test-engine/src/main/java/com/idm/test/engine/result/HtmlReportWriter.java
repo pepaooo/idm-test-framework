@@ -1,6 +1,8 @@
 package com.idm.test.engine.result;
 
+import com.idm.test.engine.i18n.Messages;
 import com.idm.test.engine.spi.JsonMappers;
+import com.idm.test.engine.spi.Message;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.SerializationFeature;
 import tools.jackson.databind.json.JsonMapper;
@@ -26,10 +28,18 @@ import java.util.Locale;
 public final class HtmlReportWriter {
 
     private static final JsonMapper JSON = JsonMappers.builder().enable(SerializationFeature.INDENT_OUTPUT).build();
-    private static final DateTimeFormatter STARTED =
-            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss z").withZone(ZoneId.systemDefault());
 
     private HtmlReportWriter() {
+    }
+
+    /** A label from the catalogs in the report's language. */
+    static String label(String key, Locale locale, Object... args) {
+        return Messages.render(Message.of(key, args), locale);
+    }
+
+    private static String started(RunInfo run) {
+        return DateTimeFormatter.ofPattern(label("report.datePattern", run.locale()), run.locale())
+                .withZone(ZoneId.systemDefault()).format(run.startedAt());
     }
 
     public static void write(RunInfo run, List<ScenarioResult> results, Path target) {
@@ -47,24 +57,33 @@ public final class HtmlReportWriter {
     static String render(RunInfo run, List<ScenarioResult> results, Instant now) {
         long passed = results.stream().filter(ScenarioResult::success).count();
         long failed = results.size() - passed;
-        String title = run.runner() + " run";
+        Locale locale = run.locale();
+        String title = label("report.title", locale, run.runner());
 
         StringBuilder html = new StringBuilder(16_384);
-        html.append("<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n")
+        html.append("<!DOCTYPE html>\n<html lang=\"")
+                .append(locale.getLanguage()).append("\">\n<head>\n<meta charset=\"utf-8\">\n")
                 .append("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n")
                 .append("<title>").append(esc(title)).append("</title>\n<style>").append(CSS).append("</style>\n")
                 .append("</head>\n<body>\n<header>\n<h1>").append(esc(title)).append("</h1>\n");
 
-        html.append("<p class=\"meta\">Started ").append(esc(STARTED.format(run.startedAt())))
-                .append(" · Duration ").append(esc(duration(Duration.between(run.startedAt(), now).toMillis())))
-                .append(" · Profiles ").append(esc(run.profiles().isEmpty() ? "none" : String.join(", ", run.profiles())))
-                .append(" · Filter ").append(esc(run.scenarioFilter() == null ? "none" : run.scenarioFilter()))
+        String none = label("report.none", locale);
+        html.append("<p class=\"meta\">").append(label("report.started", locale)).append(' ')
+                .append(esc(started(run)))
+                .append(" · ").append(label("report.duration", locale)).append(' ')
+                .append(esc(duration(Duration.between(run.startedAt(), now).toMillis(), locale)))
+                .append(" · ").append(label("report.profiles", locale)).append(' ')
+                .append(esc(run.profiles().isEmpty() ? none : String.join(", ", run.profiles())))
+                .append(" · ").append(label("report.filter", locale)).append(' ')
+                .append(esc(run.scenarioFilter() == null ? none : run.scenarioFilter()))
                 .append("</p>\n");
 
-        html.append("<details class=\"endpoints\"><summary>Endpoints (").append(run.endpoints().size())
+        html.append("<details class=\"endpoints\"><summary>")
+                .append(label("report.endpoints", locale)).append(" (").append(run.endpoints().size())
                 .append(")</summary>\n");
         if (run.endpoints().isEmpty()) {
-            html.append("<p class=\"muted\">None recorded.</p>\n");
+            html.append("<p class=\"muted\">")
+                    .append(label("report.noneRecorded", locale)).append("</p>\n");
         } else {
             html.append("<table>\n");
             run.endpoints().forEach((label, url) -> html.append("<tr><th>").append(esc(label))
@@ -75,27 +94,30 @@ public final class HtmlReportWriter {
 
         long total = results.stream().mapToLong(ScenarioResult::durationMillis).sum();
         html.append("<div class=\"tiles\">")
-                .append(tile("scenarios", "Scenarios", String.valueOf(results.size())))
-                .append(tile("passed", "Passed", String.valueOf(passed)))
-                .append(tile("failed", "Failed", String.valueOf(failed)))
-                .append(tile("duration", "Time in scenarios", duration(total)))
+                .append(tile("scenarios", label("report.tile.scenarios", locale), String.valueOf(results.size())))
+                .append(tile("passed", label("report.tile.passed", locale), String.valueOf(passed)))
+                .append(tile("failed", label("report.tile.failed", locale), String.valueOf(failed)))
+                .append(tile("duration", label("report.tile.duration", locale), duration(total, locale)))
                 .append("</div>\n");
 
         html.append("<div class=\"controls\">")
-                .append("<button type=\"button\" onclick=\"setAll(true)\">Expand all</button>")
-                .append("<button type=\"button\" onclick=\"setAll(false)\">Collapse all</button>")
-                .append("<button type=\"button\" aria-pressed=\"false\" onclick=\"onlyFailed(this)\">Only failed</button>")
+                .append("<button type=\"button\" onclick=\"setAll(true)\">")
+                .append(label("report.expandAll", locale)).append("</button>")
+                .append("<button type=\"button\" onclick=\"setAll(false)\">")
+                .append(label("report.collapseAll", locale)).append("</button>")
+                .append("<button type=\"button\" aria-pressed=\"false\" onclick=\"onlyFailed(this)\">")
+                .append(label("report.onlyFailed", locale)).append("</button>")
                 .append("</div>\n</header>\n<main>\n");
 
         for (ScenarioResult scenario : results) {
-            appendScenario(html, scenario);
+            appendScenario(html, scenario, locale);
         }
 
         html.append("</main>\n<script>").append(JS).append("</script>\n</body>\n</html>\n");
         return html.toString();
     }
 
-    private static void appendScenario(StringBuilder html, ScenarioResult scenario) {
+    private static void appendScenario(StringBuilder html, ScenarioResult scenario, Locale locale) {
         String status = scenario.success() ? "passed" : "failed";
         html.append("<details class=\"scenario ").append(status).append('"')
                 .append(scenario.success() ? "" : " open").append(">\n<summary>")
@@ -107,7 +129,7 @@ public final class HtmlReportWriter {
         if (scenario.description() != null) {
             html.append(" <span class=\"desc\">").append(esc(scenario.description())).append("</span>");
         }
-        html.append(" <span class=\"time\">").append(esc(duration(scenario.durationMillis()))).append("</span>")
+        html.append(" <span class=\"time\">").append(esc(duration(scenario.durationMillis(), locale))).append("</span>")
                 .append("</summary>\n");
 
         if (!scenario.success()) {
@@ -117,25 +139,31 @@ public final class HtmlReportWriter {
         if (!scenario.steps().isEmpty()) {
             html.append("<ol class=\"steps\">\n");
             for (StepResult step : scenario.steps()) {
-                appendStep(html, step);
+                appendStep(html, step, locale);
                 if (!step.success()) {
-                    html.append("<li class=\"not-run\">Any later steps were not run.</li>\n");
+                    html.append("<li class=\"not-run\">")
+                            .append(label("report.notRun", locale)).append("</li>\n");
                 }
             }
             html.append("</ol>\n");
         }
 
         if (!scenario.cleanup().isEmpty()) {
-            html.append("<h3>Cleanup</h3>\n<ul class=\"cleanup\">\n");
+            html.append("<h3>").append(label("report.cleanup", locale)).append("</h3>\n<ul class=\"cleanup\">\n");
             for (CleanupResult entry : scenario.cleanup()) {
                 String entryStatus = entry.status().name();
+                String statusLabel = switch (entry.status()) {
+                    case SUCCEEDED -> label("report.status.succeeded", locale);
+                    case FAILED -> label("report.status.failed", locale);
+                    case SKIPPED -> label("report.status.skipped", locale);
+                };
                 html.append("<li class=\"").append(entryStatus.toLowerCase(Locale.ROOT)).append("\">")
-                        .append("<span class=\"status\">").append(entryStatus).append("</span> ")
+                        .append("<span class=\"status\">").append(statusLabel).append("</span> ")
                         .append("<span class=\"type\">").append(esc(entry.type())).append("</span>");
                 if (entry.description() != null) {
                     html.append(" <span class=\"desc\">").append(esc(entry.description())).append("</span>");
                 }
-                html.append(" <span class=\"time\">").append(esc(duration(entry.durationMillis()))).append("</span>");
+                html.append(" <span class=\"time\">").append(esc(duration(entry.durationMillis(), locale))).append("</span>");
                 if (entry.message() != null) {
                     html.append("<div class=\"message\">").append(esc(entry.message())).append("</div>");
                 }
@@ -146,7 +174,7 @@ public final class HtmlReportWriter {
         html.append("</details>\n");
     }
 
-    private static void appendStep(StringBuilder html, StepResult step) {
+    private static void appendStep(StringBuilder html, StepResult step, Locale locale) {
         html.append("<li class=\"step ").append(step.success() ? "passed" : "failed").append("\">")
                 .append("<div class=\"row\">").append(icon(step.success()))
                 .append(" <span class=\"num\">").append(step.index() + 1).append("</span>")
@@ -156,20 +184,22 @@ public final class HtmlReportWriter {
         }
         html.append(" <span class=\"time\">");
         if (step.attempts() != null) {
-            html.append(esc(step.attempts() + (step.attempts() == 1 ? " attempt · " : " attempts · ")
-                    + duration(step.waitedMillis() == null ? 0 : step.waitedMillis())));
+            html.append(esc(label(step.attempts() == 1 ? "report.attempts.one" : "report.attempts.other",
+                    locale, step.attempts()) + " · "
+                    + duration(step.waitedMillis() == null ? 0 : step.waitedMillis(), locale)));
         } else {
-            html.append(esc(duration(step.durationMillis())));
+            html.append(esc(duration(step.durationMillis(), locale)));
         }
         html.append("</span></div>\n");
         if (step.message() != null) {
             html.append("<div class=\"message\">").append(esc(step.message())).append("</div>\n");
         }
         if (step.resolvedParams() != null && !step.resolvedParams().isEmpty()) {
-            html.append("<details class=\"params\"><summary>Parameters</summary><pre>")
+            html.append("<details class=\"params\"><summary>")
+                    .append(label("report.parameters", locale)).append("</summary><pre>")
                     .append(esc(json(mask(step.resolvedParams())))).append("</pre></details>\n");
         }
-        EvidenceHtml.append(html, step);
+        EvidenceHtml.append(html, step, locale);
         html.append("</li>\n");
     }
 
@@ -195,16 +225,20 @@ public final class HtmlReportWriter {
         return success ? "<span class=\"icon ok\">✔</span>" : "<span class=\"icon ko\">✖</span>";
     }
 
-    /** 850 ms, 10.1 s, 1m 42s. */
-    static String duration(long millis) {
+    /** 850 ms, 10.1 s (10,1 s in Spanish), 1m 42s. */
+    static String duration(long millis, Locale locale) {
         if (millis < 1000) {
             return millis + " ms";
         }
         if (millis < 60_000) {
-            return String.format(Locale.ROOT, "%.1f s", millis / 1000.0);
+            return String.format(locale, "%.1f s", millis / 1000.0);
         }
         long seconds = millis / 1000;
         return (seconds / 60) + "m " + (seconds % 60) + "s";
+    }
+
+    static String duration(long millis) {
+        return duration(millis, Locale.ENGLISH);
     }
 
     static String esc(String text) {

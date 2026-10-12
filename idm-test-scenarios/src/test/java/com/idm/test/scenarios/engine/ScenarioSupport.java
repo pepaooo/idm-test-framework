@@ -11,11 +11,13 @@ import com.idm.test.engine.ScenarioEngine;
 import com.idm.test.engine.ScenarioLoader;
 import com.idm.test.engine.ScenarioValidator;
 import com.idm.test.engine.model.Scenario;
+import com.idm.test.engine.i18n.Messages;
 import com.idm.test.engine.i18n.ReportLocale;
 import com.idm.test.engine.result.HtmlReportWriter;
 import com.idm.test.engine.result.JsonResultWriter;
 import com.idm.test.engine.result.RunInfo;
 import com.idm.test.engine.result.ScenarioResult;
+import com.idm.test.engine.spi.Message;
 import com.idm.test.engine.spi.StepType;
 import com.idm.test.engine.steps.DbExecuteStep;
 import com.idm.test.engine.steps.DbVerifyStep;
@@ -72,6 +74,11 @@ final class ScenarioSupport {
     }
 
     /** System property naming the scenario file, or glob of files, to run. */
+    /** The header used when describing the run failed; always English. */
+    private static RunInfo minimalRun() {
+        return RunInfo.minimal(Messages.english(Message.of("runner.name.scenarios")));
+    }
+
     static final String SCENARIO_PROPERTY = "scenario";
 
     /**
@@ -80,7 +87,7 @@ final class ScenarioSupport {
     static List<DynamicTest> buildTests(
             String scenarioDir, ScenarioValidator validator, ScenarioEngine engine, Path resultsPath)
             throws URISyntaxException {
-        return buildTests(scenarioDir, validator, engine, resultsPath, scenarios -> RunInfo.minimal("Scenarios"));
+        return buildTests(scenarioDir, validator, engine, resultsPath, scenarios -> minimalRun());
     }
 
     /** As above, describing the run in the HTML report with {@code runInfo}. */
@@ -94,7 +101,7 @@ final class ScenarioSupport {
             String scenarioDir, List<String> files, ScenarioValidator validator, ScenarioEngine engine,
             Path resultsPath) throws URISyntaxException {
         return buildTests(scenarioDir, files, validator, engine, resultsPath,
-                scenarios -> RunInfo.minimal("Scenarios"));
+                scenarios -> minimalRun());
     }
 
     /**
@@ -138,7 +145,7 @@ final class ScenarioSupport {
             throw e;
         } catch (RuntimeException e) {
             LOG.warn("Could not describe the run for the HTML report, using a minimal header: {}", e.toString());
-            run = RunInfo.minimal("Scenarios");
+            run = minimalRun();
         }
         RunInfo reportRun = run;
 

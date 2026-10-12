@@ -49,6 +49,6 @@ class YamlScenarioTest extends BaseIntegrationTest {
 
         return ScenarioSupport.buildTests(SCENARIO_DIR, ScenarioSupport.selectedScenarioFiles(SCENARIO_DIR),
                 validator, engine, RESULTS,
-                scenarios -> RunInfos.of("Embedded", environment, scenarios)).stream();
+                scenarios -> RunInfos.of("runner.name.embedded", environment, scenarios)).stream();
     }
 }

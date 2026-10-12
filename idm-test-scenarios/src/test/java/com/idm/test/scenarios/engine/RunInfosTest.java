@@ -40,7 +40,7 @@ class RunInfosTest {
     @Test
     @DisplayName("Lists only the endpoints the scenarios use, sanitised, with the default directory resolved")
     void testUsedEndpoints() {
-        RunInfo run = RunInfos.of("Real environment", lab(), scenarios("""
+        RunInfo run = RunInfos.of("runner.name.realEnvironment", lab(), scenarios("""
                 name: t
                 steps:
                   - ldap.verify:
@@ -70,7 +70,7 @@ class RunInfosTest {
         environment.setProperty("idm.test.soap.url", "https://idm.lab:8543/IDMProv/role/service");
         environment.setProperty("idm.test.rest.idm.base-url", "https://idm.lab/api");
 
-        RunInfo run = RunInfos.of("Embedded", environment, scenarios("""
+        RunInfo run = RunInfos.of("runner.name.embedded", environment, scenarios("""
                 name: t
                 steps:
                   - ldap.delete:
@@ -93,12 +93,12 @@ class RunInfosTest {
     void testReportLocaleProperty() {
         MockEnvironment spanish = new MockEnvironment();
         spanish.setProperty("idm.test.report.locale", "es");
-        assertThat(RunInfos.of("Embedded", spanish, List.of()).locale()).isEqualTo(Locale.of("es"));
-        assertThat(RunInfos.of("Embedded", new MockEnvironment(), List.of()).locale()).isEqualTo(Locale.ENGLISH);
+        assertThat(RunInfos.of("runner.name.embedded", spanish, List.of()).locale()).isEqualTo(Locale.of("es"));
+        assertThat(RunInfos.of("runner.name.embedded", new MockEnvironment(), List.of()).locale()).isEqualTo(Locale.ENGLISH);
 
         MockEnvironment french = new MockEnvironment();
         french.setProperty("idm.test.report.locale", "fr");
-        assertThatThrownBy(() -> RunInfos.of("Embedded", french, List.of()))
+        assertThatThrownBy(() -> RunInfos.of("runner.name.embedded", french, List.of()))
                 .isInstanceOf(ReportLocale.UnsupportedLocaleException.class)
                 .hasMessage("unsupported report locale 'fr'; supported: en, es");
     }

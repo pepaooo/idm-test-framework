@@ -86,7 +86,7 @@ public class ContainerScenarios extends RealEnvironmentScenarios {
 
     @Override
     String runnerName() {
-        return "Containers";
+        return "runner.name.containers";
     }
 
     @BeforeAll

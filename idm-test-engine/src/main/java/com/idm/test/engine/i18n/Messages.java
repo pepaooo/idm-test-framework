@@ -3,6 +3,7 @@ package com.idm.test.engine.i18n;
 import com.idm.test.engine.spi.Message;
 
 import java.text.MessageFormat;
+import java.util.Arrays;
 import java.util.Locale;
 import java.util.MissingResourceException;
 import java.util.ResourceBundle;
@@ -43,7 +44,7 @@ public final class Messages {
                 // falls through to the visible marker
             }
         }
-        return "!" + message.key() + "! " + java.util.Arrays.toString(args);
+        return "!" + message.key() + "! " + Arrays.toString(args);
     }
 
     private static String pattern(String key, Locale locale, String baseName) {

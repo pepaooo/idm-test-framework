@@ -133,6 +133,20 @@ escaping; plurals through `{n,choice,…}`.
 - ITF-53 "Decide whether to ship a local web application (ADR)" — brainstormed next; no code until
   decided. The message catalog from this work is what a web UI would reuse.
 
+## 8a. Refinements made while planning (2026-10-12)
+
+- Dates use a per-language pattern from the catalog (`report.datePattern`): English keeps today's
+  `yyyy-MM-dd HH:mm:ss z`, Spanish uses `dd/MM/yyyy HH:mm:ss z`, so English reports do not change.
+- Patterns use only plain `{n}` placeholders; arguments are rendered with `String.valueOf` (no
+  locale number grouping); plurals are `.one` / `.other` key pairs chosen in code instead of
+  `{n,choice}`.
+- A message argument may itself be a `Message` (rendered in the same language), so the engine's
+  wait suffixes and `http.verify`'s check notes wrap a step's own message.
+- Runner names in the report title come from `runner.name.*` keys.
+- Instead of deprecating the `String` forms of `StepOutcome` (which would add deprecation warnings to
+  tests, against ITF-45), a source-scanning test keeps engine code from building outcomes from
+  string literals.
+
 ## 9. Out of scope
 
 - Languages other than English and Spanish (adding one is a new `messages_xx.properties` plus

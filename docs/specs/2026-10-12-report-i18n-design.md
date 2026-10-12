@@ -1,6 +1,6 @@
 # Report and message internationalization (English, Spanish) — design
 
-**Tickets:** epic and tasks under ITF (see §8). **Decided with:** jangulo, 2026-10-12.
+**Tickets:** epic ITF-46; tasks ITF-47 to ITF-52 (see §8). **Decided with:** jangulo, 2026-10-12.
 
 ## 1. The goal
 
@@ -124,12 +124,14 @@ escaping; plurals through `{n,choice,…}`.
 
 ## 8. Tracking
 
-- Epic: "Report and message i18n (English, Spanish)", under ITF-4.
-- Tasks: Phase 1 (setting, report, evidence); Phase 2 foundation (`StepOutcome`, results, JSON);
-  Phase 2 conversions — LDAP, database, REST/HTTP, SOAP, engine, validation and runners; Spanish
-  review.
-- Separate ticket: "Decide whether to ship a local web application (ADR)" — brainstormed next; no
-  code until decided. The message catalog from this work is what a web UI would reuse.
+- Epic ITF-46 "Report and message i18n (English, Spanish)", under ITF-4.
+- ITF-47 Phase 1: locale setting, translated report and evidence panels.
+- ITF-48 Phase 2 foundation: `Message` keys in `StepOutcome` and results (depends on ITF-47).
+- ITF-49 LDAP and database messages; ITF-50 REST, HTTP and SOAP messages; ITF-51 engine,
+  validation and runner messages (each depends on ITF-48).
+- ITF-52 review of the Spanish catalog, before Phase 2 merges.
+- ITF-53 "Decide whether to ship a local web application (ADR)" — brainstormed next; no code until
+  decided. The message catalog from this work is what a web UI would reuse.
 
 ## 9. Out of scope
 

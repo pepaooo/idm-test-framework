@@ -12,6 +12,7 @@ import com.idm.test.engine.ScenarioEngine;
 import com.idm.test.engine.expr.ExpressionEvaluator;
 import com.idm.test.engine.model.Scenario;
 import com.idm.test.engine.model.StepSpec;
+import com.idm.test.engine.result.JsonResultWriter;
 import com.idm.test.engine.result.ScenarioResult;
 import com.idm.test.engine.spi.StepOutcome;
 import com.idm.test.engine.spi.StepType;
@@ -20,11 +21,14 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.springframework.security.oauth2.client.registration.ClientRegistration;
 import org.springframework.security.oauth2.client.registration.InMemoryClientRegistrationRepository;
 import org.springframework.security.oauth2.core.AuthorizationGrantType;
 import org.springframework.web.client.RestClient;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -273,5 +277,33 @@ class HttpAuthStepsTest {
 
         assertThat(outcome.success()).isFalse();
         assertThat(outcome.isFinal()).isTrue();
+    }
+
+    @Test
+    @DisplayName("Keyed wait messages and their arguments in the results file carry no secret")
+    void testKeyedMessagesCarryNoSecret(@TempDir Path dir) throws Exception {
+        WIREMOCK.stubFor(post(urlEqualTo("/oauth/token")).willReturn(aResponse().withStatus(400)
+                .withHeader("Content-Type", "application/json")
+                .withBody("{\"error\":\"invalid_client\"}")));
+        ScenarioResult rejected = runVerifyUnderWait(freshAuthenticator());
+
+        RestVerifyStep verify = new RestVerifyStep(CONNECTOR, PROPERTIES, freshAuthenticator());
+        ScenarioResult halfConfigured = new ScenarioEngine(Map.of(verify.name(), verify),
+                new FixtureFactory(new TestDataGenerator()), new TestExecutor(),
+                Duration.ofSeconds(2), Duration.ofMillis(200), new ExpressionEvaluator())
+                .run(new Scenario("half", null, Map.of(), List.of(new StepSpec("rest.verify",
+                        Map.of("target", "half", "path", "/thing", "expect", Map.of("status", 200),
+                                "wait", Map.of("timeout", "2s", "poll", "1s"))))), "half.yaml");
+
+        assertThat(rejected.steps().get(0).messageKey()).isEqualTo("engine.wait.notRetried");
+        assertThat(halfConfigured.steps().get(0).messageKey()).isEqualTo("engine.wait.notRetried");
+
+        Path target = dir.resolve("results.json");
+        JsonResultWriter.write(List.of(rejected, halfConfigured), target);
+        String json = Files.readString(target);
+
+        assertThat(json).contains("\"messageArgs\"")
+                .doesNotContain(CLIENT_SECRET).doesNotContain(PASSWORD).doesNotContain(BASIC)
+                .doesNotContain("Bearer ");
     }
 }

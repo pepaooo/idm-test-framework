@@ -29,7 +29,10 @@ class CatalogTest {
     /** Sources that may use keys: the engine, and the runners in the scenarios module. */
     private static final Path[] SOURCES = {Path.of("src/main/java"), Path.of("../idm-test-scenarios/src/test/java")};
     /** Keys whose Spanish text may equal the English (technical words that stay as they are). */
-    private static final Set<String> SAME_IN_BOTH = Set.of("report.datePattern");
+    private static final Set<String> SAME_IN_BOTH = Set.of(
+            "report.datePattern",
+            // "<file>: <detail>" — only punctuation
+            "engine.summary.detail");
 
     private static Properties load(String name) throws IOException {
         Properties properties = new Properties();

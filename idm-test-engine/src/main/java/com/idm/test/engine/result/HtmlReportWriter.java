@@ -133,7 +133,7 @@ public final class HtmlReportWriter {
                 .append("</summary>\n");
 
         if (!scenario.success()) {
-            html.append("<p class=\"failure\">").append(esc(scenario.failureSummary())).append("</p>\n");
+            html.append("<p class=\"failure\">").append(esc(scenario.failureSummary(locale))).append("</p>\n");
         }
 
         if (!scenario.steps().isEmpty()) {
@@ -165,7 +165,8 @@ public final class HtmlReportWriter {
                 }
                 html.append(" <span class=\"time\">").append(esc(duration(entry.durationMillis(), locale))).append("</span>");
                 if (entry.message() != null) {
-                    html.append("<div class=\"message\">").append(esc(entry.message())).append("</div>");
+                    html.append("<div class=\"message\">")
+                            .append(esc(text(entry.message(), entry.messageDetail(), locale))).append("</div>");
                 }
                 html.append("</li>\n");
             }
@@ -192,7 +193,8 @@ public final class HtmlReportWriter {
         }
         html.append("</span></div>\n");
         if (step.message() != null) {
-            html.append("<div class=\"message\">").append(esc(step.message())).append("</div>\n");
+            html.append("<div class=\"message\">")
+                    .append(esc(text(step.message(), step.messageDetail(), locale))).append("</div>\n");
         }
         if (step.resolvedParams() != null && !step.resolvedParams().isEmpty()) {
             html.append("<details class=\"params\"><summary>")
@@ -201,6 +203,11 @@ public final class HtmlReportWriter {
         }
         EvidenceHtml.append(html, step, locale);
         html.append("</li>\n");
+    }
+
+    /** A message in the report's language when it has a key; as recorded when it is plain text. */
+    static String text(String english, Message detail, Locale locale) {
+        return detail == null ? english : Messages.render(detail, locale);
     }
 
     /** A copy with every value under a secret-looking key, at any depth, replaced by {@code ***}. */

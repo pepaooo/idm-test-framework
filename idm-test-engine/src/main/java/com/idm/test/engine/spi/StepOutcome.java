@@ -1,5 +1,7 @@
 package com.idm.test.engine.spi;
 
+import com.idm.test.engine.i18n.Messages;
+
 /**
  * What happened when a step ran.
  *
@@ -10,11 +12,19 @@ package com.idm.test.engine.spi;
  *                Boolean, Map or List — so a scenario can reach into them by path.
  * @param isFinal whether waiting cannot change this failure; always false on success
  * @param evidence what the step sent and received, or null (see Evidence)
+ * @param detail  the message by key, so it can be shown in another language; null when the step
+ *                built plain text. When set, {@code message} is its English rendering.
  * <p>
  * A step never schedules teardown. Cleanup is written by the author in the scenario's
  * {@code cleanup:} block.
  */
-public record StepOutcome(boolean success, String message, Object value, boolean isFinal, Evidence evidence) {
+public record StepOutcome(boolean success, String message, Object value, boolean isFinal, Evidence evidence,
+                          Message detail) {
+
+    /** An outcome whose message is plain text. */
+    public StepOutcome(boolean success, String message, Object value, boolean isFinal, Evidence evidence) {
+        this(success, message, value, isFinal, evidence, null);
+    }
 
     /** An outcome without evidence. */
     public StepOutcome(boolean success, String message, Object value, boolean isFinal) {
@@ -28,7 +38,25 @@ public record StepOutcome(boolean success, String message, Object value, boolean
 
     /** This outcome, carrying what the step sent and received. */
     public StepOutcome withEvidence(Evidence evidence) {
-        return new StepOutcome(success, message, value, isFinal, evidence);
+        return new StepOutcome(success, message, value, isFinal, evidence, detail);
+    }
+
+    public static StepOutcome success(Message detail) {
+        return success(detail, null);
+    }
+
+    /** @param value what {@code as:} binds; may be null */
+    public static StepOutcome success(Message detail, Object value) {
+        return new StepOutcome(true, Messages.english(detail), value, false, null, detail);
+    }
+
+    public static StepOutcome failure(Message detail) {
+        return new StepOutcome(false, Messages.english(detail), null, false, null, detail);
+    }
+
+    /** A failure that waiting cannot change; see {@link #finalFailure(String)}. */
+    public static StepOutcome finalFailure(Message detail) {
+        return new StepOutcome(false, Messages.english(detail), null, true, null, detail);
     }
 
     public static StepOutcome success(String message) {

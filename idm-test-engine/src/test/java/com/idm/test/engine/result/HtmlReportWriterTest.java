@@ -445,4 +445,44 @@ class HtmlReportWriterTest {
         assertThat(renderStep(withEvidence(true, null, LdapEvidence.deleted(null, "cn=u"))))
                 .contains("delete cn=u<");
     }
+
+    private static ScenarioResult keyedFailure() {
+        return new ScenarioResult("Provision a user", "keyed.yaml", false, 3_000,
+                List.of(new StepResult(0, "ldap.verify", Map.of("dn", "cn=u,ou=users"), false, 2_000,
+                        "Connection refused: ldap://edir.lab:636 (last observed value after retrying)", 3, 2_000L,
+                        "Wait until the entry exists", null,
+                        "engine.wait.lastObserved", List.of("Connection refused: ldap://edir.lab:636"))),
+                List.of(new CleanupResult(0, "ldap.delete", Map.of(), CleanupStatus.FAILED, 10,
+                        "gone (not retried: waiting cannot change this)", null,
+                        "engine.wait.notRetried", List.of("gone"))),
+                null, null);
+    }
+
+    @Test
+    @DisplayName("A keyed message is shown in Spanish with the external text inside it unchanged")
+    void testKeyedMessageWithExternalTextInSpanish() {
+        String html = HtmlReportWriter.render(RUN_ES, List.of(keyedFailure()), NOW);
+
+        assertThat(html)
+                .contains("<div class=\"message\">Connection refused: ldap://edir.lab:636"
+                        + " (último valor observado tras reintentar)</div>")
+                .contains("gone (sin reintentos: esperar no cambia este resultado)")
+                .contains("<p class=\"failure\">" + HtmlReportWriter.esc(keyedFailure().failureSummary(java.util.Locale.of("es"))))
+                .contains("keyed.yaml, paso 1 (ldap.verify: &quot;Wait until the entry exists&quot;): "
+                        + "Connection refused: ldap://edir.lab:636 (último valor observado tras reintentar)"
+                        + " — se abandonó tras 3 intentos en 2000 ms")
+                .doesNotContain("last observed value");
+    }
+
+    @Test
+    @DisplayName("A keyed message is shown in English exactly as recorded")
+    void testKeyedMessageInEnglish() {
+        String html = render(keyedFailure());
+
+        assertThat(html)
+                .contains("<div class=\"message\">Connection refused: ldap://edir.lab:636"
+                        + " (last observed value after retrying)</div>")
+                .contains("gone (not retried: waiting cannot change this)")
+                .contains("<p class=\"failure\">" + HtmlReportWriter.esc(keyedFailure().failureSummary()) + "</p>");
+    }
 }

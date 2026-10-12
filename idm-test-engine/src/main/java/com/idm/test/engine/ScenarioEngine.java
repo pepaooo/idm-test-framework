@@ -2,6 +2,7 @@ package com.idm.test.engine;
 
 import com.idm.test.core.engine.TestExecutor;
 import com.idm.test.engine.expr.ExpressionEvaluator;
+import com.idm.test.engine.i18n.Messages;
 import com.idm.test.engine.model.Scenario;
 import com.idm.test.engine.model.StepSpec;
 import com.idm.test.engine.model.WaitSpec;
@@ -10,6 +11,7 @@ import com.idm.test.engine.result.CleanupStatus;
 import com.idm.test.engine.result.ScenarioResult;
 import com.idm.test.engine.result.StepResult;
 import com.idm.test.engine.spi.DeferredExpression;
+import com.idm.test.engine.spi.Message;
 import com.idm.test.engine.spi.StepOutcome;
 import com.idm.test.engine.spi.StepType;
 
@@ -36,8 +38,6 @@ public final class ScenarioEngine {
     private static final String SET_STEP = "set";
 
     private static final String DESCRIPTION = "description";
-
-    private static final String NOT_RETRIED = " (not retried: waiting cannot change this)";
 
     private final Map<String, StepType> registry;
     private final FixtureFactory fixtures;
@@ -171,7 +171,7 @@ public final class ScenarioEngine {
             outcome = bind(scope, asName, outcome, step.type());
             return new StepResult(index, step.type(), reportable(resolved), outcome.success(),
                     System.currentTimeMillis() - started, outcome.message(), null, null, description,
-                    outcome.evidence());
+                    outcome.evidence(), key(outcome.detail()), args(outcome.detail()));
         }
 
         AtomicInteger attempts = new AtomicInteger();
@@ -206,13 +206,15 @@ public final class ScenarioEngine {
 
         long elapsed = System.currentTimeMillis() - started;
         String message;
+        Message detail = null;
         if (outcome == null) {
             // The supplier above always sets `last` before returning, so this only happens
             // when waitUntil's loop condition never even entered — the timeout was already
             // spent. A null outcome here really does mean the condition never ran.
             message = "wait timed out before the assertion ran once";
         } else if (outcome.isFinal()) {
-            message = outcome.message() + NOT_RETRIED;
+            detail = Message.of("engine.wait.notRetried", keyed(outcome));
+            message = Messages.english(detail);
         } else if (stopped) {
             // Covers both the ordinary passing case and the one bind() just downgraded: the
             // assertion itself passed on this attempt, so its own message (success or, on a
@@ -220,12 +222,28 @@ public final class ScenarioEngine {
             // "last observed value after retrying" suffix, which only makes sense when the
             // assertion itself never passed.
             message = outcome.message();
+            detail = outcome.detail();
         } else {
-            message = outcome.message() + " (last observed value after retrying)";
+            detail = Message.of("engine.wait.lastObserved", keyed(outcome));
+            message = Messages.english(detail);
         }
 
         return new StepResult(index, step.type(), reportable(resolved), success, elapsed, message,
-                attempts.get(), waitedMillis, description, outcome == null ? null : outcome.evidence());
+                attempts.get(), waitedMillis, description, outcome == null ? null : outcome.evidence(),
+                key(detail), args(detail));
+    }
+
+    /** The outcome's message by key, or its plain text when the step did not use a key. */
+    private static Object keyed(StepOutcome outcome) {
+        return outcome.detail() != null ? outcome.detail() : outcome.message();
+    }
+
+    private static String key(Message detail) {
+        return detail == null ? null : detail.key();
+    }
+
+    private static List<Object> args(Message detail) {
+        return detail == null ? null : detail.args();
     }
 
     private Object defer(Object value, Map<String, Object> scope) {
@@ -361,7 +379,8 @@ public final class ScenarioEngine {
 
         return new CleanupResult(index, entry.type(), resolved,
                 outcome.success() ? CleanupStatus.SUCCEEDED : CleanupStatus.FAILED,
-                System.currentTimeMillis() - started, outcome.message(), description);
+                System.currentTimeMillis() - started, outcome.message(), description,
+                key(outcome.detail()), args(outcome.detail()));
     }
 
     /** The description as written, or null. */

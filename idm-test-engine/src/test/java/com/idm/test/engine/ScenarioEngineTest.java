@@ -10,7 +10,9 @@ import com.idm.test.engine.result.ScenarioResult;
 import com.idm.test.engine.result.StepResult;
 import com.idm.test.engine.spi.DeferredExpression;
 import com.idm.test.engine.spi.Evidence;
+import com.idm.test.engine.i18n.Messages;
 import com.idm.test.engine.spi.LdapEvidence;
+import com.idm.test.engine.spi.Message;
 import com.idm.test.engine.spi.StepOutcome;
 import com.idm.test.engine.spi.StepType;
 import com.idm.test.utils.data.TestDataGenerator;
@@ -20,6 +22,7 @@ import org.junit.jupiter.api.Test;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -1094,5 +1097,118 @@ class ScenarioEngineTest {
         assertThat(result.steps().get(0).success()).isFalse();
         assertThat(result.steps().get(0).message()).contains("recursed too deeply");
         assertThat(events).contains("run:undo:x");
+    }
+
+    /** A stand-in for a converted step: any existing key will do. */
+    private static final Message PROBE = Message.of("engine.wait.lastObserved", "probe");
+
+    /** Fails every attempt with {@link #PROBE}, as an ordinary or a final failure. */
+    private static StepType keyedFailing(String name, boolean isFinal) {
+        return new StepType() {
+            public String name() { return name; }
+            public boolean retryable() { return true; }
+            public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
+                return isFinal ? StepOutcome.finalFailure(PROBE) : StepOutcome.failure(PROBE);
+            }
+        };
+    }
+
+    @Test
+    @DisplayName("A step's keyed message reaches its result with the key and arguments")
+    void testKeyedMessageRecorded() {
+        ScenarioResult result = engineWith(keyedFailing("keyed", false)).run(scenario(
+                new StepSpec("keyed", Map.of("dn", "x"))), "t.yaml");
+
+        assertThat(result.steps().get(0).message()).isEqualTo("probe (last observed value after retrying)");
+        assertThat(result.steps().get(0).messageKey()).isEqualTo("engine.wait.lastObserved");
+        assertThat(result.steps().get(0).messageArgs()).containsExactly("probe");
+    }
+
+    @Test
+    @DisplayName("The wait suffix is keyed and wraps the step's own message, so both translate")
+    void testWaitSuffixIsKeyed() {
+        ScenarioResult result = engineWith(keyedFailing("keyed", false)).run(scenario(
+                new StepSpec("keyed", Map.of("dn", "x", "wait", Map.of("timeout", "1s", "poll", "1s")))), "t.yaml");
+
+        StepResult step = result.steps().get(0);
+        assertThat(step.messageKey()).isEqualTo("engine.wait.lastObserved");
+        assertThat(step.messageArgs()).containsExactly(PROBE);
+        assertThat(step.message())
+                .isEqualTo("probe (last observed value after retrying) (last observed value after retrying)");
+        assertThat(Messages.render(step.messageDetail(), Locale.of("es")))
+                .isEqualTo("probe (último valor observado tras reintentar) (último valor observado tras reintentar)");
+    }
+
+    @Test
+    @DisplayName("The not-retried suffix is keyed and wraps the step's own message")
+    void testNotRetriedSuffixIsKeyed() {
+        ScenarioResult result = engineWith(keyedFailing("keyed", true)).run(scenario(
+                new StepSpec("keyed", Map.of("dn", "x", "wait", Map.of("timeout", "10s", "poll", "1s")))), "t.yaml");
+
+        StepResult step = result.steps().get(0);
+        assertThat(step.messageKey()).isEqualTo("engine.wait.notRetried");
+        assertThat(step.messageArgs()).containsExactly(PROBE);
+        assertThat(step.message())
+                .isEqualTo("probe (last observed value after retrying) (not retried: waiting cannot change this)");
+        assertThat(Messages.render(step.messageDetail(), Locale.of("es")))
+                .endsWith("(sin reintentos: esperar no cambia este resultado)");
+    }
+
+    @Test
+    @DisplayName("A plain-text failure under wait still gets a keyed suffix, with the text as its argument")
+    void testPlainTextUnderWaitIsKeyed() {
+        ScenarioResult result = engineWith(eventuallyPassing("check", Integer.MAX_VALUE)).run(scenario(
+                new StepSpec("check", Map.of("dn", "x", "wait", Map.of("timeout", "1s", "poll", "1s")))), "t.yaml");
+
+        StepResult step = result.steps().get(0);
+        assertThat(step.message()).isEqualTo("not yet (last observed value after retrying)");
+        assertThat(step.messageKey()).isEqualTo("engine.wait.lastObserved");
+        assertThat(step.messageArgs()).containsExactly("not yet");
+        assertThat(Messages.render(step.messageDetail(), Locale.of("es")))
+                .isEqualTo("not yet (último valor observado tras reintentar)");
+    }
+
+    @Test
+    @DisplayName("A passing step under wait keeps its own keyed message, without a suffix")
+    void testPassingUnderWaitKeepsKey() {
+        StepType passing = new StepType() {
+            public String name() { return "keyed"; }
+            public boolean retryable() { return true; }
+            public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
+                return StepOutcome.success(PROBE);
+            }
+        };
+        ScenarioResult result = engineWith(passing).run(scenario(
+                new StepSpec("keyed", Map.of("dn", "x", "wait", Boolean.TRUE))), "t.yaml");
+
+        StepResult step = result.steps().get(0);
+        assertThat(step.success()).isTrue();
+        assertThat(step.message()).isEqualTo("probe (last observed value after retrying)");
+        assertThat(step.messageKey()).isEqualTo("engine.wait.lastObserved");
+        assertThat(step.messageArgs()).containsExactly("probe");
+    }
+
+    @Test
+    @DisplayName("A cleanup entry's keyed message reaches its result with the key and arguments")
+    void testKeyedCleanupMessageRecorded() {
+        ScenarioResult result = engineWith(recordingAction("a"), keyedFailing("keyed", false)).run(withCleanup(
+                List.of(new StepSpec("a", Map.of("dn", "x"))),
+                new StepSpec("keyed", Map.of("dn", "x"))), "t.yaml");
+
+        assertThat(result.cleanup().get(0).status()).isEqualTo(CleanupStatus.FAILED);
+        assertThat(result.cleanup().get(0).message()).isEqualTo("probe (last observed value after retrying)");
+        assertThat(result.cleanup().get(0).messageKey()).isEqualTo("engine.wait.lastObserved");
+        assertThat(result.cleanup().get(0).messageArgs()).containsExactly("probe");
+    }
+
+    @Test
+    @DisplayName("A plain-text step leaves the key and arguments out")
+    void testPlainTextHasNoKey() {
+        ScenarioResult result = engineWith(failingAction("f")).run(scenario(
+                new StepSpec("f", Map.of("dn", "x"))), "t.yaml");
+
+        assertThat(result.steps().get(0).messageKey()).isNull();
+        assertThat(result.steps().get(0).messageArgs()).isNull();
+        assertThat(result.steps().get(0).messageDetail()).isNull();
     }
 }

@@ -106,6 +106,13 @@ lists the variables to set and explains why profile values need the `IDM_TEST_*`
   duration, every step with its resolved parameters, retry attempts, and every `cleanup:` entry.
   Parameters are not redacted; keep secrets in target settings, not in scenario YAML.
 - Each run also writes an HTML report beside its results file, e.g. `idm-test-scenarios/target/real-environment-report.html`; see the authoring reference, section 9.
+- The report is in English unless you ask for Spanish; the setting is read once per run:
+
+  ```bash
+  IDM_TEST_LOCALE=es ./mvnw test -pl idm-test-scenarios -am -Dtest=YamlScenarioTest -Dsurefire.failIfNoSpecifiedTests=false
+  ```
+
+  Other sources and what is translated: [Report language](configuration.md#report-language).
 
 To total the tests across modules:
 

@@ -314,6 +314,23 @@ scenarios' `wait: true`, and by a `wait:` map that leaves `timeout` or `poll` ou
 `database-provision-timeout-seconds` are how long the Java workflow tests wait for provisioning to
 reach the directory and the databases.
 
+## Report language
+
+The HTML report and the messages in the JSON results are written in English by default. Set the
+language with `idm.test.report.locale` (`en` or `es`). The setting is read once per run, before
+any scenario runs; the first non-blank source wins:
+
+1. the Spring property `idm.test.report.locale` (a profile file or `IDM_TEST_REPORT_LOCALE`)
+2. the environment variable `IDM_TEST_LOCALE`
+3. the system property `-Didm.test.locale`
+
+Translated: report labels, evidence, and the framework's own messages. Not translated: scenario,
+step and cleanup names and descriptions, error text from external systems (LDAP, JDBC, HTTP), log
+output, JSON field names, step types and YAML keys.
+
+An unsupported value stops the run before any scenario executes, with
+`unsupported report locale 'fr'; supported: en, es`.
+
 ## TLS certificates (LDAPS, HTTPS)
 
 The framework has no TLS settings of its own. Every connector uses the **test JVM's default

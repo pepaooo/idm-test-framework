@@ -11,6 +11,7 @@ import com.idm.test.engine.ScenarioEngine;
 import com.idm.test.engine.ScenarioLoader;
 import com.idm.test.engine.ScenarioValidator;
 import com.idm.test.engine.model.Scenario;
+import com.idm.test.engine.i18n.ReportLocale;
 import com.idm.test.engine.result.HtmlReportWriter;
 import com.idm.test.engine.result.JsonResultWriter;
 import com.idm.test.engine.result.RunInfo;
@@ -132,6 +133,9 @@ final class ScenarioSupport {
         RunInfo run;
         try {
             run = runInfo.apply(List.copyOf(loaded.values()));
+        } catch (ReportLocale.UnsupportedLocaleException e) {
+            // A misconfigured language is a configuration error, like a bad URL: stop the run.
+            throw e;
         } catch (RuntimeException e) {
             LOG.warn("Could not describe the run for the HTML report, using a minimal header: {}", e.toString());
             run = RunInfo.minimal("Scenarios");

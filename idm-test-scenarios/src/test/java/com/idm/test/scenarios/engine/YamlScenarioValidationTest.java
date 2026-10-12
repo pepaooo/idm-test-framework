@@ -5,7 +5,9 @@ import com.idm.test.engine.ScenarioEngine;
 import com.idm.test.engine.ScenarioLoader;
 import com.idm.test.engine.ScenarioValidator;
 import com.idm.test.engine.expr.ExpressionEvaluator;
+import com.idm.test.engine.i18n.ReportLocale;
 import com.idm.test.engine.model.Scenario;
+import com.idm.test.engine.result.RunInfo;
 import com.idm.test.engine.spi.StepType;
 import com.idm.test.scenarios.base.BaseIntegrationTest;
 import org.junit.jupiter.api.DisplayName;
@@ -124,6 +126,31 @@ class YamlScenarioValidationTest extends BaseIntegrationTest {
         assertThat(java.nio.file.Files.readString(results)).contains("\"valid-user.yaml\"");
         assertThat(java.nio.file.Files.readString(tempDir.resolve("scenario-report.html")))
                 .contains("valid-user.yaml");
+    }
+
+    @Test
+    @DisplayName("An unsupported report locale stops the run instead of falling back to a minimal header")
+    void testUnsupportedLocaleStopsTheRun(@TempDir Path tempDir) {
+        Map<String, StepType> registry = ScenarioSupport.registry(
+                ldapDirectories, databaseConnector, roleServiceConnector,
+                resourceServiceConnector, idmRestConnector, restProperties, restAuthenticator);
+        ScenarioValidator validator = new ScenarioValidator(registry, FixtureFactory.SUPPORTED_GENERATORS);
+        ScenarioEngine engine = new ScenarioEngine(
+                registry,
+                new FixtureFactory(testDataGenerator),
+                testExecutor,
+                executorProperties.getDefaultTimeout(),
+                executorProperties.getDefaultPollInterval(),
+                new ExpressionEvaluator());
+        Path results = tempDir.resolve("scenario-results.json");
+
+        assertThatThrownBy(() -> ScenarioSupport.buildTests(FIXTURE_DIR, List.of("valid-user.yaml"), validator,
+                engine, results, scenarios -> {
+                    ReportLocale.resolve("fr");
+                    return RunInfo.minimal("unused");
+                }))
+                .isInstanceOf(ReportLocale.UnsupportedLocaleException.class)
+                .hasMessage("unsupported report locale 'fr'; supported: en, es");
     }
 
     @Test

@@ -932,6 +932,7 @@ the [configuration reference](configuration.md).
 | `rest.<target>.use-oauth`, `oauth-client-name` | `rest.*`, `http.*` | an OAuth2 client-credentials token from that `spring.security.oauth2.client.registration` entry |
 | `rest.<target>.connect-timeout`, `read-timeout` | `rest.*`, `http.*` | milliseconds to connect and to wait for the response (10 000 / 30 000); a slow response fails the attempt |
 | `executor.default-timeout-seconds`, `executor.default-poll-interval-seconds` | `wait: true`, and a `wait:` map that leaves `timeout` or `poll` out | the default wait |
+| `report.locale` | runners | `en` (default) or `es`; the report's language, read once per run. See [Report language](configuration.md#report-language) |
 
 Not settable from a scenario, by design: URLs, credentials, timeouts and pool sizes. The command line
 chooses what runs: `-Dtest=<runner>` and `-Dscenario=<file or glob>`; see

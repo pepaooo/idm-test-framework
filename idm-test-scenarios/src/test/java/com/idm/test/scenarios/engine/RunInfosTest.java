@@ -2,6 +2,7 @@ package com.idm.test.scenarios.engine;
 
 import com.idm.test.engine.ScenarioLoader;
 import com.idm.test.engine.model.Scenario;
+import com.idm.test.engine.i18n.ReportLocale;
 import com.idm.test.engine.result.RunInfo;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -10,8 +11,10 @@ import org.springframework.mock.env.MockEnvironment;
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Locale;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @DisplayName("RunInfos")
 class RunInfosTest {
@@ -83,5 +86,32 @@ class RunInfosTest {
 
         assertThat(run.endpoints()).containsOnlyKeys("LDAP default", "Role service", "REST idm");
         assertThat(run.endpoints().get("LDAP default")).isEqualTo("ldap://old.lab:389");
+    }
+
+    @Test
+    @DisplayName("The report locale comes from idm.test.report.locale, English when unset, and an unsupported one stops")
+    void testReportLocaleProperty() {
+        MockEnvironment spanish = new MockEnvironment();
+        spanish.setProperty("idm.test.report.locale", "es");
+        assertThat(RunInfos.of("Embedded", spanish, List.of()).locale()).isEqualTo(Locale.of("es"));
+        assertThat(RunInfos.of("Embedded", new MockEnvironment(), List.of()).locale()).isEqualTo(Locale.ENGLISH);
+
+        MockEnvironment french = new MockEnvironment();
+        french.setProperty("idm.test.report.locale", "fr");
+        assertThatThrownBy(() -> RunInfos.of("Embedded", french, List.of()))
+                .isInstanceOf(ReportLocale.UnsupportedLocaleException.class)
+                .hasMessage("unsupported report locale 'fr'; supported: en, es");
+    }
+
+    @Test
+    @DisplayName("The environment variable and system property are read after the property, in that order")
+    void testReportLocaleSources() {
+        MockEnvironment none = new MockEnvironment();
+        assertThat(RunInfos.locale(none, "es", null)).isEqualTo(Locale.of("es"));
+        assertThat(RunInfos.locale(none, null, "es")).isEqualTo(Locale.of("es"));
+        assertThat(RunInfos.locale(none, " ", null)).isEqualTo(Locale.ENGLISH);
+        MockEnvironment english = new MockEnvironment();
+        english.setProperty("idm.test.report.locale", "en");
+        assertThat(RunInfos.locale(english, "es", "es")).isEqualTo(Locale.ENGLISH);
     }
 }

@@ -4,6 +4,7 @@ import com.idm.test.connector.database.config.DatabaseProperties;
 import com.idm.test.connector.ldap.client.LdapDirectories;
 import com.idm.test.connector.ldap.config.LdapProperties;
 import com.idm.test.connector.rest.config.RestProperties;
+import com.idm.test.engine.i18n.ReportLocale;
 import com.idm.test.engine.model.Scenario;
 import com.idm.test.engine.result.RunInfo;
 import org.springframework.boot.context.properties.bind.Bindable;
@@ -13,6 +14,7 @@ import org.springframework.core.env.Environment;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -29,6 +31,8 @@ final class RunInfos {
     }
 
     static RunInfo of(String runner, Environment environment, List<Scenario> scenarios) {
+        // First, so an unsupported language fails before anything else is read.
+        Locale locale = locale(environment, System.getenv("IDM_TEST_LOCALE"), System.getProperty("idm.test.locale"));
         ScenarioNeeds needs = ScenarioNeeds.of(scenarios);
         Binder binder = Binder.get(environment);
         Map<String, String> endpoints = new LinkedHashMap<>();
@@ -60,7 +64,12 @@ final class RunInfos {
         }
 
         return new RunInfo(runner, Instant.now(), List.of(environment.getActiveProfiles()),
-                System.getProperty(ScenarioSupport.SCENARIO_PROPERTY), endpoints);
+                System.getProperty(ScenarioSupport.SCENARIO_PROPERTY), endpoints, locale);
+    }
+
+    /** The report language: the profile property, then the environment variable, then the system property. */
+    static Locale locale(Environment environment, String env, String systemProperty) {
+        return ReportLocale.resolve(environment.getProperty("idm.test.report.locale"), env, systemProperty);
     }
 
     /** Directory name to URL for the directories used, the default one resolved as the guards resolve it. */

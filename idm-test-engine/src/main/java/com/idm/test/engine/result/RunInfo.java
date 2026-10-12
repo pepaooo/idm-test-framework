@@ -3,6 +3,7 @@ package com.idm.test.engine.result;
 import java.time.Instant;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.TreeMap;
 
@@ -15,9 +16,10 @@ import java.util.TreeMap;
  * @param scenarioFilter the {@code -Dscenario} value, or null
  * @param endpoints      label to URL for what the selected scenarios use; sanitised with
  *                       {@link ReportUrls#sanitise}, sorted by label, null labels and URLs dropped
+ * @param locale         the report's language; English when null
  */
 public record RunInfo(String runner, Instant startedAt, List<String> profiles, String scenarioFilter,
-                      Map<String, String> endpoints) {
+                      Map<String, String> endpoints, Locale locale) {
 
     public RunInfo {
         profiles = profiles == null ? List.of() : List.copyOf(profiles);
@@ -30,6 +32,18 @@ public record RunInfo(String runner, Instant startedAt, List<String> profiles, S
             });
         }
         endpoints = Collections.unmodifiableMap(safe);
+        locale = locale == null ? Locale.ENGLISH : locale;
+    }
+
+    /** A run reported in English. */
+    public RunInfo(String runner, Instant startedAt, List<String> profiles, String scenarioFilter,
+                   Map<String, String> endpoints) {
+        this(runner, startedAt, profiles, scenarioFilter, endpoints, Locale.ENGLISH);
+    }
+
+    /** This run, reported in {@code locale}. */
+    public RunInfo withLocale(Locale locale) {
+        return new RunInfo(runner, startedAt, profiles, scenarioFilter, endpoints, locale);
     }
 
     /** A run described only by its runner's name, starting now. */

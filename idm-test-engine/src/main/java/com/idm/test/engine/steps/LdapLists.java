@@ -1,5 +1,6 @@
 package com.idm.test.engine.steps;
 
+import com.idm.test.connector.ldap.client.LdapProblem;
 import com.idm.test.connector.ldap.client.LdapValueChanges;
 import com.idm.test.engine.spi.Message;
 
@@ -30,9 +31,9 @@ final class LdapLists {
                 if (!update) {
                     return Message.of("step.ldap.lists.addRemoveOnlyUpdate", step, where, name);
                 }
-                String changeProblem = LdapValueChanges.shapeProblem(name, value);
+                LdapProblem changeProblem = LdapValueChanges.problem(name, value);
                 if (changeProblem != null) {
-                    return Message.of("step.ldap.lists.shape", step, where, name, changeProblem);
+                    return Message.of("step.ldap.lists.shape", step, where, name, LdapProblems.of(changeProblem));
                 }
                 continue;
             }

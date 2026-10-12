@@ -465,4 +465,19 @@ class DbStepsTest {
         assertThat(outcome.message())
                 .isEqualTo("db.verify on 'test-db' expected 3 row(s) but the query returned 0");
     }
+
+    @Test
+    @DisplayName("db.execute renders a failure and a success in Spanish")
+    void testExecuteRendersInSpanish() {
+        DbExecuteStep execute = new DbExecuteStep(connector);
+        String external = connector.executeUpdate("nope", "DELETE FROM sap_users").getMessage();
+
+        StepOutcome failed = execute.execute(Map.of("database", "nope", "statement", "DELETE FROM sap_users"), false);
+        StepOutcome done = execute.execute(Map.of("database", DB, "statement", "DELETE FROM sap_users"), false);
+
+        assertThat(Messages.render(failed.detail(), Locale.of("es")))
+                .isEqualTo("db.execute falló en 'nope': " + external);
+        assertThat(Messages.render(done.detail(), Locale.of("es")))
+                .isEqualTo("ejecutado en 'test-db', 0 fila(s) afectada(s)");
+    }
 }

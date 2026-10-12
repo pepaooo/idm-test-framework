@@ -33,7 +33,6 @@ public final class LdapValueMatcher {
     private static final List<String> KEYS = List.of(EQUALS, CONTAINS, EXCLUDES, COUNT, MATCHES, IGNORE_CASE);
     /** The keys whose values are compared as values, and so are affected by ignoreCase. */
     private static final List<String> VALUE_KEYS = List.of(EQUALS, CONTAINS, EXCLUDES);
-    private static final String KEY_HINT = "use equals, contains, excludes, count, matches or ignoreCase";
 
     private LdapValueMatcher() {
     }
@@ -42,18 +41,26 @@ public final class LdapValueMatcher {
      * @return {@code null} when {@code actual} satisfies {@code expected}, else the failure message
      */
     public static String match(String attribute, Object expected, Object actual) {
+        LdapProblem problem = problem(attribute, expected, actual);
+        return problem == null ? null : problem.english();
+    }
+
+    /**
+     * @return {@code null} when {@code actual} satisfies {@code expected}, else what differs
+     */
+    public static LdapProblem problem(String attribute, Object expected, Object actual) {
         boolean secret = SecretNames.isSecret(attribute);
-        String problem = shapeProblem(expected, secret);
+        LdapProblem problem = shape(expected, secret);
         if (problem != null) {
             // A malformed matcher would otherwise compare nothing and pass.
-            return "Attribute '" + attribute + "' " + problem;
+            return LdapProblem.of(LdapProblem.Kind.MATCH_SHAPE, attribute, problem);
         }
         List<Object> actualValues = values(actual);
 
         if (expected instanceof Map<?, ?> matcher) {
             boolean ignoreCase = Boolean.TRUE.equals(matcher.get(IGNORE_CASE));
             if (matcher.containsKey(EQUALS)) {
-                String mismatch = exactSet(attribute, values(matcher.get(EQUALS)), actualValues, ignoreCase, secret);
+                LdapProblem mismatch = exactSet(attribute, values(matcher.get(EQUALS)), actualValues, ignoreCase, secret);
                 if (mismatch != null) {
                     return mismatch;
                 }
@@ -63,10 +70,9 @@ public final class LdapValueMatcher {
                 List<Object> missing = absentFrom(wanted, actualValues, ignoreCase);
                 if (!missing.isEmpty()) {
                     if (secret) {
-                        return "Attribute '" + attribute + "': does not contain all the expected values";
+                        return LdapProblem.of(LdapProblem.Kind.MATCH_CONTAINS_SECRET, attribute);
                     }
-                    return "Attribute '" + attribute + "': expected to contain " + wanted
-                            + "; missing " + missing + "; actual=" + actual;
+                    return LdapProblem.of(LdapProblem.Kind.MATCH_CONTAINS, attribute, wanted, missing, actual);
                 }
             }
             if (matcher.containsKey(EXCLUDES)) {
@@ -74,18 +80,17 @@ public final class LdapValueMatcher {
                 List<Object> found = presentIn(unwanted, actualValues, ignoreCase);
                 if (!found.isEmpty()) {
                     if (secret) {
-                        return "Attribute '" + attribute + "': contains values that were expected to be absent";
+                        return LdapProblem.of(LdapProblem.Kind.MATCH_EXCLUDES_SECRET, attribute);
                     }
-                    return "Attribute '" + attribute + "': expected not to contain " + unwanted
-                            + "; found " + found;
+                    return LdapProblem.of(LdapProblem.Kind.MATCH_EXCLUDES, attribute, unwanted, found);
                 }
             }
             if (matcher.containsKey(COUNT)) {
                 long wanted = ((Number) matcher.get(COUNT)).longValue();
                 if (actualValues.size() != wanted) {
-                    return "Attribute '" + attribute + "': expected " + wanted + (wanted == 1 ? " value" : " values")
-                            + ", found " + actualValues.size()
-                            + (actualValues.isEmpty() || secret ? "" : ": " + actualValues);
+                    return LdapProblem.of(wanted == 1 ? LdapProblem.Kind.MATCH_COUNT_ONE : LdapProblem.Kind.MATCH_COUNT_OTHER,
+                            attribute, wanted, actualValues.size(),
+                            actualValues.isEmpty() || secret ? "" : ": " + actualValues);
                 }
             }
             if (matcher.containsKey(MATCHES)) {
@@ -93,8 +98,8 @@ public final class LdapValueMatcher {
                     Pattern compiled = Pattern.compile((String) pattern);
                     if (actualValues.stream().noneMatch(value -> compiled.matcher(String.valueOf(value)).matches())) {
                         return secret
-                                ? "Attribute '" + attribute + "': no value matches the pattern"
-                                : "Attribute '" + attribute + "': no value matches " + pattern + "; actual=" + actual;
+                                ? LdapProblem.of(LdapProblem.Kind.MATCH_PATTERN_SECRET, attribute)
+                                : LdapProblem.of(LdapProblem.Kind.MATCH_PATTERN, attribute, pattern, actual);
                     }
                 }
             }
@@ -111,11 +116,11 @@ public final class LdapValueMatcher {
         if (matches) {
             return null;
         }
-        return secret ? "Attribute '" + attribute + "': does not have the expected values"
-                : "Attribute '" + attribute + "': expected=" + expected + ", actual=" + actual;
+        return secret ? LdapProblem.of(LdapProblem.Kind.MATCH_VALUES_SECRET, attribute)
+                : LdapProblem.of(LdapProblem.Kind.MATCH_VALUE, attribute, expected, actual);
     }
 
-    private static String exactSet(String attribute, List<Object> expected, List<Object> actualValues,
+    private static LdapProblem exactSet(String attribute, List<Object> expected, List<Object> actualValues,
                                    boolean ignoreCase, boolean secret) {
         List<Object> wanted = distinct(expected, ignoreCase);
         List<Object> missing = absentFrom(wanted, actualValues, ignoreCase);
@@ -124,17 +129,15 @@ public final class LdapValueMatcher {
             return null;
         }
         if (secret) {
-            return "Attribute '" + attribute + "': does not have the expected values";
+            return LdapProblem.of(LdapProblem.Kind.MATCH_VALUES_SECRET, attribute);
         }
-        StringBuilder message = new StringBuilder("Attribute '" + attribute + "': expected exactly "
-                + wanted + " in any order");
-        if (!missing.isEmpty()) {
-            message.append("; missing ").append(missing);
+        if (unexpected.isEmpty()) {
+            return LdapProblem.of(LdapProblem.Kind.MATCH_EXACT_MISSING, attribute, wanted, missing);
         }
-        if (!unexpected.isEmpty()) {
-            message.append("; unexpected ").append(unexpected);
+        if (missing.isEmpty()) {
+            return LdapProblem.of(LdapProblem.Kind.MATCH_EXACT_UNEXPECTED, attribute, wanted, unexpected);
         }
-        return message.toString();
+        return LdapProblem.of(LdapProblem.Kind.MATCH_EXACT_BOTH, attribute, wanted, missing, unexpected);
     }
 
     /**
@@ -142,7 +145,7 @@ public final class LdapValueMatcher {
      *         fragment to follow the attribute's name
      */
     public static String shapeProblem(Object expected) {
-        return shapeProblem(expected, false);
+        return english(shape(expected, false));
     }
 
     /**
@@ -150,13 +153,22 @@ public final class LdapValueMatcher {
      * a value or a pattern.
      */
     public static String shapeProblem(String attribute, Object expected) {
-        return shapeProblem(expected, SecretNames.isSecret(attribute));
+        return english(problemOfShape(attribute, expected));
     }
 
-    private static String shapeProblem(Object expected, boolean secret) {
+    /** As {@link #shapeProblem(String, Object)}, structured. */
+    public static LdapProblem problemOfShape(String attribute, Object expected) {
+        return shape(expected, SecretNames.isSecret(attribute));
+    }
+
+    private static String english(LdapProblem problem) {
+        return problem == null ? null : problem.english();
+    }
+
+    private static LdapProblem shape(Object expected, boolean secret) {
         if (expected instanceof Map<?, ?> matcher) {
             if (matcher.isEmpty()) {
-                return "is an empty map; " + KEY_HINT;
+                return LdapProblem.of(LdapProblem.Kind.SHAPE_EMPTY_MAP);
             }
             Set<String> unknown = new TreeSet<>();
             for (Object key : matcher.keySet()) {
@@ -165,7 +177,7 @@ public final class LdapValueMatcher {
                 }
             }
             if (!unknown.isEmpty()) {
-                return "has unknown matcher keys " + unknown + "; " + KEY_HINT;
+                return LdapProblem.of(LdapProblem.Kind.SHAPE_UNKNOWN_KEYS, unknown);
             }
             for (String key : VALUE_KEYS) {
                 if (!matcher.containsKey(key)) {
@@ -173,18 +185,18 @@ public final class LdapValueMatcher {
                 }
                 Object value = matcher.get(key);
                 if (value == null || value instanceof Collection<?> c && c.isEmpty()) {
-                    return "has an empty '" + key + "'";
+                    return LdapProblem.of(LdapProblem.Kind.SHAPE_EMPTY_KEY, key);
                 }
                 if (value instanceof Map<?, ?> || value instanceof Collection<?> c && !plain(c)) {
-                    return "has a null, map or list value in '" + key + "'; give plain values";
+                    return LdapProblem.of(LdapProblem.Kind.SHAPE_PLAIN_KEY, key);
                 }
             }
             if (matcher.containsKey(COUNT) && !wholeNonNegative(matcher.get(COUNT))) {
-                return "has a 'count' that is not a non-negative whole number"
-                        + (secret ? "" : ": " + matcher.get(COUNT));
+                return secret ? LdapProblem.of(LdapProblem.Kind.SHAPE_COUNT)
+                        : LdapProblem.of(LdapProblem.Kind.SHAPE_COUNT_VALUE, matcher.get(COUNT));
             }
             if (matcher.containsKey(MATCHES)) {
-                String patternProblem = patternProblem(matcher.get(MATCHES), secret);
+                LdapProblem patternProblem = patternProblem(matcher.get(MATCHES), secret);
                 if (patternProblem != null) {
                     return patternProblem;
                 }
@@ -192,10 +204,10 @@ public final class LdapValueMatcher {
             boolean ignoreCase = false;
             if (matcher.containsKey(IGNORE_CASE)) {
                 if (!(matcher.get(IGNORE_CASE) instanceof Boolean flag)) {
-                    return "has an 'ignoreCase' that is not true or false";
+                    return LdapProblem.of(LdapProblem.Kind.SHAPE_IGNORE_CASE_TYPE);
                 }
                 if (VALUE_KEYS.stream().noneMatch(matcher::containsKey)) {
-                    return "has an 'ignoreCase' with no equals, contains or excludes to apply to";
+                    return LdapProblem.of(LdapProblem.Kind.SHAPE_IGNORE_CASE_ALONE);
                 }
                 ignoreCase = flag;
             }
@@ -203,38 +215,37 @@ public final class LdapValueMatcher {
                 List<Object> overlap = presentIn(distinct(values(matcher.get(CONTAINS)), ignoreCase),
                         values(matcher.get(EXCLUDES)), ignoreCase);
                 if (!overlap.isEmpty()) {
-                    return "lists " + (secret ? "the same value" : overlap.toString())
-                            + " in both 'contains' and 'excludes'";
+                    return secret ? LdapProblem.of(LdapProblem.Kind.SHAPE_OVERLAP_SECRET)
+                            : LdapProblem.of(LdapProblem.Kind.SHAPE_OVERLAP, overlap);
                 }
             }
             return null;
         }
         if (expected instanceof Collection<?> list) {
             if (list.isEmpty()) {
-                return "is an empty list, which a misspelled attribute name would also satisfy; "
-                        + "to assert values are absent use { excludes: [...] }";
+                return LdapProblem.of(LdapProblem.Kind.SHAPE_EMPTY_LIST);
             }
             if (!plain(list)) {
-                return "has a null, map or list value inside its list; give plain values";
+                return LdapProblem.of(LdapProblem.Kind.SHAPE_PLAIN_LIST);
             }
         }
         return null;
     }
 
-    private static String patternProblem(Object raw, boolean secret) {
+    private static LdapProblem patternProblem(Object raw, boolean secret) {
         List<Object> patterns = values(raw);
         if (patterns.isEmpty()) {
-            return "has an empty 'matches'";
+            return LdapProblem.of(LdapProblem.Kind.SHAPE_EMPTY_MATCHES);
         }
         for (Object pattern : patterns) {
             if (!(pattern instanceof String text)) {
-                return "has a 'matches' that is not a regular expression or a list of them";
+                return LdapProblem.of(LdapProblem.Kind.SHAPE_MATCHES_TYPE);
             }
             try {
                 Pattern.compile(text);
             } catch (PatternSyntaxException e) {
-                return "has an invalid 'matches' pattern" + (secret ? "" : " '" + text + "'")
-                        + ": " + e.getDescription();
+                return secret ? LdapProblem.of(LdapProblem.Kind.SHAPE_PATTERN_SECRET, e.getDescription())
+                        : LdapProblem.of(LdapProblem.Kind.SHAPE_PATTERN, text, e.getDescription());
             }
         }
         return null;

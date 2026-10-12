@@ -26,11 +26,17 @@ public final class LdapValueChanges {
      *         else what is wrong with it, as a fragment to follow the attribute's name
      */
     public static String shapeProblem(String attribute, Object value) {
+        LdapProblem problem = problem(attribute, value);
+        return problem == null ? null : problem.english();
+    }
+
+    /** As {@link #shapeProblem}, structured. */
+    public static LdapProblem problem(String attribute, Object value) {
         if (!(value instanceof Map<?, ?> change)) {
             return null;
         }
         if (change.isEmpty()) {
-            return "is an empty map; use add and/or remove";
+            return LdapProblem.of(LdapProblem.Kind.CHANGES_EMPTY_MAP);
         }
         Set<String> unknown = new TreeSet<>();
         for (Object key : change.keySet()) {
@@ -39,7 +45,7 @@ public final class LdapValueChanges {
             }
         }
         if (!unknown.isEmpty()) {
-            return "has unknown keys " + unknown + "; use add and/or remove";
+            return LdapProblem.of(LdapProblem.Kind.CHANGES_UNKNOWN_KEYS, unknown);
         }
         for (String key : List.of(ADD, REMOVE)) {
             if (!change.containsKey(key)) {
@@ -47,11 +53,11 @@ public final class LdapValueChanges {
             }
             Object values = change.get(key);
             if (values == null || values instanceof Collection<?> c && c.isEmpty()) {
-                return "has an empty '" + key + "'";
+                return LdapProblem.of(LdapProblem.Kind.CHANGES_EMPTY_KEY, key);
             }
             if (values instanceof Map<?, ?> || values instanceof Collection<?> c
                     && c.stream().anyMatch(v -> v == null || v instanceof Map<?, ?> || v instanceof Collection<?>)) {
-                return "has a null, map or list value in '" + key + "'; give plain values";
+                return LdapProblem.of(LdapProblem.Kind.CHANGES_PLAIN_KEY, key);
             }
         }
         if (change.containsKey(ADD) && change.containsKey(REMOVE)) {
@@ -65,8 +71,8 @@ public final class LdapValueChanges {
             }
             if (!overlap.isEmpty()) {
                 return SecretNames.isSecret(attribute)
-                        ? "lists the same value in both 'add' and 'remove'"
-                        : "lists " + overlap + " in both 'add' and 'remove'";
+                        ? LdapProblem.of(LdapProblem.Kind.CHANGES_OVERLAP_SECRET)
+                        : LdapProblem.of(LdapProblem.Kind.CHANGES_OVERLAP, overlap);
             }
         }
         return null;

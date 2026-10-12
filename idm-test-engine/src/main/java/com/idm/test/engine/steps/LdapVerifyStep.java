@@ -2,6 +2,7 @@ package com.idm.test.engine.steps;
 
 import com.idm.test.connector.ldap.client.EdirectoryConnector;
 import com.idm.test.connector.ldap.client.LdapDirectories;
+import com.idm.test.connector.ldap.client.LdapProblem;
 import com.idm.test.connector.ldap.client.LdapValueMatcher;
 import com.idm.test.core.model.ErrorType;
 import com.idm.test.core.model.OperationResult;
@@ -89,10 +90,10 @@ public final class LdapVerifyStep implements StepType {
         LdapEvidence evidence = LdapEvidence.read(directory, dn, actual);
 
         for (Map.Entry<String, Object> attribute : expected.entrySet()) {
-            String mismatch = LdapValueMatcher.match(
+            LdapProblem mismatch = LdapValueMatcher.problem(
                     attribute.getKey(), attribute.getValue(), actual.get(attribute.getKey()));
             if (mismatch != null) {
-                return StepOutcome.failure(Message.of("step.ldap.verify.failed", where, mismatch))
+                return StepOutcome.failure(Message.of("step.ldap.verify.failed", where, LdapProblems.of(mismatch)))
                         .withEvidence(evidence);
             }
         }
@@ -127,13 +128,13 @@ public final class LdapVerifyStep implements StepType {
         boolean present = Boolean.TRUE.equals(result.getData().orElse(false));
         if (present != shouldExist) {
             return StepOutcome.failure(Message.of("step.ldap.verify.stateMismatch", where,
-                    Message.of(shouldExist ? "evidence.present" : "evidence.absent"),
-                    Message.of(present ? "evidence.present" : "evidence.absent")))
+                    Message.of(shouldExist ? "step.ldap.verify.present" : "step.ldap.verify.absent"),
+                    Message.of(present ? "step.ldap.verify.present" : "step.ldap.verify.absent")))
                     .withEvidence(LdapEvidence.exists(directory, dn, present));
         }
 
         return StepOutcome.success(Message.of("step.ldap.verify.verifiedState", where,
-                Message.of(shouldExist ? "evidence.present" : "evidence.absent")))
+                Message.of(shouldExist ? "step.ldap.verify.present" : "step.ldap.verify.absent")))
                 .withEvidence(LdapEvidence.exists(directory, dn, present));
     }
 
@@ -182,9 +183,9 @@ public final class LdapVerifyStep implements StepType {
                 if (attribute.getValue() == null) {
                     return StepOutcome.finalFailure(Message.of("step.ldap.verify.nullExpected", where, attribute.getKey()));
                 }
-                String problem = LdapValueMatcher.shapeProblem(String.valueOf(attribute.getKey()), attribute.getValue());
+                LdapProblem problem = LdapValueMatcher.problemOfShape(String.valueOf(attribute.getKey()), attribute.getValue());
                 if (problem != null) {
-                    return StepOutcome.finalFailure(Message.of("step.ldap.verify.shape", where, attribute.getKey(), problem));
+                    return StepOutcome.finalFailure(Message.of("step.ldap.verify.shape", where, attribute.getKey(), LdapProblems.of(problem)));
                 }
             }
         }

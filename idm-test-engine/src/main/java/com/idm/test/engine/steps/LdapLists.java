@@ -1,6 +1,7 @@
 package com.idm.test.engine.steps;
 
 import com.idm.test.connector.ldap.client.LdapValueChanges;
+import com.idm.test.engine.spi.Message;
 
 import java.util.Collection;
 import java.util.Map;
@@ -21,17 +22,17 @@ final class LdapLists {
      *               attribute), and so is an add/remove map; ldap.create allows neither
      * @return the failure message, or {@code null} when every value can be written
      */
-    static String problem(String step, String where, Map<String, Object> attributes, boolean update) {
+    static Message problem(String step, Object where, Map<String, Object> attributes, boolean update) {
         for (Map.Entry<String, Object> attribute : attributes.entrySet()) {
-            String prefix = step + " for " + where + ": attribute '" + attribute.getKey() + "' ";
+            String name = attribute.getKey();
             Object value = attribute.getValue();
             if (value instanceof Map<?, ?>) {
                 if (!update) {
-                    return prefix + "uses add/remove, which only apply to ldap.update";
+                    return Message.of("step.ldap.lists.addRemoveOnlyUpdate", step, where, name);
                 }
-                String changeProblem = LdapValueChanges.shapeProblem(attribute.getKey(), value);
+                String changeProblem = LdapValueChanges.shapeProblem(name, value);
                 if (changeProblem != null) {
-                    return prefix + changeProblem;
+                    return Message.of("step.ldap.lists.shape", step, where, name, changeProblem);
                 }
                 continue;
             }
@@ -39,10 +40,10 @@ final class LdapLists {
                 continue;
             }
             if (values.isEmpty() && !update) {
-                return prefix + "has an empty list; there is nothing to write";
+                return Message.of("step.ldap.lists.emptyList", step, where, name);
             }
             if (values.stream().anyMatch(v -> v == null || v instanceof Map<?, ?> || v instanceof Collection<?>)) {
-                return prefix + "has a null, map or list value inside its list; give plain values";
+                return Message.of("step.ldap.lists.badValue", step, where, name);
             }
         }
         return null;

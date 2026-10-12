@@ -4,6 +4,7 @@ import com.idm.test.connector.ldap.client.EdirectoryConnector;
 import com.idm.test.connector.ldap.client.LdapDirectories;
 import com.idm.test.core.model.OperationResult;
 import com.idm.test.engine.spi.LdapEvidence;
+import com.idm.test.engine.spi.Message;
 import com.idm.test.engine.spi.StepOutcome;
 import com.idm.test.engine.spi.StepType;
 
@@ -51,15 +52,14 @@ public final class LdapUpdateStep implements StepType {
             return target.failure();
         }
         EdirectoryConnector connector = target.connector();
-        String where = target.at(dn);
+        Object where = target.at(dn);
         Map<String, Object> attributes = (Map<String, Object>) params.get("attributes");
 
         if (attributes == null || attributes.isEmpty()) {
-            return StepOutcome.failure(
-                    "ldap.update for " + where + " has no attributes to change");
+            return StepOutcome.failure(Message.of("step.ldap.update.noAttributes", where));
         }
 
-        String listProblem = LdapLists.problem("ldap.update", where, attributes, true);
+        Message listProblem = LdapLists.problem("ldap.update", where, attributes, true);
         if (listProblem != null) {
             return StepOutcome.failure(listProblem);
         }
@@ -67,12 +67,11 @@ public final class LdapUpdateStep implements StepType {
         LdapEvidence evidence = LdapEvidence.written(LdapTarget.requested(params), dn, "update", attributes);
         OperationResult<Void> result = connector.update(dn, attributes);
         if (!result.isSuccess()) {
-            return StepOutcome.failure(
-                    "ldap.update failed for " + where + ": " + result.getMessage())
+            return StepOutcome.failure(Message.of("step.ldap.update.failed", where, result.getMessage()))
                     .withEvidence(evidence);
         }
 
-        return StepOutcome.success("updated " + where + " " + attributes.keySet(), dn)
+        return StepOutcome.success(Message.of("step.ldap.update.updated", where, attributes.keySet()), dn)
                 .withEvidence(evidence);
     }
 }

@@ -5,6 +5,7 @@ import com.idm.test.connector.ldap.client.LdapDirectories;
 import com.idm.test.connector.ldap.model.LdapUser;
 import com.idm.test.core.model.OperationResult;
 import com.idm.test.engine.spi.LdapEvidence;
+import com.idm.test.engine.i18n.Messages;
 import com.idm.test.engine.spi.StepOutcome;
 import com.idm.test.engine.spi.StepType;
 import com.idm.test.utils.ldap.EmbeddedLdapServer;
@@ -17,6 +18,7 @@ import org.springframework.ldap.core.support.LdapContextSource;
 
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -799,5 +801,36 @@ class LdapStepsTest {
         assertThat(outcome.success()).isFalse();
         assertThat(outcome.message()).doesNotContain("S3cret!")
                 .isEqualTo("ldap.update for cn=x,ou=users: attribute 'userPassword' lists the same value in both 'add' and 'remove'");
+    }
+
+    @Test
+    @DisplayName("ldap.verify renders its failure in Spanish with the external text unchanged")
+    void testVerifyFailureRendersInSpanish() {
+        EdirectoryConnector mockConnector = mock(EdirectoryConnector.class);
+        when(mockConnector.readAttributes(any()))
+                .thenReturn(OperationResult.<Map<String, Object>>failure("connection dropped"));
+
+        StepOutcome outcome = new LdapVerifyStep(only(mockConnector)).execute(Map.of(
+                "dn", "cn=x,ou=users", "expect", Map.of("givenName", "Ada")), false);
+
+        assertThat(Messages.render(outcome.detail(), Locale.of("es")))
+                .isEqualTo("ldap.verify falló para cn=x,ou=users: connection dropped");
+        assertThat(Messages.render(outcome.detail(), Locale.ENGLISH)).isEqualTo(outcome.message());
+    }
+
+    @Test
+    @DisplayName("ldap steps name the directory in Spanish when more than one is configured")
+    void testDirectorySuffixRendersInSpanish() {
+        EdirectoryConnector mockConnector = mock(EdirectoryConnector.class);
+        when(mockConnector.exists(any())).thenReturn(OperationResult.success(false));
+        LdapDirectories two = LdapDirectories.ofConnectors(
+                Map.of("a", mockConnector, "b", mock(EdirectoryConnector.class)), "a");
+
+        StepOutcome outcome = new LdapDeleteStep(two).execute(Map.of("dn", "cn=x"), false);
+
+        assertThat(Messages.render(outcome.detail(), Locale.of("es")))
+                .isEqualTo("ldap.delete no encontró ninguna entrada en cn=x en el directorio 'a' para eliminar");
+        assertThat(outcome.message())
+                .isEqualTo("ldap.delete found no entry at cn=x in directory 'a' to delete");
     }
 }

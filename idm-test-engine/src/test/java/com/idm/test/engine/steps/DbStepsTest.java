@@ -1,6 +1,7 @@
 package com.idm.test.engine.steps;
 
 import com.idm.test.connector.database.client.MultiDatabaseConnector;
+import com.idm.test.engine.i18n.Messages;
 import com.idm.test.engine.spi.SqlEvidence;
 import com.idm.test.engine.spi.StepOutcome;
 import org.junit.jupiter.api.BeforeAll;
@@ -12,6 +13,7 @@ import org.springframework.jdbc.datasource.DriverManagerDataSource;
 
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -449,5 +451,18 @@ class DbStepsTest {
         StepOutcome unknown = new DbVerifyStep(connector).execute(Map.of(
                 "database", "nope", "query", "SELECT 1", "expect", Map.of("rowCount", 1)), false);
         assertThat(unknown.evidence()).isNull();
+    }
+
+    @Test
+    @DisplayName("db.verify renders a row count mismatch in Spanish")
+    void testVerifyRowCountMismatchRendersInSpanish() {
+        StepOutcome outcome = new DbVerifyStep(connector).execute(Map.of(
+                "database", DB, "query", "SELECT * FROM sap_users",
+                "expect", Map.of("rowCount", 3)), false);
+
+        assertThat(Messages.render(outcome.detail(), Locale.of("es")))
+                .isEqualTo("db.verify en 'test-db' esperaba 3 fila(s), pero la consulta devolvió 0");
+        assertThat(outcome.message())
+                .isEqualTo("db.verify on 'test-db' expected 3 row(s) but the query returned 0");
     }
 }

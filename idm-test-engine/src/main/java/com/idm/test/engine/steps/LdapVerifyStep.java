@@ -6,6 +6,7 @@ import com.idm.test.connector.ldap.client.LdapValueMatcher;
 import com.idm.test.core.model.ErrorType;
 import com.idm.test.core.model.OperationResult;
 import com.idm.test.engine.spi.LdapEvidence;
+import com.idm.test.engine.spi.Message;
 import com.idm.test.engine.spi.StepOutcome;
 import com.idm.test.engine.spi.StepType;
 
@@ -60,7 +61,7 @@ public final class LdapVerifyStep implements StepType {
             return target.failure();
         }
         EdirectoryConnector connector = target.connector();
-        String where = target.at(dn);
+        Object where = target.at(dn);
 
         StepOutcome rejection = rejectMalformedAssertion(params, where);
         if (rejection != null) {
@@ -78,7 +79,7 @@ public final class LdapVerifyStep implements StepType {
         // captured — so neither evidence nor as: costs the directory a second read.
         OperationResult<Map<String, Object>> entry = connector.readAttributes(dn);
         if (!entry.isSuccess() || entry.getData().isEmpty()) {
-            StepOutcome failure = StepOutcome.failure("ldap.verify failed for " + where + ": " + entry.getMessage());
+            StepOutcome failure = StepOutcome.failure(Message.of("step.ldap.verify.failed", where, entry.getMessage()));
             return entry.getErrorType().filter(ErrorType.NOT_FOUND::equals).isPresent()
                     ? failure.withEvidence(LdapEvidence.absent(directory, dn, "read"))
                     : failure;
@@ -91,13 +92,13 @@ public final class LdapVerifyStep implements StepType {
             String mismatch = LdapValueMatcher.match(
                     attribute.getKey(), attribute.getValue(), actual.get(attribute.getKey()));
             if (mismatch != null) {
-                return StepOutcome.failure("ldap.verify failed for " + where + ": " + mismatch)
+                return StepOutcome.failure(Message.of("step.ldap.verify.failed", where, mismatch))
                         .withEvidence(evidence);
             }
         }
 
         if (!captureRequested) {
-            return StepOutcome.success("verified " + where).withEvidence(evidence);
+            return StepOutcome.success(Message.of("step.ldap.verify.verified", where)).withEvidence(evidence);
         }
 
         // Every value of every attribute: a multi-valued one is a list, so it can be written
@@ -105,7 +106,7 @@ public final class LdapVerifyStep implements StepType {
         Map<String, Object> captured = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
         captured.putAll(actual);
         captured.put("dn", dn);
-        return StepOutcome.success("verified " + where, captured).withEvidence(evidence);
+        return StepOutcome.success(Message.of("step.ldap.verify.verified", where), captured).withEvidence(evidence);
     }
 
     /**
@@ -115,25 +116,24 @@ public final class LdapVerifyStep implements StepType {
      * is that the entry is gone, and until now the DSL could only assert that an entry still
      * had particular values.
      */
-    private StepOutcome verifyExistence(String directory, EdirectoryConnector connector, String dn, String where,
+    private StepOutcome verifyExistence(String directory, EdirectoryConnector connector, String dn, Object where,
                                         boolean shouldExist) {
         OperationResult<Boolean> result = connector.exists(dn);
 
         if (!result.isSuccess()) {
-            return StepOutcome.failure("ldap.verify could not check whether " + where
-                    + " exists: " + result.getMessage());
+            return StepOutcome.failure(Message.of("step.ldap.verify.checkFailed", where, result.getMessage()));
         }
 
         boolean present = Boolean.TRUE.equals(result.getData().orElse(false));
         if (present != shouldExist) {
-            return StepOutcome.failure("ldap.verify expected " + where + " to be "
-                    + (shouldExist ? "present" : "absent") + " but it was "
-                    + (present ? "present" : "absent"))
+            return StepOutcome.failure(Message.of("step.ldap.verify.stateMismatch", where,
+                    Message.of(shouldExist ? "evidence.present" : "evidence.absent"),
+                    Message.of(present ? "evidence.present" : "evidence.absent")))
                     .withEvidence(LdapEvidence.exists(directory, dn, present));
         }
 
-        return StepOutcome.success(
-                "verified " + where + " is " + (shouldExist ? "present" : "absent"))
+        return StepOutcome.success(Message.of("step.ldap.verify.verifiedState", where,
+                Message.of(shouldExist ? "evidence.present" : "evidence.absent")))
                 .withEvidence(LdapEvidence.exists(directory, dn, present));
     }
 
@@ -145,31 +145,25 @@ public final class LdapVerifyStep implements StepType {
      * verify nothing at all while looking like an assertion. That defect class has been found
      * eight times in this project, so the rule is stated positively and checked before any I/O.
      */
-    private static StepOutcome rejectMalformedAssertion(Map<String, Object> params, String where) {
+    private static StepOutcome rejectMalformedAssertion(Map<String, Object> params, Object where) {
         boolean hasExpect = params.containsKey("expect");
         boolean hasExists = params.containsKey("exists");
 
         if (hasExpect && hasExists) {
-            return StepOutcome.finalFailure("ldap.verify for " + where + " supplies both 'expect' and "
-                    + "'exists'; expect already implies the entry exists, so give only one");
+            return StepOutcome.finalFailure(Message.of("step.ldap.verify.both", where));
         }
         if (!hasExpect && !hasExists) {
-            return StepOutcome.finalFailure("ldap.verify for " + where + " supplies neither 'expect' "
-                    + "nor 'exists' — it would verify nothing. Assert attributes with expect:, "
-                    + "or presence with exists:");
+            return StepOutcome.finalFailure(Message.of("step.ldap.verify.neither", where));
         }
         if (hasExists && !(params.get("exists") instanceof Boolean)) {
-            return StepOutcome.finalFailure("ldap.verify for " + where + " has an 'exists' that is not "
-                    + "true or false");
+            return StepOutcome.finalFailure(Message.of("step.ldap.verify.existsNotBoolean", where));
         }
         if (hasExpect) {
             if (!(params.get("expect") instanceof Map<?, ?> expect)) {
-                return StepOutcome.finalFailure("ldap.verify for " + where
-                        + " has an expect that is not a map of attribute names to expected values");
+                return StepOutcome.finalFailure(Message.of("step.ldap.verify.expectNotMap", where));
             }
             if (expect.isEmpty()) {
-                return StepOutcome.finalFailure("ldap.verify for " + where
-                        + " has an empty expect: block — it would verify nothing");
+                return StepOutcome.finalFailure(Message.of("step.ldap.verify.expectEmpty", where));
             }
 
             // The hole one level in: a misspelled attribute name (`titel:` instead of
@@ -183,21 +177,14 @@ public final class LdapVerifyStep implements StepType {
                 // readAttributes never returns userPassword, so any expectation on it would pass
                 // or fail without reflecting the directory, and a failure would quote the value.
                 if ("userPassword".equalsIgnoreCase(String.valueOf(attribute.getKey()))) {
-                    return StepOutcome.finalFailure("ldap.verify for " + where
-                            + ": attribute 'userPassword' cannot be verified; passwords are never "
-                            + "read back from the directory");
+                    return StepOutcome.finalFailure(Message.of("step.ldap.verify.passwordNotVerifiable", where));
                 }
                 if (attribute.getValue() == null) {
-                    return StepOutcome.finalFailure("ldap.verify for " + where
-                            + " has a null expected value for attribute '" + attribute.getKey()
-                            + "' — a missing or misspelled attribute name parses the same way "
-                            + "and would verify nothing. Check for a typo, or assert exists: "
-                            + "false to check for absence instead.");
+                    return StepOutcome.finalFailure(Message.of("step.ldap.verify.nullExpected", where, attribute.getKey()));
                 }
                 String problem = LdapValueMatcher.shapeProblem(String.valueOf(attribute.getKey()), attribute.getValue());
                 if (problem != null) {
-                    return StepOutcome.finalFailure("ldap.verify for " + where + ": attribute '"
-                            + attribute.getKey() + "' " + problem);
+                    return StepOutcome.finalFailure(Message.of("step.ldap.verify.shape", where, attribute.getKey(), problem));
                 }
             }
         }

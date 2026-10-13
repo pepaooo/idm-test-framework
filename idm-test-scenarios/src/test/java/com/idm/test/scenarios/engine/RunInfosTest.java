@@ -89,6 +89,40 @@ class RunInfosTest {
     }
 
     @Test
+    @DisplayName("A Spanish run names its runner and endpoint rows in Spanish")
+    void testSpanishLabels() {
+        MockEnvironment environment = lab();
+        environment.setProperty("idm.test.report.locale", "es");
+
+        RunInfo run = RunInfos.of("runner.name.embedded", environment, scenarios("""
+                name: t
+                steps:
+                  - ldap.verify:
+                      dn: cn=x,ou=users
+                      exists: true
+                  - db.verify:
+                      database: db-postgres
+                      query: SELECT 1
+                      expect: { rowCount: 1 }
+                  - roles.grant:
+                      user: cn=u
+                      roles: [cn=r]
+                  - resources.grant:
+                      user: cn=u
+                      resource: cn=r
+                  - rest.request:
+                      target: idm
+                      method: GET
+                      path: /x
+                """));
+
+        assertThat(run.runner()).isEqualTo("Embebido");
+        assertThat(run.endpoints()).containsOnlyKeys("LDAP ad", "Base de datos db-postgres",
+                "Servicio de roles", "Servicio de recursos", "REST idm");
+        assertThat(run.endpoints().get("Base de datos db-postgres")).isEqualTo("jdbc:postgresql://db.lab/idm");
+    }
+
+    @Test
     @DisplayName("The report locale comes from idm.test.report.locale, English when unset, and an unsupported one stops")
     void testReportLocaleProperty() {
         MockEnvironment spanish = new MockEnvironment();

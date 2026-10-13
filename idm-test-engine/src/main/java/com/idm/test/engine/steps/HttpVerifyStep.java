@@ -105,7 +105,6 @@ public final class HttpVerifyStep implements StepType {
         Bound bound = responseOf(response);
         String method = request.method();
         String url = request.url();
-        String body = safe(response.body());
         int total = checks.size();
         for (int i = 0; i < total; i++) {
             DeferredExpression check = checks.get(i);
@@ -121,7 +120,7 @@ public final class HttpVerifyStep implements StepType {
                 Object reason = e instanceof ExpressionException expression && expression.detail() != null
                         ? masked(expression.detail()) : safe(error);
                 return StepOutcome.failure(Message.of("step.http.verify.checkThrew", method, url, number, total,
-                        reason, response.status(), body, hint));
+                        reason, response.status(), safe(response.body()), hint));
             }
             Object value = explained.value();
             if (!(value instanceof Boolean passed)) {
@@ -133,7 +132,7 @@ public final class HttpVerifyStep implements StepType {
                         ? ""
                         : Message.of("step.http.verify.notes", masked(joined(explained.details())));
                 return StepOutcome.failure(Message.of("step.http.verify.checkFalse", method, url, number, total,
-                        check.source(), notes, response.status(), body, hint));
+                        check.source(), notes, response.status(), safe(response.body()), hint));
             }
         }
 

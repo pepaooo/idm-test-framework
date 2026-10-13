@@ -50,6 +50,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.regex.PatternSyntaxException;
@@ -75,12 +76,12 @@ final class ScenarioSupport {
     }
 
     /** System property naming the scenario file, or glob of files, to run. */
+    static final String SCENARIO_PROPERTY = "scenario";
+
     /** The header used when describing the run failed; always English. */
     private static RunInfo minimalRun() {
         return RunInfo.minimal(Messages.english(Message.of("runner.name.scenarios")));
     }
-
-    static final String SCENARIO_PROPERTY = "scenario";
 
     /**
      * Builds a test for every scenario file in {@code scenarioDir}, unfiltered.
@@ -154,6 +155,8 @@ final class ScenarioSupport {
             run = minimalRun();
         }
         RunInfo reportRun = run;
+        // JUnit's failure text follows the report's language; English when the run could not be described.
+        Locale locale = reportRun.locale();
 
         List<ScenarioResult> collected = Collections.synchronizedList(new ArrayList<>());
         List<DynamicTest> tests = new ArrayList<>();
@@ -166,7 +169,7 @@ final class ScenarioSupport {
                     writeResults(collected, resultsPath, reportRun);
 
                     assertThat(result.success())
-                            .as(result.failureSummary())
+                            .as(result.failureSummary(locale))
                             .isTrue();
                 }));
             } else {
@@ -177,7 +180,7 @@ final class ScenarioSupport {
                             null, detail == null ? null : detail.key(), detail == null ? null : detail.args());
                     collected.add(result);
                     writeResults(collected, resultsPath, reportRun);
-                    fail(message);
+                    fail(detail == null ? message : Messages.render(detail, locale));
                 }));
             }
         }

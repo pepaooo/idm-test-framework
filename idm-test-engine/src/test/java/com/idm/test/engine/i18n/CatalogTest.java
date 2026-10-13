@@ -42,7 +42,10 @@ class CatalogTest {
             // "<file>: <problem>" — only punctuation
             "validation.frame.file",
             // "<reason>; <reason>" — the directory's refusal reasons, joined
-            "step.ldap.refused.join");
+            "step.ldap.refused.join",
+            // "LDAP <name>" and "REST <target>": protocol names, the same in both languages
+            "runner.endpoint.ldap",
+            "runner.endpoint.rest");
 
     private static Properties load(String name) throws IOException {
         Properties properties = new Properties();

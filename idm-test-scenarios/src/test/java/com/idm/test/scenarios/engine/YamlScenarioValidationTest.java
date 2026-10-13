@@ -21,6 +21,7 @@ import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -155,6 +156,38 @@ class YamlScenarioValidationTest extends BaseIntegrationTest {
                 }))
                 .isInstanceOf(ReportLocale.UnsupportedLocaleException.class)
                 .hasMessage("unsupported report locale 'fr'; supported: en, es");
+    }
+
+    @Test
+    @DisplayName("In a Spanish run, JUnit's failure text for a failed scenario and for an invalid file is Spanish")
+    void testSpanishFailureText(@TempDir Path tempDir) throws Exception {
+        Map<String, StepType> registry = ScenarioSupport.registry(
+                ldapDirectories, databaseConnector, roleServiceConnector,
+                resourceServiceConnector, idmRestConnector, restProperties, restAuthenticator);
+        ScenarioValidator validator = new ScenarioValidator(registry, FixtureFactory.SUPPORTED_GENERATORS);
+        ScenarioEngine engine = new ScenarioEngine(
+                registry,
+                new FixtureFactory(testDataGenerator),
+                testExecutor,
+                executorProperties.getDefaultTimeout(),
+                executorProperties.getDefaultPollInterval(),
+                new ExpressionEvaluator());
+        RunInfo spanish = RunInfo.minimal("Escenarios").withLocale(Locale.of("es"));
+
+        List<DynamicTest> invalid = ScenarioSupport.buildTests(FIXTURE_DIR, List.of("broken-wait.yaml"), validator,
+                engine, tempDir.resolve("invalid-results.json"), scenarios -> spanish);
+        assertThatThrownBy(() -> invalid.get(0).getExecutable().execute())
+                .isInstanceOf(AssertionFailedError.class)
+                .hasMessageStartingWith("broken-wait.yaml, paso 2 (ldap.verify): ")
+                .hasMessageContaining("30s");
+
+        List<DynamicTest> failing = ScenarioSupport.buildTests("scenarios-locale-fixture",
+                List.of("missing-entry.yaml"), validator, engine, tempDir.resolve("failing-results.json"),
+                scenarios -> spanish);
+        assertThatThrownBy(() -> failing.get(0).getExecutable().execute())
+                .isInstanceOf(AssertionError.class)
+                .hasMessageContaining("missing-entry.yaml, paso 1 (ldap.verify): ldap.verify esperaba que "
+                        + "cn=itf46-never-created,ou=users");
     }
 
     @Test

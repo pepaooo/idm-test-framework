@@ -41,21 +41,21 @@ final class RunInfos {
         Map<String, String> endpoints = new LinkedHashMap<>();
 
         directoryUrls(environment, binder, needs.directories())
-                .forEach((name, url) -> endpoints.put("LDAP " + name, url));
+                .forEach((name, url) -> endpoints.put(label("runner.endpoint.ldap", locale, name), url));
 
         Map<String, DatabaseProperties.DatabaseConfig> databases = binder
                 .bind("idm.test.databases", Bindable.mapOf(String.class, DatabaseProperties.DatabaseConfig.class))
                 .orElse(Map.of());
         for (String database : needs.databases()) {
             DatabaseProperties.DatabaseConfig config = databases.get(database);
-            endpoints.put("Database " + database, config == null ? null : config.getJdbcUrl());
+            endpoints.put(label("runner.endpoint.database", locale, database), config == null ? null : config.getJdbcUrl());
         }
 
         if (needs.roles()) {
-            endpoints.put("Role service", environment.getProperty("idm.test.soap.url"));
+            endpoints.put(label("runner.endpoint.roleService", locale), environment.getProperty("idm.test.soap.url"));
         }
         if (needs.resources()) {
-            endpoints.put("Resource service", environment.getProperty("idm.test.soap.resource-url"));
+            endpoints.put(label("runner.endpoint.resourceService", locale), environment.getProperty("idm.test.soap.resource-url"));
         }
 
         Map<String, RestProperties.RestApiConfig> targets = binder
@@ -63,11 +63,16 @@ final class RunInfos {
                 .orElse(Map.of());
         for (String target : needs.restTargets()) {
             RestProperties.RestApiConfig config = targets.get(target);
-            endpoints.put("REST " + target, config == null ? null : config.getBaseUrl());
+            endpoints.put(label("runner.endpoint.rest", locale, target), config == null ? null : config.getBaseUrl());
         }
 
         return new RunInfo(runner, Instant.now(), List.of(environment.getActiveProfiles()),
                 System.getProperty(ScenarioSupport.SCENARIO_PROPERTY), endpoints, locale);
+    }
+
+    /** An endpoint row's label in the run's language. */
+    private static String label(String key, Locale locale, Object... args) {
+        return Messages.render(Message.of(key, args), locale);
     }
 
     /** The report language: the profile property, then the environment variable, then the system property. */

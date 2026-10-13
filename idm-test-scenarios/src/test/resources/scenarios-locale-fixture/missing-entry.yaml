@@ -1,0 +1,8 @@
+name: Missing entry
+description: Deliberately failing — the entry is never created. Used only by
+  YamlScenarioValidationTest to check that JUnit's failure text follows the report's language.
+
+steps:
+  - ldap.verify:
+      dn: "cn=itf46-never-created,ou=users"
+      exists: true

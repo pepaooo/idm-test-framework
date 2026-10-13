@@ -68,7 +68,7 @@ public final class LdapUpdateStep implements StepType {
         OperationResult<Void> result = connector.update(dn, attributes);
         if (!result.isSuccess()) {
             return StepOutcome.failure(Message.of("step.ldap.update.failed", where,
-                    LdapProblems.failure(result, e -> connector.updateProblem(dn, attributes, e))))
+                    LdapProblems.failure(result, e -> EdirectoryConnector.updateProblem(attributes, e))))
                     .withEvidence(evidence);
         }
 

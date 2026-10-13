@@ -25,6 +25,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -924,5 +925,25 @@ class LdapStepsTest {
                 "expect", Map.of("sn", "Lovelace")), false);
         assertThat(absent.message()).isEqualTo("ldap.verify failed for " + dn + ": Entry not found: " + dn);
         assertThat(spanish(absent)).isEqualTo("ldap.verify falló para " + dn + ": No se encontró la entrada: " + dn);
+    }
+
+    @Test
+    @DisplayName("A refused ldap.update reads the entry once, and its keyed message reuses that read")
+    void testRefusedUpdateReadsEntryOnce() {
+        String dn = "cn=ada.once,ou=users";
+        String b = "cn=b,ou=groups,dc=test,dc=com";
+        new LdapCreateStep(directories).execute(Map.of("dn", dn,
+                "attributes", Map.of("cn", "ada.once", "sn", "Lovelace", "seeAlso", List.of(b))), false);
+        EdirectoryConnector counted = spy(connector);
+
+        StepOutcome refused = new LdapUpdateStep(only(counted)).execute(Map.of("dn", dn,
+                "attributes", Map.of("seeAlso", Map.of("add", b))), false);
+
+        assertThat(refused.message())
+                .isEqualTo("ldap.update failed for " + dn + ": cannot add [" + b + "] to seeAlso: the entry already has it");
+        assertThat(spanish(refused))
+                .isEqualTo("ldap.update falló para " + dn + ": no se puede agregar [" + b + "] a seeAlso: la entrada ya lo tiene");
+        verify(counted, times(1)).readAttributes(dn);
+        connector.delete(dn);
     }
 }

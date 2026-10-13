@@ -326,7 +326,7 @@ public class EdirectoryConnector {
             log.error("Failed to update LDAP user '{}': {}", dn, detail);
             return OperationResult.<Void>builder()
                     .success(false)
-                    .message(updateProblem(dn, attributes, e).english())
+                    .message(updateProblem(attributes, e).english())
                     .errorType(ErrorType.LDAP_ERROR)
                     .throwable(e)
                     .build();
@@ -351,14 +351,34 @@ public class EdirectoryConnector {
      * attribute is part of an add/remove change.
      */
     private OperationResult<Void> refused(String dn, Map<String, Object> attributes, String key, Exception e) {
-        String message = refusedProblem(dn, attributes, key, e).english();
+        LdapProblem problem = refusedProblem(dn, attributes, key, e);
+        String message = problem.english();
         log.error("Failed to update LDAP user '{}': {}", dn, message);
         return OperationResult.<Void>builder()
                 .success(false)
                 .message(message)
                 .errorType(ErrorType.LDAP_ERROR)
-                .throwable(e)
+                // Keeps the explanation, computed from the one read above, so updateProblem never reads again.
+                .throwable(new RefusedUpdateException(problem, e))
                 .build();
+    }
+
+    /**
+     * The directory refused an add or remove. Carries the problem {@link #update} worked out (with
+     * the one read it made), its message that problem's English; the directory's exception is the cause.
+     */
+    static final class RefusedUpdateException extends RuntimeException {
+
+        private final transient LdapProblem problem;
+
+        private RefusedUpdateException(LdapProblem problem, Throwable cause) {
+            super(problem.english(), cause);
+            this.problem = problem;
+        }
+
+        LdapProblem problem() {
+            return problem;
+        }
     }
 
     private static boolean touchesSecret(Map<String, Object> attributes) {
@@ -416,17 +436,14 @@ public class EdirectoryConnector {
     }
 
     /**
-     * Why {@link #update} of {@code dn} with {@code attributes} failed with {@code e}, structured.
-     * When the directory refused an add or remove, this reads the entry, as {@link #update} did,
-     * to say which values; a caller should use the result only when its English equals the
-     * failure's message.
+     * Why {@link #update} with {@code attributes} failed with {@code e} (its result's throwable),
+     * structured. Never contacts the directory: a refused add or remove carries the problem
+     * {@link #update} already worked out. A caller should use the result only when its English
+     * equals the failure's message.
      */
-    public LdapProblem updateProblem(String dn, Map<String, Object> attributes, Throwable e) {
-        if (e instanceof org.springframework.ldap.AttributeInUseException) {
-            return refusedProblem(dn, attributes, LdapValueChanges.ADD, e);
-        }
-        if (e instanceof org.springframework.ldap.NoSuchAttributeException) {
-            return refusedProblem(dn, attributes, LdapValueChanges.REMOVE, e);
+    public static LdapProblem updateProblem(Map<String, Object> attributes, Throwable e) {
+        if (e instanceof RefusedUpdateException refused) {
+            return refused.problem();
         }
         return touchesSecret(attributes)
                 ? LdapProblem.of(LdapProblem.Kind.UPDATE_REFUSED_REQUEST)

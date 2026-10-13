@@ -76,20 +76,26 @@ class LdapProblemTest {
     /** One input per problem the connector's operations can report (ITF-51). */
     static List<LdapProblem> operationProblems() {
         RuntimeException boom = new RuntimeException("boom");
-        // The refusal kinds read the entry; a template that finds nothing leaves only the secret reasons.
-        EdirectoryConnector connector = new EdirectoryConnector(org.mockito.Mockito.mock(LdapTemplate.class));
-        Exception inUse = new org.springframework.ldap.AttributeInUseException(
-                new javax.naming.directory.AttributeInUseException("in use"));
+        // A refused add/remove goes through update() itself, which works out the problem with its
+        // one read; a template that finds nothing leaves only the secret reasons.
+        LdapTemplate template = org.mockito.Mockito.mock(LdapTemplate.class);
+        org.mockito.Mockito.doThrow(new org.springframework.ldap.AttributeInUseException(
+                        new javax.naming.directory.AttributeInUseException("in use")))
+                .when(template).modifyAttributes(org.mockito.ArgumentMatchers.any(javax.naming.Name.class),
+                        org.mockito.ArgumentMatchers.any(javax.naming.directory.ModificationItem[].class));
+        EdirectoryConnector connector = new EdirectoryConnector(template);
+        java.util.function.Function<Map<String, Object>, LdapProblem> refused = attributes ->
+                EdirectoryConnector.updateProblem(attributes,
+                        connector.update("cn=x", attributes).getThrowable().orElseThrow());
         List<LdapProblem> problems = new java.util.ArrayList<>(List.of(
                 EdirectoryConnector.createProblem(boom),
                 EdirectoryConnector.readAttributesProblem("cn=x", new org.springframework.ldap.NameNotFoundException(
                         new javax.naming.NameNotFoundException("gone"))),
                 EdirectoryConnector.readAttributesProblem("cn=x", boom),
-                connector.updateProblem("cn=x", Map.of("mail", "a"), boom),
-                connector.updateProblem("cn=x", Map.of("userPassword", "a"), boom),
-                connector.updateProblem("cn=x", Map.of("userPassword", "a", "mail", Map.of("add", "b")), inUse),
-                connector.updateProblem("cn=x", Map.of("userPassword", Map.of("add", "a"),
-                        "pwdHistory", Map.of("add", "b")), inUse),
+                EdirectoryConnector.updateProblem(Map.of("mail", "a"), boom),
+                EdirectoryConnector.updateProblem(Map.of("userPassword", "a"), boom),
+                refused.apply(Map.of("userPassword", "a", "mail", Map.of("add", "b"))),
+                refused.apply(Map.of("userPassword", Map.of("add", "a"), "pwdHistory", Map.of("add", "b"))),
                 EdirectoryConnector.deleteProblem(boom),
                 EdirectoryConnector.existsProblem(boom),
                 LdapValueChanges.reasonProblem(LdapValueChanges.ADD, "mail", List.of("a")),
@@ -144,5 +150,28 @@ class LdapProblemTest {
         assertThat(problem.kind()).isEqualTo(LdapProblem.Kind.MATCH_SHAPE);
         assertThat(problem.values().get(1)).isInstanceOf(LdapProblem.class);
         assertThat(problem.english()).startsWith("Attribute 'title' is an empty map; ");
+    }
+
+    @Test
+    @DisplayName("A refused update keeps its problem in the result, so rebuilding it reads nothing more")
+    void testRefusedUpdateReadsOnce() {
+        LdapTemplate template = org.mockito.Mockito.mock(LdapTemplate.class);
+        org.mockito.Mockito.doThrow(new org.springframework.ldap.NoSuchAttributeException(
+                        new javax.naming.directory.NoSuchAttributeException("missing")))
+                .when(template).modifyAttributes(org.mockito.ArgumentMatchers.any(javax.naming.Name.class),
+                        org.mockito.ArgumentMatchers.any(javax.naming.directory.ModificationItem[].class));
+        EdirectoryConnector connector = new EdirectoryConnector(template);
+        Map<String, Object> attributes = Map.of("userPassword", Map.of("remove", "a"));
+
+        var result = connector.update("cn=x", attributes);
+        LdapProblem problem = EdirectoryConnector.updateProblem(attributes, result.getThrowable().orElseThrow());
+
+        assertThat(problem.english()).isEqualTo(result.getMessage())
+                .isEqualTo("cannot remove from userPassword: the directory refused it because a value is missing");
+        assertThat(result.getThrowable().orElseThrow().getCause())
+                .isInstanceOf(org.springframework.ldap.NoSuchAttributeException.class);
+        org.mockito.Mockito.verify(template, org.mockito.Mockito.times(1))
+                .lookup(org.mockito.ArgumentMatchers.any(javax.naming.Name.class),
+                        org.mockito.ArgumentMatchers.<org.springframework.ldap.core.AttributesMapper<Object>>any());
     }
 }

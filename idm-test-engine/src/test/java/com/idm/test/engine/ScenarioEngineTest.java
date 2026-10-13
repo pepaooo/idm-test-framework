@@ -10,6 +10,7 @@ import com.idm.test.engine.result.ScenarioResult;
 import com.idm.test.engine.result.StepResult;
 import com.idm.test.engine.spi.DeferredExpression;
 import com.idm.test.engine.spi.Evidence;
+import com.idm.test.engine.i18n.KeyedArgumentException;
 import com.idm.test.engine.i18n.Messages;
 import com.idm.test.engine.spi.LdapEvidence;
 import com.idm.test.engine.spi.Message;
@@ -1274,5 +1275,32 @@ class ScenarioEngineTest {
         assertThat(set.steps().get(1).message()).isEqualTo("unknown step type 'nope'. Available: [a]");
         assertThat(Messages.render(set.steps().get(1).messageDetail(), ES))
                 .isEqualTo("tipo de paso desconocido 'nope'. Disponibles: [a]");
+    }
+
+    @Test
+    @DisplayName("A keyed IllegalArgumentException is still named IllegalArgumentException at every engine site")
+    void testKeyedArgumentExceptionKeepsItsName() {
+        StepType throwing = new StepType() {
+            public String name() { return "probe"; }
+            public boolean retryable() { return true; }
+            public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
+                throw new KeyedArgumentException(Message.of("engine.ref.unresolved", "${x}", "x"));
+            }
+        };
+        ScenarioResult waited = engineWith(throwing).run(scenario(
+                new StepSpec("probe", Map.of("dn", "x", "wait", Map.of("timeout", "1s", "poll", "1s")))), "t.yaml");
+        assertThat(waited.steps().get(0).message()).isEqualTo(
+                "threw IllegalArgumentException: cannot resolve ${x} — no value for 'x' (last observed value after retrying)");
+        assertThat(Messages.render(waited.steps().get(0).messageDetail(), ES)).isEqualTo(
+                "lanzó IllegalArgumentException: no se puede resolver ${x} — no hay valor para 'x'"
+                        + " (último valor observado tras reintentar)");
+
+        ScenarioResult cleanup = engineWith(recordingAction("a")).run(withCleanup(
+                List.of(new StepSpec("a", Map.of("dn", "x"))),
+                new StepSpec("a", Map.of("dn", "${user.nope}"))), "t.yaml");
+        assertThat(cleanup.cleanup().get(0).message())
+                .isEqualTo("cleanup 'a' threw IllegalArgumentException: cannot resolve ${user.nope} — no value for 'nope'");
+        assertThat(Messages.render(cleanup.cleanup().get(0).messageDetail(), ES)).isEqualTo(
+                "la limpieza 'a' lanzó IllegalArgumentException: no se puede resolver ${user.nope} — no hay valor para 'nope'");
     }
 }

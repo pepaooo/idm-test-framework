@@ -5,6 +5,7 @@ import com.idm.test.connector.ldap.client.LdapDirectories;
 import com.idm.test.connector.ldap.model.LdapUser;
 import com.idm.test.core.model.OperationResult;
 import com.idm.test.engine.spi.LdapEvidence;
+import com.idm.test.engine.i18n.Messages;
 import com.idm.test.engine.spi.StepOutcome;
 import com.idm.test.engine.spi.StepType;
 import com.idm.test.utils.ldap.EmbeddedLdapServer;
@@ -17,12 +18,14 @@ import org.springframework.ldap.core.support.LdapContextSource;
 
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -799,5 +802,148 @@ class LdapStepsTest {
         assertThat(outcome.success()).isFalse();
         assertThat(outcome.message()).doesNotContain("S3cret!")
                 .isEqualTo("ldap.update for cn=x,ou=users: attribute 'userPassword' lists the same value in both 'add' and 'remove'");
+    }
+
+    @Test
+    @DisplayName("ldap.verify renders its failure in Spanish with the external text unchanged")
+    void testVerifyFailureRendersInSpanish() {
+        EdirectoryConnector mockConnector = mock(EdirectoryConnector.class);
+        when(mockConnector.readAttributes(any()))
+                .thenReturn(OperationResult.<Map<String, Object>>failure("connection dropped"));
+
+        StepOutcome outcome = new LdapVerifyStep(only(mockConnector)).execute(Map.of(
+                "dn", "cn=x,ou=users", "expect", Map.of("givenName", "Ada")), false);
+
+        assertThat(Messages.render(outcome.detail(), Locale.of("es")))
+                .isEqualTo("ldap.verify falló para cn=x,ou=users: connection dropped");
+        assertThat(Messages.render(outcome.detail(), Locale.ENGLISH)).isEqualTo(outcome.message());
+    }
+
+    @Test
+    @DisplayName("ldap steps name the directory in Spanish when more than one is configured")
+    void testDirectorySuffixRendersInSpanish() {
+        EdirectoryConnector mockConnector = mock(EdirectoryConnector.class);
+        when(mockConnector.exists(any())).thenReturn(OperationResult.success(false));
+        LdapDirectories two = LdapDirectories.ofConnectors(
+                Map.of("a", mockConnector, "b", mock(EdirectoryConnector.class)), "a");
+
+        StepOutcome outcome = new LdapDeleteStep(two).execute(Map.of("dn", "cn=x"), false);
+
+        assertThat(Messages.render(outcome.detail(), Locale.of("es")))
+                .isEqualTo("ldap.delete no encontró ninguna entrada en cn=x en el directorio 'a' para eliminar");
+        assertThat(outcome.message())
+                .isEqualTo("ldap.delete found no entry at cn=x in directory 'a' to delete");
+    }
+
+    private static String spanish(StepOutcome outcome) {
+        return Messages.render(outcome.detail(), Locale.of("es"));
+    }
+
+    @Test
+    @DisplayName("ldap.verify renders a value mismatch in Spanish, from the matcher's structured problem")
+    void testVerifyMismatchRendersInSpanish() {
+        EdirectoryConnector mockConnector = mock(EdirectoryConnector.class);
+        when(mockConnector.readAttributes(any()))
+                .thenReturn(OperationResult.success(Map.of("givenName", "Ada")));
+
+        StepOutcome outcome = new LdapVerifyStep(only(mockConnector)).execute(Map.of(
+                "dn", "cn=x,ou=users", "expect", Map.of("givenName", "Grace")), false);
+
+        assertThat(spanish(outcome))
+                .isEqualTo("ldap.verify falló para cn=x,ou=users: Atributo 'givenName': esperado=Grace, real=Ada");
+        assertThat(outcome.message())
+                .isEqualTo("ldap.verify failed for cn=x,ou=users: Attribute 'givenName': expected=Grace, actual=Ada");
+    }
+
+    @Test
+    @DisplayName("ldap.verify renders a malformed matcher in Spanish")
+    void testVerifyShapeRendersInSpanish() {
+        StepOutcome outcome = new LdapVerifyStep(only(mock(EdirectoryConnector.class))).execute(Map.of(
+                "dn", "cn=x,ou=users", "expect", Map.of("title", Map.of())), false);
+
+        assertThat(spanish(outcome)).isEqualTo("ldap.verify para cn=x,ou=users: el atributo 'title' es un mapa vacío; "
+                + "use equals, contains, excludes, count, matches o ignoreCase");
+    }
+
+    @Test
+    @DisplayName("ldap.create renders a directory failure in Spanish")
+    void testCreateFailureRendersInSpanish() {
+        EdirectoryConnector mockConnector = mock(EdirectoryConnector.class);
+        when(mockConnector.create(any())).thenReturn(OperationResult.<LdapUser>failure("boom"));
+
+        StepOutcome outcome = new LdapCreateStep(only(mockConnector)).execute(Map.of(
+                "dn", "cn=x,ou=users", "attributes", Map.of("sn", "X")), false);
+
+        assertThat(spanish(outcome)).isEqualTo("ldap.create falló para cn=x,ou=users: boom");
+    }
+
+    @Test
+    @DisplayName("ldap.update renders its failures in Spanish")
+    void testUpdateRendersInSpanish() {
+        LdapUpdateStep update = new LdapUpdateStep(only(mock(EdirectoryConnector.class)));
+
+        assertThat(spanish(update.execute(Map.of("dn", "cn=x,ou=users", "attributes", Map.of()), false)))
+                .isEqualTo("ldap.update para cn=x,ou=users no tiene atributos que cambiar");
+    }
+
+    @Test
+    @DisplayName("LDAP list checks render in Spanish, including a malformed add/remove change")
+    void testListProblemsRenderInSpanish() {
+        StepOutcome empty = new LdapCreateStep(only(mock(EdirectoryConnector.class))).execute(Map.of(
+                "dn", "cn=x,ou=users", "attributes", Map.of("ou", List.of())), false);
+        StepOutcome change = new LdapUpdateStep(only(mock(EdirectoryConnector.class))).execute(Map.of(
+                "dn", "cn=x,ou=users", "attributes", Map.of("seeAlso", Map.of())), false);
+
+        assertThat(spanish(empty)).isEqualTo(
+                "ldap.create para cn=x,ou=users: el atributo 'ou' tiene una lista vacía; no hay nada que escribir");
+        assertThat(spanish(change)).isEqualTo(
+                "ldap.update para cn=x,ou=users: el atributo 'seeAlso' es un mapa vacío; use add y/o remove");
+    }
+
+    @Test
+    @DisplayName("The directory connector's own frames render in Spanish, the server text unchanged")
+    void testConnectorFramesRenderInSpanish() {
+        String dn = "cn=ada.frames,ou=users";
+        String b = "cn=b,ou=groups,dc=test,dc=com";
+        Map<String, Object> attributes = Map.of("cn", "ada.frames", "sn", "Lovelace", "seeAlso", List.of(b));
+        new LdapCreateStep(directories).execute(Map.of("dn", dn, "attributes", attributes), false);
+
+        StepOutcome again = new LdapCreateStep(directories).execute(Map.of("dn", dn, "attributes", attributes), false);
+        assertThat(again.message()).startsWith("ldap.create failed for " + dn + ": Failed to create user: ");
+        String server = again.message().substring(("ldap.create failed for " + dn + ": Failed to create user: ").length());
+        assertThat(spanish(again)).isEqualTo("ldap.create falló para " + dn + ": No se pudo crear el usuario: " + server);
+
+        StepOutcome refused = new LdapUpdateStep(directories).execute(Map.of("dn", dn,
+                "attributes", Map.of("seeAlso", Map.of("add", b))), false);
+        assertThat(refused.message())
+                .isEqualTo("ldap.update failed for " + dn + ": cannot add [" + b + "] to seeAlso: the entry already has it");
+        assertThat(spanish(refused))
+                .isEqualTo("ldap.update falló para " + dn + ": no se puede agregar [" + b + "] a seeAlso: la entrada ya lo tiene");
+
+        connector.delete(dn);
+        StepOutcome absent = new LdapVerifyStep(directories).execute(Map.of("dn", dn,
+                "expect", Map.of("sn", "Lovelace")), false);
+        assertThat(absent.message()).isEqualTo("ldap.verify failed for " + dn + ": Entry not found: " + dn);
+        assertThat(spanish(absent)).isEqualTo("ldap.verify falló para " + dn + ": No se encontró la entrada: " + dn);
+    }
+
+    @Test
+    @DisplayName("A refused ldap.update reads the entry once, and its keyed message reuses that read")
+    void testRefusedUpdateReadsEntryOnce() {
+        String dn = "cn=ada.once,ou=users";
+        String b = "cn=b,ou=groups,dc=test,dc=com";
+        new LdapCreateStep(directories).execute(Map.of("dn", dn,
+                "attributes", Map.of("cn", "ada.once", "sn", "Lovelace", "seeAlso", List.of(b))), false);
+        EdirectoryConnector counted = spy(connector);
+
+        StepOutcome refused = new LdapUpdateStep(only(counted)).execute(Map.of("dn", dn,
+                "attributes", Map.of("seeAlso", Map.of("add", b))), false);
+
+        assertThat(refused.message())
+                .isEqualTo("ldap.update failed for " + dn + ": cannot add [" + b + "] to seeAlso: the entry already has it");
+        assertThat(spanish(refused))
+                .isEqualTo("ldap.update falló para " + dn + ": no se puede agregar [" + b + "] a seeAlso: la entrada ya lo tiene");
+        verify(counted, times(1)).readAttributes(dn);
+        connector.delete(dn);
     }
 }

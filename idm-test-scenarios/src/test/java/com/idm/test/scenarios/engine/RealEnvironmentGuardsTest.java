@@ -876,4 +876,19 @@ class RealEnvironmentGuardsTest {
                 directoriesTarget("idm.test.directories.ad.url", "ldap://localhost:389"), DEFAULT_ONLY))
                 .doesNotThrowAnyException();
     }
+
+    @Test
+    @DisplayName("Guard messages are in the run's language: Spanish when the run is in Spanish")
+    void testGuardMessageInSpanish() {
+        assertThatThrownBy(() -> RealEnvironmentScenarios.requireDatabases(Set.of("hr"),
+                databases("sap", "jdbc:postgresql://db.example.org/sap", "svc", "real"), Locale.of("es")))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("Los escenarios usan la base de datos 'hr', que no está configurada en idm.test.databases."
+                        + " Bases de datos configuradas: [sap]");
+        assertThatThrownBy(() -> RealEnvironmentScenarios.requireNotEmbedded(target(REAL_LDAP, REAL_SOAP, "test"),
+                Locale.of("es")))
+                .hasMessage("Los perfiles activos [test] incluyen 'test', la configuración de pruebas embebida."
+                        + " Defina IDM_TEST_PROFILE con el nombre del perfil de su entorno real, por ejemplo"
+                        + " IDM_TEST_PROFILE=dev.");
+    }
 }

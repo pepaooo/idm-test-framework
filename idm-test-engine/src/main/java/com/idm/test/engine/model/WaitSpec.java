@@ -1,5 +1,8 @@
 package com.idm.test.engine.model;
 
+import com.idm.test.engine.i18n.KeyedArgumentException;
+import com.idm.test.engine.spi.Message;
+
 import java.time.Duration;
 import java.util.Map;
 
@@ -32,8 +35,7 @@ public record WaitSpec(Duration timeout, Duration poll) {
                     duration(map.get("timeout"), defaultTimeout),
                     duration(map.get("poll"), defaultPoll));
         }
-        throw new IllegalArgumentException(
-                "wait must be true or a map with timeout and poll, but was: " + raw);
+        throw new KeyedArgumentException(Message.of("engine.wait.badShape", raw));
     }
 
     private static Duration duration(Object value, Duration fallback) {
@@ -46,7 +48,7 @@ public record WaitSpec(Duration timeout, Duration poll) {
     static Duration parseDuration(String text) {
         String trimmed = text.trim();
         if (trimmed.length() < 2) {
-            throw new IllegalArgumentException("Not a duration: '" + text + "'");
+            throw new KeyedArgumentException(Message.of("engine.duration.invalid", text));
         }
 
         char unit = trimmed.charAt(trimmed.length() - 1);
@@ -56,16 +58,14 @@ public record WaitSpec(Duration timeout, Duration poll) {
         try {
             amount = Long.parseLong(number);
         } catch (NumberFormatException e) {
-            throw new IllegalArgumentException(
-                    "Not a duration: '" + text + "'. Use a number followed by s, m or h.", e);
+            throw new KeyedArgumentException(Message.of("engine.duration.notNumber", text), e);
         }
 
         return switch (unit) {
             case 's' -> Duration.ofSeconds(amount);
             case 'm' -> Duration.ofMinutes(amount);
             case 'h' -> Duration.ofHours(amount);
-            default -> throw new IllegalArgumentException(
-                    "Unknown duration unit '" + unit + "' in '" + text + "'. Use s, m or h.");
+            default -> throw new KeyedArgumentException(Message.of("engine.duration.unit", unit, text));
         };
     }
 }

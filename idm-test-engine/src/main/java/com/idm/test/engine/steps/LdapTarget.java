@@ -2,6 +2,7 @@ package com.idm.test.engine.steps;
 
 import com.idm.test.connector.ldap.client.EdirectoryConnector;
 import com.idm.test.connector.ldap.client.LdapDirectories;
+import com.idm.test.engine.spi.Message;
 import com.idm.test.engine.spi.StepOutcome;
 
 import java.util.Map;
@@ -15,12 +16,12 @@ import java.util.Optional;
 final class LdapTarget {
 
     private final EdirectoryConnector connector;
-    private final String suffix;
+    private final String directoryName;
     private final StepOutcome failure;
 
-    private LdapTarget(EdirectoryConnector connector, String suffix, StepOutcome failure) {
+    private LdapTarget(EdirectoryConnector connector, String directoryName, StepOutcome failure) {
         this.connector = connector;
-        this.suffix = suffix;
+        this.directoryName = directoryName;
         this.failure = failure;
     }
 
@@ -32,17 +33,15 @@ final class LdapTarget {
         } else {
             Optional<String> fallback = directories.defaultName();
             if (fallback.isEmpty()) {
-                return failed(step + ": name a directory; there is no default. Configured directories: "
-                        + directories.names());
+                return failed(Message.of("step.ldap.target.noDefault", step, directories.names()));
             }
             name = fallback.get();
         }
         Optional<EdirectoryConnector> connector = directories.connector(name);
         if (connector.isEmpty()) {
-            return failed(step + ": unknown directory '" + name + "'. Configured directories: " + directories.names());
+            return failed(Message.of("step.ldap.target.unknown", step, name, directories.names()));
         }
-        String suffix = directories.names().size() > 1 ? " in directory '" + name + "'" : "";
-        return new LdapTarget(connector.get(), suffix, null);
+        return new LdapTarget(connector.get(), directories.names().size() > 1 ? name : null, null);
     }
 
     /** The {@code directory:} the step named, or null when it relies on the default. */
@@ -51,8 +50,8 @@ final class LdapTarget {
         return directory == null ? null : String.valueOf(directory);
     }
 
-    private static LdapTarget failed(String message) {
-        return new LdapTarget(null, "", StepOutcome.finalFailure(message));
+    private static LdapTarget failed(Message message) {
+        return new LdapTarget(null, null, StepOutcome.finalFailure(message));
     }
 
     boolean isFailure() {
@@ -68,7 +67,7 @@ final class LdapTarget {
     }
 
     /** The DN as messages show it: with the directory's name when more than one is configured. */
-    String at(String dn) {
-        return dn + suffix;
+    Object at(String dn) {
+        return directoryName == null ? dn : Message.of("step.ldap.target.inDirectory", dn, directoryName);
     }
 }

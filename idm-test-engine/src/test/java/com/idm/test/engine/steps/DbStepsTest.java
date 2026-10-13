@@ -1,6 +1,7 @@
 package com.idm.test.engine.steps;
 
 import com.idm.test.connector.database.client.MultiDatabaseConnector;
+import com.idm.test.engine.i18n.Messages;
 import com.idm.test.engine.spi.SqlEvidence;
 import com.idm.test.engine.spi.StepOutcome;
 import org.junit.jupiter.api.BeforeAll;
@@ -12,6 +13,7 @@ import org.springframework.jdbc.datasource.DriverManagerDataSource;
 
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -449,5 +451,52 @@ class DbStepsTest {
         StepOutcome unknown = new DbVerifyStep(connector).execute(Map.of(
                 "database", "nope", "query", "SELECT 1", "expect", Map.of("rowCount", 1)), false);
         assertThat(unknown.evidence()).isNull();
+    }
+
+    @Test
+    @DisplayName("db.verify renders a row count mismatch in Spanish")
+    void testVerifyRowCountMismatchRendersInSpanish() {
+        StepOutcome outcome = new DbVerifyStep(connector).execute(Map.of(
+                "database", DB, "query", "SELECT * FROM sap_users",
+                "expect", Map.of("rowCount", 3)), false);
+
+        assertThat(Messages.render(outcome.detail(), Locale.of("es")))
+                .isEqualTo("db.verify en 'test-db' esperaba 3 fila(s), pero la consulta devolvió 0");
+        assertThat(outcome.message())
+                .isEqualTo("db.verify on 'test-db' expected 3 row(s) but the query returned 0");
+    }
+
+    @Test
+    @DisplayName("db.execute renders a failure and a success in Spanish")
+    void testExecuteRendersInSpanish() {
+        DbExecuteStep execute = new DbExecuteStep(connector);
+        String external = connector.executeUpdate("nope", "DELETE FROM sap_users").getMessage();
+
+        StepOutcome failed = execute.execute(Map.of("database", "nope", "statement", "DELETE FROM sap_users"), false);
+        StepOutcome done = execute.execute(Map.of("database", DB, "statement", "DELETE FROM sap_users"), false);
+
+        // Since ITF-51 the connector's own frame is keyed too; the database names stay as they are.
+        String available = external.substring(external.indexOf("Available databases: ") + "Available databases: ".length());
+        assertThat(Messages.render(failed.detail(), Locale.of("es"))).isEqualTo("db.execute falló en 'nope':"
+                + " La base de datos 'nope' no está configurada. Bases de datos disponibles: " + available);
+        assertThat(Messages.render(done.detail(), Locale.of("es")))
+                .isEqualTo("se ejecutó en 'test-db'; 0 fila(s) afectada(s)");
+    }
+
+    @Test
+    @DisplayName("The database connector's own frames render in Spanish, the driver text unchanged")
+    void testConnectorFramesRenderInSpanish() {
+        StepOutcome unknown = new DbExecuteStep(connector).execute(
+                Map.of("database", "nope", "statement", "DELETE FROM sap_users"), false);
+        assertThat(unknown.message()).startsWith("db.execute failed on 'nope': Database 'nope' is not configured.");
+        assertThat(Messages.render(unknown.detail(), Locale.of("es")))
+                .startsWith("db.execute falló en 'nope': La base de datos 'nope' no está configurada.");
+
+        StepOutcome bad = new DbVerifyStep(connector).execute(Map.of(
+                "database", DB, "query", "SELECT * FROM no_such_table", "expect", Map.of("rowCount", 0)), false);
+        String prefix = "db.verify failed on '" + DB + "': Query failed: ";
+        assertThat(bad.message()).startsWith(prefix);
+        assertThat(Messages.render(bad.detail(), Locale.of("es")))
+                .isEqualTo("db.verify falló en '" + DB + "': La consulta falló: " + bad.message().substring(prefix.length()));
     }
 }

@@ -1,6 +1,8 @@
 package com.idm.test.engine.expr;
 
+import com.idm.test.engine.i18n.Messages;
 import com.idm.test.engine.result.Secrets;
+import com.idm.test.engine.spi.Message;
 import org.mozilla.javascript.BaseFunction;
 import org.mozilla.javascript.Callable;
 import org.mozilla.javascript.Context;
@@ -64,8 +66,9 @@ final class ListHelpers {
 
     private static final int SHOWN = 10;
 
-    private final List<String> notes = new ArrayList<>();
+    private final List<Message> notes = new ArrayList<>();
     private int nodes;
+    private Message failure;
 
     /** Defines the three helpers in {@code scope}; the returned instance collects their notes. */
     static ListHelpers defineIn(Context cx, Scriptable scope) {
@@ -77,8 +80,13 @@ final class ListHelpers {
     }
 
     /** The notes recorded so far, in call order. */
-    List<String> notes() {
+    List<Message> notes() {
         return new ArrayList<>(notes);
+    }
+
+    /** The last error a helper raised, by key, or null; its text is inside the error JavaScript reports. */
+    Message failure() {
+        return failure;
     }
 
     private interface Helper {
@@ -92,8 +100,7 @@ final class ListHelpers {
                 Object list = args.length > 0 ? args[0] : Undefined.instance;
                 Object values = args.length > 1 ? args[1] : Undefined.instance;
                 if (isAbsent(values)) {
-                    throw ScriptRuntime.constructError(
-                            "Error", name + ": the values to look for are undefined");
+                    throw error(Message.of("engine.list.undefinedValues", name));
                 }
                 return helper.apply(name, list, values);
             }
@@ -122,7 +129,7 @@ final class ListHelpers {
         if (missing.isEmpty()) {
             return true;
         }
-        notes.add(name + ": missing " + show(missing));
+        notes.add(Message.of("engine.list.missing", name, show(missing)));
         return false;
     }
 
@@ -131,7 +138,7 @@ final class ListHelpers {
         if (found.isEmpty()) {
             return true;
         }
-        notes.add(name + ": found " + show(found));
+        notes.add(Message.of("engine.list.found", name, show(found)));
         return false;
     }
 
@@ -143,14 +150,13 @@ final class ListHelpers {
         if (missing.isEmpty() && unexpected.isEmpty()) {
             return true;
         }
-        List<String> parts = new ArrayList<>();
-        if (!missing.isEmpty()) {
-            parts.add("missing " + show(missing));
+        if (unexpected.isEmpty()) {
+            notes.add(Message.of("engine.list.missing", name, show(missing)));
+        } else if (missing.isEmpty()) {
+            notes.add(Message.of("engine.list.unexpected", name, show(unexpected)));
+        } else {
+            notes.add(Message.of("engine.list.missingUnexpected", name, show(missing), show(unexpected)));
         }
-        if (!unexpected.isEmpty()) {
-            parts.add("unexpected " + show(unexpected));
-        }
-        notes.add(name + ": " + String.join("; ", parts));
         return false;
     }
 
@@ -239,13 +245,14 @@ final class ListHelpers {
                 : ScriptRuntime.toString(value);
     }
 
-    private String show(List<Object> values) {
+    /** The values as {@code [a, b]}, or past ten a message ending in how many more. */
+    private Object show(List<Object> values) {
         List<String> shown = new ArrayList<>();
         for (int i = 0; i < Math.min(SHOWN, values.size()); i++) {
             shown.add(display(values.get(i), false, 0));
         }
         if (values.size() > SHOWN) {
-            shown.add("… " + (values.size() - SHOWN) + " more");
+            return Message.of("engine.list.more", String.join(", ", shown), values.size() - SHOWN);
         }
         return "[" + String.join(", ", shown) + "]";
     }
@@ -290,17 +297,21 @@ final class ListHelpers {
 
     private void visit(String name, int depth) {
         if (depth > MAX_DEPTH) {
-            throw ScriptRuntime.constructError("Error", name + ": a value is nested more than "
-                    + MAX_DEPTH + " levels deep; is it self-referencing?");
+            throw error(Message.of("engine.list.tooDeep", name, MAX_DEPTH));
         }
         if (++nodes > MAX_NODES) {
             throw tooLarge(name);
         }
     }
 
-    private static RuntimeException tooLarge(String name) {
-        return ScriptRuntime.constructError("Error", name + ": the lists hold more than "
-                + MAX_NODES + " values in total");
+    private RuntimeException tooLarge(String name) {
+        return error(Message.of("engine.list.tooLarge", name, MAX_NODES));
+    }
+
+    /** A JavaScript Error with {@code problem}'s English text; {@link #failure()} keeps it by key. */
+    private RuntimeException error(Message problem) {
+        failure = problem;
+        return ScriptRuntime.constructError("Error", Messages.english(problem));
     }
 
     /** The string as JSON.stringify would quote it. */

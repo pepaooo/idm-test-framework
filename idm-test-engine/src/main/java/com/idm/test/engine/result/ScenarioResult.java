@@ -1,7 +1,14 @@
 package com.idm.test.engine.result;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.idm.test.engine.i18n.Messages;
+import com.idm.test.engine.spi.Message;
+
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * The outcome of one scenario. The engine produces this and renders nothing; every output
@@ -13,6 +20,9 @@ import java.util.List;
  * @param failureDetail  what went wrong before any step could run (e.g. fixture setup),
  *                        or null when the scenario got at least as far as its first step
  * @param description    the scenario's own top-level description, or null
+ * @param failureDetailKey  the key of {@code failureDetail}, so it can be shown in another
+ *                          language, or null when it is plain text
+ * @param failureDetailArgs the arguments of {@code failureDetailKey}, or null when there is no key
  */
 public record ScenarioResult(
         String name,
@@ -22,10 +32,21 @@ public record ScenarioResult(
         List<StepResult> steps,
         List<CleanupResult> cleanup,
         String failureDetail,
-        String description) {
+        String description,
+        @JsonInclude(JsonInclude.Include.NON_NULL) String failureDetailKey,
+        @JsonInclude(JsonInclude.Include.NON_NULL) List<Object> failureDetailArgs) {
 
     public ScenarioResult {
         cleanup = cleanup == null ? List.of() : cleanup;
+        failureDetailArgs = failureDetailArgs == null
+                ? null : Collections.unmodifiableList(new ArrayList<>(failureDetailArgs));
+    }
+
+    /** A result whose failure detail, if any, is plain text. */
+    public ScenarioResult(String name, String sourceName, boolean success, long durationMillis,
+                          List<StepResult> steps, List<CleanupResult> cleanup, String failureDetail,
+                          String description) {
+        this(name, sourceName, success, durationMillis, steps, cleanup, failureDetail, description, null, null);
     }
 
     /** A result with no cleanup outcomes. */
@@ -41,10 +62,19 @@ public record ScenarioResult(
     }
 
     /**
-     * @return a message naming the file and what went wrong, or null when successful. The
-     * steps' own failure leads; any FAILED cleanup entries follow it.
+     * @return a message naming the file and what went wrong, in English, or null when successful.
+     * The steps' own failure leads; any FAILED cleanup entries follow it.
      */
     public String failureSummary() {
+        return failureSummary(Locale.ENGLISH);
+    }
+
+    /**
+     * @return {@link #failureSummary()} in the given language: the frame is translated, and each
+     * step's, entry's or failure detail's own message is translated when it has a key and shown as
+     * written when it has none. Null when successful.
+     */
+    public String failureSummary(Locale locale) {
         if (success) {
             return null;
         }
@@ -60,34 +90,44 @@ public record ScenarioResult(
         }
 
         if (failed != null) {
-            StringBuilder step = new StringBuilder()
-                    .append(sourceName)
-                    .append(", step ").append(failed.index() + 1)
-                    .append(" (").append(failed.type()).append(quoted(failed.description())).append("): ")
-                    .append(failed.message());
+            Object text = text(failed.message(), failed.messageDetail());
+            Message step = failed.description() == null
+                    ? Message.of("engine.summary.step", sourceName, failed.index() + 1, failed.type(), text)
+                    : Message.of("engine.summary.stepDescribed", sourceName, failed.index() + 1, failed.type(),
+                            failed.description(), text);
             if (failed.attempts() != null) {
-                step.append(" — gave up after ").append(failed.attempts())
-                        .append(" attempts over ").append(failed.waitedMillis()).append("ms");
+                step = Message.of("engine.summary.gaveUp", step, failed.attempts(), failed.waitedMillis());
             }
-            parts.add(step.toString());
+            parts.add(Messages.render(step, locale));
         } else if (failureDetail != null) {
-            parts.add(sourceName + ": " + failureDetail);
+            parts.add(Messages.render(Message.of("engine.summary.detail", sourceName,
+                    text(failureDetail, failureDetailMessage())), locale));
         }
 
         for (CleanupResult entry : cleanup) {
             if (entry.status() == CleanupStatus.FAILED) {
-                parts.add(sourceName + ", cleanup entry " + (entry.index() + 1)
-                        + " (" + entry.type() + quoted(entry.description()) + "): " + entry.message());
+                Object text = text(entry.message(), entry.messageDetail());
+                Message line = entry.description() == null
+                        ? Message.of("engine.summary.cleanup", sourceName, entry.index() + 1, entry.type(), text)
+                        : Message.of("engine.summary.cleanupDescribed", sourceName, entry.index() + 1, entry.type(),
+                                entry.description(), text);
+                parts.add(Messages.render(line, locale));
             }
         }
 
         return parts.isEmpty()
-                ? sourceName + ": scenario failed before any step ran"
+                ? Messages.render(Message.of("engine.summary.beforeAnyStep", sourceName), locale)
                 : String.join("; ", parts);
     }
 
-    /** ': "<description>"' for a failure message, or "" when there is no description. */
-    private static String quoted(String description) {
-        return description == null ? "" : ": \"" + description + "\"";
+    /** The failure detail by key, or null when it is plain text. */
+    @JsonIgnore
+    public Message failureDetailMessage() {
+        return failureDetailKey == null ? null : new Message(failureDetailKey, failureDetailArgs);
+    }
+
+    /** A message as an argument: by key when it has one, so it renders in the summary's language. */
+    private static Object text(String english, Message detail) {
+        return detail == null ? english : detail;
     }
 }

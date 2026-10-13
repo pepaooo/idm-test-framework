@@ -5,6 +5,7 @@ import com.idm.test.connector.database.client.ValueComparison;
 import com.idm.test.core.model.ErrorType;
 import com.idm.test.core.model.OperationResult;
 import com.idm.test.engine.spi.SqlEvidence;
+import com.idm.test.engine.spi.Message;
 import com.idm.test.engine.spi.StepOutcome;
 import com.idm.test.engine.spi.StepType;
 
@@ -73,7 +74,8 @@ public final class DbVerifyStep implements StepType {
                 connector.executeQuery(database, query, arguments);
 
         if (!result.isSuccess()) {
-            String message = "db.verify failed on '" + database + "': " + result.getMessage();
+            Message message = Message.of("step.db.verify.failed", database,
+                    ConnectorProblems.database(result, e -> connector.queryProblem(database, e)));
             // An unknown database never becomes known by waiting; a SQL error might (a table or
             // row that provisioning has not created yet), so only configuration errors are final.
             return result.getErrorType().filter(ErrorType.CONFIGURATION_ERROR::equals).isPresent()
@@ -88,8 +90,7 @@ public final class DbVerifyStep implements StepType {
         if (expect.containsKey(ROW_COUNT)) {
             Object expectedCount = expect.get(ROW_COUNT);
             if (!ValueComparison.equal(expectedCount, rows.size())) {
-                return StepOutcome.failure("db.verify on '" + database + "' expected "
-                        + expectedCount + " row(s) but the query returned " + rows.size())
+                return StepOutcome.failure(Message.of("step.db.verify.rowCountMismatch", database, expectedCount, rows.size()))
                         .withEvidence(evidence);
             }
         }
@@ -98,10 +99,7 @@ public final class DbVerifyStep implements StepType {
             if (rows.size() != 1) {
                 // Matching "the first row" of a multi-row result would depend on an
                 // unordered result set — intermittently green, which is worse than red.
-                return StepOutcome.failure("db.verify on '" + database
-                        + "' uses a row matcher, which needs exactly one row, but the query "
-                        + "returned " + rows.size()
-                        + ". Narrow the query, or assert rowCount instead.")
+                return StepOutcome.failure(Message.of("step.db.verify.rowNeedsOne", database, rows.size()))
                         .withEvidence(evidence);
             }
 
@@ -114,15 +112,14 @@ public final class DbVerifyStep implements StepType {
             for (Map.Entry<String, Object> column : expectedRow.entrySet()) {
                 Object actualValue = actual.get(column.getKey());
                 if (!ValueComparison.equal(column.getValue(), actualValue)) {
-                    return StepOutcome.failure("db.verify on '" + database
-                            + "' found a mismatch for column '" + column.getKey()
-                            + "': expected=" + column.getValue() + ", actual=" + actualValue)
+                    return StepOutcome.failure(Message.of("step.db.verify.columnMismatch", database, column.getKey(),
+                            column.getValue(), actualValue))
                             .withEvidence(evidence);
                 }
             }
         }
 
-        String message = "verified " + rows.size() + " row(s) on '" + database + "'";
+        Message message = Message.of("step.db.verify.verified", rows.size(), database);
         return (captureRequested
                 ? StepOutcome.success(message, rows)
                 : StepOutcome.success(message)).withEvidence(evidence);
@@ -142,24 +139,19 @@ public final class DbVerifyStep implements StepType {
     @SuppressWarnings("unchecked")
     private static StepOutcome rejectMalformedExpect(Object rawExpect, String database) {
         if (rawExpect != null && !(rawExpect instanceof Map)) {
-            return StepOutcome.finalFailure("db.verify on '" + database
-                    + "' has an expect that is not a map of assertions (" + ROW_COUNT + ", " + ROW
-                    + ")");
+            return StepOutcome.finalFailure(Message.of("step.db.verify.expectNotMap", database, ROW_COUNT, ROW));
         }
 
         Map<String, Object> expect = (Map<String, Object>) rawExpect;
         if (expect == null || expect.isEmpty()) {
-            return StepOutcome.finalFailure("db.verify on '" + database
-                    + "' has an empty expect: block. Assert " + ROW_COUNT + ", " + ROW
-                    + ", or both — an empty expect would verify nothing.");
+            return StepOutcome.finalFailure(Message.of("step.db.verify.expectEmpty", database, ROW_COUNT, ROW));
         }
 
         Set<String> unknown = new TreeSet<>(expect.keySet());
         unknown.removeAll(EXPECT_KEYS);
         if (!unknown.isEmpty()) {
-            return StepOutcome.finalFailure("db.verify on '" + database
-                    + "' has unknown key(s) in expect: " + unknown + ". expect accepts: "
-                    + new TreeSet<>(EXPECT_KEYS));
+            return StepOutcome.finalFailure(Message.of("step.db.verify.unknownKeys", database, unknown,
+                    new TreeSet<>(EXPECT_KEYS)));
         }
 
         // Positive rule: if ROW is present at all, it must be a Map with at least one
@@ -168,10 +160,7 @@ public final class DbVerifyStep implements StepType {
         // both — containsKey agrees with execute() about what "present" means.
         if (expect.containsKey(ROW)
                 && !(expect.get(ROW) instanceof Map<?, ?> rowMap && !rowMap.isEmpty())) {
-            return StepOutcome.finalFailure("db.verify on '" + database + "' has a " + ROW
-                    + " that must be a map of column names to expected values with at least "
-                    + "one entry — a missing, null, non-map, or empty " + ROW
-                    + " would verify nothing");
+            return StepOutcome.finalFailure(Message.of("step.db.verify.rowShape", database, ROW));
         }
 
         // The hole one level in: a misspelled column name (`staus:` instead of `status:`)
@@ -181,11 +170,7 @@ public final class DbVerifyStep implements StepType {
         if (expect.containsKey(ROW)) {
             for (Map.Entry<?, ?> column : ((Map<?, ?>) expect.get(ROW)).entrySet()) {
                 if (column.getValue() == null) {
-                    return StepOutcome.finalFailure("db.verify on '" + database
-                            + "' has a null expected value for row column '" + column.getKey()
-                            + "' — a missing or misspelled column name parses the same way and "
-                            + "would verify nothing. Check for a typo, or assert rowCount to "
-                            + "check for absence instead.");
+                    return StepOutcome.finalFailure(Message.of("step.db.verify.nullExpected", database, column.getKey()));
                 }
             }
         }

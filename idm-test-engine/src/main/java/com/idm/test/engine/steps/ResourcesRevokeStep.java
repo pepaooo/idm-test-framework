@@ -1,9 +1,11 @@
 package com.idm.test.engine.steps;
 
 import com.idm.test.connector.soap.client.ResourceServiceConnector;
+import com.idm.test.connector.soap.client.SoapProblem;
 import com.idm.test.connector.soap.generated.resource.RequestResourceRevokeResponse;
 import com.idm.test.core.model.OperationResult;
 import com.idm.test.engine.spi.HttpEvidence;
+import com.idm.test.engine.spi.Message;
 import com.idm.test.engine.spi.StepOutcome;
 import com.idm.test.engine.spi.StepType;
 
@@ -43,8 +45,7 @@ public final class ResourcesRevokeStep implements StepType {
     @Override
     public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
         if (connector == null) {
-            return StepOutcome.finalFailure(
-                    "resources.revoke cannot run: no Resource service is configured (idm.test.soap.resource-url)");
+            return StepOutcome.finalFailure(Message.of("step.resources.revoke.notConfigured"));
         }
         String user = String.valueOf(params.get("user"));
         String resource = String.valueOf(params.get("resource"));
@@ -55,12 +56,12 @@ public final class ResourcesRevokeStep implements StepType {
         HttpEvidence evidence = SoapExchanges.evidence(connector.lastExchange(), result);
 
         if (!result.isSuccess() || result.getData().isEmpty()) {
-            return StepOutcome.failure(
-                    "resources.revoke failed for " + user + ": " + result.getMessage()).withEvidence(evidence);
+            return StepOutcome.failure(Message.of("step.resources.revoke.failed",
+                    user, ConnectorProblems.soap(result, SoapProblem::revokeResource))).withEvidence(evidence);
         }
 
         return StepOutcome.success(
-                "revoked " + resource + " from " + user,
+                Message.of("step.resources.revoke.revoked", resource, user),
                 SoapValues.of(result.getData().get().getResult())).withEvidence(evidence);
     }
 }

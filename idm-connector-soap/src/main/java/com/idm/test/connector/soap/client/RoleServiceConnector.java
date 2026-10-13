@@ -121,7 +121,7 @@ public class RoleServiceConnector {
             log.error("NRF Service exception during role assignment: {}", e.getFaultInfo().getReason());
             return OperationResult.<RequestRolesAssignmentResponse>builder()
                     .success(false)
-                    .message("Role service error: " + e.getFaultInfo().getReason())
+                    .message(SoapProblem.assignRoles(e).english())
                     .errorType(ErrorType.SERVER_ERROR)
                     .throwable(e)
                     .build();
@@ -130,7 +130,7 @@ public class RoleServiceConnector {
             log.error("Role assignment failed for user '{}': {}", userDn, e.getMessage(), e);
             return OperationResult.<RequestRolesAssignmentResponse>builder()
                     .success(false)
-                    .message("Role assignment failed: " + e.getMessage())
+                    .message(SoapProblem.assignRoles(e).english())
                     .errorType(determineErrorType(e))
                     .throwable(e)
                     .build();
@@ -193,7 +193,7 @@ public class RoleServiceConnector {
             log.error("NRF Service exception during role removal: {}", e.getFaultInfo().getReason());
             return OperationResult.<RemoveRolesResponse>builder()
                     .success(false)
-                    .message("Role service error: " + e.getFaultInfo().getReason())
+                    .message(SoapProblem.removeRoles(e).english())
                     .errorType(ErrorType.SERVER_ERROR)
                     .throwable(e)
                     .build();
@@ -202,7 +202,7 @@ public class RoleServiceConnector {
             log.error("Role removal failed: {}", e.getMessage(), e);
             return OperationResult.<RemoveRolesResponse>builder()
                     .success(false)
-                    .message("Role removal failed: " + e.getMessage())
+                    .message(SoapProblem.removeRoles(e).english())
                     .errorType(determineErrorType(e))
                     .throwable(e)
                     .build();

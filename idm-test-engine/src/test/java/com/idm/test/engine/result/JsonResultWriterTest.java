@@ -1,5 +1,7 @@
 package com.idm.test.engine.result;
 
+import com.idm.test.engine.spi.LdapEvidence;
+import com.idm.test.engine.spi.Message;
 import com.idm.test.engine.spi.SqlEvidence;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -158,5 +160,64 @@ class JsonResultWriterTest {
             assertThat(at).as(key + " after the previous field").isGreaterThan(last);
             last = at;
         }
+    }
+
+    @Test
+    @DisplayName("Writes a keyed message's key and arguments last, after the evidence or the description")
+    void testWritesMessageKey(@TempDir Path dir) throws Exception {
+        StepResult withEvidence = new StepResult(0, "ldap.verify", Map.of(), false, 5,
+                "probe (last observed value after retrying)", 2, 100L, "d", LdapEvidence.exists(null, "cn=x", false),
+                "engine.wait.lastObserved", List.of("probe"));
+        StepResult withoutEvidence = new StepResult(1, "ldap.verify", Map.of(), false, 5,
+                "probe (last observed value after retrying)", null, null, "d2", null,
+                "engine.wait.lastObserved", List.of("probe"));
+        ScenarioResult scenario = new ScenarioResult("S", "s.yaml", false, 10,
+                List.of(withEvidence, withoutEvidence), null);
+
+        Path target = dir.resolve("keyed.json");
+        JsonResultWriter.write(List.of(scenario), target);
+
+        String json = Files.readString(target).replace("\r\n", "\n");
+        assertThat(json).contains("\"messageKey\" : \"engine.wait.lastObserved\",\n"
+                + "    \"messageArgs\" : [ \"probe\" ]\n");
+        int first = json.indexOf("\"evidence\"");
+        assertThat(json.indexOf("\"messageKey\"")).isGreaterThan(first);
+        int second = json.indexOf("\"description\" : \"d2\"");
+        assertThat(json).contains("\"description\" : \"d2\",\n    \"messageKey\" : \"engine.wait.lastObserved\"");
+        assertThat(json.lastIndexOf("\"messageKey\"")).isGreaterThan(second);
+    }
+
+    @Test
+    @DisplayName("Writes a nested Message argument as its key and arguments")
+    void testWritesNestedMessage(@TempDir Path dir) throws Exception {
+        StepResult step = new StepResult(0, "ldap.verify", Map.of(), false, 5,
+                "x (last observed value after retrying) (last observed value after retrying)", null, null, null, null,
+                "engine.wait.lastObserved", List.of(Message.of("engine.wait.lastObserved", "x")));
+        ScenarioResult scenario = new ScenarioResult("S", "s.yaml", false, 10, List.of(step), null);
+
+        Path target = dir.resolve("nested.json");
+        JsonResultWriter.write(List.of(scenario), target);
+
+        String json = Files.readString(target).replace("\r\n", "\n");
+        assertThat(json).contains("    \"messageArgs\" : [ {\n"
+                + "      \"key\" : \"engine.wait.lastObserved\",\n"
+                + "      \"args\" : [ \"x\" ]\n"
+                + "    } ]");
+    }
+
+    @Test
+    @DisplayName("Writes a scenario's failure detail key and arguments last")
+    void testWritesFailureDetailKey(@TempDir Path dir) throws Exception {
+        ScenarioResult scenario = new ScenarioResult("S", "s.yaml", false, 10, List.of(), List.of(),
+                "x (last observed value after retrying)", null, "engine.wait.lastObserved", List.of("x"));
+
+        Path target = dir.resolve("detail.json");
+        JsonResultWriter.write(List.of(scenario), target);
+
+        assertThat(Files.readString(target).replace("\r\n", "\n")).endsWith("""
+                  "description" : null,
+                  "failureDetailKey" : "engine.wait.lastObserved",
+                  "failureDetailArgs" : [ "x" ]
+                } ]""");
     }
 }

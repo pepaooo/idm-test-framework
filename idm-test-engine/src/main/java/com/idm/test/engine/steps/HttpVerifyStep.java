@@ -7,8 +7,11 @@ import com.idm.test.connector.rest.client.TokenFailureText;
 import com.idm.test.connector.rest.config.RestProperties;
 import com.idm.test.connector.rest.model.TextResponse;
 import com.idm.test.core.model.OperationResult;
+import com.idm.test.engine.expr.ExpressionEvaluator.ExpressionException;
+import com.idm.test.engine.i18n.Messages;
 import com.idm.test.engine.spi.DeferredExpression;
 import com.idm.test.engine.spi.Explained;
+import com.idm.test.engine.spi.Message;
 import com.idm.test.engine.spi.StepOutcome;
 import com.idm.test.engine.spi.StepType;
 import tools.jackson.databind.json.JsonMapper;
@@ -79,7 +82,7 @@ public final class HttpVerifyStep implements StepType {
     public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
         List<DeferredExpression> checks = checksOf(params.get("check"));
         if (checks == null || checks.isEmpty()) {
-            return StepOutcome.finalFailure("http.verify 'check' must be js:{ … } expressions");
+            return StepOutcome.finalFailure(Message.of("step.http.verify.noChecks"));
         }
 
         HttpExchange.Prepared request = HttpExchange.prepare("http.verify", params, properties, authenticator);
@@ -94,46 +97,83 @@ public final class HttpVerifyStep implements StepType {
     private static StepOutcome judge(List<DeferredExpression> checks, HttpExchange.Prepared request,
                                      OperationResult<TextResponse> result, boolean captureRequested) {
         if (!result.isSuccess() || result.getData().isEmpty()) {
-            return StepOutcome.failure("http.verify failed for " + request.url() + ": " + result.getMessage());
+            return StepOutcome.failure(Message.of("step.http.verify.failed",
+                    request.url(), ConnectorProblems.request(request.method(), request.url(), result)));
         }
 
         TextResponse response = result.getData().get();
         Bound bound = responseOf(response);
-        String where = "http.verify " + request.method() + " " + request.url();
+        String method = request.method();
+        String url = request.url();
         int total = checks.size();
         for (int i = 0; i < total; i++) {
             DeferredExpression check = checks.get(i);
-            String label = where + ": check " + (i + 1) + " of " + total;
-            String hint = bound.xmlNullReason() != null && check.source().contains("response.xml")
-                    ? " (response.xml is null: " + TokenFailureText.safe(bound.xmlNullReason(), null) + ")"
+            int number = i + 1;
+            Object hint = bound.xmlNullReason() != null && check.source().contains("response.xml")
+                    ? Message.of("step.http.verify.xmlNull", masked(bound.xmlNullReason()))
                     : "";
             Explained explained;
             try {
                 explained = check.explain(Map.of("response", bound.response()));
             } catch (RuntimeException e) {
                 String error = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
-                return StepOutcome.failure(label + " failed: " + TokenFailureText.safe(error, null) + context(response) + hint);
+                Object reason = e instanceof ExpressionException expression && expression.detail() != null
+                        ? masked(expression.detail()) : safe(error);
+                return StepOutcome.failure(Message.of("step.http.verify.checkThrew", method, url, number, total,
+                        reason, response.status(), safe(response.body()), hint));
             }
             Object value = explained.value();
             if (!(value instanceof Boolean passed)) {
-                return StepOutcome.finalFailure(
-                        label + " must return true or false, got " + TokenFailureText.safe(describe(value), null));
+                return StepOutcome.finalFailure(Message.of("step.http.verify.notBoolean", method, url, number, total,
+                        safe(describe(value))));
             }
             if (!passed) {
-                String notes = explained.notes().isEmpty()
+                Object notes = explained.details().isEmpty()
                         ? ""
-                        : " — " + TokenFailureText.safe(String.join("; ", explained.notes()), null);
-                return StepOutcome.failure(label + " is false: " + check.source() + notes + context(response) + hint);
+                        : Message.of("step.http.verify.notes", masked(joined(explained.details())));
+                return StepOutcome.failure(Message.of("step.http.verify.checkFalse", method, url, number, total,
+                        check.source(), notes, response.status(), safe(response.body()), hint));
             }
         }
 
-        String message = request.method() + " " + request.url() + " passed " + total
-                + " check(s) (status " + response.status() + ")";
+        Message message = Message.of("step.http.verify.passed", method, url, total, response.status());
         return captureRequested ? StepOutcome.success(message, bound.response()) : StepOutcome.success(message);
     }
 
+    /** The notes as one message, joined with "; " as they are in English. */
+    private static Message joined(List<Message> notes) {
+        Message joined = notes.get(notes.size() - 1);
+        for (int i = notes.size() - 2; i >= 0; i--) {
+            joined = Message.of("step.http.verify.notesJoin", notes.get(i), joined);
+        }
+        return joined;
+    }
+
+    /**
+     * {@code raw} with its text arguments masked and cut as {@link TokenFailureText#safe} would mask
+     * and cut its English text. When masking the parts would not read exactly like masking the
+     * whole — the whole is longer than the cap — the masked English text itself is used, so the
+     * English stays as it always was.
+     */
+    private static Object masked(Message raw) {
+        return ConnectorProblems.keyedOr(maskArguments(raw), safe(Messages.english(raw)));
+    }
+
+    private static Message maskArguments(Message message) {
+        List<Object> args = new ArrayList<>();
+        for (Object arg : message.args()) {
+            args.add(arg instanceof Message nested ? maskArguments(nested)
+                    : arg instanceof String text ? safe(text) : arg);
+        }
+        return new Message(message.key(), args);
+    }
+
+    private static String safe(String text) {
+        return TokenFailureText.safe(text, null);
+    }
+
     /** The response map the checks read, and why its xml is null (null when xml was parsed). */
-    private record Bound(Map<String, Object> response, String xmlNullReason) {
+    private record Bound(Map<String, Object> response, Message xmlNullReason) {
     }
 
     private static List<DeferredExpression> checksOf(Object raw) {
@@ -154,19 +194,20 @@ public final class HttpVerifyStep implements StepType {
         String mediaType = mediaTypeOf(response);
         bound.put("json", jsonOf(mediaType, response.body()));
         Object xml = null;
-        String reason;
+        Message reason;
         if (response.body().isBlank()) {
-            reason = "the body is empty";
+            reason = Message.of("step.http.verify.xmlNull.empty");
         } else if (mediaType.isEmpty()) {
-            reason = "no Content-Type";
+            reason = Message.of("step.http.verify.xmlNull.noContentType");
         } else if (!(mediaType.equals("text/xml") || mediaType.equals("application/xml") || mediaType.endsWith("+xml"))) {
-            reason = "Content-Type is " + mediaType;
+            reason = Message.of("step.http.verify.xmlNull.contentType", mediaType);
         } else {
             try {
                 xml = XmlObjects.parse(response.body());
                 reason = null;
             } catch (IllegalArgumentException malformed) {
-                reason = "the body is " + malformed.getMessage();
+                reason = Message.of("step.http.verify.xmlNull.malformed",
+                        malformed instanceof XmlObjects.MalformedXmlException keyed ? keyed.detail() : malformed.getMessage());
             }
         }
         bound.put("xml", xml);
@@ -188,10 +229,6 @@ public final class HttpVerifyStep implements StepType {
         } catch (Exception notJson) {
             return null; // declared JSON but isn't: the check sees null, as IdmRestConnector does
         }
-    }
-
-    private static String context(TextResponse response) {
-        return " (status " + response.status() + ", body: " + TokenFailureText.safe(response.body(), null) + ")";
     }
 
     private static String describe(Object value) {

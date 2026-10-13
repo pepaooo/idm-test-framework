@@ -1,5 +1,7 @@
 package com.idm.test.engine.steps;
 
+import com.idm.test.engine.i18n.Messages;
+import com.idm.test.engine.spi.Message;
 import org.w3c.dom.Attr;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
@@ -54,10 +56,25 @@ public final class XmlObjects {
     private XmlObjects() {
     }
 
+    /** Text that is not well-formed XML; {@link #detail()} words why by key. */
+    public static final class MalformedXmlException extends IllegalArgumentException {
+
+        private final transient Message detail;
+
+        MalformedXmlException(Message detail, Throwable cause) {
+            super(Messages.english(detail), cause);
+            this.detail = detail;
+        }
+
+        public Message detail() {
+            return detail;
+        }
+    }
+
     /**
      * @return a one-entry map, the root element's local name to its value
-     * @throws IllegalArgumentException when the text is not well-formed XML, has a DOCTYPE or
-     *                                  nests deeper than 90 elements
+     * @throws MalformedXmlException when the text is not well-formed XML, has a DOCTYPE or
+     *                               nests deeper than 90 elements
      */
     public static Map<String, Object> parse(String text) {
         Document document;
@@ -66,11 +83,11 @@ public final class XmlObjects {
             builder.setErrorHandler(SILENT);
             document = builder.parse(new InputSource(new StringReader(text)));
         } catch (SAXParseException e) {
-            String where = e.getLineNumber() > 0
-                    ? " at line " + e.getLineNumber() + ", column " + e.getColumnNumber() : "";
-            throw new IllegalArgumentException("not well-formed XML" + where + ": " + e.getMessage(), e);
+            throw new MalformedXmlException(e.getLineNumber() > 0
+                    ? Message.of("step.http.xml.malformedAt", e.getLineNumber(), e.getColumnNumber(), e.getMessage())
+                    : Message.of("step.http.xml.malformed", e.getMessage()), e);
         } catch (SAXException | IOException e) {
-            throw new IllegalArgumentException("not well-formed XML: " + e.getMessage(), e);
+            throw new MalformedXmlException(Message.of("step.http.xml.malformed", e.getMessage()), e);
         } catch (ParserConfigurationException e) {
             throw new IllegalStateException("the XML parser cannot be configured securely", e);
         }

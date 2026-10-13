@@ -10,7 +10,10 @@ import com.idm.test.engine.result.ScenarioResult;
 import com.idm.test.engine.result.StepResult;
 import com.idm.test.engine.spi.DeferredExpression;
 import com.idm.test.engine.spi.Evidence;
+import com.idm.test.engine.i18n.KeyedArgumentException;
+import com.idm.test.engine.i18n.Messages;
 import com.idm.test.engine.spi.LdapEvidence;
+import com.idm.test.engine.spi.Message;
 import com.idm.test.engine.spi.StepOutcome;
 import com.idm.test.engine.spi.StepType;
 import com.idm.test.utils.data.TestDataGenerator;
@@ -20,6 +23,7 @@ import org.junit.jupiter.api.Test;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -1094,5 +1098,209 @@ class ScenarioEngineTest {
         assertThat(result.steps().get(0).success()).isFalse();
         assertThat(result.steps().get(0).message()).contains("recursed too deeply");
         assertThat(events).contains("run:undo:x");
+    }
+
+    /** A stand-in for a converted step: any existing key will do. */
+    private static final Message PROBE = Message.of("engine.wait.lastObserved", "probe");
+
+    /** Fails every attempt with {@link #PROBE}, as an ordinary or a final failure. */
+    private static StepType keyedFailing(String name, boolean isFinal) {
+        return new StepType() {
+            public String name() { return name; }
+            public boolean retryable() { return true; }
+            public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
+                return isFinal ? StepOutcome.finalFailure(PROBE) : StepOutcome.failure(PROBE);
+            }
+        };
+    }
+
+    @Test
+    @DisplayName("A step's keyed message reaches its result with the key and arguments")
+    void testKeyedMessageRecorded() {
+        ScenarioResult result = engineWith(keyedFailing("keyed", false)).run(scenario(
+                new StepSpec("keyed", Map.of("dn", "x"))), "t.yaml");
+
+        assertThat(result.steps().get(0).message()).isEqualTo("probe (last observed value after retrying)");
+        assertThat(result.steps().get(0).messageKey()).isEqualTo("engine.wait.lastObserved");
+        assertThat(result.steps().get(0).messageArgs()).containsExactly("probe");
+    }
+
+    @Test
+    @DisplayName("The wait suffix is keyed and wraps the step's own message, so both translate")
+    void testWaitSuffixIsKeyed() {
+        ScenarioResult result = engineWith(keyedFailing("keyed", false)).run(scenario(
+                new StepSpec("keyed", Map.of("dn", "x", "wait", Map.of("timeout", "1s", "poll", "1s")))), "t.yaml");
+
+        StepResult step = result.steps().get(0);
+        assertThat(step.messageKey()).isEqualTo("engine.wait.lastObserved");
+        assertThat(step.messageArgs()).containsExactly(PROBE);
+        assertThat(step.message())
+                .isEqualTo("probe (last observed value after retrying) (last observed value after retrying)");
+        assertThat(Messages.render(step.messageDetail(), Locale.of("es")))
+                .isEqualTo("probe (último valor observado tras reintentar) (último valor observado tras reintentar)");
+    }
+
+    @Test
+    @DisplayName("The not-retried suffix is keyed and wraps the step's own message")
+    void testNotRetriedSuffixIsKeyed() {
+        ScenarioResult result = engineWith(keyedFailing("keyed", true)).run(scenario(
+                new StepSpec("keyed", Map.of("dn", "x", "wait", Map.of("timeout", "10s", "poll", "1s")))), "t.yaml");
+
+        StepResult step = result.steps().get(0);
+        assertThat(step.messageKey()).isEqualTo("engine.wait.notRetried");
+        assertThat(step.messageArgs()).containsExactly(PROBE);
+        assertThat(step.message())
+                .isEqualTo("probe (last observed value after retrying) (not retried: waiting cannot change this)");
+        assertThat(Messages.render(step.messageDetail(), Locale.of("es")))
+                .endsWith("(sin reintentos: esperar no puede cambiar este resultado)");
+    }
+
+    @Test
+    @DisplayName("A plain-text failure under wait still gets a keyed suffix, with the text as its argument")
+    void testPlainTextUnderWaitIsKeyed() {
+        ScenarioResult result = engineWith(eventuallyPassing("check", Integer.MAX_VALUE)).run(scenario(
+                new StepSpec("check", Map.of("dn", "x", "wait", Map.of("timeout", "1s", "poll", "1s")))), "t.yaml");
+
+        StepResult step = result.steps().get(0);
+        assertThat(step.message()).isEqualTo("not yet (last observed value after retrying)");
+        assertThat(step.messageKey()).isEqualTo("engine.wait.lastObserved");
+        assertThat(step.messageArgs()).containsExactly("not yet");
+        assertThat(Messages.render(step.messageDetail(), Locale.of("es")))
+                .isEqualTo("not yet (último valor observado tras reintentar)");
+    }
+
+    @Test
+    @DisplayName("A passing step under wait keeps its own keyed message, without a suffix")
+    void testPassingUnderWaitKeepsKey() {
+        StepType passing = new StepType() {
+            public String name() { return "keyed"; }
+            public boolean retryable() { return true; }
+            public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
+                return StepOutcome.success(PROBE);
+            }
+        };
+        ScenarioResult result = engineWith(passing).run(scenario(
+                new StepSpec("keyed", Map.of("dn", "x", "wait", Boolean.TRUE))), "t.yaml");
+
+        StepResult step = result.steps().get(0);
+        assertThat(step.success()).isTrue();
+        assertThat(step.message()).isEqualTo("probe (last observed value after retrying)");
+        assertThat(step.messageKey()).isEqualTo("engine.wait.lastObserved");
+        assertThat(step.messageArgs()).containsExactly("probe");
+    }
+
+    @Test
+    @DisplayName("A cleanup entry's keyed message reaches its result with the key and arguments")
+    void testKeyedCleanupMessageRecorded() {
+        ScenarioResult result = engineWith(recordingAction("a"), keyedFailing("keyed", false)).run(withCleanup(
+                List.of(new StepSpec("a", Map.of("dn", "x"))),
+                new StepSpec("keyed", Map.of("dn", "x"))), "t.yaml");
+
+        assertThat(result.cleanup().get(0).status()).isEqualTo(CleanupStatus.FAILED);
+        assertThat(result.cleanup().get(0).message()).isEqualTo("probe (last observed value after retrying)");
+        assertThat(result.cleanup().get(0).messageKey()).isEqualTo("engine.wait.lastObserved");
+        assertThat(result.cleanup().get(0).messageArgs()).containsExactly("probe");
+    }
+
+    @Test
+    @DisplayName("A plain-text step leaves the key and arguments out")
+    void testPlainTextHasNoKey() {
+        ScenarioResult result = engineWith(failingAction("f")).run(scenario(
+                new StepSpec("f", Map.of("dn", "x"))), "t.yaml");
+
+        assertThat(result.steps().get(0).messageKey()).isNull();
+        assertThat(result.steps().get(0).messageArgs()).isNull();
+        assertThat(result.steps().get(0).messageDetail()).isNull();
+    }
+
+    private static final Locale ES = Locale.of("es");
+
+    @Test
+    @DisplayName("A step that throws on an unresolvable reference reads in Spanish, English unchanged")
+    void testStepThrewRendersInSpanish() {
+        ScenarioResult result = engineWith(recordingAction("a")).run(scenario(
+                new StepSpec("a", Map.of("dn", "${user.nope}"))), "t.yaml");
+
+        StepResult step = result.steps().get(0);
+        assertThat(step.message())
+                .isEqualTo("step 'a' threw IllegalArgumentException: cannot resolve ${user.nope} — no value for 'nope'");
+        assertThat(Messages.render(step.messageDetail(), ES))
+                .isEqualTo("el paso 'a' lanzó IllegalArgumentException: no se puede resolver ${user.nope}"
+                        + " — no hay valor para 'nope'");
+    }
+
+    @Test
+    @DisplayName("Fixture setup, capture and cleanup messages read in Spanish")
+    void testEngineMessagesRenderInSpanish() {
+        Scenario badFixture = new Scenario("Test", null,
+                Map.of("user", new FixtureSpec("randmo-user", Map.of())),
+                List.of(new StepSpec("a", Map.of("dn", "x"))));
+        ScenarioResult fixture = engineWith(recordingAction("a")).run(badFixture, "t.yaml");
+        assertThat(fixture.failureDetail())
+                .isEqualTo("fixture setup failed: unknown generator 'randmo-user'. Available: [random-user]");
+        assertThat(fixture.failureSummary(ES)).isEqualTo("t.yaml: la preparación de fixtures falló:"
+                + " generador desconocido 'randmo-user'. Disponibles: [random-user]");
+
+        StepType silent = new StepType() {
+            public String name() { return "silent"; }
+            public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
+                return StepOutcome.success("ok");
+            }
+        };
+        ScenarioResult capture = engineWith(silent).run(scenario(
+                new StepSpec("silent", Map.of("dn", "x", "as", "created"))), "t.yaml");
+        assertThat(capture.steps().get(0).message())
+                .isEqualTo("step 'silent' declares as: 'created' but produced no value to capture");
+        assertThat(Messages.render(capture.steps().get(0).messageDetail(), ES))
+                .isEqualTo("el paso 'silent' declara as: 'created' pero no produjo ningún valor que capturar");
+
+        ScenarioResult cleanup = engineWith(failingAction("a"), recordingAction("b")).run(withCleanup(
+                List.of(new StepSpec("a", Map.of("dn", "x"))),
+                new StepSpec("b", Map.of("dn", "${never.dn}"))), "t.yaml");
+        assertThat(cleanup.cleanup().get(0).message())
+                .isEqualTo("skipped: [never] never bound, so what this would clean up never happened");
+        assertThat(Messages.render(cleanup.cleanup().get(0).messageDetail(), ES))
+                .isEqualTo("omitida: [never] nunca se asignó, así que lo que esto limpiaría nunca ocurrió");
+    }
+
+    @Test
+    @DisplayName("Unknown step types and a set: step read in Spanish")
+    void testUnknownTypeAndSetRenderInSpanish() {
+        ScenarioResult set = engineWith(recordingAction("a")).run(scenario(
+                new StepSpec("set", Map.of("x", "1")),
+                new StepSpec("nope", Map.of())), "t.yaml");
+
+        assertThat(set.steps().get(0).message()).isEqualTo("bound [x]");
+        assertThat(Messages.render(set.steps().get(0).messageDetail(), ES)).isEqualTo("se asignó [x]");
+        assertThat(set.steps().get(1).message()).isEqualTo("unknown step type 'nope'. Available: [a]");
+        assertThat(Messages.render(set.steps().get(1).messageDetail(), ES))
+                .isEqualTo("tipo de paso desconocido 'nope'. Disponibles: [a]");
+    }
+
+    @Test
+    @DisplayName("A keyed IllegalArgumentException is still named IllegalArgumentException at every engine site")
+    void testKeyedArgumentExceptionKeepsItsName() {
+        StepType throwing = new StepType() {
+            public String name() { return "probe"; }
+            public boolean retryable() { return true; }
+            public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
+                throw new KeyedArgumentException(Message.of("engine.ref.unresolved", "${x}", "x"));
+            }
+        };
+        ScenarioResult waited = engineWith(throwing).run(scenario(
+                new StepSpec("probe", Map.of("dn", "x", "wait", Map.of("timeout", "1s", "poll", "1s")))), "t.yaml");
+        assertThat(waited.steps().get(0).message()).isEqualTo(
+                "threw IllegalArgumentException: cannot resolve ${x} — no value for 'x' (last observed value after retrying)");
+        assertThat(Messages.render(waited.steps().get(0).messageDetail(), ES)).isEqualTo(
+                "lanzó IllegalArgumentException: no se puede resolver ${x} — no hay valor para 'x'"
+                        + " (último valor observado tras reintentar)");
+
+        ScenarioResult cleanup = engineWith(recordingAction("a")).run(withCleanup(
+                List.of(new StepSpec("a", Map.of("dn", "x"))),
+                new StepSpec("a", Map.of("dn", "${user.nope}"))), "t.yaml");
+        assertThat(cleanup.cleanup().get(0).message())
+                .isEqualTo("cleanup 'a' threw IllegalArgumentException: cannot resolve ${user.nope} — no value for 'nope'");
+        assertThat(Messages.render(cleanup.cleanup().get(0).messageDetail(), ES)).isEqualTo(
+                "la limpieza 'a' lanzó IllegalArgumentException: no se puede resolver ${user.nope} — no hay valor para 'nope'");
     }
 }

@@ -1,5 +1,12 @@
 package com.idm.test.engine.result;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.idm.test.engine.spi.Message;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -12,6 +19,9 @@ import java.util.Map;
  * @param durationMillis time spent on this entry
  * @param message        the step's own message, or why it was skipped or failed
  * @param description    the entry's description: resolved when it ran and resolved cleanly, otherwise as written; null when it has none
+ * @param messageKey     the key of {@code message}, so it can be shown in another language, or
+ *                       null when the message is plain text
+ * @param messageArgs    the arguments of {@code messageKey}, or null when there is no key
  */
 public record CleanupResult(
         int index,
@@ -20,11 +30,29 @@ public record CleanupResult(
         CleanupStatus status,
         long durationMillis,
         String message,
-        String description) {
+        String description,
+        @JsonInclude(JsonInclude.Include.NON_NULL) String messageKey,
+        @JsonInclude(JsonInclude.Include.NON_NULL) List<Object> messageArgs) {
+
+    public CleanupResult {
+        messageArgs = messageArgs == null ? null : Collections.unmodifiableList(new ArrayList<>(messageArgs));
+    }
+
+    /** A result whose message is plain text. */
+    public CleanupResult(int index, String type, Map<String, Object> resolvedParams, CleanupStatus status,
+                         long durationMillis, String message, String description) {
+        this(index, type, resolvedParams, status, durationMillis, message, description, null, null);
+    }
 
     /** A result for an entry without a description. */
     public CleanupResult(int index, String type, Map<String, Object> resolvedParams, CleanupStatus status,
                          long durationMillis, String message) {
         this(index, type, resolvedParams, status, durationMillis, message, null);
+    }
+
+    /** The message by key, or null when it is plain text. */
+    @JsonIgnore
+    public Message messageDetail() {
+        return messageKey == null ? null : new Message(messageKey, messageArgs);
     }
 }

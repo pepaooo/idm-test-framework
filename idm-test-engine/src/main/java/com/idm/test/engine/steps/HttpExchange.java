@@ -7,6 +7,7 @@ import com.idm.test.connector.rest.config.RestProperties;
 import com.idm.test.connector.rest.model.TextResponse;
 import com.idm.test.core.model.OperationResult;
 import com.idm.test.engine.spi.HttpEvidence;
+import com.idm.test.engine.spi.Message;
 import com.idm.test.engine.spi.StepOutcome;
 
 import java.util.LinkedHashMap;
@@ -44,19 +45,18 @@ final class HttpExchange {
                             RestAuthenticator authenticator) {
         String method = String.valueOf(params.get("method")).toUpperCase(Locale.ROOT);
         if (!METHODS.contains(method)) {
-            return Prepared.failed(StepOutcome.finalFailure(stepName + " method '" + params.get("method")
-                    + "' is not one of " + new TreeSet<>(METHODS)));
+            return Prepared.failed(StepOutcome.finalFailure(Message.of("step.http.methodUnknown",
+                    stepName, params.get("method"), new TreeSet<>(METHODS))));
         }
 
         Object rawHeaders = params.get("headers");
         if (rawHeaders != null && !(rawHeaders instanceof Map)) {
-            return Prepared.failed(StepOutcome.finalFailure(stepName + " headers must be a map of header name to value"));
+            return Prepared.failed(StepOutcome.finalFailure(Message.of("step.http.headersNotMap", stepName)));
         }
 
         Object rawBody = params.get("body");
         if (rawBody != null && !(rawBody instanceof String)) {
-            return Prepared.failed(StepOutcome.finalFailure(
-                    stepName + " body must be a string sent as-is; to send a JSON object use rest.request"));
+            return Prepared.failed(StepOutcome.finalFailure(Message.of("step.http.bodyNotString", stepName)));
         }
 
         String target = String.valueOf(params.get("target"));

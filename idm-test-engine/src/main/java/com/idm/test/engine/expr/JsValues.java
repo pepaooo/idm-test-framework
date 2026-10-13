@@ -1,5 +1,7 @@
 package com.idm.test.engine.expr;
 
+import com.idm.test.engine.i18n.Messages;
+import com.idm.test.engine.spi.Message;
 import org.mozilla.javascript.Context;
 import org.mozilla.javascript.NativeArray;
 import org.mozilla.javascript.Scriptable;
@@ -78,12 +80,11 @@ final class JsValues {
             Context cx, Scriptable scope, Object value, Set<Object> ancestors, int depth, NodeBudget budget) {
         budget.visit();
         if (depth > MAX_DEPTH) {
-            throw new JsConversionException(
-                    "value is nested more than " + MAX_DEPTH + " levels deep; is it self-referencing?");
+            throw new JsConversionException(Message.of("engine.js.tooDeep", MAX_DEPTH));
         }
         if (value instanceof Map<?, ?> map) {
             if (!ancestors.add(map)) {
-                throw new JsConversionException("value contains a self-referencing map");
+                throw new JsConversionException(Message.of("engine.js.selfMap"));
             }
             try {
                 Scriptable object = cx.newObject(scope);
@@ -96,7 +97,7 @@ final class JsValues {
         }
         if (value instanceof List<?> list) {
             if (!ancestors.add(list)) {
-                throw new JsConversionException("value contains a self-referencing list");
+                throw new JsConversionException(Message.of("engine.js.selfList"));
             }
             try {
                 Object[] items = new Object[list.size()];
@@ -139,23 +140,17 @@ final class JsValues {
         // step, or a cleanup DELETE, quietly do nothing. An array hole reads as NOT_FOUND, which
         // JavaScript also treats as undefined. Explicit null is a deliberate value and passes.
         if (value instanceof Undefined || value == Scriptable.NOT_FOUND) {
-            throw new JsConversionException(path + " is undefined — a property that does not exist "
-                    + "reads as undefined in JavaScript. Check the name, or write null if no value "
-                    + "is intended.");
+            throw new JsConversionException(Message.of("engine.js.undefined", path));
         }
         if (value == null) {
             return null;
         }
         budget.visit();
         if (depth > MAX_DEPTH) {
-            throw new JsConversionException(
-                    "result is nested more than " + MAX_DEPTH + " levels deep; is it self-referencing?");
+            throw new JsConversionException(Message.of("engine.js.resultTooDeep", MAX_DEPTH));
         }
         if (value instanceof BigInteger || value instanceof BigDecimal) {
-            throw new JsConversionException(
-                    "result is a BigInt (" + value + ") and cannot be represented as a JavaScript number "
-                            + "without losing precision; convert it to a string in the expression instead, "
-                            + "e.g. with .toString()");
+            throw new JsConversionException(Message.of("engine.js.bigInt", value));
         }
         // Rhino represents whole-number literals as Integer/Long internally for performance,
         // even though JavaScript itself has only one numeric type. Normalise here so callers
@@ -165,13 +160,12 @@ final class JsValues {
         }
         if (value instanceof NativeArray array) {
             if (!ancestors.add(array)) {
-                throw new JsConversionException("result contains a self-referencing array");
+                throw new JsConversionException(Message.of("engine.js.selfArray"));
             }
             try {
                 long length = array.getLength();
                 if (length > MAX_ARRAY_LENGTH) {
-                    throw new JsConversionException(
-                            "array has " + length + " elements, over the limit of " + MAX_ARRAY_LENGTH);
+                    throw new JsConversionException(Message.of("engine.js.arrayTooLong", length, MAX_ARRAY_LENGTH));
                 }
                 List<Object> list = new ArrayList<>((int) length);
                 for (int i = 0; i < length; i++) {
@@ -184,12 +178,10 @@ final class JsValues {
         }
         if (value instanceof Scriptable object) {
             if (!isPlainObject(object)) {
-                throw new JsConversionException(
-                        "result is a JS " + object.getClassName() + ", which has no plain Java equivalent; "
-                                + "convert it in the expression instead, e.g. call .toISOString() on a Date");
+                throw new JsConversionException(Message.of("engine.js.noJavaEquivalent", object.getClassName()));
             }
             if (!ancestors.add(object)) {
-                throw new JsConversionException("result contains a self-referencing object");
+                throw new JsConversionException(Message.of("engine.js.selfObject"));
             }
             try {
                 Map<String, Object> map = new LinkedHashMap<>();
@@ -222,8 +214,17 @@ final class JsValues {
      * carrying the expression text, since this class never sees the expression itself.
      */
     static final class JsConversionException extends RuntimeException {
-        JsConversionException(String message) {
-            super(message);
+
+        private final transient Message detail;
+
+        JsConversionException(Message detail) {
+            super(Messages.english(detail));
+            this.detail = detail;
+        }
+
+        /** The problem by key, so it can be shown in the run's language. */
+        Message detail() {
+            return detail;
         }
     }
 
@@ -238,10 +239,7 @@ final class JsValues {
 
         void visit() {
             if (++visited > MAX_NODES) {
-                throw new JsConversionException(
-                        "value has more than " + MAX_NODES + " total nodes; is it exponentially "
-                                + "duplicated (e.g. an object built from repeatedly nesting the "
-                                + "same sub-value on both branches of a tree)?");
+                throw new JsConversionException(Message.of("engine.js.tooManyNodes", MAX_NODES));
             }
         }
     }

@@ -4,8 +4,11 @@ import com.idm.test.connector.database.config.DatabaseProperties;
 import com.idm.test.connector.ldap.client.LdapDirectories;
 import com.idm.test.connector.ldap.config.LdapProperties;
 import com.idm.test.connector.rest.config.RestProperties;
+import com.idm.test.engine.i18n.Messages;
+import com.idm.test.engine.i18n.ReportLocale;
 import com.idm.test.engine.model.Scenario;
 import com.idm.test.engine.result.RunInfo;
+import com.idm.test.engine.spi.Message;
 import org.springframework.boot.context.properties.bind.Bindable;
 import org.springframework.boot.context.properties.bind.Binder;
 import org.springframework.core.env.Environment;
@@ -13,6 +16,7 @@ import org.springframework.core.env.Environment;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -28,27 +32,30 @@ final class RunInfos {
     private RunInfos() {
     }
 
-    static RunInfo of(String runner, Environment environment, List<Scenario> scenarios) {
+    static RunInfo of(String runnerKey, Environment environment, List<Scenario> scenarios) {
+        // First, so an unsupported language fails before anything else is read.
+        Locale locale = locale(environment, System.getenv("IDM_TEST_LOCALE"), System.getProperty("idm.test.locale"));
+        String runner = Messages.render(Message.of(runnerKey), locale);
         ScenarioNeeds needs = ScenarioNeeds.of(scenarios);
         Binder binder = Binder.get(environment);
         Map<String, String> endpoints = new LinkedHashMap<>();
 
         directoryUrls(environment, binder, needs.directories())
-                .forEach((name, url) -> endpoints.put("LDAP " + name, url));
+                .forEach((name, url) -> endpoints.put(label("runner.endpoint.ldap", locale, name), url));
 
         Map<String, DatabaseProperties.DatabaseConfig> databases = binder
                 .bind("idm.test.databases", Bindable.mapOf(String.class, DatabaseProperties.DatabaseConfig.class))
                 .orElse(Map.of());
         for (String database : needs.databases()) {
             DatabaseProperties.DatabaseConfig config = databases.get(database);
-            endpoints.put("Database " + database, config == null ? null : config.getJdbcUrl());
+            endpoints.put(label("runner.endpoint.database", locale, database), config == null ? null : config.getJdbcUrl());
         }
 
         if (needs.roles()) {
-            endpoints.put("Role service", environment.getProperty("idm.test.soap.url"));
+            endpoints.put(label("runner.endpoint.roleService", locale), environment.getProperty("idm.test.soap.url"));
         }
         if (needs.resources()) {
-            endpoints.put("Resource service", environment.getProperty("idm.test.soap.resource-url"));
+            endpoints.put(label("runner.endpoint.resourceService", locale), environment.getProperty("idm.test.soap.resource-url"));
         }
 
         Map<String, RestProperties.RestApiConfig> targets = binder
@@ -56,11 +63,21 @@ final class RunInfos {
                 .orElse(Map.of());
         for (String target : needs.restTargets()) {
             RestProperties.RestApiConfig config = targets.get(target);
-            endpoints.put("REST " + target, config == null ? null : config.getBaseUrl());
+            endpoints.put(label("runner.endpoint.rest", locale, target), config == null ? null : config.getBaseUrl());
         }
 
         return new RunInfo(runner, Instant.now(), List.of(environment.getActiveProfiles()),
-                System.getProperty(ScenarioSupport.SCENARIO_PROPERTY), endpoints);
+                System.getProperty(ScenarioSupport.SCENARIO_PROPERTY), endpoints, locale);
+    }
+
+    /** An endpoint row's label in the run's language. */
+    private static String label(String key, Locale locale, Object... args) {
+        return Messages.render(Message.of(key, args), locale);
+    }
+
+    /** The report language: the profile property, then the environment variable, then the system property. */
+    static Locale locale(Environment environment, String env, String systemProperty) {
+        return ReportLocale.resolve(environment.getProperty("idm.test.report.locale"), env, systemProperty);
     }
 
     /** Directory name to URL for the directories used, the default one resolved as the guards resolve it. */

@@ -56,6 +56,6 @@ class MultiDirectoryScenarioTest extends BaseIntegrationTest {
                 new ExpressionEvaluator());
 
         return ScenarioSupport.buildTests(SCENARIO_DIR, validator, engine, RESULTS,
-                scenarios -> RunInfos.of("Embedded (two directories)", environment, scenarios)).stream();
+                scenarios -> RunInfos.of("runner.name.twoDirectories", environment, scenarios)).stream();
     }
 }

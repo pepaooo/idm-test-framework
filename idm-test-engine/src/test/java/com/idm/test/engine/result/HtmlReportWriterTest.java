@@ -296,6 +296,94 @@ class HtmlReportWriterTest {
                 .contains("details.scenario, details.evidence");
     }
 
+    private static final RunInfo RUN_ES = RUN.withLocale(java.util.Locale.of("es"));
+
+    @Test
+    @DisplayName("A Spanish run's report is in Spanish: lang, labels, dates, statuses, evidence")
+    void testSpanishReport() {
+        String html = HtmlReportWriter.render(RUN_ES, List.of(passed(), failed()), NOW);
+
+        assertThat(html).contains("<html lang=\"es\">")
+                .contains("Ejecución: Real environment")
+                .containsPattern("Inicio \\d{2}/\\d{2}/\\d{4} ")
+                .contains("Duración 1m 42s")
+                .contains(">Escenarios<").contains(">Correctos<").contains(">Fallidos<")
+                .contains("Expandir todo").contains("Solo fallidos")
+                .contains("Los pasos posteriores no se ejecutaron.")
+                .contains("<h3>Limpieza</h3>")
+                .contains(">CORRECTA<").contains(">OMITIDA<")
+                .contains("3 intentos · 10,1 s")
+                .contains("Parámetros")
+                .doesNotContain("Expand all").doesNotContain("Only failed");
+    }
+
+    @Test
+    @DisplayName("Author text and messages without a key are shown as written in a Spanish report")
+    void testSpanishReportKeepsUnkeyedText() {
+        String html = HtmlReportWriter.render(RUN_ES, List.of(failed()), NOW);
+
+        assertThat(html).contains("Grant the Finance roles")
+                .contains("Role service error: Invalid name &lt;cn=u&gt;")
+                .contains("A user gets the Finance roles");
+    }
+
+    @Test
+    @DisplayName("Durations use the locale's decimal separator")
+    void testDurationLocale() {
+        assertThat(HtmlReportWriter.duration(10_100, java.util.Locale.of("es"))).isEqualTo("10,1 s");
+        assertThat(HtmlReportWriter.duration(10_100, java.util.Locale.ENGLISH)).isEqualTo("10.1 s");
+        assertThat(HtmlReportWriter.duration(850, java.util.Locale.of("es"))).isEqualTo("850 ms");
+        assertThat(HtmlReportWriter.duration(102_000, java.util.Locale.of("es"))).isEqualTo("1m 42s");
+    }
+
+    private static String renderStepEs(StepResult step) {
+        return HtmlReportWriter.render(RUN_ES, List.of(
+                new ScenarioResult("S", "s.yaml", step.success(), 10, List.of(step), List.of(), null, null)), NOW);
+    }
+
+    @Test
+    @DisplayName("HTTP evidence in Spanish")
+    void testSpanishHttpEvidence() {
+        String html = renderStepEs(withEvidence(false, 12, httpEvidence(200, "ok")));
+        assertThat(html).contains("Evidencia <span")
+                .contains("(último intento)")
+                .contains("Solicitud").contains("Respuesta");
+        assertThat(renderStepEs(withEvidence(false, null, httpEvidence(null, null))))
+                .contains("→ sin respuesta").contains("sin respuesta: Connection refused");
+    }
+
+    @Test
+    @DisplayName("SQL evidence in Spanish")
+    void testSpanishSqlEvidence() {
+        List<Map<String, Object>> rows = new ArrayList<>();
+        for (int i = 0; i < 25; i++) {
+            rows.add(Map.of("ID", i));
+        }
+        assertThat(renderStepEs(withEvidence(true, null,
+                SqlEvidence.query("hr", "SELECT id FROM t WHERE username = ?", new Object[]{"jdoe"}, rows))))
+                .contains("SQL · 1 parámetro · 25 filas")
+                .contains("parámetros: [&quot;jdoe&quot;]")
+                .contains("… 5 filas más");
+        assertThat(renderStepEs(withEvidence(true, null, SqlEvidence.update("hr", "DELETE FROM t", new Object[0], 3))))
+                .contains("SQL · 0 parámetros · actualización: 3 filas");
+        assertThat(renderStepEs(withEvidence(true, null,
+                SqlEvidence.query("hr", "SELECT 1", new Object[0], List.of()))))
+                .contains("sin filas");
+    }
+
+    @Test
+    @DisplayName("LDAP evidence in Spanish")
+    void testSpanishLdapEvidence() {
+        assertThat(renderStepEs(withEvidence(true, null, LdapEvidence.written("east", "cn=u,ou=users", "create",
+                Map.of("sn", "U", "member", List.of("cn=a", "cn=b"), "x", "y")))))
+                .contains("create cn=u,ou=users · 3 atributos")
+                .contains("directorio east");
+        assertThat(renderStepEs(withEvidence(false, null, LdapEvidence.absent(null, "cn=x", "read"))))
+                .contains("read cn=x · sin entrada").contains("ausente");
+        assertThat(renderStepEs(withEvidence(true, null, LdapEvidence.exists(null, "cn=x", true))))
+                .contains("exists cn=x · presente");
+    }
+
     @Test
     @DisplayName("Hostile text is escaped in every evidence field")
     void testEscapingEverywhere() {
@@ -356,5 +444,45 @@ class HtmlReportWriterTest {
                 .contains("exists cn=u · no entry");
         assertThat(renderStep(withEvidence(true, null, LdapEvidence.deleted(null, "cn=u"))))
                 .contains("delete cn=u<");
+    }
+
+    private static ScenarioResult keyedFailure() {
+        return new ScenarioResult("Provision a user", "keyed.yaml", false, 3_000,
+                List.of(new StepResult(0, "ldap.verify", Map.of("dn", "cn=u,ou=users"), false, 2_000,
+                        "Connection refused: ldap://edir.lab:636 (last observed value after retrying)", 3, 2_000L,
+                        "Wait until the entry exists", null,
+                        "engine.wait.lastObserved", List.of("Connection refused: ldap://edir.lab:636"))),
+                List.of(new CleanupResult(0, "ldap.delete", Map.of(), CleanupStatus.FAILED, 10,
+                        "gone (not retried: waiting cannot change this)", null,
+                        "engine.wait.notRetried", List.of("gone"))),
+                null, null);
+    }
+
+    @Test
+    @DisplayName("A keyed message is shown in Spanish with the external text inside it unchanged")
+    void testKeyedMessageWithExternalTextInSpanish() {
+        String html = HtmlReportWriter.render(RUN_ES, List.of(keyedFailure()), NOW);
+
+        assertThat(html)
+                .contains("<div class=\"message\">Connection refused: ldap://edir.lab:636"
+                        + " (último valor observado tras reintentar)</div>")
+                .contains("gone (sin reintentos: esperar no puede cambiar este resultado)")
+                .contains("<p class=\"failure\">" + HtmlReportWriter.esc(keyedFailure().failureSummary(java.util.Locale.of("es"))))
+                .contains("keyed.yaml, paso 1 (ldap.verify: &quot;Wait until the entry exists&quot;): "
+                        + "Connection refused: ldap://edir.lab:636 (último valor observado tras reintentar)"
+                        + " — se dejó de reintentar tras 3 intentos en 2000 ms")
+                .doesNotContain("last observed value");
+    }
+
+    @Test
+    @DisplayName("A keyed message is shown in English exactly as recorded")
+    void testKeyedMessageInEnglish() {
+        String html = render(keyedFailure());
+
+        assertThat(html)
+                .contains("<div class=\"message\">Connection refused: ldap://edir.lab:636"
+                        + " (last observed value after retrying)</div>")
+                .contains("gone (not retried: waiting cannot change this)")
+                .contains("<p class=\"failure\">" + HtmlReportWriter.esc(keyedFailure().failureSummary()) + "</p>");
     }
 }

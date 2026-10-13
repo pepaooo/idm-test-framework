@@ -1,5 +1,6 @@
 package com.idm.test.engine.steps;
 
+import com.idm.test.engine.i18n.Messages;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -10,6 +11,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -180,5 +182,19 @@ class XmlObjectsTest {
         }
 
         assertThat(captured.toString()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("Malformed XML renders in Spanish, the parser's own text unchanged")
+    void testMalformedRendersInSpanish() {
+        try {
+            XmlObjects.parse("<r>\n  <a>\n</r>");
+        } catch (XmlObjects.MalformedXmlException e) {
+            String parser = e.getMessage().substring("not well-formed XML at line 3, column 3: ".length());
+            assertThat(Messages.render(e.detail(), Locale.of("es")))
+                    .isEqualTo("XML mal formado en la línea 3, columna 3: " + parser);
+            return;
+        }
+        throw new AssertionError("no MalformedXmlException");
     }
 }

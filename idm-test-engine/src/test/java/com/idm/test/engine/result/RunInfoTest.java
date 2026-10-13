@@ -40,4 +40,14 @@ class RunInfoTest {
         assertThat(run.scenarioFilter()).isNull();
         assertThat(run.endpoints()).isEmpty();
     }
+
+    @Test
+    @DisplayName("Should default to English and keep a given locale")
+    void testLocale() {
+        assertThat(RunInfo.minimal("x").locale()).isEqualTo(java.util.Locale.ENGLISH);
+        assertThat(new RunInfo("x", Instant.EPOCH, List.of(), null, Map.of(), null).locale())
+                .isEqualTo(java.util.Locale.ENGLISH);
+        assertThat(RunInfo.minimal("x").withLocale(java.util.Locale.of("es")).locale())
+                .isEqualTo(java.util.Locale.of("es"));
+    }
 }

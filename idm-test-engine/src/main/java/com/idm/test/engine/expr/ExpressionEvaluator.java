@@ -1,6 +1,8 @@
 package com.idm.test.engine.expr;
 
+import com.idm.test.engine.i18n.Messages;
 import com.idm.test.engine.spi.Explained;
+import com.idm.test.engine.spi.Message;
 import org.mozilla.javascript.Context;
 import org.mozilla.javascript.ContextFactory;
 import org.mozilla.javascript.Scriptable;
@@ -86,10 +88,7 @@ public final class ExpressionEvaluator {
             // a fabricated null result), fail fast instead: refuse to evaluate at all so the
             // caller finds out immediately, deterministically, and via the same exception type as
             // every other failure mode.
-            throw new ExpressionException(
-                    "cannot evaluate js:{ " + expression + " }: another Rhino Context is already "
-                            + "open on this thread, so the instruction budget would not apply to it",
-                    null);
+            throw new ExpressionException(Message.of("engine.expr.foreignContext", expression), null);
         }
         return doEvaluate(expression, variables);
     }
@@ -113,9 +112,7 @@ public final class ExpressionEvaluator {
     public void validate(String expression) {
         Context current = Context.getCurrentContext();
         if (current != null && current.getFactory() != contextFactory) {
-            throw new ExpressionException(
-                    "cannot validate js:{ " + expression + " }: another Rhino Context is already "
-                            + "open on this thread", null);
+            throw new ExpressionException(Message.of("engine.expr.foreignContextValidate", expression), null);
         }
 
         Context cx = contextFactory.enterContext();
@@ -126,11 +123,9 @@ public final class ExpressionEvaluator {
             // compiled Script is simply discarded.
             cx.compileString(expression, "expression", 1, null);
         } catch (StackOverflowError e) {
-            throw new ExpressionException(
-                    "invalid expression js:{ " + expression + " }: it is nested too deeply", e);
+            throw new ExpressionException(Message.of("engine.expr.tooDeepToCompile", expression), e);
         } catch (RuntimeException e) {
-            throw new ExpressionException(
-                    "invalid expression js:{ " + expression + " }: " + e.getMessage(), e);
+            throw new ExpressionException(Message.of("engine.expr.invalid", expression, e.getMessage()), e);
         } finally {
             Context.exit();
         }
@@ -138,6 +133,7 @@ public final class ExpressionEvaluator {
 
     private Explained doEvaluate(String expression, Map<String, Object> variables) {
         Context cx = contextFactory.enterContext();
+        ListHelpers helpers = null;
         try {
             // Belt and braces: onContextCreated only runs the first time a Context is created,
             // not on every reuse, so the threshold might not have been set for this particular
@@ -164,14 +160,13 @@ public final class ExpressionEvaluator {
             // The helpers are defined after the scenario's names, so they always mean the
             // built-ins; the validator refuses scenario names that would collide with them. Their
             // notes are collected in Java, out of the expression's reach.
-            ListHelpers helpers = ListHelpers.defineIn(cx, scope);
+            helpers = ListHelpers.defineIn(cx, scope);
 
             Object value = JsValues.fromJs(cx.evaluateString(scope, expression, "expression", 1, null));
             return new Explained(value, helpers.notes());
 
         } catch (InstructionBudgetExceeded e) {
-            throw new ExpressionException(
-                    "expression ran too long and was stopped: js:{ " + expression + " }", e);
+            throw new ExpressionException(Message.of("engine.expr.tooLong", expression), e);
         } catch (ExpressionException e) {
             throw e;
         } catch (StackOverflowError e) {
@@ -184,16 +179,36 @@ public final class ExpressionEvaluator {
                     && String.valueOf(e.getMessage()).contains("Exceeded maximum stack depth")) {
                 throw recursedTooDeeply(expression, e);
             }
-            throw new ExpressionException(
-                    "could not evaluate js:{ " + expression + " }: " + e.getMessage(), e);
+            throw new ExpressionException(Message.of("engine.expr.failed", expression, cause(e, helpers)), e);
         } finally {
             Context.exit();
         }
     }
 
     private static ExpressionException recursedTooDeeply(String expression, Throwable cause) {
-        return new ExpressionException(
-                "expression nested or recursed too deeply and was stopped: js:{ " + expression + " }", cause);
+        return new ExpressionException(Message.of("engine.expr.recursed", expression), cause);
+    }
+
+    /**
+     * Why an evaluation failed, as a message argument: a conversion problem by key; a list
+     * helper's error by key, with the text JavaScript put around it unchanged; otherwise the
+     * script engine's own text. The English is always exactly {@code e.getMessage()}.
+     */
+    private static Object cause(RuntimeException e, ListHelpers helpers) {
+        if (e instanceof JsValues.JsConversionException conversion) {
+            return conversion.detail();
+        }
+        String text = e.getMessage();
+        Message failure = helpers == null ? null : helpers.failure();
+        if (failure != null && text != null) {
+            String english = Messages.english(failure);
+            int at = text.indexOf(english);
+            if (at >= 0) {
+                return Message.of("engine.text.around", text.substring(0, at), failure,
+                        text.substring(at + english.length()));
+            }
+        }
+        return text;
     }
 
     /**
@@ -231,8 +246,22 @@ public final class ExpressionEvaluator {
      * because the reader is often not a programmer.
      */
     public static class ExpressionException extends RuntimeException {
+
+        private final transient Message detail;
+
         public ExpressionException(String message, Throwable cause) {
             super(message, cause);
+            this.detail = null;
+        }
+
+        public ExpressionException(Message detail, Throwable cause) {
+            super(Messages.english(detail), cause);
+            this.detail = detail;
+        }
+
+        /** The problem by key, so it can be shown in the run's language; null when given as text. */
+        public Message detail() {
+            return detail;
         }
     }
 }

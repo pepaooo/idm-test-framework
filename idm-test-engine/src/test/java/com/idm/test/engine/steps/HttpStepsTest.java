@@ -13,6 +13,7 @@ import com.idm.test.core.model.ErrorType;
 import com.idm.test.core.model.OperationResult;
 import com.idm.test.engine.ScenarioValidator;
 import com.idm.test.engine.ValidationException;
+import com.idm.test.engine.i18n.Messages;
 import com.idm.test.engine.model.Scenario;
 import com.idm.test.engine.model.StepSpec;
 import com.idm.test.engine.spi.HttpEvidence;
@@ -27,6 +28,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
@@ -429,5 +431,35 @@ class HttpStepsTest {
         assertThat(outcome.isFinal()).isTrue();
         assertThat(outcome.message()).contains("connect-timeout").contains("not a positive number of milliseconds");
         WIREMOCK.verify(0, anyRequestedFor(anyUrl()));
+    }
+
+    private static String spanish(StepOutcome outcome) {
+        return Messages.render(outcome.detail(), Locale.of("es"));
+    }
+
+    @Test
+    @DisplayName("http.request renders its result and a transport failure in Spanish")
+    void testRequestRendersInSpanish() {
+        stubFor(get(urlEqualTo("/users/1")).willReturn(aResponse().withStatus(404)));
+
+        StepOutcome returned = STEP.execute(params("target", "mock", "method", "GET", "path", "/users/1"), false);
+        StepOutcome down = STEP.execute(params("target", "down", "method", "GET", "path", "/users/1"), false);
+
+        String url = "http://localhost:" + WIREMOCK.port() + "/users/1";
+        assertThat(spanish(returned)).isEqualTo("GET " + url + " devolvió 404");
+        assertThat(returned.message()).isEqualTo("GET " + url + " returned 404");
+        assertThat(spanish(down)).startsWith(
+                "http.request falló para http://localhost:1/users/1: La solicitud falló: GET http://localhost:1/users/1: ");
+    }
+
+    @Test
+    @DisplayName("A bad http.* parameter renders in Spanish")
+    void testExchangeRendersInSpanish() {
+        StepOutcome outcome = STEP.execute(params("target", "mock", "method", "FETCH", "path", "/x"), false);
+
+        assertThat(spanish(outcome)).isEqualTo(
+                "el método 'FETCH' de http.request no es ninguno de [DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT]");
+        assertThat(outcome.message()).isEqualTo(
+                "http.request method 'FETCH' is not one of [DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT]");
     }
 }

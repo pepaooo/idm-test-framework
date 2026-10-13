@@ -314,6 +314,33 @@ scenarios' `wait: true`, and by a `wait:` map that leaves `timeout` or `poll` ou
 `database-provision-timeout-seconds` are how long the Java workflow tests wait for provisioning to
 reach the directory and the databases.
 
+## Report language
+
+The HTML report and the messages in the JSON results are written in English by default. Set the
+language with `idm.test.report.locale` (`en` or `es`). The setting is read once per run, before
+any scenario runs; the first non-blank source wins:
+
+1. the Spring property `idm.test.report.locale` (a profile file or `IDM_TEST_REPORT_LOCALE`)
+2. the environment variable `IDM_TEST_LOCALE`
+3. the system property `-Didm.test.locale`
+
+Translated: report labels, evidence, the framework's step, engine, validation and runner messages,
+and JUnit's failure text. Not translated: scenario, step and cleanup names and descriptions, error
+text from external servers and drivers (LDAP, JDBC, HTTP, SOAP), log output, JSON field names, step
+types and YAML keys.
+
+A few framework texts are still English in a Spanish run:
+
+- the error in an HTTP evidence panel when no response arrived (the step's message above it is Spanish)
+- the real-environment refusal when `idm.test.default-directory` names a directory that is not configured
+- the container runner's Docker checks, and `-Dscenario` selection errors
+- the runner name in the minimal header used when the run could not be described
+- check notes or XML reasons longer than 300 characters (shown in English, as written)
+- the JavaScript engine's own wording around a list-helper error
+
+An unsupported value stops the run before any scenario executes, with
+`unsupported report locale 'fr'; supported: en, es`.
+
 ## TLS certificates (LDAPS, HTTPS)
 
 The framework has no TLS settings of its own. Every connector uses the **test JVM's default

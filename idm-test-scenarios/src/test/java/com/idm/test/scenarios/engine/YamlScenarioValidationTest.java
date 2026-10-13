@@ -5,7 +5,9 @@ import com.idm.test.engine.ScenarioEngine;
 import com.idm.test.engine.ScenarioLoader;
 import com.idm.test.engine.ScenarioValidator;
 import com.idm.test.engine.expr.ExpressionEvaluator;
+import com.idm.test.engine.i18n.ReportLocale;
 import com.idm.test.engine.model.Scenario;
+import com.idm.test.engine.result.RunInfo;
 import com.idm.test.engine.spi.StepType;
 import com.idm.test.scenarios.base.BaseIntegrationTest;
 import org.junit.jupiter.api.DisplayName;
@@ -19,6 +21,7 @@ import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -92,6 +95,10 @@ class YamlScenarioValidationTest extends BaseIntegrationTest {
         assertThat(json.indexOf("\"success\" : false", brokenIndex))
                 .as("broken-wait.yaml's recorded result should have success: false in %s", json)
                 .isNotEqualTo(-1);
+        // The load/validation error keeps its key, so the report can show it in another language.
+        assertThat(json.indexOf("\"failureDetailKey\" : \"validation.frame.step\"", brokenIndex))
+                .as("broken-wait.yaml's failure should keep its key in %s", json)
+                .isNotEqualTo(-1);
 
         String report = java.nio.file.Files.readString(tempDir.resolve("scenario-report.html"));
         assertThat(report).contains("broken-wait.yaml").contains("valid-user.yaml")
@@ -124,6 +131,63 @@ class YamlScenarioValidationTest extends BaseIntegrationTest {
         assertThat(java.nio.file.Files.readString(results)).contains("\"valid-user.yaml\"");
         assertThat(java.nio.file.Files.readString(tempDir.resolve("scenario-report.html")))
                 .contains("valid-user.yaml");
+    }
+
+    @Test
+    @DisplayName("An unsupported report locale stops the run instead of falling back to a minimal header")
+    void testUnsupportedLocaleStopsTheRun(@TempDir Path tempDir) {
+        Map<String, StepType> registry = ScenarioSupport.registry(
+                ldapDirectories, databaseConnector, roleServiceConnector,
+                resourceServiceConnector, idmRestConnector, restProperties, restAuthenticator);
+        ScenarioValidator validator = new ScenarioValidator(registry, FixtureFactory.SUPPORTED_GENERATORS);
+        ScenarioEngine engine = new ScenarioEngine(
+                registry,
+                new FixtureFactory(testDataGenerator),
+                testExecutor,
+                executorProperties.getDefaultTimeout(),
+                executorProperties.getDefaultPollInterval(),
+                new ExpressionEvaluator());
+        Path results = tempDir.resolve("scenario-results.json");
+
+        assertThatThrownBy(() -> ScenarioSupport.buildTests(FIXTURE_DIR, List.of("valid-user.yaml"), validator,
+                engine, results, scenarios -> {
+                    ReportLocale.resolve("fr");
+                    return RunInfo.minimal("unused");
+                }))
+                .isInstanceOf(ReportLocale.UnsupportedLocaleException.class)
+                .hasMessage("unsupported report locale 'fr'; supported: en, es");
+    }
+
+    @Test
+    @DisplayName("In a Spanish run, JUnit's failure text for a failed scenario and for an invalid file is Spanish")
+    void testSpanishFailureText(@TempDir Path tempDir) throws Exception {
+        Map<String, StepType> registry = ScenarioSupport.registry(
+                ldapDirectories, databaseConnector, roleServiceConnector,
+                resourceServiceConnector, idmRestConnector, restProperties, restAuthenticator);
+        ScenarioValidator validator = new ScenarioValidator(registry, FixtureFactory.SUPPORTED_GENERATORS);
+        ScenarioEngine engine = new ScenarioEngine(
+                registry,
+                new FixtureFactory(testDataGenerator),
+                testExecutor,
+                executorProperties.getDefaultTimeout(),
+                executorProperties.getDefaultPollInterval(),
+                new ExpressionEvaluator());
+        RunInfo spanish = RunInfo.minimal("Escenarios").withLocale(Locale.of("es"));
+
+        List<DynamicTest> invalid = ScenarioSupport.buildTests(FIXTURE_DIR, List.of("broken-wait.yaml"), validator,
+                engine, tempDir.resolve("invalid-results.json"), scenarios -> spanish);
+        assertThatThrownBy(() -> invalid.get(0).getExecutable().execute())
+                .isInstanceOf(AssertionFailedError.class)
+                .hasMessageStartingWith("broken-wait.yaml, paso 2 (ldap.verify): ")
+                .hasMessageContaining("30s");
+
+        List<DynamicTest> failing = ScenarioSupport.buildTests("scenarios-locale-fixture",
+                List.of("missing-entry.yaml"), validator, engine, tempDir.resolve("failing-results.json"),
+                scenarios -> spanish);
+        assertThatThrownBy(() -> failing.get(0).getExecutable().execute())
+                .isInstanceOf(AssertionError.class)
+                .hasMessageContaining("missing-entry.yaml, paso 1 (ldap.verify): ldap.verify esperaba que "
+                        + "cn=itf46-never-created,ou=users");
     }
 
     @Test

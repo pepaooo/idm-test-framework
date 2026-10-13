@@ -7,6 +7,7 @@ import com.idm.test.connector.rest.client.IdmRestConnector;
 import com.idm.test.connector.rest.client.RestAuthenticator;
 import com.idm.test.connector.rest.config.RestClientConfiguration;
 import com.idm.test.connector.rest.config.RestProperties;
+import com.idm.test.engine.i18n.Messages;
 import com.idm.test.engine.spi.HttpEvidence;
 import com.idm.test.engine.spi.StepOutcome;
 import org.junit.jupiter.api.AfterAll;
@@ -17,6 +18,7 @@ import org.springframework.web.client.RestClient;
 
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
@@ -575,5 +577,70 @@ class RestStepsTest {
         assertThat(outcome.evidence()).isNull();
         WIREMOCK.verify(0, com.github.tomakehurst.wiremock.client.WireMock.anyRequestedFor(
                 com.github.tomakehurst.wiremock.client.WireMock.anyUrl()));
+    }
+
+    private static String spanish(StepOutcome outcome) {
+        return Messages.render(outcome.detail(), Locale.of("es"));
+    }
+
+    @Test
+    @DisplayName("rest.request renders a rejected body in Spanish")
+    void testRequestRendersInSpanish() {
+        StepOutcome outcome = new RestRequestStep(CONNECTOR, PROPERTIES, RestAuthenticator.withoutOAuth()).execute(Map.of(
+                "target", "idm", "method", "POST", "path", "/users",
+                "body", Map.of("a", 1), "bodyFrom", Map.of("b", 2)), false);
+
+        assertThat(spanish(outcome)).isEqualTo(
+                "rest.request indica 'body' y 'bodyFrom' a la vez; significan lo mismo, así que indique solo uno");
+        assertThat(outcome.message()).isEqualTo(
+                "rest.request supplies both 'body' and 'bodyFrom'; they mean the same thing, so give only one");
+    }
+
+    @Test
+    @DisplayName("rest.request renders a transport failure in Spanish, with the connector's frame translated")
+    void testRequestTransportFailureRendersInSpanish() {
+        RestProperties dead = new RestProperties();
+        RestProperties.RestApiConfig config = new RestProperties.RestApiConfig();
+        config.setBaseUrl("http://localhost:1");
+        dead.getRest().put("idm", config);
+
+        StepOutcome outcome = new RestRequestStep(CONNECTOR, dead, RestAuthenticator.withoutOAuth()).execute(Map.of(
+                "target", "idm", "method", "GET", "path", "/users/1"), false);
+
+        assertThat(outcome.message()).startsWith(
+                "rest.request failed for http://localhost:1/users/1: Request failed: GET http://localhost:1/users/1: ");
+        assertThat(spanish(outcome)).isEqualTo("rest.request falló para http://localhost:1/users/1: La solicitud falló: "
+                + outcome.message().substring("rest.request failed for http://localhost:1/users/1: Request failed: ".length()));
+    }
+
+    @Test
+    @DisplayName("rest.verify renders a body mismatch in Spanish")
+    void testVerifyRendersInSpanish() {
+        stubFor(get(urlEqualTo("/users/jdoe")).willReturn(aResponse()
+                .withStatus(200)
+                .withHeader("Content-Type", "application/json")
+                .withBody("{\"department\":\"Sales\"}")));
+
+        StepOutcome outcome = new RestVerifyStep(CONNECTOR, PROPERTIES, RestAuthenticator.withoutOAuth()).execute(Map.of(
+                "target", "idm", "path", "/users/jdoe",
+                "expect", Map.of("body", Map.of("department", "Engineering"))), false);
+
+        String url = "http://localhost:" + WIREMOCK.port() + "/users/jdoe";
+        assertThat(spanish(outcome)).isEqualTo(
+                "rest.verify en " + url + " encontró una diferencia en 'department': esperado=Engineering, real=Sales");
+        assertThat(outcome.message()).isEqualTo(
+                "rest.verify on " + url + " found a mismatch for 'department': expected=Engineering, actual=Sales");
+    }
+
+    @Test
+    @DisplayName("An unknown REST target renders in Spanish")
+    void testTargetsRenderInSpanish() {
+        StepOutcome outcome = new RestRequestStep(CONNECTOR, PROPERTIES, RestAuthenticator.withoutOAuth()).execute(Map.of(
+                "target", "nope", "method", "GET", "path", "/users/1"), false);
+
+        assertThat(spanish(outcome)).isEqualTo(
+                "rest.request hace referencia al destino desconocido 'nope'. Destinos configurados: [broken, idm, slow]");
+        assertThat(outcome.message()).isEqualTo(
+                "rest.request names unknown target 'nope'. Configured targets: [broken, idm, slow]");
     }
 }

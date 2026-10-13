@@ -1,11 +1,14 @@
 package com.idm.test.engine;
 
 import com.idm.test.engine.expr.ExpressionEvaluator;
+import com.idm.test.engine.i18n.KeyedArgumentException;
+import com.idm.test.engine.i18n.Messages;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -325,5 +328,28 @@ class InterpolatorTest {
     void testTemplateLiteralSubstitutionWithBraces() {
         assertThat(Interpolator.resolve("js:{ `a${ {b: 1}.b }c` }", jsScope(), evaluator))
                 .isEqualTo("a1c");
+    }
+
+    private static String spanish(Throwable e) {
+        return Messages.render(((KeyedArgumentException) e).detail(), Locale.of("es"));
+    }
+
+    @Test
+    @DisplayName("Malformed expressions and unresolved references read in Spanish, English unchanged")
+    void testMessagesRenderInSpanish() {
+        assertThatThrownBy(() -> Interpolator.expressionBody("js:{ f({ }"))
+                .hasMessage("the expression in 'js:{ f({ }' is not closed — a '}' is missing")
+                .satisfies(e -> assertThat(spanish(e))
+                        .isEqualTo("la expresión de 'js:{ f({ }' no está cerrada — falta una '}'"));
+        assertThatThrownBy(() -> Interpolator.expressionBody("js:{ 'a }"))
+                .hasMessage("the expression in 'js:{ 'a }' is not closed — a closing \"'\" is missing")
+                .satisfies(e -> assertThat(spanish(e)).endsWith("falta una \"'\" de cierre"));
+        assertThatThrownBy(() -> Interpolator.expressionBody("id-js:{ 1 }"))
+                .hasMessage("an expression must be the whole value, but found js:{ inside 'id-js:{ 1 }'")
+                .satisfies(e -> assertThat(spanish(e))
+                        .isEqualTo("una expresión debe ser el valor completo, pero se encontró js:{ dentro de 'id-js:{ 1 }'"));
+        assertThatThrownBy(() -> Interpolator.resolve("${user.nope}", Map.of("user", Map.of()), evaluator))
+                .hasMessage("cannot resolve ${user.nope} — no value for 'nope'")
+                .satisfies(e -> assertThat(spanish(e)).isEqualTo("no se puede resolver ${user.nope} — no hay valor para 'nope'"));
     }
 }

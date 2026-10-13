@@ -10,11 +10,15 @@ import com.idm.test.connector.soap.client.RoleServiceConnector;
 import com.idm.test.engine.ScenarioEngine;
 import com.idm.test.engine.ScenarioLoader;
 import com.idm.test.engine.ScenarioValidator;
+import com.idm.test.engine.ValidationException;
 import com.idm.test.engine.model.Scenario;
+import com.idm.test.engine.i18n.Messages;
+import com.idm.test.engine.i18n.ReportLocale;
 import com.idm.test.engine.result.HtmlReportWriter;
 import com.idm.test.engine.result.JsonResultWriter;
 import com.idm.test.engine.result.RunInfo;
 import com.idm.test.engine.result.ScenarioResult;
+import com.idm.test.engine.spi.Message;
 import com.idm.test.engine.spi.StepType;
 import com.idm.test.engine.steps.DbExecuteStep;
 import com.idm.test.engine.steps.DbVerifyStep;
@@ -46,6 +50,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.regex.PatternSyntaxException;
@@ -73,13 +78,18 @@ final class ScenarioSupport {
     /** System property naming the scenario file, or glob of files, to run. */
     static final String SCENARIO_PROPERTY = "scenario";
 
+    /** The header used when describing the run failed; always English. */
+    private static RunInfo minimalRun() {
+        return RunInfo.minimal(Messages.english(Message.of("runner.name.scenarios")));
+    }
+
     /**
      * Builds a test for every scenario file in {@code scenarioDir}, unfiltered.
      */
     static List<DynamicTest> buildTests(
             String scenarioDir, ScenarioValidator validator, ScenarioEngine engine, Path resultsPath)
             throws URISyntaxException {
-        return buildTests(scenarioDir, validator, engine, resultsPath, scenarios -> RunInfo.minimal("Scenarios"));
+        return buildTests(scenarioDir, validator, engine, resultsPath, scenarios -> minimalRun());
     }
 
     /** As above, describing the run in the HTML report with {@code runInfo}. */
@@ -93,7 +103,7 @@ final class ScenarioSupport {
             String scenarioDir, List<String> files, ScenarioValidator validator, ScenarioEngine engine,
             Path resultsPath) throws URISyntaxException {
         return buildTests(scenarioDir, files, validator, engine, resultsPath,
-                scenarios -> RunInfo.minimal("Scenarios"));
+                scenarios -> minimalRun());
     }
 
     /**
@@ -120,6 +130,8 @@ final class ScenarioSupport {
 
         Map<String, Scenario> loaded = new LinkedHashMap<>();
         Map<String, String> failures = new LinkedHashMap<>();
+        // A load or validation problem by key, so the report can show it in the run's language.
+        Map<String, Message> failureDetails = new LinkedHashMap<>();
         for (String file : files) {
             try {
                 Scenario scenario = ScenarioLoader.load(resource(scenarioDir, file), file);
@@ -127,16 +139,24 @@ final class ScenarioSupport {
                 loaded.put(file, scenario);
             } catch (RuntimeException e) {
                 failures.put(file, e.getMessage());
+                if (e instanceof ValidationException validation && validation.detail() != null) {
+                    failureDetails.put(file, validation.detail());
+                }
             }
         }
         RunInfo run;
         try {
             run = runInfo.apply(List.copyOf(loaded.values()));
+        } catch (ReportLocale.UnsupportedLocaleException e) {
+            // A misconfigured language is a configuration error, like a bad URL: stop the run.
+            throw e;
         } catch (RuntimeException e) {
             LOG.warn("Could not describe the run for the HTML report, using a minimal header: {}", e.toString());
-            run = RunInfo.minimal("Scenarios");
+            run = minimalRun();
         }
         RunInfo reportRun = run;
+        // JUnit's failure text follows the report's language; English when the run could not be described.
+        Locale locale = reportRun.locale();
 
         List<ScenarioResult> collected = Collections.synchronizedList(new ArrayList<>());
         List<DynamicTest> tests = new ArrayList<>();
@@ -149,16 +169,18 @@ final class ScenarioSupport {
                     writeResults(collected, resultsPath, reportRun);
 
                     assertThat(result.success())
-                            .as(result.failureSummary())
+                            .as(result.failureSummary(locale))
                             .isTrue();
                 }));
             } else {
                 String message = failures.get(file);
+                Message detail = failureDetails.get(file);
                 tests.add(DynamicTest.dynamicTest(file, () -> {
-                    ScenarioResult result = new ScenarioResult(file, file, false, 0L, List.of(), message);
+                    ScenarioResult result = new ScenarioResult(file, file, false, 0L, List.of(), List.of(), message,
+                            null, detail == null ? null : detail.key(), detail == null ? null : detail.args());
                     collected.add(result);
                     writeResults(collected, resultsPath, reportRun);
-                    fail(message);
+                    fail(detail == null ? message : Messages.render(detail, locale));
                 }));
             }
         }

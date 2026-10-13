@@ -2,10 +2,12 @@ package com.idm.test.engine;
 
 import com.idm.test.engine.expr.ExpressionEvaluator;
 import com.idm.test.engine.expr.ExpressionEvaluator.ExpressionException;
+import com.idm.test.engine.i18n.KeyedArgumentException;
 import com.idm.test.engine.model.FixtureSpec;
 import com.idm.test.engine.model.Scenario;
 import com.idm.test.engine.model.StepSpec;
 import com.idm.test.engine.model.WaitSpec;
+import com.idm.test.engine.spi.Message;
 import com.idm.test.engine.spi.StepType;
 
 import java.time.Duration;
@@ -55,7 +57,7 @@ public final class ScenarioValidator {
             return;
         }
         if (!(params.get(DESCRIPTION) instanceof String text)) {
-            throw locate.at("'description' must be text");
+            throw locate.at(Message.of("validation.description.notText"));
         }
         boolean expression;
         try {
@@ -64,14 +66,14 @@ public final class ScenarioValidator {
             expression = true;
         }
         if (expression) {
-            throw locate.at("'description' must be text; js:{ … } is not allowed here");
+            throw locate.at(Message.of("validation.description.expression"));
         }
     }
 
     /** Builds the located error for one entry, so helpers work for steps and cleanup alike. */
     @FunctionalInterface
     private interface Locate {
-        ValidationException at(String message);
+        ValidationException at(Message problem);
     }
 
     private final Map<String, StepType> registry;
@@ -114,20 +116,18 @@ public final class ScenarioValidator {
      */
     public void validate(Scenario scenario, String sourceName) {
         if (scenario.steps().isEmpty()) {
-            throw new ValidationException(sourceName, "a scenario needs at least one step");
+            throw new ValidationException(sourceName, Message.of("validation.noSteps"));
         }
 
         for (Map.Entry<String, FixtureSpec> fixture : scenario.fixtures().entrySet()) {
             if (ExpressionEvaluator.HELPERS.contains(fixture.getKey())) {
-                throw new ValidationException(sourceName, "fixture '" + fixture.getKey()
-                        + "' is a built-in helper name; choose another");
+                throw new ValidationException(sourceName, Message.of("validation.fixture.helperName", fixture.getKey()));
             }
 
             String generator = fixture.getValue().generate();
             if (generator != null && !generatorNames.contains(generator)) {
-                throw new ValidationException(sourceName,
-                        "fixture '" + fixture.getKey() + "' uses unknown generator '"
-                                + generator + "'. Available: " + new TreeSet<>(generatorNames));
+                throw new ValidationException(sourceName, Message.of("validation.fixture.unknownGenerator",
+                        fixture.getKey(), generator, new TreeSet<>(generatorNames)));
             }
         }
 
@@ -138,21 +138,20 @@ public final class ScenarioValidator {
             StepSpec step = scenario.steps().get(i);
 
             requireTextDescription(step.params(),
-                    message -> new ValidationException(sourceName, index, step.type(), message));
+                    problem -> new ValidationException(sourceName, index, step.type(), problem));
 
             if (SET_STEP.equals(step.type())) {
                 Map<String, Object> names = new LinkedHashMap<>(step.params());
                 Object description = names.remove(DESCRIPTION);
                 if (names.isEmpty()) {
-                    throw new ValidationException(sourceName, i, step.type(),
-                            "a set: step needs at least one name to bind");
+                    throw new ValidationException(sourceName, i, step.type(), Message.of("validation.set.empty"));
                 }
                 if (description != null) {
                     requireKnownReferences(description, known, sourceName, i, step.type());
                 }
                 for (Map.Entry<String, Object> entry : names.entrySet()) {
                     requireWellFormedExpressions(entry.getValue(),
-                            message -> new ValidationException(sourceName, index, step.type(), message));
+                            problem -> new ValidationException(sourceName, index, step.type(), problem));
                     requireKnownReferences(entry.getValue(), known, sourceName, i, step.type());
                     requireFreshBinding(entry.getKey(), known, sourceName, i, step.type(), "set:");
                     known.add(entry.getKey());   // later entries may read earlier ones
@@ -164,7 +163,7 @@ public final class ScenarioValidator {
 
             if (type == null) {
                 throw new ValidationException(sourceName, i, step.type(),
-                        "unknown step type. Available: " + new TreeSet<>(registry.keySet()));
+                        Message.of("validation.step.unknownType", new TreeSet<>(registry.keySet())));
             }
 
             // Don't trust acceptedParams() alone: an override (as LdapCreateStep's hardcoded
@@ -185,8 +184,7 @@ public final class ScenarioValidator {
             for (String required : new TreeSet<>(type.requiredParams())) {
                 if (!step.params().containsKey(required)) {
                     throw new ValidationException(sourceName, i, step.type(),
-                            "missing required parameter '" + required + "'"
-                                    + unrecognizedHint(step, accepted));
+                            Message.of("validation.step.missingParam", required, unrecognizedHint(step, accepted)));
                 }
             }
 
@@ -195,8 +193,7 @@ public final class ScenarioValidator {
             // accepted set either, and the two checks must not both fire for the same cause.
             if (step.params().containsKey("wait")) {
                 if (!type.retryable()) {
-                    throw new ValidationException(sourceName, i, step.type(),
-                            "'wait' is only valid on assertions, and this step is an action");
+                    throw new ValidationException(sourceName, i, step.type(), Message.of("validation.step.waitOnAction"));
                 }
 
                 // WaitSpec.parse is otherwise only called once the step actually runs, which
@@ -214,20 +211,19 @@ public final class ScenarioValidator {
                     WaitSpec.parse(step.params().get("wait"), PLACEHOLDER_DURATION, PLACEHOLDER_DURATION);
                 } catch (IllegalArgumentException e) {
                     throw new ValidationException(sourceName, i, step.type(),
-                            "invalid 'wait': " + e.getMessage());
+                            Message.of("validation.step.invalidWait", problemOf(e)));
                 }
             }
 
             for (String supplied : step.params().keySet()) {
                 if (!accepted.contains(supplied)) {
                     throw new ValidationException(sourceName, i, step.type(),
-                            "unknown parameter '" + supplied + "'. " + step.type()
-                                    + " accepts: " + new TreeSet<>(accepted));
+                            Message.of("validation.step.unknownParam", supplied, step.type(), new TreeSet<>(accepted)));
                 }
             }
 
             requireWellFormedExpressions(step.params(),
-                    message -> new ValidationException(sourceName, index, step.type(), message));
+                    problem -> new ValidationException(sourceName, index, step.type(), problem));
             Map<String, Object> immediate = new LinkedHashMap<>(step.params());
             type.deferredParams().forEach(immediate::remove);
             requireKnownReferences(immediate, known, sourceName, i, step.type());
@@ -242,10 +238,7 @@ public final class ScenarioValidator {
             if (asRaw != null) {
                 String asName = String.valueOf(asRaw);
                 if (!IDENTIFIER.matcher(asName).matches()) {
-                    throw new ValidationException(sourceName, i, step.type(),
-                            "'as: " + asName + "' is not a valid name — as: must be a literal "
-                                    + "identifier (a letter or underscore, followed by letters, "
-                                    + "digits or underscores), not an expression or a reference");
+                    throw new ValidationException(sourceName, i, step.type(), Message.of("validation.step.asInvalid", asName));
                 }
                 requireFreshBinding(asName, known, sourceName, i, step.type(), "as:");
                 known.add(asName);
@@ -270,14 +263,12 @@ public final class ScenarioValidator {
             String keyword) {
         if (ExpressionEvaluator.HELPERS.contains(name)) {
             throw new ValidationException(sourceName, index, stepType,
-                    keyword + " '" + name + "' is a built-in helper name; choose another");
+                    Message.of("validation.binding.helperName", keyword, name));
         }
 
         if (known.contains(name)) {
             throw new ValidationException(sourceName, index, stepType,
-                    keyword + " '" + name + "' shadows an existing name — '" + name
-                            + "' is already bound by a fixture, an earlier as:, or an earlier "
-                            + "set: entry");
+                    Message.of("validation.binding.shadows", keyword, name));
         }
     }
 
@@ -299,13 +290,14 @@ public final class ScenarioValidator {
             try {
                 expression = Interpolator.expressionBody(text);
             } catch (IllegalArgumentException malformed) {
-                throw locate.at(malformed.getMessage());
+                throw locate.at(problemOf(malformed));
             }
             if (expression != null) {
                 try {
                     evaluator.validate(expression);
                 } catch (ExpressionException syntaxError) {
-                    throw locate.at(syntaxError.getMessage());
+                    throw locate.at(syntaxError.detail() != null
+                            ? syntaxError.detail() : Message.of("engine.text", syntaxError.getMessage()));
                 }
             }
         } else if (value instanceof Map<?, ?> map) {
@@ -326,8 +318,7 @@ public final class ScenarioValidator {
         for (String reference : Interpolator.references(value)) {
             if (!known.contains(reference)) {
                 throw new ValidationException(sourceName, index, stepType,
-                        "references '${" + reference + "...}' but nothing named '" + reference
-                                + "' has been declared or bound at this point");
+                        Message.of("validation.ref.unknown", reference));
             }
         }
     }
@@ -341,13 +332,13 @@ public final class ScenarioValidator {
                                         String sourceName, int index, String stepType) {
         List<?> items = value == null ? List.of() : value instanceof List<?> list ? list : List.of(value);
         if (items.isEmpty()) {
-            throw new ValidationException(sourceName, index, stepType, "'" + name + "' needs at least one condition");
+            throw new ValidationException(sourceName, index, stepType, Message.of("validation.deferred.empty", name));
         }
         for (Object item : items) {
             String text = String.valueOf(item);
             if (!(item instanceof String) || Interpolator.expressionBody(text) == null) {
                 throw new ValidationException(sourceName, index, stepType,
-                        "'" + name + "' must be js:{ … } expressions; got \"" + text + "\"");
+                        Message.of("validation.deferred.notExpression", name, text));
             }
         }
         Set<String> visible = new LinkedHashSet<>(known);
@@ -366,13 +357,18 @@ public final class ScenarioValidator {
      * move or duplicate that check, so it cannot double-report alongside the 'wait' or
      * accepted-parameter checks below.
      */
-    private static String unrecognizedHint(StepSpec step, Set<String> accepted) {
+    private static Object unrecognizedHint(StepSpec step, Set<String> accepted) {
         Set<String> unrecognized = new TreeSet<>(step.params().keySet());
         unrecognized.removeAll(accepted);
         if (unrecognized.isEmpty()) {
             return "";
         }
-        return " (also supplied but not recognized, possibly a typo: " + unrecognized + ")";
+        return Message.of("validation.step.unrecognizedHint", unrecognized);
+    }
+
+    /** An exception's problem by key; its plain text, unchanged, when it has no key. */
+    private static Message problemOf(IllegalArgumentException e) {
+        return e instanceof KeyedArgumentException keyed ? keyed.detail() : Message.of("engine.text", e.getMessage());
     }
 
     /**
@@ -380,23 +376,22 @@ public final class ScenarioValidator {
      * assert, and it may reference any name the scenario binds anywhere.
      */
     private void validateCleanupEntry(StepSpec entry, int index, Set<String> known, String sourceName) {
-        Locate locate = message -> ValidationException.forCleanup(sourceName, index, entry.type(), message);
+        Locate locate = problem -> ValidationException.forCleanup(sourceName, index, entry.type(), problem);
 
         if (SET_STEP.equals(entry.type())) {
-            throw locate.at("set: is not allowed in cleanup — nothing runs after cleanup to read a binding");
+            throw locate.at(Message.of("validation.cleanup.set"));
         }
 
         StepType type = registry.get(entry.type());
         if (type == null) {
-            throw locate.at("unknown step type. Available: " + new TreeSet<>(registry.keySet()));
+            throw locate.at(Message.of("validation.step.unknownType", new TreeSet<>(registry.keySet())));
         }
         if (type.retryable()) {
-            throw locate.at("cleanup entries must be actions; " + entry.type()
-                    + " is an assertion and tears nothing down");
+            throw locate.at(Message.of("validation.cleanup.assertion", entry.type()));
         }
         for (String reserved : List.of("wait", "as")) {
             if (entry.params().containsKey(reserved)) {
-                throw locate.at("'" + reserved + "' is not allowed on a cleanup entry");
+                throw locate.at(Message.of("validation.cleanup.reserved", reserved));
             }
         }
         requireTextDescription(entry.params(), locate);
@@ -407,13 +402,12 @@ public final class ScenarioValidator {
 
         for (String required : new TreeSet<>(type.requiredParams())) {
             if (!entry.params().containsKey(required)) {
-                throw locate.at("missing required parameter '" + required + "'");
+                throw locate.at(Message.of("validation.step.missingParam", required, ""));
             }
         }
         for (String supplied : entry.params().keySet()) {
             if (!accepted.contains(supplied)) {
-                throw locate.at("unknown parameter '" + supplied + "'. " + entry.type()
-                        + " accepts: " + new TreeSet<>(accepted));
+                throw locate.at(Message.of("validation.step.unknownParam", supplied, entry.type(), new TreeSet<>(accepted)));
             }
         }
 
@@ -421,8 +415,7 @@ public final class ScenarioValidator {
 
         for (String reference : Interpolator.references(entry.params())) {
             if (!known.contains(reference)) {
-                throw locate.at("references '${" + reference + "...}' but nothing named '" + reference
-                        + "' is declared or bound anywhere in the scenario");
+                throw locate.at(Message.of("validation.cleanup.unknownRef", reference));
             }
         }
     }

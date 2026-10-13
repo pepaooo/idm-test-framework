@@ -1,6 +1,8 @@
 package com.idm.test.engine;
 
+import com.idm.test.engine.i18n.KeyedArgumentException;
 import com.idm.test.engine.model.FixtureSpec;
+import com.idm.test.engine.spi.Message;
 import com.idm.test.utils.data.TestDataGenerator;
 
 import java.util.LinkedHashMap;
@@ -45,9 +47,8 @@ public final class FixtureFactory {
 
         if (spec.generate() != null) {
             if (!SUPPORTED_GENERATORS.contains(spec.generate())) {
-                throw new IllegalArgumentException(
-                        "unknown generator '" + spec.generate() + "'. Available: "
-                                + SUPPORTED_GENERATORS);
+                throw new KeyedArgumentException(
+                        Message.of("engine.fixture.unknownGenerator", spec.generate(), SUPPORTED_GENERATORS));
             }
             values.putAll(randomUser());
         }

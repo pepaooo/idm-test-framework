@@ -6,6 +6,7 @@ import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
 import com.idm.test.connector.soap.client.ResourceServiceConnector;
 import com.idm.test.connector.soap.client.RoleServiceConnector;
 import com.idm.test.connector.soap.config.SoapProperties;
+import com.idm.test.engine.i18n.Messages;
 import com.idm.test.engine.spi.HttpEvidence;
 import com.idm.test.engine.spi.StepOutcome;
 import org.junit.jupiter.api.AfterAll;
@@ -14,6 +15,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
@@ -432,5 +434,69 @@ class SoapStepsTest {
 
         assertThat((String) evidence(outcome).responseBody())
                 .contains("<tns:password>***</tns:password>").doesNotContain("p4ss");
+    }
+
+    private static String spanish(StepOutcome outcome) {
+        return Messages.render(outcome.detail(), Locale.of("es"));
+    }
+
+    /** The Spanish text of a failure whose English is {@code english + external}: the same external text after the Spanish frame. */
+    private static String externalAfter(StepOutcome outcome, String english) {
+        assertThat(outcome.message()).startsWith(english);
+        return outcome.message().substring(english.length());
+    }
+
+    @Test
+    @DisplayName("roles.grant renders an empty roles list and a service failure in Spanish")
+    void testGrantRendersInSpanish() {
+        RolesGrantStep grant = new RolesGrantStep(roleConnector);
+        assertThat(spanish(grant.execute(Map.of("user", USER_DN, "roles", List.of()), false)))
+                .isEqualTo("roles.grant para " + USER_DN + " no tiene roles que otorgar");
+
+        stubFor(post(urlEqualTo(ROLE_PATH)).willReturn(aResponse().withStatus(500)));
+        StepOutcome failed = grant.execute(Map.of("user", USER_DN, "roles", List.of(ROLE_DN)), false);
+        String external = externalAfter(failed, "roles.grant failed for " + USER_DN + ": Role assignment failed: ");
+        assertThat(spanish(failed))
+                .isEqualTo("roles.grant falló para " + USER_DN + ": Falló la asignación de roles: " + external);
+    }
+
+    @Test
+    @DisplayName("roles.revoke renders an empty assignments list and its result in Spanish")
+    void testRevokeRendersInSpanish() {
+        RolesRevokeStep revoke = new RolesRevokeStep(roleConnector);
+        assertThat(spanish(revoke.execute(Map.of("assignments", List.of()), false)))
+                .isEqualTo("roles.revoke no tiene asignaciones que eliminar");
+
+        stubRemovalReturning(ASSIGNMENT_DN);
+        assertThat(spanish(revoke.execute(Map.of("assignments", List.of(ASSIGNMENT_DN)), false)))
+                .isEqualTo("se revocó [" + ASSIGNMENT_DN + "]");
+    }
+
+    @Test
+    @DisplayName("resources.grant renders its result and a service failure in Spanish")
+    void testResourceGrantRendersInSpanish() {
+        ResourcesGrantStep grant = new ResourcesGrantStep(resourceConnector);
+        stubResourceGrantReturning(REQUEST_ID);
+        assertThat(spanish(grant.execute(Map.of("user", USER_DN, "resource", RESOURCE_DN), false)))
+                .isEqualTo("se otorgó " + RESOURCE_DN + " a " + USER_DN);
+
+        stubFor(post(urlEqualTo(RESOURCE_PATH)).willReturn(aResponse().withStatus(500)));
+        StepOutcome failed = grant.execute(Map.of("user", USER_DN, "resource", RESOURCE_DN), false);
+        String external = externalAfter(failed, "resources.grant failed for " + USER_DN + ": Resource grant failed: ");
+        assertThat(spanish(failed))
+                .isEqualTo("resources.grant falló para " + USER_DN + ": Falló la concesión del recurso: " + external);
+    }
+
+    @Test
+    @DisplayName("resources.revoke renders its result and an absent service in Spanish")
+    void testResourceRevokeRendersInSpanish() {
+        stubResourceRevokeReturning(REQUEST_ID);
+        assertThat(spanish(new ResourcesRevokeStep(resourceConnector).execute(
+                Map.of("user", USER_DN, "resource", RESOURCE_DN), false)))
+                .isEqualTo("se revocó " + RESOURCE_DN + " a " + USER_DN);
+        assertThat(spanish(new ResourcesRevokeStep(null).execute(
+                Map.of("user", USER_DN, "resource", RESOURCE_DN), false)))
+                .isEqualTo("resources.revoke no puede ejecutarse: no hay un servicio de recursos configurado "
+                        + "(idm.test.soap.resource-url)");
     }
 }

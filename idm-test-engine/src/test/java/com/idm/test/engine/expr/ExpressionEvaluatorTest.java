@@ -1,6 +1,7 @@
 package com.idm.test.engine.expr;
 
 import com.idm.test.engine.expr.ExpressionEvaluator.ExpressionException;
+import com.idm.test.engine.i18n.Messages;
 import com.idm.test.engine.spi.Explained;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -12,6 +13,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -547,5 +549,49 @@ class ExpressionEvaluatorTest {
         assertThat(evaluator.evaluate(
                 "(function count(n) { return n === 0 ? 0 : 1 + count(n - 1); })(500)", Map.of()))
                 .isEqualTo(500.0);
+    }
+
+    @Test
+    @DisplayName("Notes render in Spanish, the values unchanged")
+    void testNotesRenderInSpanish() {
+        List<Object> twelve = new ArrayList<>();
+        for (int i = 1; i <= 12; i++) {
+            twelve.add("v" + i);
+        }
+        Explained e = explain("sameMembers(groups, ['HR', 'Finance']) || containsAll([], wanted)",
+                Map.of("groups", List.of("HR", "VPN"), "wanted", twelve));
+
+        assertThat(e.details()).extracting(note -> Messages.render(note, Locale.of("es"))).containsExactly(
+                "sameMembers: faltan [Finance]; inesperados [VPN]",
+                "containsAll: faltan [v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, … 2 más]");
+        assertThat(e.notes()).containsExactly(
+                "sameMembers: missing [Finance]; unexpected [VPN]",
+                "containsAll: missing [v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, … 2 more]");
+    }
+
+    private static String spanish(Throwable e) {
+        return Messages.render(((ExpressionException) e).detail(), Locale.of("es"));
+    }
+
+    @Test
+    @DisplayName("Expression errors read in Spanish, the expression and engine text unchanged")
+    void testErrorsRenderInSpanish() {
+        assertThatThrownBy(() -> evaluator.evaluate("user.firstname", scope()))
+                .hasMessage("could not evaluate js:{ user.firstname }: result is undefined — a property that does"
+                        + " not exist reads as undefined in JavaScript. Check the name, or write null if no value is intended.")
+                .satisfies(e -> assertThat(spanish(e)).isEqualTo("no se pudo evaluar js:{ user.firstname }: result es"
+                        + " undefined: una propiedad que no existe se lee como undefined en JavaScript. Revise el nombre,"
+                        + " o escriba null si no se pretende ningún valor."));
+        assertThatThrownBy(() -> evaluator.evaluate("containsAll(groups)", Map.of("groups", List.of("HR"))))
+                .hasMessageStartingWith("could not evaluate js:{ containsAll(groups) }: ")
+                .satisfies(e -> assertThat(spanish(e))
+                        .startsWith("no se pudo evaluar js:{ containsAll(groups) }: ")
+                        .contains("containsAll: los valores a buscar son undefined"));
+        assertThatThrownBy(() -> evaluator.evaluate("(function f() { return 1 + f(); })()", Map.of()))
+                .satisfies(e -> assertThat(spanish(e)).isEqualTo("la expresión se anidó o recurrió con demasiada"
+                        + " profundidad y se detuvo: js:{ (function f() { return 1 + f(); })() }"));
+        assertThatThrownBy(() -> evaluator.validate("user.("))
+                .hasMessageStartingWith("invalid expression js:{ user.( }: ")
+                .satisfies(e -> assertThat(spanish(e)).startsWith("expresión no válida js:{ user.( }: "));
     }
 }

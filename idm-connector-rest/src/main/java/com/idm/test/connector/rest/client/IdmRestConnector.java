@@ -520,7 +520,7 @@ public class IdmRestConnector {
     private static <T> OperationResult<T> unsupportedMethod(String method) {
         return OperationResult.<T>builder()
                 .success(false)
-                .message("Unsupported HTTP method: " + method)
+                .message(RestProblem.of(RestProblem.Kind.UNSUPPORTED_METHOD, method).english())
                 .errorType(ErrorType.VALIDATION_ERROR)
                 .build();
     }
@@ -584,11 +584,34 @@ public class IdmRestConnector {
      * keeps its own message.
      */
     private static String failureMessage(String method, String url, Exception e) {
+        return failureProblem(method, url, e).english();
+    }
+
+    private static RestProblem failureProblem(String method, String url, Throwable e) {
         Throwable cause = reportableCause(e);
         if (cause == e) {
-            return "Request failed: " + describe(e);
+            return RestProblem.of(RestProblem.Kind.REQUEST_FAILED, describe(e));
         }
-        return "Request failed: " + method + " " + url + ": " + describe(cause);
+        return RestProblem.of(RestProblem.Kind.REQUEST_FAILED_AT, method, url, describe(cause));
+    }
+
+    /**
+     * The problem behind a failed {@link #exchange} or {@link #exchangeText} result, so a caller can
+     * word it in any language: its {@link RestProblem#english()} is the result's message.
+     *
+     * @param method the method passed to the exchange, as passed
+     * @param url    the URL passed to the exchange
+     * @param failed the exchange's failed result
+     * @return the problem, or null when the result is not a failed exchange
+     */
+    public static RestProblem problem(String method, String url, OperationResult<?> failed) {
+        if (failed.isSuccess()) {
+            return null;
+        }
+        if (failed.getThrowable().isPresent()) {
+            return failureProblem(method, url, failed.getThrowable().get());
+        }
+        return supportedMethod(method) == null ? RestProblem.of(RestProblem.Kind.UNSUPPORTED_METHOD, method) : null;
     }
 
     /** A connect or timeout exception in the chain if there is one, else the most specific cause. */

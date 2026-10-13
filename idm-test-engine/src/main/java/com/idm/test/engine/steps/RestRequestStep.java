@@ -5,6 +5,7 @@ import com.idm.test.connector.rest.client.RestAuthenticator;
 import com.idm.test.connector.rest.config.RestProperties;
 import com.idm.test.connector.rest.model.RestResponse;
 import com.idm.test.core.model.OperationResult;
+import com.idm.test.engine.spi.Message;
 import com.idm.test.engine.spi.StepOutcome;
 import com.idm.test.engine.spi.StepType;
 
@@ -53,8 +54,7 @@ public final class RestRequestStep implements StepType {
         if (params.containsKey("body") && params.containsKey("bodyFrom")) {
             // They mean the same thing, so supplying both says nothing about which was
             // intended. Guessing would make the scenario's behaviour depend on our ordering.
-            return StepOutcome.failure("rest.request supplies both 'body' and 'bodyFrom'; "
-                    + "they mean the same thing, so give only one");
+            return StepOutcome.failure(Message.of("step.rest.request.bothBodies"));
         }
 
         RestTargets.Resolution resolution = RestTargets.resolveBaseUrl("rest.request", target, properties);
@@ -76,19 +76,18 @@ public final class RestRequestStep implements StepType {
             return authFailure;
         }
 
-        RestExchange.Sent sent = RestExchange.send(connector, String.valueOf(params.get("method")), url, body, headers,
-                resolution.timeouts());
+        String method = String.valueOf(params.get("method"));
+        RestExchange.Sent sent = RestExchange.send(connector, method, url, body, headers, resolution.timeouts());
         OperationResult<RestResponse> result = sent.result();
 
         if (!result.isSuccess() || result.getData().isEmpty()) {
-            return StepOutcome.failure(
-                    "rest.request failed for " + url + ": " + result.getMessage()).withEvidence(sent.evidence());
+            return StepOutcome.failure(Message.of("step.rest.request.failed",
+                    url, ConnectorProblems.request(method, url, result))).withEvidence(sent.evidence());
         }
 
         RestResponse response = result.getData().get();
 
-        return StepOutcome.success(
-                String.valueOf(params.get("method")) + " " + url + " returned " + response.status(),
+        return StepOutcome.success(Message.of("step.rest.request.returned", method, url, response.status()),
                 captureOf(response)).withEvidence(sent.evidence());
     }
 

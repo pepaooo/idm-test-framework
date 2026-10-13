@@ -1,9 +1,11 @@
 package com.idm.test.engine.steps;
 
 import com.idm.test.connector.soap.client.RoleServiceConnector;
+import com.idm.test.connector.soap.client.SoapProblem;
 import com.idm.test.connector.soap.generated.role.RemoveRolesResponse;
 import com.idm.test.core.model.OperationResult;
 import com.idm.test.engine.spi.HttpEvidence;
+import com.idm.test.engine.spi.Message;
 import com.idm.test.engine.spi.StepOutcome;
 import com.idm.test.engine.spi.StepType;
 
@@ -43,15 +45,14 @@ public final class RolesRevokeStep implements StepType {
     @Override
     public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
         if (connector == null) {
-            return StepOutcome.finalFailure(
-                    "roles.revoke cannot run: no Role service is configured (idm.test.soap.url)");
+            return StepOutcome.finalFailure(Message.of("step.roles.revoke.notConfigured"));
         }
         List<String> assignments = StepValues.toStringList(params.get("assignments"));
 
         if (assignments.isEmpty()) {
             // Revoking nothing is always an authoring mistake — most likely a capture that
             // came back empty — and succeeding would hide it.
-            return StepOutcome.failure("roles.revoke has no assignments to remove");
+            return StepOutcome.failure(Message.of("step.roles.revoke.noAssignments"));
         }
 
         OperationResult<RemoveRolesResponse> result =
@@ -59,11 +60,11 @@ public final class RolesRevokeStep implements StepType {
         HttpEvidence evidence = SoapExchanges.evidence(connector.lastExchange(), result);
 
         if (!result.isSuccess() || result.getData().isEmpty()) {
-            return StepOutcome.failure("roles.revoke failed for " + assignments
-                    + ": " + result.getMessage()).withEvidence(evidence);
+            return StepOutcome.failure(Message.of("step.roles.revoke.failed",
+                    assignments, ConnectorProblems.soap(result, SoapProblem::removeRoles))).withEvidence(evidence);
         }
 
-        return StepOutcome.success("revoked " + assignments,
+        return StepOutcome.success(Message.of("step.roles.revoke.revoked", assignments),
                 SoapDns.of(result.getData().get().getResult())).withEvidence(evidence);
     }
 }

@@ -10,6 +10,7 @@ import com.idm.test.core.engine.TestExecutor;
 import com.idm.test.engine.FixtureFactory;
 import com.idm.test.engine.ScenarioEngine;
 import com.idm.test.engine.expr.ExpressionEvaluator;
+import com.idm.test.engine.i18n.Messages;
 import com.idm.test.engine.model.Scenario;
 import com.idm.test.engine.model.StepSpec;
 import com.idm.test.engine.result.JsonResultWriter;
@@ -32,6 +33,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
@@ -305,5 +307,39 @@ class HttpAuthStepsTest {
         assertThat(json).contains("\"messageArgs\"")
                 .doesNotContain(CLIENT_SECRET).doesNotContain(PASSWORD).doesNotContain(BASIC)
                 .doesNotContain("Bearer ");
+    }
+
+    private static String spanish(StepOutcome outcome) {
+        return Messages.render(outcome.detail(), Locale.of("es"));
+    }
+
+    @Test
+    @DisplayName("A half-configured target's failure renders in Spanish, without the secret")
+    void testConfigurationErrorRendersInSpanish() {
+        StepOutcome outcome = new RestRequestStep(CONNECTOR, PROPERTIES, freshAuthenticator())
+                .execute(Map.of("target", "half", "method", "GET", "path", "/thing"), false);
+
+        assertThat(spanish(outcome)).isEqualTo("rest.request no pudo autenticarse: El destino REST 'half' tiene "
+                + "una contraseña pero no un usuario; defina idm.test.rest.half.username y .password, o ninguno de los dos");
+        assertThat(outcome.message()).isEqualTo("rest.request could not authenticate: REST target 'half' has a "
+                + "password but no username; set both idm.test.rest.half.username and .password, or neither");
+        assertThat(outcome.detail().args()).doesNotContain(PASSWORD);
+    }
+
+    @Test
+    @DisplayName("A rejected token request renders in Spanish, without the client secret")
+    void testTokenRejectedRendersInSpanish() {
+        WIREMOCK.stubFor(post(urlEqualTo("/oauth/token")).willReturn(aResponse().withStatus(400)
+                .withHeader("Content-Type", "application/json")
+                .withBody("{\"error\":\"invalid_client\"}")));
+        HttpRequestStep step = new HttpRequestStep(CONNECTOR, PROPERTIES, freshAuthenticator());
+
+        StepOutcome outcome = step.execute(params(step, "oauth", null), true);
+
+        assertThat(outcome.message()).isEqualTo("http.request could not authenticate: OAuth2 token request for "
+                + "registration 'svc' (target 'oauth') failed: [invalid_client]");
+        assertThat(spanish(outcome)).isEqualTo("http.request no pudo autenticarse: La solicitud de token OAuth2 para "
+                + "el registro 'svc' (destino 'oauth') falló: [invalid_client]")
+                .doesNotContain(CLIENT_SECRET);
     }
 }

@@ -5,6 +5,7 @@ import com.idm.test.connector.rest.client.RestAuthenticator;
 import com.idm.test.connector.rest.config.RestProperties;
 import com.idm.test.connector.rest.model.TextResponse;
 import com.idm.test.core.model.OperationResult;
+import com.idm.test.engine.spi.Message;
 import com.idm.test.engine.spi.StepOutcome;
 import com.idm.test.engine.spi.StepType;
 
@@ -57,11 +58,12 @@ public final class HttpRequestStep implements StepType {
         HttpExchange.Sent sent = HttpExchange.send(connector, request);
         OperationResult<TextResponse> result = sent.result();
         if (!result.isSuccess() || result.getData().isEmpty()) {
-            return StepOutcome.failure("http.request failed for " + request.url() + ": " + result.getMessage())
+            return StepOutcome.failure(Message.of("step.http.request.failed",
+                    request.url(), ConnectorProblems.request(request.method(), request.url(), result)))
                     .withEvidence(sent.evidence());
         }
         TextResponse response = result.getData().get();
-        return StepOutcome.success(request.method() + " " + request.url() + " returned " + response.status(),
-                HttpExchange.capture(response)).withEvidence(sent.evidence());
+        return StepOutcome.success(Message.of("step.http.request.returned", request.method(), request.url(),
+                response.status()), HttpExchange.capture(response)).withEvidence(sent.evidence());
     }
 }

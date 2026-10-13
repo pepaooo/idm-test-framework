@@ -395,4 +395,19 @@ class RestAuthenticatorTest {
         assertThat(result.getMessage()).endsWith("…");
         assertThat(result.getMessage().length()).isLessThan(450);
     }
+
+    @Test
+    @DisplayName("authorize keeps a failure as a structured problem and never shows the header in its text")
+    void testAuthorizeIsStructured() {
+        RestAuthenticator.Authorization ok = RestAuthenticator.withoutOAuth().authorize("idm", basic("alice", "secret"));
+        assertThat(ok.header()).isEqualTo("Basic YWxpY2U6c2VjcmV0");
+        assertThat(ok.toString()).doesNotContain("YWxpY2U6c2VjcmV0").contains("header=***");
+
+        RestAuthenticator.Authorization half = RestAuthenticator.withoutOAuth().authorize("idm", basic("alice", null));
+        assertThat(half.problem().kind()).isEqualTo(RestProblem.Kind.BASIC_NO_PASSWORD);
+        assertThat(half.problem().values()).containsExactly("idm");
+        assertThat(half.errorType()).isEqualTo(ErrorType.CONFIGURATION_ERROR);
+        assertThat(half.problem().english()).isEqualTo(RestAuthenticator.withoutOAuth()
+                .authorization("idm", basic("alice", null)).getMessage());
+    }
 }

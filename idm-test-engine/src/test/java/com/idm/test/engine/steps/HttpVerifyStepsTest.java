@@ -5,12 +5,14 @@ import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
 import com.github.tomakehurst.wiremock.stubbing.Scenario;
 import com.idm.test.connector.rest.client.IdmRestConnector;
 import com.idm.test.connector.rest.client.RestAuthenticator;
+import com.idm.test.connector.rest.client.TokenFailureText;
 import com.idm.test.connector.rest.config.RestClientConfiguration;
 import com.idm.test.connector.rest.config.RestProperties;
 import com.idm.test.core.engine.TestExecutor;
 import com.idm.test.engine.FixtureFactory;
 import com.idm.test.engine.ScenarioEngine;
 import com.idm.test.engine.expr.ExpressionEvaluator;
+import com.idm.test.engine.i18n.Messages;
 import com.idm.test.engine.model.StepSpec;
 import com.idm.test.engine.result.ScenarioResult;
 import com.idm.test.engine.result.StepResult;
@@ -24,6 +26,7 @@ import org.springframework.web.client.RestClient;
 import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
@@ -468,5 +471,57 @@ class HttpVerifyStepsTest {
         stubJson(200, "{\"a\":1} {\"b\":2}");
 
         assertThat(run(params("check", "js:{ response.json.a === 1 }")).success()).isTrue();
+    }
+
+    private static String spanish(StepResult step) {
+        return Messages.render(step.messageDetail(), Locale.of("es"));
+    }
+
+    @Test
+    @DisplayName("A false check renders in Spanish, its list-helper notes too")
+    void testFalseCheckRendersInSpanish() {
+        stubJson(200, "{\"groups\":[\"HR\",\"Finance\"]}");
+
+        StepResult step = run(params("check",
+                "js:{ containsAll(response.json.groups, ['VPN']) || sameMembers(response.json.groups, ['HR']) }"));
+
+        String head = "http.verify GET " + WIREMOCK.baseUrl() + "/users/1: ";
+        String check = "js:{ containsAll(response.json.groups, ['VPN']) || sameMembers(response.json.groups, ['HR']) }";
+        assertThat(step.message()).isEqualTo(head + "check 1 of 1 is false: " + check
+                + " — containsAll: missing [VPN]; sameMembers: unexpected [Finance]"
+                + " (status 200, body: {\"groups\":[\"HR\",\"Finance\"]})");
+        assertThat(spanish(step)).isEqualTo(head + "la comprobación 1 de 1 es falsa: " + check
+                + " — containsAll: faltan [VPN]; sameMembers: inesperados [Finance]"
+                + " (estado 200, body: {\"groups\":[\"HR\",\"Finance\"]})");
+    }
+
+    @Test
+    @DisplayName("The response.xml hint renders in Spanish")
+    void testXmlHintRendersInSpanish() {
+        stubBody("text/html", "<p>hi</p>");
+        assertThat(spanish(run(params("check", "js:{ response.xml !== null }"))))
+                .endsWith(" (response.xml es null: el Content-Type es text/html)");
+
+        stubBody("text/xml", "<Envelope>");
+        assertThat(spanish(run(params("check", "js:{ response.xml !== null }"))))
+                .contains(" (response.xml es null: el body es XML mal formado en la línea 1, columna ");
+    }
+
+    @Test
+    @DisplayName("Notes are masked in both languages, and notes past the cap keep their English text exactly")
+    void testNotesMaskedAndCapped() {
+        stubJson(200, "{}");
+
+        StepResult masked = run(params("check", "js:{ containsAll([], 'Bearer abcdefgh123456') }"));
+        assertThat(masked.message()).contains(" — containsAll: missing [Bearer ****] (status 200");
+        assertThat(spanish(masked)).contains(" — containsAll: faltan [Bearer ****] (estado 200");
+
+        String a = "a".repeat(200);
+        String b = "b".repeat(200);
+        StepResult capped = run(params("check", "js:{ containsAll([], ['" + a + "', '" + b + "']) }"));
+        String notes = TokenFailureText.safe("containsAll: missing [" + a + ", " + b + "]", null);
+        assertThat(notes).endsWith("…");
+        assertThat(capped.message()).contains(" — " + notes + " (status 200, body: {})");
+        assertThat(spanish(capped)).contains(" — " + notes + " (estado 200, body: {})");
     }
 }

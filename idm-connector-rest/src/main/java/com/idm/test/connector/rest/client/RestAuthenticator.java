@@ -68,12 +68,54 @@ public class RestAuthenticator {
     }
 
     /**
+     * The outcome of {@link #authorize}: the header value (null when the target is
+     * unauthenticated) and a note, or the problem and its error type.
+     *
+     * @param header    the full {@code Authorization} value, or null
+     * @param note      what kind of authentication the target uses, on success; null on failure
+     * @param problem   why no header could be made, or null on success
+     * @param errorType the problem's error type, or null on success
+     */
+    public record Authorization(String header, String note, RestProblem problem, ErrorType errorType) {
+
+        static Authorization of(String header, String note) {
+            return new Authorization(header, note, null, null);
+        }
+
+        static Authorization failed(ErrorType errorType, RestProblem.Kind kind, Object... values) {
+            return new Authorization(null, null, RestProblem.of(kind, values), errorType);
+        }
+
+        public boolean isFailure() {
+            return problem != null;
+        }
+
+        /** Never shows the header value: it carries the credentials. */
+        @Override
+        public String toString() {
+            return "Authorization[header=" + (header == null ? null : "***") + ", note=" + note
+                    + ", problem=" + problem + ", errorType=" + errorType + "]";
+        }
+    }
+
+    /**
      * @param target the target's name, used in messages and as the OAuth principal
      * @param config the target's settings
      * @return the full header value; success with no data when the target is unauthenticated; or
      * a failure whose message names the target and what to fix
      */
     public OperationResult<String> authorization(String target, RestProperties.RestApiConfig config) {
+        Authorization authorization = authorize(target, config);
+        return authorization.isFailure()
+                ? OperationResult.failure(authorization.problem().english(), authorization.errorType())
+                : OperationResult.success(authorization.header(), authorization.note());
+    }
+
+    /**
+     * {@link #authorization} with the failure kept as a {@link RestProblem}, so a caller can word it
+     * in any language. Never throws.
+     */
+    public Authorization authorize(String target, RestProperties.RestApiConfig config) {
         if (config.isUseOAuth()) {
             return bearer(target, config.getOauthClientName());
         }
@@ -81,68 +123,64 @@ public class RestAuthenticator {
         boolean hasUsername = present(config.getUsername());
         boolean hasPassword = present(config.getPassword());
         if (!hasUsername && !hasPassword) {
-            return OperationResult.success(null, "REST target '" + target + "' is unauthenticated");
+            return Authorization.of(null, "REST target '" + target + "' is unauthenticated");
         }
         if (hasUsername != hasPassword) {
-            return OperationResult.failure("REST target '" + target + "' has a "
-                    + (hasUsername ? "username but no password" : "password but no username")
-                    + "; set both idm.test.rest." + target + ".username and .password, or neither",
-                    ErrorType.CONFIGURATION_ERROR);
+            return Authorization.failed(ErrorType.CONFIGURATION_ERROR,
+                    hasUsername ? RestProblem.Kind.BASIC_NO_PASSWORD : RestProblem.Kind.BASIC_NO_USERNAME, target);
         }
 
         String credentials = config.getUsername() + ":" + config.getPassword();
-        return OperationResult.success(
+        return Authorization.of(
                 "Basic " + Base64.getEncoder().encodeToString(credentials.getBytes(StandardCharsets.UTF_8)),
                 "REST target '" + target + "' uses basic authentication");
     }
 
-    private OperationResult<String> bearer(String target, String registrationId) {
+    private Authorization bearer(String target, String registrationId) {
         if (!present(registrationId)) {
-            return OperationResult.failure("REST target '" + target + "' sets use-oauth but no oauth-client-name",
-                    ErrorType.CONFIGURATION_ERROR);
+            return Authorization.failed(ErrorType.CONFIGURATION_ERROR, RestProblem.Kind.OAUTH_NO_CLIENT_NAME, target);
         }
         if (registrations == null) {
-            return OperationResult.failure("REST target '" + target + "' uses OAuth2 registration '" + registrationId
-                    + "', but no OAuth2 client registrations are configured (spring.security.oauth2.client.registration)",
-                    ErrorType.CONFIGURATION_ERROR);
+            return Authorization.failed(ErrorType.CONFIGURATION_ERROR, RestProblem.Kind.OAUTH_NO_REGISTRATIONS,
+                    target, registrationId);
         }
         ClientRegistration registration = registrations.findByRegistrationId(registrationId);
         if (registration == null) {
-            return OperationResult.failure("REST target '" + target + "' names OAuth2 client registration '"
-                    + registrationId + "', which is not configured under spring.security.oauth2.client.registration",
-                    ErrorType.CONFIGURATION_ERROR);
+            return Authorization.failed(ErrorType.CONFIGURATION_ERROR, RestProblem.Kind.OAUTH_UNKNOWN_REGISTRATION,
+                    target, registrationId);
         }
 
         String clientSecret = registration.getClientSecret();
         String tokenUri = registration.getProviderDetails().getTokenUri();
         if (!isHttpUrl(tokenUri)) {
-            return OperationResult.failure("OAuth2 registration '" + registrationId + "' (target '" + target
-                    + "') has a token-uri that is not an absolute http(s) URL: '"
-                    + TokenFailureText.safe(tokenUri, clientSecret)
-                    + "'. Fix its provider's token-uri (spring.security.oauth2.client.provider.<name>.token-uri).",
-                    ErrorType.CONFIGURATION_ERROR);
+            return Authorization.failed(ErrorType.CONFIGURATION_ERROR, RestProblem.Kind.OAUTH_BAD_TOKEN_URI,
+                    registrationId, target, TokenFailureText.safe(tokenUri, clientSecret));
         }
 
-        String failed = "OAuth2 token request for registration '" + registrationId + "' (target '" + target + "') failed: ";
         try {
             OAuth2AuthorizedClient client = manager.authorize(
                     OAuth2AuthorizeRequest.withClientRegistrationId(registrationId).principal(target).build());
             if (client == null) {
-                return OperationResult.failure("OAuth2 registration '" + registrationId + "' (target '" + target
-                        + "') gave no access token; its authorization-grant-type must be client_credentials",
-                        ErrorType.CONFIGURATION_ERROR);
+                return Authorization.failed(ErrorType.CONFIGURATION_ERROR, RestProblem.Kind.OAUTH_NO_TOKEN,
+                        registrationId, target);
             }
-            return OperationResult.success("Bearer " + client.getAccessToken().getTokenValue(),
+            return Authorization.of("Bearer " + client.getAccessToken().getTokenValue(),
                     "REST target '" + target + "' uses OAuth2 registration '" + registrationId + "'");
         } catch (OAuth2AuthorizationException e) {
             OAuth2Error error = e.getError();
             String description = TokenFailureText.safe(error.getDescription(), clientSecret);
-            return OperationResult.failure(failed + "[" + error.getErrorCode() + "]"
-                    + (description.isEmpty() ? "" : " " + description), tokenFailureType(e));
+            return description.isEmpty()
+                    ? Authorization.failed(tokenFailureType(e), RestProblem.Kind.TOKEN_REJECTED,
+                            registrationId, target, error.getErrorCode())
+                    : Authorization.failed(tokenFailureType(e), RestProblem.Kind.TOKEN_REJECTED_DESCRIBED,
+                            registrationId, target, error.getErrorCode(), description);
         } catch (RuntimeException e) {
             String cause = TokenFailureText.safe(e.getMessage(), clientSecret);
-            return OperationResult.failure(failed + e.getClass().getSimpleName()
-                    + (cause.isEmpty() ? "" : ": " + cause), tokenFailureType(e));
+            String type = e.getClass().getSimpleName();
+            return cause.isEmpty()
+                    ? Authorization.failed(tokenFailureType(e), RestProblem.Kind.TOKEN_FAILED, registrationId, target, type)
+                    : Authorization.failed(tokenFailureType(e), RestProblem.Kind.TOKEN_FAILED_CAUSE,
+                            registrationId, target, type, cause);
         }
     }
 

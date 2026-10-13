@@ -1,9 +1,11 @@
 package com.idm.test.engine.steps;
 
 import com.idm.test.connector.soap.client.RoleServiceConnector;
+import com.idm.test.connector.soap.client.SoapProblem;
 import com.idm.test.connector.soap.generated.role.RequestRolesAssignmentResponse;
 import com.idm.test.core.model.OperationResult;
 import com.idm.test.engine.spi.HttpEvidence;
+import com.idm.test.engine.spi.Message;
 import com.idm.test.engine.spi.StepOutcome;
 import com.idm.test.engine.spi.StepType;
 
@@ -45,8 +47,7 @@ public final class RolesGrantStep implements StepType {
     @Override
     public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
         if (connector == null) {
-            return StepOutcome.finalFailure(
-                    "roles.grant cannot run: no Role service is configured (idm.test.soap.url)");
+            return StepOutcome.finalFailure(Message.of("step.roles.grant.notConfigured"));
         }
         // captureRequested is ignored: the assignment DNs come back from the call itself, so
         // there is no extra work to skip when nobody asked to capture them.
@@ -55,8 +56,7 @@ public final class RolesGrantStep implements StepType {
         Object reason = params.get("reason");
 
         if (roles.isEmpty()) {
-            return StepOutcome.failure(
-                    "roles.grant for " + user + " has no roles to grant");
+            return StepOutcome.failure(Message.of("step.roles.grant.noRoles", user));
         }
 
         OperationResult<RequestRolesAssignmentResponse> result = connector.assignRoles(
@@ -65,8 +65,8 @@ public final class RolesGrantStep implements StepType {
         HttpEvidence evidence = SoapExchanges.evidence(connector.lastExchange(), result);
 
         if (!result.isSuccess() || result.getData().isEmpty()) {
-            return StepOutcome.failure(
-                    "roles.grant failed for " + user + ": " + result.getMessage()).withEvidence(evidence);
+            return StepOutcome.failure(Message.of("step.roles.grant.failed",
+                    user, ConnectorProblems.soap(result, SoapProblem::assignRoles))).withEvidence(evidence);
         }
 
         List<String> assignments = SoapDns.of(result.getData().get().getResult());
@@ -78,11 +78,11 @@ public final class RolesGrantStep implements StepType {
             // invariant nothing enforces. Reporting success here, with as: bound to an empty
             // list, would be the vacuous-assertion trap: a grant that verified it granted
             // nothing.
-            return StepOutcome.failure("roles.grant for " + user + " requested " + roles
-                    + " but the role service returned no assignment DNs").withEvidence(evidence);
+            return StepOutcome.failure(Message.of("step.roles.grant.noAssignments", user, roles))
+                    .withEvidence(evidence);
         }
 
         return StepOutcome.success(
-                "granted " + roles + " to " + user, assignments).withEvidence(evidence);
+                Message.of("step.roles.grant.granted", roles, user), assignments).withEvidence(evidence);
     }
 }

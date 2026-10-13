@@ -1,6 +1,7 @@
 package com.idm.test.engine.expr;
 
 import com.idm.test.engine.expr.ExpressionEvaluator.ExpressionException;
+import com.idm.test.engine.i18n.Messages;
 import com.idm.test.engine.spi.Explained;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -12,6 +13,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -547,5 +549,23 @@ class ExpressionEvaluatorTest {
         assertThat(evaluator.evaluate(
                 "(function count(n) { return n === 0 ? 0 : 1 + count(n - 1); })(500)", Map.of()))
                 .isEqualTo(500.0);
+    }
+
+    @Test
+    @DisplayName("Notes render in Spanish, the values unchanged")
+    void testNotesRenderInSpanish() {
+        List<Object> twelve = new ArrayList<>();
+        for (int i = 1; i <= 12; i++) {
+            twelve.add("v" + i);
+        }
+        Explained e = explain("sameMembers(groups, ['HR', 'Finance']) || containsAll([], wanted)",
+                Map.of("groups", List.of("HR", "VPN"), "wanted", twelve));
+
+        assertThat(e.details()).extracting(note -> Messages.render(note, Locale.of("es"))).containsExactly(
+                "sameMembers: faltan [Finance]; inesperados [VPN]",
+                "containsAll: faltan [v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, … 2 más]");
+        assertThat(e.notes()).containsExactly(
+                "sameMembers: missing [Finance]; unexpected [VPN]",
+                "containsAll: missing [v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, … 2 more]");
     }
 }

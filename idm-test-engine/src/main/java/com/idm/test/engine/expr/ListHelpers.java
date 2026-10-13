@@ -1,6 +1,7 @@
 package com.idm.test.engine.expr;
 
 import com.idm.test.engine.result.Secrets;
+import com.idm.test.engine.spi.Message;
 import org.mozilla.javascript.BaseFunction;
 import org.mozilla.javascript.Callable;
 import org.mozilla.javascript.Context;
@@ -64,7 +65,7 @@ final class ListHelpers {
 
     private static final int SHOWN = 10;
 
-    private final List<String> notes = new ArrayList<>();
+    private final List<Message> notes = new ArrayList<>();
     private int nodes;
 
     /** Defines the three helpers in {@code scope}; the returned instance collects their notes. */
@@ -77,7 +78,7 @@ final class ListHelpers {
     }
 
     /** The notes recorded so far, in call order. */
-    List<String> notes() {
+    List<Message> notes() {
         return new ArrayList<>(notes);
     }
 
@@ -122,7 +123,7 @@ final class ListHelpers {
         if (missing.isEmpty()) {
             return true;
         }
-        notes.add(name + ": missing " + show(missing));
+        notes.add(Message.of("engine.list.missing", name, show(missing)));
         return false;
     }
 
@@ -131,7 +132,7 @@ final class ListHelpers {
         if (found.isEmpty()) {
             return true;
         }
-        notes.add(name + ": found " + show(found));
+        notes.add(Message.of("engine.list.found", name, show(found)));
         return false;
     }
 
@@ -143,14 +144,13 @@ final class ListHelpers {
         if (missing.isEmpty() && unexpected.isEmpty()) {
             return true;
         }
-        List<String> parts = new ArrayList<>();
-        if (!missing.isEmpty()) {
-            parts.add("missing " + show(missing));
+        if (unexpected.isEmpty()) {
+            notes.add(Message.of("engine.list.missing", name, show(missing)));
+        } else if (missing.isEmpty()) {
+            notes.add(Message.of("engine.list.unexpected", name, show(unexpected)));
+        } else {
+            notes.add(Message.of("engine.list.missingUnexpected", name, show(missing), show(unexpected)));
         }
-        if (!unexpected.isEmpty()) {
-            parts.add("unexpected " + show(unexpected));
-        }
-        notes.add(name + ": " + String.join("; ", parts));
         return false;
     }
 
@@ -239,13 +239,14 @@ final class ListHelpers {
                 : ScriptRuntime.toString(value);
     }
 
-    private String show(List<Object> values) {
+    /** The values as {@code [a, b]}, or past ten a message ending in how many more. */
+    private Object show(List<Object> values) {
         List<String> shown = new ArrayList<>();
         for (int i = 0; i < Math.min(SHOWN, values.size()); i++) {
             shown.add(display(values.get(i), false, 0));
         }
         if (values.size() > SHOWN) {
-            shown.add("… " + (values.size() - SHOWN) + " more");
+            return Message.of("engine.list.more", String.join(", ", shown), values.size() - SHOWN);
         }
         return "[" + String.join(", ", shown) + "]";
     }

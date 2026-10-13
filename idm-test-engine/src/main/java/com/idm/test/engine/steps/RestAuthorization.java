@@ -3,7 +3,7 @@ package com.idm.test.engine.steps;
 import com.idm.test.connector.rest.client.RestAuthenticator;
 import com.idm.test.connector.rest.config.RestProperties;
 import com.idm.test.core.model.ErrorType;
-import com.idm.test.core.model.OperationResult;
+import com.idm.test.engine.spi.Message;
 import com.idm.test.engine.spi.StepOutcome;
 
 import java.util.Map;
@@ -36,15 +36,17 @@ final class RestAuthorization {
         if (headers.keySet().stream().anyMatch(AUTHORIZATION::equalsIgnoreCase)) {
             return null;
         }
-        OperationResult<String> result = authenticator.authorization(target, properties.getRest().get(target));
-        if (result.isFailure()) {
-            String message = stepName + " could not authenticate: " + result.getMessage();
-            ErrorType type = result.getErrorType().orElse(ErrorType.UNKNOWN_ERROR);
+        RestAuthenticator.Authorization authorization = authenticator.authorize(target, properties.getRest().get(target));
+        if (authorization.isFailure()) {
+            Message message = Message.of("step.rest.auth.failed", stepName, ConnectorProblems.of(authorization.problem()));
+            ErrorType type = authorization.errorType() == null ? ErrorType.UNKNOWN_ERROR : authorization.errorType();
             return type == ErrorType.CONFIGURATION_ERROR || type == ErrorType.AUTHENTICATION_ERROR
                     ? StepOutcome.finalFailure(message)
                     : StepOutcome.failure(message);
         }
-        result.getData().ifPresent(value -> headers.put(AUTHORIZATION, value));
+        if (authorization.header() != null) {
+            headers.put(AUTHORIZATION, authorization.header());
+        }
         return null;
     }
 }

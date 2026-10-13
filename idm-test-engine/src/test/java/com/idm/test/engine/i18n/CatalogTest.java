@@ -32,7 +32,10 @@ class CatalogTest {
     private static final Set<String> SAME_IN_BOTH = Set.of(
             "report.datePattern",
             // "<file>: <detail>" — only punctuation
-            "engine.summary.detail");
+            "engine.summary.detail",
+            // " — <notes>" and "<note>; <note>" — only punctuation around http.verify's check notes
+            "step.http.verify.notes",
+            "step.http.verify.notesJoin");
 
     private static Properties load(String name) throws IOException {
         Properties properties = new Properties();

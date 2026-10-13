@@ -6,6 +6,7 @@ import com.idm.test.connector.rest.client.RestAuthenticator;
 import com.idm.test.connector.rest.config.RestProperties;
 import com.idm.test.connector.rest.model.RestResponse;
 import com.idm.test.core.model.OperationResult;
+import com.idm.test.engine.spi.Message;
 import com.idm.test.engine.spi.StepOutcome;
 import com.idm.test.engine.spi.StepType;
 
@@ -97,8 +98,8 @@ public final class RestVerifyStep implements StepType {
     private static StepOutcome judge(OperationResult<RestResponse> result, Map<String, Object> expect, String method,
                                      String url, boolean captureRequested) {
         if (!result.isSuccess() || result.getData().isEmpty()) {
-            return StepOutcome.failure(
-                    "rest.verify failed for " + url + ": " + result.getMessage());
+            return StepOutcome.failure(Message.of("step.rest.verify.failed",
+                    url, ConnectorProblems.request(method, url, result)));
         }
 
         RestResponse response = result.getData().get();
@@ -106,20 +107,20 @@ public final class RestVerifyStep implements StepType {
         if (expect.containsKey(STATUS)) {
             Object expectedStatus = expect.get(STATUS);
             if (!ValueComparison.equal(expectedStatus, response.status())) {
-                return StepOutcome.failure("rest.verify on " + url + " expected status "
-                        + expectedStatus + " but got " + response.status());
+                return StepOutcome.failure(Message.of("step.rest.verify.statusMismatch",
+                        url, expectedStatus, response.status()));
             }
         }
 
         if (expect.containsKey(BODY)) {
-            String mismatch = mismatchIn(
+            Message mismatch = mismatchIn(
                     StepValues.toMap(expect.get(BODY)), response.body(), "");
             if (mismatch != null) {
-                return StepOutcome.failure("rest.verify on " + url + " " + mismatch);
+                return StepOutcome.failure(Message.of("step.rest.verify.bodyMismatch", url, mismatch));
             }
         }
 
-        String message = method + " " + url + " verified, status " + response.status();
+        Message message = Message.of("step.rest.verify.verified", method, url, response.status());
         Map<String, Object> capture = new LinkedHashMap<>();
         capture.put("status", response.status());
         capture.put("headers", response.headers());
@@ -137,10 +138,9 @@ public final class RestVerifyStep implements StepType {
      * @return a description of the first mismatch, or null when everything named matches
      */
     @SuppressWarnings("unchecked")
-    private static String mismatchIn(Map<String, Object> expected, Object actual, String path) {
+    private static Message mismatchIn(Map<String, Object> expected, Object actual, String path) {
         if (!(actual instanceof Map<?, ?> actualMap)) {
-            return "expected an object at '" + (path.isEmpty() ? "body" : path)
-                    + "' but the response held: " + actual;
+            return Message.of("step.rest.verify.notObject", path.isEmpty() ? "body" : path, actual);
         }
 
         for (Map.Entry<String, Object> field : expected.entrySet()) {
@@ -148,7 +148,7 @@ public final class RestVerifyStep implements StepType {
             Object actualValue = ((Map<String, Object>) actualMap).get(field.getKey());
 
             if (field.getValue() instanceof Map<?, ?> nested) {
-                String deeper = mismatchIn((Map<String, Object>) nested, actualValue, where);
+                Message deeper = mismatchIn((Map<String, Object>) nested, actualValue, where);
                 if (deeper != null) {
                     return deeper;
                 }
@@ -160,8 +160,7 @@ public final class RestVerifyStep implements StepType {
             // assertion step and fail in the other — falls back to comparing string form, so
             // 200 still matches "200".
             if (!ValueComparison.equal(field.getValue(), actualValue)) {
-                return "found a mismatch for '" + where + "': expected="
-                        + field.getValue() + ", actual=" + actualValue;
+                return Message.of("step.rest.verify.fieldMismatch", where, field.getValue(), actualValue);
             }
         }
         return null;
@@ -181,24 +180,19 @@ public final class RestVerifyStep implements StepType {
     @SuppressWarnings("unchecked")
     private static StepOutcome rejectMalformedExpect(Object rawExpect, String target) {
         if (rawExpect != null && !(rawExpect instanceof Map)) {
-            return StepOutcome.finalFailure("rest.verify on '" + target
-                    + "' has an expect that is not a map of assertions (" + STATUS + ", " + BODY
-                    + ")");
+            return StepOutcome.finalFailure(Message.of("step.rest.verify.expectNotMap", target));
         }
 
         Map<String, Object> expect = (Map<String, Object>) rawExpect;
         if (expect == null || expect.isEmpty()) {
-            return StepOutcome.finalFailure("rest.verify on '" + target
-                    + "' has an empty expect: block. Assert " + STATUS + ", " + BODY
-                    + ", or both — an empty expect would verify nothing.");
+            return StepOutcome.finalFailure(Message.of("step.rest.verify.expectEmpty", target));
         }
 
         Set<String> unknown = new TreeSet<>(expect.keySet());
         unknown.removeAll(EXPECT_KEYS);
         if (!unknown.isEmpty()) {
-            return StepOutcome.finalFailure("rest.verify on '" + target
-                    + "' has unknown key(s) in expect: " + unknown + ". expect accepts: "
-                    + new TreeSet<>(EXPECT_KEYS));
+            return StepOutcome.finalFailure(Message.of("step.rest.verify.unknownKeys",
+                    target, unknown, new TreeSet<>(EXPECT_KEYS)));
         }
 
         // Positive rule: if BODY is present at all, it must be a Map with at least one
@@ -207,18 +201,15 @@ public final class RestVerifyStep implements StepType {
         // both — containsKey agrees with execute() about what "present" means.
         if (expect.containsKey(BODY)
                 && !(expect.get(BODY) instanceof Map<?, ?> bodyMap && !bodyMap.isEmpty())) {
-            return StepOutcome.finalFailure("rest.verify on '" + target + "' has a " + BODY
-                    + " that must be a map of field names to expected values with at least "
-                    + "one entry — a missing, null, non-map, or empty " + BODY
-                    + " would verify nothing");
+            return StepOutcome.finalFailure(Message.of("step.rest.verify.bodyShape", target));
         }
 
         if (expect.containsKey(BODY)) {
             @SuppressWarnings("unchecked")
             Map<String, Object> bodyMap = (Map<String, Object>) expect.get(BODY);
-            String vacuous = rejectVacuousField(bodyMap, "");
+            Message vacuous = rejectVacuousField(bodyMap, "");
             if (vacuous != null) {
-                return StepOutcome.finalFailure("rest.verify on '" + target + "' " + vacuous);
+                return StepOutcome.finalFailure(Message.of("step.rest.verify.vacuous", target, vacuous));
             }
         }
 
@@ -236,25 +227,21 @@ public final class RestVerifyStep implements StepType {
      *
      * @return a description of the first offending field, or null when the matcher is sound
      */
-    private static String rejectVacuousField(Map<String, Object> expected, String path) {
+    private static Message rejectVacuousField(Map<String, Object> expected, String path) {
         for (Map.Entry<String, Object> field : expected.entrySet()) {
             String where = path.isEmpty() ? field.getKey() : path + "." + field.getKey();
             Object value = field.getValue();
 
             if (value == null) {
-                return "has a null expected value for '" + where + "' — a missing or "
-                        + "misspelled field parses the same way and would verify nothing. "
-                        + "Check for a typo, or remove it if it is not meant to be asserted.";
+                return Message.of("step.rest.verify.nullExpected", where);
             }
 
             if (value instanceof Map<?, ?> nested) {
                 if (nested.isEmpty()) {
-                    return "has an empty object for '" + where
-                            + "' — a missing, null, non-map, or empty matcher would verify "
-                            + "nothing";
+                    return Message.of("step.rest.verify.emptyObject", where);
                 }
                 @SuppressWarnings("unchecked")
-                String deeper = rejectVacuousField((Map<String, Object>) nested, where);
+                Message deeper = rejectVacuousField((Map<String, Object>) nested, where);
                 if (deeper != null) {
                     return deeper;
                 }

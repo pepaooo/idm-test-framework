@@ -98,7 +98,7 @@ public class ResourceServiceConnector {
             log.error("Resource grant rejected by the service: {}", e.getFaultInfo().getReason());
             return OperationResult.<RequestResourceGrantResponse>builder()
                     .success(false)
-                    .message("Resource grant failed: " + e.getFaultInfo().getReason())
+                    .message(SoapProblem.grantResource(e).english())
                     .errorType(ErrorType.SERVER_ERROR)
                     .throwable(e)
                     .build();
@@ -107,7 +107,7 @@ public class ResourceServiceConnector {
             log.error("Resource grant call failed: {}", e.getMessage());
             return OperationResult.<RequestResourceGrantResponse>builder()
                     .success(false)
-                    .message("Resource grant failed: " + e.getMessage())
+                    .message(SoapProblem.grantResource(e).english())
                     .errorType(SoapErrorTypes.classify(e))
                     .throwable(e)
                     .build();
@@ -153,7 +153,7 @@ public class ResourceServiceConnector {
             log.error("Resource revoke rejected by the service: {}", e.getFaultInfo().getReason());
             return OperationResult.<RequestResourceRevokeResponse>builder()
                     .success(false)
-                    .message("Resource revoke failed: " + e.getFaultInfo().getReason())
+                    .message(SoapProblem.revokeResource(e).english())
                     .errorType(ErrorType.SERVER_ERROR)
                     .throwable(e)
                     .build();
@@ -162,7 +162,7 @@ public class ResourceServiceConnector {
             log.error("Resource revoke call failed: {}", e.getMessage());
             return OperationResult.<RequestResourceRevokeResponse>builder()
                     .success(false)
-                    .message("Resource revoke failed: " + e.getMessage())
+                    .message(SoapProblem.revokeResource(e).english())
                     .errorType(SoapErrorTypes.classify(e))
                     .throwable(e)
                     .build();

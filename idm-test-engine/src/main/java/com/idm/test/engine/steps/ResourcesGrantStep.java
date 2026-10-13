@@ -1,9 +1,11 @@
 package com.idm.test.engine.steps;
 
 import com.idm.test.connector.soap.client.ResourceServiceConnector;
+import com.idm.test.connector.soap.client.SoapProblem;
 import com.idm.test.connector.soap.generated.resource.RequestResourceGrantResponse;
 import com.idm.test.core.model.OperationResult;
 import com.idm.test.engine.spi.HttpEvidence;
+import com.idm.test.engine.spi.Message;
 import com.idm.test.engine.spi.StepOutcome;
 import com.idm.test.engine.spi.StepType;
 
@@ -43,8 +45,7 @@ public final class ResourcesGrantStep implements StepType {
     @Override
     public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
         if (connector == null) {
-            return StepOutcome.finalFailure(
-                    "resources.grant cannot run: no Resource service is configured (idm.test.soap.resource-url)");
+            return StepOutcome.finalFailure(Message.of("step.resources.grant.notConfigured"));
         }
         // captureRequested is ignored: the request identifier comes back from the call
         // itself, so there is no extra work to skip.
@@ -58,12 +59,13 @@ public final class ResourcesGrantStep implements StepType {
         HttpEvidence evidence = SoapExchanges.evidence(connector.lastExchange(), result);
 
         if (!result.isSuccess() || result.getData().isEmpty()) {
-            return StepOutcome.failure(
-                    "resources.grant failed for " + user + ": " + result.getMessage()).withEvidence(evidence);
+            return StepOutcome.failure(Message.of("step.resources.grant.failed",
+                    user, ConnectorProblems.soap(result, SoapProblem::grantResource))).withEvidence(evidence);
         }
 
         String requestId = SoapValues.of(result.getData().get().getResult());
 
-        return StepOutcome.success("granted " + resource + " to " + user, requestId).withEvidence(evidence);
+        return StepOutcome.success(Message.of("step.resources.grant.granted", resource, user), requestId)
+                .withEvidence(evidence);
     }
 }

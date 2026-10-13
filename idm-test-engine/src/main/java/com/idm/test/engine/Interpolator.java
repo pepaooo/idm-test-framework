@@ -1,6 +1,8 @@
 package com.idm.test.engine;
 
 import com.idm.test.engine.expr.ExpressionEvaluator;
+import com.idm.test.engine.i18n.KeyedArgumentException;
+import com.idm.test.engine.spi.Message;
 import com.idm.test.engine.expr.JsReferences;
 
 import java.util.ArrayList;
@@ -96,8 +98,7 @@ public final class Interpolator {
      */
     public static String expressionBody(String text) {
         if (text.contains(EXPRESSION_PREFIX) && !text.trim().startsWith(EXPRESSION_PREFIX)) {
-            throw new IllegalArgumentException(
-                    "an expression must be the whole value, but found js:{ inside '" + text + "'");
+            throw new KeyedArgumentException(Message.of("engine.expr.embedded", text));
         }
         return expressionIn(text);
     }
@@ -170,14 +171,11 @@ public final class Interpolator {
                         i++;
                         if (regions.isEmpty()) {
                             if (i != length) {
-                                throw new IllegalArgumentException(
-                                        "an expression must be the whole value, but '" + text
-                                                + "' has text after the closing brace");
+                                throw new KeyedArgumentException(Message.of("engine.expr.trailing", text));
                             }
                             String body = trimmed.substring(EXPRESSION_PREFIX.length(), i - 1);
                             if (body.isBlank()) {
-                                throw new IllegalArgumentException(
-                                        "the expression in '" + text + "' is empty");
+                                throw new KeyedArgumentException(Message.of("engine.expr.empty", text));
                             }
                             return body;
                         }
@@ -244,15 +242,14 @@ public final class Interpolator {
         }
 
         Region unclosed = regions.get(regions.size() - 1);
-        String missing = switch (unclosed) {
-            case SINGLE_QUOTED -> "a closing \"'\" is missing";
-            case DOUBLE_QUOTED -> "a closing '\"' is missing";
-            case TEMPLATE -> "a closing '`' is missing";
-            case BLOCK_COMMENT -> "a closing '*/' is missing";
-            case CODE, LINE_COMMENT -> "a '}' is missing";
-        };
-        throw new IllegalArgumentException(
-                "the expression in '" + text + "' is not closed — " + missing);
+        Message missing = Message.of(switch (unclosed) {
+            case SINGLE_QUOTED -> "engine.expr.missing.singleQuote";
+            case DOUBLE_QUOTED -> "engine.expr.missing.doubleQuote";
+            case TEMPLATE -> "engine.expr.missing.backtick";
+            case BLOCK_COMMENT -> "engine.expr.missing.blockComment";
+            case CODE, LINE_COMMENT -> "engine.expr.missing.brace";
+        });
+        throw new KeyedArgumentException(Message.of("engine.expr.notClosed", text, missing));
     }
 
     private static boolean startsWith(String text, int index, String prefix) {
@@ -331,8 +328,7 @@ public final class Interpolator {
 
         for (String segment : path.split("\\.")) {
             if (!(current instanceof Map<?, ?> map) || !map.containsKey(segment)) {
-                throw new IllegalArgumentException(
-                        "cannot resolve " + reference + " — no value for '" + segment + "'");
+                throw new KeyedArgumentException(Message.of("engine.ref.unresolved", reference, segment));
             }
             current = map.get(segment);
         }

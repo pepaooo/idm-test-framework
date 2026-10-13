@@ -1,10 +1,12 @@
 package com.idm.test.engine.steps;
 
 import com.idm.test.connector.ldap.client.LdapProblem;
+import com.idm.test.core.model.OperationResult;
 import com.idm.test.engine.spi.Message;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Function;
 
 /** Words an LDAP matcher or change problem by key, so it reads in the run's language. */
 final class LdapProblems {
@@ -13,11 +15,33 @@ final class LdapProblems {
     }
 
     static Message of(LdapProblem problem) {
+        if (problem.kind() == LdapProblem.Kind.REFUSED_ALL) {
+            return joined(problem.values());
+        }
         List<Object> args = new ArrayList<>();
         for (Object value : problem.values()) {
             args.add(value instanceof LdapProblem nested ? of(nested) : value);
         }
         return Message.of(key(problem.kind()), args.toArray());
+    }
+
+    /**
+     * A failed directory operation's message as an argument: the keyed problem {@code problem}
+     * rebuilds from the result's throwable, or the connector's own text when that is not
+     * possible word for word (see {@link ConnectorProblems#keyedOr}).
+     */
+    static Object failure(OperationResult<?> failed, Function<Throwable, LdapProblem> problem) {
+        Message keyed = failed.getThrowable().map(problem).map(LdapProblems::of).orElse(null);
+        return ConnectorProblems.keyedOr(keyed, failed.getMessage());
+    }
+
+    /** Several refusal reasons, joined with "; " as the connector joins them. */
+    private static Message joined(List<Object> reasons) {
+        Message joined = of((LdapProblem) reasons.get(reasons.size() - 1));
+        for (int i = reasons.size() - 2; i >= 0; i--) {
+            joined = Message.of("step.ldap.refused.join", of((LdapProblem) reasons.get(i)), joined);
+        }
+        return joined;
     }
 
     private static String key(LdapProblem.Kind kind) {
@@ -58,6 +82,21 @@ final class LdapProblems {
             case CHANGES_PLAIN_KEY -> "step.ldap.changes.plainKey";
             case CHANGES_OVERLAP_SECRET -> "step.ldap.changes.overlapSecret";
             case CHANGES_OVERLAP -> "step.ldap.changes.overlap";
+            case CREATE_FAILED -> "step.ldap.connector.createFailed";
+            case ENTRY_NOT_FOUND -> "step.ldap.connector.entryNotFound";
+            case READ_FAILED -> "step.ldap.connector.readFailed";
+            case UPDATE_FAILED -> "step.ldap.connector.updateFailed";
+            case UPDATE_REFUSED_REQUEST -> "step.ldap.connector.updateRefusedRequest";
+            case UPDATE_REFUSED_CHANGE -> "step.ldap.connector.updateRefusedChange";
+            case DELETE_FAILED -> "step.ldap.connector.deleteFailed";
+            case EXISTS_FAILED -> "step.ldap.connector.existsFailed";
+            case REFUSED_ADD_ONE -> "step.ldap.refused.addOne";
+            case REFUSED_ADD_OTHER -> "step.ldap.refused.addOther";
+            case REFUSED_REMOVE_ONE -> "step.ldap.refused.removeOne";
+            case REFUSED_REMOVE_OTHER -> "step.ldap.refused.removeOther";
+            case REFUSED_ADD_SECRET -> "step.ldap.refused.addSecret";
+            case REFUSED_REMOVE_SECRET -> "step.ldap.refused.removeSecret";
+            case REFUSED_ALL -> throw new IllegalArgumentException("REFUSED_ALL is joined, not keyed");
         };
     }
 }

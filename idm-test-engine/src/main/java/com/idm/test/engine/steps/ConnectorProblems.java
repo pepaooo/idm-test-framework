@@ -1,5 +1,6 @@
 package com.idm.test.engine.steps;
 
+import com.idm.test.connector.database.client.DatabaseProblem;
 import com.idm.test.connector.rest.client.IdmRestConnector;
 import com.idm.test.connector.rest.client.RestProblem;
 import com.idm.test.connector.soap.client.SoapProblem;
@@ -10,8 +11,9 @@ import com.idm.test.engine.spi.Message;
 import java.util.function.Function;
 
 /**
- * Words the REST and SOAP connectors' problems by key, so they read in the run's language. The
- * service's or transport's own text inside a problem stays an argument, unchanged.
+ * Words the REST, SOAP and database connectors' problems by key, so they read in the run's
+ * language. The service's, transport's or driver's own text inside a problem stays an argument,
+ * unchanged.
  */
 final class ConnectorProblems {
 
@@ -24,6 +26,20 @@ final class ConnectorProblems {
 
     static Message of(SoapProblem problem) {
         return Message.of(key(problem.kind()), problem.values().toArray());
+    }
+
+    static Message of(DatabaseProblem problem) {
+        return Message.of(key(problem.kind()), problem.values().toArray());
+    }
+
+    /**
+     * A failed query's or statement's message as an argument, rebuilt from its throwable by
+     * {@code problem} (the connector's {@code queryProblem} or {@code updateProblem}); the
+     * connector's own text when that is not possible.
+     */
+    static Object database(OperationResult<?> failed, Function<Throwable, DatabaseProblem> problem) {
+        Message keyed = failed.getThrowable().map(problem).map(ConnectorProblems::of).orElse(null);
+        return keyedOr(keyed, failed.getMessage());
     }
 
     /**
@@ -68,6 +84,15 @@ final class ConnectorProblems {
             case UNSUPPORTED_METHOD -> "step.rest.send.unsupportedMethod";
             case REQUEST_FAILED -> "step.rest.send.failed";
             case REQUEST_FAILED_AT -> "step.rest.send.failedAt";
+        };
+    }
+
+    private static String key(DatabaseProblem.Kind kind) {
+        return switch (kind) {
+            case QUERY_FAILED -> "step.db.connector.queryFailed";
+            case UPDATE_FAILED -> "step.db.connector.updateFailed";
+            case UNEXPECTED -> "step.db.connector.unexpected";
+            case NOT_CONFIGURED -> "step.db.connector.notConfigured";
         };
     }
 

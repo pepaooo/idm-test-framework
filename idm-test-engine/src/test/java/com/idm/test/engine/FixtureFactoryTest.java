@@ -1,10 +1,13 @@
 package com.idm.test.engine;
 
+import com.idm.test.engine.i18n.KeyedArgumentException;
+import com.idm.test.engine.i18n.Messages;
 import com.idm.test.engine.model.FixtureSpec;
 import com.idm.test.utils.data.TestDataGenerator;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.util.Locale;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -71,5 +74,15 @@ class FixtureFactoryTest {
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("random-widget")
                 .hasMessageContaining("random-user");
+    }
+
+    @Test
+    @DisplayName("An unknown generator reads in Spanish, English unchanged")
+    void testUnknownGeneratorRendersInSpanish() {
+        assertThatThrownBy(() -> factory.build(Map.of("user", new FixtureSpec("nope", Map.of()))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("unknown generator 'nope'. Available: [random-user]")
+                .satisfies(e -> assertThat(Messages.render(((KeyedArgumentException) e).detail(), Locale.of("es")))
+                        .isEqualTo("generador desconocido 'nope'. Disponibles: [random-user]"));
     }
 }

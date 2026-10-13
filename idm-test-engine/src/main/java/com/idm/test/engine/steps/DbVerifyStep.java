@@ -74,7 +74,8 @@ public final class DbVerifyStep implements StepType {
                 connector.executeQuery(database, query, arguments);
 
         if (!result.isSuccess()) {
-            Message message = Message.of("step.db.verify.failed", database, result.getMessage());
+            Message message = Message.of("step.db.verify.failed", database,
+                    ConnectorProblems.database(result, e -> connector.queryProblem(database, e)));
             // An unknown database never becomes known by waiting; a SQL error might (a table or
             // row that provisioning has not created yet), so only configuration errors are final.
             return result.getErrorType().filter(ErrorType.CONFIGURATION_ERROR::equals).isPresent()

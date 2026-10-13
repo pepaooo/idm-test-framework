@@ -475,9 +475,28 @@ class DbStepsTest {
         StepOutcome failed = execute.execute(Map.of("database", "nope", "statement", "DELETE FROM sap_users"), false);
         StepOutcome done = execute.execute(Map.of("database", DB, "statement", "DELETE FROM sap_users"), false);
 
-        assertThat(Messages.render(failed.detail(), Locale.of("es")))
-                .isEqualTo("db.execute falló en 'nope': " + external);
+        // Since ITF-51 the connector's own frame is keyed too; the database names stay as they are.
+        String available = external.substring(external.indexOf("Available databases: ") + "Available databases: ".length());
+        assertThat(Messages.render(failed.detail(), Locale.of("es"))).isEqualTo("db.execute falló en 'nope':"
+                + " La base de datos 'nope' no está configurada. Bases de datos disponibles: " + available);
         assertThat(Messages.render(done.detail(), Locale.of("es")))
                 .isEqualTo("ejecutado en 'test-db', 0 fila(s) afectada(s)");
+    }
+
+    @Test
+    @DisplayName("The database connector's own frames render in Spanish, the driver text unchanged")
+    void testConnectorFramesRenderInSpanish() {
+        StepOutcome unknown = new DbExecuteStep(connector).execute(
+                Map.of("database", "nope", "statement", "DELETE FROM sap_users"), false);
+        assertThat(unknown.message()).startsWith("db.execute failed on 'nope': Database 'nope' is not configured.");
+        assertThat(Messages.render(unknown.detail(), Locale.of("es")))
+                .startsWith("db.execute falló en 'nope': La base de datos 'nope' no está configurada.");
+
+        StepOutcome bad = new DbVerifyStep(connector).execute(Map.of(
+                "database", DB, "query", "SELECT * FROM no_such_table", "expect", Map.of("rowCount", 0)), false);
+        String prefix = "db.verify failed on '" + DB + "': Query failed: ";
+        assertThat(bad.message()).startsWith(prefix);
+        assertThat(Messages.render(bad.detail(), Locale.of("es")))
+                .isEqualTo("db.verify falló en '" + DB + "': La consulta falló: " + bad.message().substring(prefix.length()));
     }
 }

@@ -568,4 +568,30 @@ class ExpressionEvaluatorTest {
                 "sameMembers: missing [Finance]; unexpected [VPN]",
                 "containsAll: missing [v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, … 2 more]");
     }
+
+    private static String spanish(Throwable e) {
+        return Messages.render(((ExpressionException) e).detail(), Locale.of("es"));
+    }
+
+    @Test
+    @DisplayName("Expression errors read in Spanish, the expression and engine text unchanged")
+    void testErrorsRenderInSpanish() {
+        assertThatThrownBy(() -> evaluator.evaluate("user.firstname", scope()))
+                .hasMessage("could not evaluate js:{ user.firstname }: result is undefined — a property that does"
+                        + " not exist reads as undefined in JavaScript. Check the name, or write null if no value is intended.")
+                .satisfies(e -> assertThat(spanish(e)).isEqualTo("no se pudo evaluar js:{ user.firstname }: result es"
+                        + " undefined: una propiedad que no existe se lee como undefined en JavaScript. Revise el nombre,"
+                        + " o escriba null si no se pretende ningún valor."));
+        assertThatThrownBy(() -> evaluator.evaluate("containsAll(groups)", Map.of("groups", List.of("HR"))))
+                .hasMessageStartingWith("could not evaluate js:{ containsAll(groups) }: ")
+                .satisfies(e -> assertThat(spanish(e))
+                        .startsWith("no se pudo evaluar js:{ containsAll(groups) }: ")
+                        .contains("containsAll: los valores a buscar son undefined"));
+        assertThatThrownBy(() -> evaluator.evaluate("(function f() { return 1 + f(); })()", Map.of()))
+                .satisfies(e -> assertThat(spanish(e)).isEqualTo("la expresión se anidó o fue recursiva a demasiada"
+                        + " profundidad y se detuvo: js:{ (function f() { return 1 + f(); })() }"));
+        assertThatThrownBy(() -> evaluator.validate("user.("))
+                .hasMessageStartingWith("invalid expression js:{ user.( }: ")
+                .satisfies(e -> assertThat(spanish(e)).startsWith("expresión no válida js:{ user.( }: "));
+    }
 }

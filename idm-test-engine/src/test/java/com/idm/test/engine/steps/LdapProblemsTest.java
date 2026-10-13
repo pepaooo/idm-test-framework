@@ -83,4 +83,29 @@ class LdapProblemsTest {
                     .isNotEqualTo(problem.english());
         }
     }
+
+    @Test
+    @DisplayName("Every directory operation problem reads in English exactly as the connector words it, and differently in Spanish")
+    void testOperationProblems() {
+        List<LdapProblem.Kind> operations = List.of(LdapProblem.Kind.CREATE_FAILED, LdapProblem.Kind.ENTRY_NOT_FOUND,
+                LdapProblem.Kind.READ_FAILED, LdapProblem.Kind.UPDATE_FAILED, LdapProblem.Kind.UPDATE_REFUSED_REQUEST,
+                LdapProblem.Kind.UPDATE_REFUSED_CHANGE, LdapProblem.Kind.DELETE_FAILED, LdapProblem.Kind.EXISTS_FAILED,
+                LdapProblem.Kind.REFUSED_ADD_ONE, LdapProblem.Kind.REFUSED_ADD_OTHER, LdapProblem.Kind.REFUSED_REMOVE_ONE,
+                LdapProblem.Kind.REFUSED_REMOVE_OTHER, LdapProblem.Kind.REFUSED_ADD_SECRET,
+                LdapProblem.Kind.REFUSED_REMOVE_SECRET);
+        List<LdapProblem> problems = new java.util.ArrayList<>();
+        for (LdapProblem.Kind kind : operations) {
+            problems.add(new LdapProblem(kind, List.of("[v0]", "v1")));
+        }
+        problems.add(new LdapProblem(LdapProblem.Kind.REFUSED_ALL, List.copyOf(problems.subList(8, 11))));
+        for (LdapProblem problem : problems) {
+            assertThat(Messages.english(LdapProblems.of(problem))).as(problem.kind().name())
+                    .isEqualTo(problem.english());
+            assertThat(Messages.render(LdapProblems.of(problem), Locale.of("es"))).as(problem.kind().name())
+                    .isNotEqualTo(problem.english());
+        }
+        assertThat(Messages.render(LdapProblems.of(problems.get(problems.size() - 1)), Locale.of("es")))
+                .isEqualTo("no se puede agregar [v0] a v1: la entrada ya lo tiene; no se pueden agregar [v0] a v1:"
+                        + " la entrada ya los tiene; no se puede quitar [v0] de v1: la entrada no lo tiene");
+    }
 }

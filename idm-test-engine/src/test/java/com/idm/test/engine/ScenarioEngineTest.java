@@ -1211,4 +1211,68 @@ class ScenarioEngineTest {
         assertThat(result.steps().get(0).messageArgs()).isNull();
         assertThat(result.steps().get(0).messageDetail()).isNull();
     }
+
+    private static final Locale ES = Locale.of("es");
+
+    @Test
+    @DisplayName("A step that throws on an unresolvable reference reads in Spanish, English unchanged")
+    void testStepThrewRendersInSpanish() {
+        ScenarioResult result = engineWith(recordingAction("a")).run(scenario(
+                new StepSpec("a", Map.of("dn", "${user.nope}"))), "t.yaml");
+
+        StepResult step = result.steps().get(0);
+        assertThat(step.message())
+                .isEqualTo("step 'a' threw IllegalArgumentException: cannot resolve ${user.nope} — no value for 'nope'");
+        assertThat(Messages.render(step.messageDetail(), ES))
+                .isEqualTo("el paso 'a' lanzó IllegalArgumentException: no se puede resolver ${user.nope}"
+                        + " — no hay valor para 'nope'");
+    }
+
+    @Test
+    @DisplayName("Fixture setup, capture and cleanup messages read in Spanish")
+    void testEngineMessagesRenderInSpanish() {
+        Scenario badFixture = new Scenario("Test", null,
+                Map.of("user", new FixtureSpec("randmo-user", Map.of())),
+                List.of(new StepSpec("a", Map.of("dn", "x"))));
+        ScenarioResult fixture = engineWith(recordingAction("a")).run(badFixture, "t.yaml");
+        assertThat(fixture.failureDetail())
+                .isEqualTo("fixture setup failed: unknown generator 'randmo-user'. Available: [random-user]");
+        assertThat(fixture.failureSummary(ES)).isEqualTo("t.yaml: la preparación de fixtures falló:"
+                + " generador desconocido 'randmo-user'. Disponibles: [random-user]");
+
+        StepType silent = new StepType() {
+            public String name() { return "silent"; }
+            public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
+                return StepOutcome.success("ok");
+            }
+        };
+        ScenarioResult capture = engineWith(silent).run(scenario(
+                new StepSpec("silent", Map.of("dn", "x", "as", "created"))), "t.yaml");
+        assertThat(capture.steps().get(0).message())
+                .isEqualTo("step 'silent' declares as: 'created' but produced no value to capture");
+        assertThat(Messages.render(capture.steps().get(0).messageDetail(), ES))
+                .isEqualTo("el paso 'silent' declara as: 'created' pero no produjo ningún valor que capturar");
+
+        ScenarioResult cleanup = engineWith(failingAction("a"), recordingAction("b")).run(withCleanup(
+                List.of(new StepSpec("a", Map.of("dn", "x"))),
+                new StepSpec("b", Map.of("dn", "${never.dn}"))), "t.yaml");
+        assertThat(cleanup.cleanup().get(0).message())
+                .isEqualTo("skipped: [never] never bound, so what this would clean up never happened");
+        assertThat(Messages.render(cleanup.cleanup().get(0).messageDetail(), ES))
+                .isEqualTo("omitida: [never] nunca se asignó, así que lo que esto limpiaría nunca ocurrió");
+    }
+
+    @Test
+    @DisplayName("Unknown step types and a set: step read in Spanish")
+    void testUnknownTypeAndSetRenderInSpanish() {
+        ScenarioResult set = engineWith(recordingAction("a")).run(scenario(
+                new StepSpec("set", Map.of("x", "1")),
+                new StepSpec("nope", Map.of())), "t.yaml");
+
+        assertThat(set.steps().get(0).message()).isEqualTo("bound [x]");
+        assertThat(Messages.render(set.steps().get(0).messageDetail(), ES)).isEqualTo("se asignó [x]");
+        assertThat(set.steps().get(1).message()).isEqualTo("unknown step type 'nope'. Available: [a]");
+        assertThat(Messages.render(set.steps().get(1).messageDetail(), ES))
+                .isEqualTo("tipo de paso desconocido 'nope'. Disponibles: [a]");
+    }
 }

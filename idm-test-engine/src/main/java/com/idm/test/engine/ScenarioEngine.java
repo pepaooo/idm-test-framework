@@ -2,6 +2,7 @@ package com.idm.test.engine;
 
 import com.idm.test.core.engine.TestExecutor;
 import com.idm.test.engine.expr.ExpressionEvaluator;
+import com.idm.test.engine.i18n.KeyedArgumentException;
 import com.idm.test.engine.i18n.Messages;
 import com.idm.test.engine.model.Scenario;
 import com.idm.test.engine.model.StepSpec;
@@ -68,7 +69,7 @@ public final class ScenarioEngine {
         List<StepResult> results = new ArrayList<>();
         List<CleanupResult> cleanupResults = List.of();
         boolean success = true;
-        String failureDetail = null;
+        Message failureDetail = null;
 
         try {
             // ScenarioValidator does validate fixture generator names on the path that calls
@@ -81,7 +82,7 @@ public final class ScenarioEngine {
                 scope.putAll(fixtures.build(scenario.fixtures()));
             } catch (RuntimeException e) {
                 success = false;
-                failureDetail = "fixture setup failed: " + e.getMessage();
+                failureDetail = Message.of("engine.fixture.failed", thrown(e));
             }
 
             for (int i = 0; i < scenario.steps().size() && success; i++) {
@@ -91,11 +92,9 @@ public final class ScenarioEngine {
                 try {
                     result = runStep(step, i, scope);
                 } catch (RuntimeException e) {
-                    result = new StepResult(i, step.type(), Map.of(), false,
-                            System.currentTimeMillis() - stepStarted,
-                            "step '" + step.type() + "' threw " + e.getClass().getSimpleName()
-                                    + ": " + e.getMessage(),
-                            null, null, describe(step, scope));
+                    result = failed(i, step.type(), Map.of(), stepStarted,
+                            Message.of("engine.step.threw", step.type(), KeyedArgumentException.typeName(e), thrown(e)),
+                            describe(step, scope));
                 }
                 results.add(result);
                 success = result.success();
@@ -109,8 +108,9 @@ public final class ScenarioEngine {
                 .anyMatch(entry -> entry.status() == CleanupStatus.FAILED);
 
         return new ScenarioResult(scenario.name(), sourceName, success && !cleanupFailed,
-                System.currentTimeMillis() - started, results, cleanupResults, failureDetail,
-                scenario.description());
+                System.currentTimeMillis() - started, results, cleanupResults,
+                failureDetail == null ? null : Messages.english(failureDetail), scenario.description(),
+                key(failureDetail), args(failureDetail));
     }
 
     @SuppressWarnings("unchecked")
@@ -122,9 +122,8 @@ public final class ScenarioEngine {
         try {
             description = resolvedDescription(step, scope);
         } catch (RuntimeException e) {
-            return new StepResult(index, step.type(), Map.of(), false,
-                    System.currentTimeMillis() - started,
-                    "could not resolve 'description': " + e.getMessage(), null, null, writtenDescription(step));
+            return failed(index, step.type(), Map.of(), started,
+                    Message.of("engine.step.description", thrown(e)), writtenDescription(step));
         }
 
         if (SET_STEP.equals(step.type())) {
@@ -134,11 +133,8 @@ public final class ScenarioEngine {
         StepType type = registry.get(step.type());
 
         if (type == null) {
-            return new StepResult(index, step.type(), Map.of(), false,
-                    System.currentTimeMillis() - started,
-                    "unknown step type '" + step.type() + "'. Available: "
-                            + new TreeSet<>(registry.keySet()),
-                    null, null, description);
+            return failed(index, step.type(), Map.of(), started,
+                    Message.of("engine.step.unknownType", step.type(), new TreeSet<>(registry.keySet())), description);
         }
 
         // Deferred parameters are left for the step to evaluate itself (see
@@ -157,11 +153,8 @@ public final class ScenarioEngine {
         Object asName = resolved.remove("as");
 
         if (wait != null && !type.retryable()) {
-            return new StepResult(index, step.type(), reportable(resolved), false,
-                    System.currentTimeMillis() - started,
-                    "'wait' is only valid on assertions, and step '" + step.type()
-                            + "' is not retryable",
-                    null, null, description);
+            return failed(index, step.type(), reportable(resolved), started,
+                    Message.of("engine.step.waitNotRetryable", step.type()), description);
         }
 
         boolean captureRequested = asName != null;
@@ -193,7 +186,7 @@ public final class ScenarioEngine {
                 // so the exception's class name is always present — otherwise a null
                 // message surfaces as the bare literal "null".
                 outcome = StepOutcome.failure(
-                        "threw " + e.getClass().getSimpleName() + ": " + e.getMessage());
+                        Message.of("engine.wait.threw", KeyedArgumentException.typeName(e), thrown(e)));
             }
             last.set(outcome);
             // A final failure ends the wait: polling it again cannot change the answer.
@@ -211,7 +204,8 @@ public final class ScenarioEngine {
             // The supplier above always sets `last` before returning, so this only happens
             // when waitUntil's loop condition never even entered — the timeout was already
             // spent. A null outcome here really does mean the condition never ran.
-            message = "wait timed out before the assertion ran once";
+            detail = Message.of("engine.wait.timedOut");
+            message = Messages.english(detail);
         } else if (outcome.isFinal()) {
             detail = Message.of("engine.wait.notRetried", keyed(outcome));
             message = Messages.english(detail);
@@ -231,6 +225,30 @@ public final class ScenarioEngine {
         return new StepResult(index, step.type(), reportable(resolved), success, elapsed, message,
                 attempts.get(), waitedMillis, description, outcome == null ? null : outcome.evidence(),
                 key(detail), args(detail));
+    }
+
+    /** A failed step's result, its message by key. */
+    private static StepResult failed(int index, String type, Map<String, Object> params, long started,
+                                     Message detail, String description) {
+        return new StepResult(index, type, params, false, System.currentTimeMillis() - started,
+                Messages.english(detail), null, null, description, null, key(detail), args(detail));
+    }
+
+    /**
+     * What an exception says, as a message argument: its message by key when it has one, so it
+     * reads in the run's language, otherwise its text (which may be null, shown as "null").
+     */
+    private static Object thrown(Throwable e) {
+        if (e instanceof KeyedArgumentException keyed) {
+            return keyed.detail();
+        }
+        if (e instanceof ExpressionEvaluator.ExpressionException expression && expression.detail() != null) {
+            return expression.detail();
+        }
+        if (e instanceof ValidationException validation && validation.detail() != null) {
+            return validation.detail();
+        }
+        return e.getMessage();
     }
 
     /** The outcome's message by key, or its plain text when the step did not use a key. */
@@ -256,7 +274,7 @@ public final class ScenarioEngine {
         String body = Interpolator.expressionBody(text);
         if (body == null) {
             // The validator rejects this at load; reaching it means validation was skipped.
-            throw new IllegalArgumentException("a deferred parameter must be a js:{ … } expression, got '" + text + "'");
+            throw new KeyedArgumentException(Message.of("engine.defer.notExpression", text));
         }
         return new ScopedExpression(text, body, scope, evaluator);
     }
@@ -292,8 +310,9 @@ public final class ScenarioEngine {
             bound.put(entry.getKey(), value);
         }
 
-        return new StepResult(index, SET_STEP, bound, true,
-                System.currentTimeMillis() - started, "bound " + bound.keySet(), null, null, description);
+        Message message = Message.of("engine.set.bound", bound.keySet());
+        return new StepResult(index, SET_STEP, bound, true, System.currentTimeMillis() - started,
+                Messages.english(message), null, null, description, null, key(message), args(message));
     }
 
     /**
@@ -319,8 +338,8 @@ public final class ScenarioEngine {
             return outcome;
         }
         if (outcome.value() == null) {
-            return StepOutcome.failure("step '" + stepType + "' declares as: '" + asName
-                    + "' but produced no value to capture").withEvidence(outcome.evidence());
+            return StepOutcome.failure(Message.of("engine.capture.noValue", stepType, asName))
+                    .withEvidence(outcome.evidence());
         }
         scope.put(String.valueOf(asName), outcome.value());
         return outcome;
@@ -339,10 +358,8 @@ public final class ScenarioEngine {
             try {
                 result = runCleanupEntry(entry, i, scope, started);
             } catch (RuntimeException e) {
-                result = new CleanupResult(i, entry.type(), Map.of(), CleanupStatus.FAILED,
-                        System.currentTimeMillis() - started,
-                        "cleanup '" + entry.type() + "' threw " + e.getClass().getSimpleName()
-                                + ": " + e.getMessage(),
+                result = cleanupResult(i, entry.type(), CleanupStatus.FAILED, started,
+                        Message.of("engine.cleanup.threw", entry.type(), KeyedArgumentException.typeName(e), thrown(e)),
                         writtenDescription(entry));
             }
             results.add(result);
@@ -357,20 +374,16 @@ public final class ScenarioEngine {
         Set<String> unbound = new TreeSet<>(Interpolator.references(withoutDescription(entry.params())));
         unbound.removeAll(scope.keySet());
         if (!unbound.isEmpty()) {
-            return new CleanupResult(index, entry.type(), Map.of(), CleanupStatus.SKIPPED,
-                    System.currentTimeMillis() - started,
-                    "skipped: " + unbound + " never bound, so what this would clean up never happened",
-                    writtenDescription(entry));
+            return cleanupResult(index, entry.type(), CleanupStatus.SKIPPED, started,
+                    Message.of("engine.cleanup.skipped", unbound), writtenDescription(entry));
         }
 
         String description = describe(entry, scope);
 
         StepType type = registry.get(entry.type());
         if (type == null) {
-            return new CleanupResult(index, entry.type(), Map.of(), CleanupStatus.FAILED,
-                    System.currentTimeMillis() - started,
-                    "unknown step type '" + entry.type() + "'. Available: " + new TreeSet<>(registry.keySet()),
-                    description);
+            return cleanupResult(index, entry.type(), CleanupStatus.FAILED, started,
+                    Message.of("engine.step.unknownType", entry.type(), new TreeSet<>(registry.keySet())), description);
         }
 
         Map<String, Object> resolved =
@@ -381,6 +394,13 @@ public final class ScenarioEngine {
                 outcome.success() ? CleanupStatus.SUCCEEDED : CleanupStatus.FAILED,
                 System.currentTimeMillis() - started, outcome.message(), description,
                 key(outcome.detail()), args(outcome.detail()));
+    }
+
+    /** A cleanup entry's result with no parameters recorded, its message by key. */
+    private static CleanupResult cleanupResult(int index, String type, CleanupStatus status, long started,
+                                               Message detail, String description) {
+        return new CleanupResult(index, type, Map.of(), status, System.currentTimeMillis() - started,
+                Messages.english(detail), description, key(detail), args(detail));
     }
 
     /** The description as written, or null. */

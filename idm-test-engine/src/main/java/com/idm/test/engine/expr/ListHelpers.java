@@ -1,5 +1,6 @@
 package com.idm.test.engine.expr;
 
+import com.idm.test.engine.i18n.Messages;
 import com.idm.test.engine.result.Secrets;
 import com.idm.test.engine.spi.Message;
 import org.mozilla.javascript.BaseFunction;
@@ -67,6 +68,7 @@ final class ListHelpers {
 
     private final List<Message> notes = new ArrayList<>();
     private int nodes;
+    private Message failure;
 
     /** Defines the three helpers in {@code scope}; the returned instance collects their notes. */
     static ListHelpers defineIn(Context cx, Scriptable scope) {
@@ -82,6 +84,11 @@ final class ListHelpers {
         return new ArrayList<>(notes);
     }
 
+    /** The last error a helper raised, by key, or null; its text is inside the error JavaScript reports. */
+    Message failure() {
+        return failure;
+    }
+
     private interface Helper {
         boolean apply(String name, Object list, Object values);
     }
@@ -93,8 +100,7 @@ final class ListHelpers {
                 Object list = args.length > 0 ? args[0] : Undefined.instance;
                 Object values = args.length > 1 ? args[1] : Undefined.instance;
                 if (isAbsent(values)) {
-                    throw ScriptRuntime.constructError(
-                            "Error", name + ": the values to look for are undefined");
+                    throw error(Message.of("engine.list.undefinedValues", name));
                 }
                 return helper.apply(name, list, values);
             }
@@ -291,17 +297,21 @@ final class ListHelpers {
 
     private void visit(String name, int depth) {
         if (depth > MAX_DEPTH) {
-            throw ScriptRuntime.constructError("Error", name + ": a value is nested more than "
-                    + MAX_DEPTH + " levels deep; is it self-referencing?");
+            throw error(Message.of("engine.list.tooDeep", name, MAX_DEPTH));
         }
         if (++nodes > MAX_NODES) {
             throw tooLarge(name);
         }
     }
 
-    private static RuntimeException tooLarge(String name) {
-        return ScriptRuntime.constructError("Error", name + ": the lists hold more than "
-                + MAX_NODES + " values in total");
+    private RuntimeException tooLarge(String name) {
+        return error(Message.of("engine.list.tooLarge", name, MAX_NODES));
+    }
+
+    /** A JavaScript Error with {@code problem}'s English text; {@link #failure()} keeps it by key. */
+    private RuntimeException error(Message problem) {
+        failure = problem;
+        return ScriptRuntime.constructError("Error", Messages.english(problem));
     }
 
     /** The string as JSON.stringify would quote it. */

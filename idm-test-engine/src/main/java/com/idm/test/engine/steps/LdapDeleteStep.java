@@ -56,7 +56,8 @@ public final class LdapDeleteStep implements StepType {
         // scenario's model of the world is already wrong and saying "deleted" would hide that.
         OperationResult<Boolean> exists = connector.exists(dn);
         if (!exists.isSuccess()) {
-            return StepOutcome.failure(Message.of("step.ldap.delete.checkFailed", where, exists.getMessage()));
+            return StepOutcome.failure(Message.of("step.ldap.delete.checkFailed", where,
+                    LdapProblems.failure(exists, EdirectoryConnector::existsProblem)));
         }
         if (!Boolean.TRUE.equals(exists.getData().orElse(false))) {
             return StepOutcome.failure(Message.of("step.ldap.delete.notFound", where))
@@ -67,7 +68,8 @@ public final class LdapDeleteStep implements StepType {
         OperationResult<Void> result = connector.delete(dn);
 
         if (!result.isSuccess()) {
-            return StepOutcome.failure(Message.of("step.ldap.delete.failed", where, result.getMessage()))
+            return StepOutcome.failure(Message.of("step.ldap.delete.failed", where,
+                    LdapProblems.failure(result, EdirectoryConnector::deleteProblem)))
                     .withEvidence(deleted);
         }
 

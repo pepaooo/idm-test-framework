@@ -524,4 +524,17 @@ class HttpVerifyStepsTest {
         assertThat(capped.message()).contains(" — " + notes + " (status 200, body: {})");
         assertThat(spanish(capped)).contains(" — " + notes + " (estado 200, body: {})");
     }
+
+    @Test
+    @DisplayName("A check whose expression fails renders the expression error in Spanish too")
+    void testThrowingCheckRendersInSpanish() {
+        stubJson(200, "{}");
+
+        StepResult step = run(params("check", "js:{ response.json.missing.deeper }"));
+
+        String head = "http.verify GET " + WIREMOCK.baseUrl() + "/users/1: ";
+        assertThat(step.message()).startsWith(head + "check 1 of 1 failed: could not evaluate js:{ response.json.missing.deeper }: ");
+        assertThat(spanish(step)).startsWith(head + "la comprobación 1 de 1 falló: no se pudo evaluar"
+                + " js:{ response.json.missing.deeper }: ").endsWith(" (estado 200, body: {})");
+    }
 }

@@ -67,7 +67,8 @@ public final class LdapCreateStep implements StepType {
         OperationResult<LdapUser> result = connector.create(user);
 
         if (!result.isSuccess()) {
-            return StepOutcome.failure(Message.of("step.ldap.create.failed", where, result.getMessage()))
+            return StepOutcome.failure(Message.of("step.ldap.create.failed", where,
+                    LdapProblems.failure(result, EdirectoryConnector::createProblem)))
                     .withEvidence(evidence);
         }
 

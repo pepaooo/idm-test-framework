@@ -27,7 +27,13 @@ public record LdapProblem(Kind kind, List<Object> values) {
         SHAPE_EMPTY_LIST, SHAPE_PLAIN_LIST,
         // add/remove change shape problems
         CHANGES_EMPTY_MAP, CHANGES_UNKNOWN_KEYS, CHANGES_EMPTY_KEY, CHANGES_PLAIN_KEY,
-        CHANGES_OVERLAP_SECRET, CHANGES_OVERLAP
+        CHANGES_OVERLAP_SECRET, CHANGES_OVERLAP,
+        // EdirectoryConnector operation failures: the directory's own text is a value
+        CREATE_FAILED, ENTRY_NOT_FOUND, READ_FAILED, UPDATE_FAILED, UPDATE_REFUSED_REQUEST,
+        UPDATE_REFUSED_CHANGE, DELETE_FAILED, EXISTS_FAILED,
+        // why the directory refused an add/remove; REFUSED_ALL joins several, its values are problems
+        REFUSED_ADD_ONE, REFUSED_ADD_OTHER, REFUSED_REMOVE_ONE, REFUSED_REMOVE_OTHER,
+        REFUSED_ADD_SECRET, REFUSED_REMOVE_SECRET, REFUSED_ALL
     }
 
     public LdapProblem {
@@ -94,6 +100,26 @@ public record LdapProblem(Kind kind, List<Object> values) {
             case CHANGES_UNKNOWN_KEYS -> "has unknown keys " + text(0) + "; use add and/or remove";
             case CHANGES_OVERLAP_SECRET -> "lists the same value in both 'add' and 'remove'";
             case CHANGES_OVERLAP -> "lists " + text(0) + " in both 'add' and 'remove'";
+            case CREATE_FAILED -> "Failed to create user: " + text(0);
+            case ENTRY_NOT_FOUND -> "Entry not found: " + text(0);
+            case READ_FAILED -> "Failed to read entry: " + text(0);
+            case UPDATE_FAILED -> "Failed to update user: " + text(0);
+            case UPDATE_REFUSED_REQUEST -> "Failed to update user: the directory refused the request";
+            case UPDATE_REFUSED_CHANGE -> "Failed to update user: the directory refused the add/remove (" + text(0) + ")";
+            case DELETE_FAILED -> "Failed to delete user: " + text(0);
+            case EXISTS_FAILED -> "Error checking existence: " + text(0);
+            case REFUSED_ADD_ONE -> "cannot add " + text(0) + " to " + text(1) + ": the entry already has it";
+            case REFUSED_ADD_OTHER -> "cannot add " + text(0) + " to " + text(1) + ": the entry already has them";
+            case REFUSED_REMOVE_ONE -> "cannot remove " + text(0) + " from " + text(1) + ": the entry does not have it";
+            case REFUSED_REMOVE_OTHER -> "cannot remove " + text(0) + " from " + text(1)
+                    + ": the entry does not have them";
+            case REFUSED_ADD_SECRET ->
+                    "cannot add to " + text(0) + ": the directory refused it because a value already exists";
+            case REFUSED_REMOVE_SECRET ->
+                    "cannot remove from " + text(0) + ": the directory refused it because a value is missing";
+            case REFUSED_ALL -> String.join("; ", values.stream()
+                    .map(value -> value instanceof LdapProblem nested ? nested.english() : String.valueOf(value))
+                    .toList());
         };
     }
 }

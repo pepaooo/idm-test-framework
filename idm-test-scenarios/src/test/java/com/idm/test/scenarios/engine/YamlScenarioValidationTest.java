@@ -94,6 +94,10 @@ class YamlScenarioValidationTest extends BaseIntegrationTest {
         assertThat(json.indexOf("\"success\" : false", brokenIndex))
                 .as("broken-wait.yaml's recorded result should have success: false in %s", json)
                 .isNotEqualTo(-1);
+        // The load/validation error keeps its key, so the report can show it in another language.
+        assertThat(json.indexOf("\"failureDetailKey\" : \"validation.frame.step\"", brokenIndex))
+                .as("broken-wait.yaml's failure should keep its key in %s", json)
+                .isNotEqualTo(-1);
 
         String report = java.nio.file.Files.readString(tempDir.resolve("scenario-report.html"));
         assertThat(report).contains("broken-wait.yaml").contains("valid-user.yaml")

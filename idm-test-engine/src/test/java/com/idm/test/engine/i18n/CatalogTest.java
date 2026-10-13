@@ -35,7 +35,14 @@ class CatalogTest {
             "engine.summary.detail",
             // " — <notes>" and "<note>; <note>" — only punctuation around http.verify's check notes
             "step.http.verify.notes",
-            "step.http.verify.notesJoin");
+            "step.http.verify.notesJoin",
+            // "{0}" and "<before>{1}<after>": an untranslated text, or a keyed one inside text that is not ours
+            "engine.text",
+            "engine.text.around",
+            // "<file>: <problem>" — only punctuation
+            "validation.frame.file",
+            // "<reason>; <reason>" — the directory's refusal reasons, joined
+            "step.ldap.refused.join");
 
     private static Properties load(String name) throws IOException {
         Properties properties = new Properties();

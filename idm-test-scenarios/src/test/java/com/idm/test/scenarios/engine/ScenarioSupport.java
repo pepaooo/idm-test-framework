@@ -10,6 +10,7 @@ import com.idm.test.connector.soap.client.RoleServiceConnector;
 import com.idm.test.engine.ScenarioEngine;
 import com.idm.test.engine.ScenarioLoader;
 import com.idm.test.engine.ScenarioValidator;
+import com.idm.test.engine.ValidationException;
 import com.idm.test.engine.model.Scenario;
 import com.idm.test.engine.i18n.Messages;
 import com.idm.test.engine.i18n.ReportLocale;
@@ -128,6 +129,8 @@ final class ScenarioSupport {
 
         Map<String, Scenario> loaded = new LinkedHashMap<>();
         Map<String, String> failures = new LinkedHashMap<>();
+        // A load or validation problem by key, so the report can show it in the run's language.
+        Map<String, Message> failureDetails = new LinkedHashMap<>();
         for (String file : files) {
             try {
                 Scenario scenario = ScenarioLoader.load(resource(scenarioDir, file), file);
@@ -135,6 +138,9 @@ final class ScenarioSupport {
                 loaded.put(file, scenario);
             } catch (RuntimeException e) {
                 failures.put(file, e.getMessage());
+                if (e instanceof ValidationException validation && validation.detail() != null) {
+                    failureDetails.put(file, validation.detail());
+                }
             }
         }
         RunInfo run;
@@ -165,8 +171,10 @@ final class ScenarioSupport {
                 }));
             } else {
                 String message = failures.get(file);
+                Message detail = failureDetails.get(file);
                 tests.add(DynamicTest.dynamicTest(file, () -> {
-                    ScenarioResult result = new ScenarioResult(file, file, false, 0L, List.of(), message);
+                    ScenarioResult result = new ScenarioResult(file, file, false, 0L, List.of(), List.of(), message,
+                            null, detail == null ? null : detail.key(), detail == null ? null : detail.args());
                     collected.add(result);
                     writeResults(collected, resultsPath, reportRun);
                     fail(message);

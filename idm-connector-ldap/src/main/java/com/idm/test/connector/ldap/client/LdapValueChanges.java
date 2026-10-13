@@ -93,17 +93,27 @@ public final class LdapValueChanges {
     }
 
     static String reason(String key, String attribute, List<Object> offending) {
-        String pronoun = offending.size() == 1 ? "it" : "them";
-        return ADD.equals(key)
-                ? "cannot add " + offending + " to " + attribute + ": the entry already has " + pronoun
-                : "cannot remove " + offending + " from " + attribute + ": the entry does not have " + pronoun;
+        return reasonProblem(key, attribute, offending).english();
+    }
+
+    /** As {@link #reason}, structured. */
+    static LdapProblem reasonProblem(String key, String attribute, List<Object> offending) {
+        boolean one = offending.size() == 1;
+        LdapProblem.Kind kind = ADD.equals(key)
+                ? (one ? LdapProblem.Kind.REFUSED_ADD_ONE : LdapProblem.Kind.REFUSED_ADD_OTHER)
+                : (one ? LdapProblem.Kind.REFUSED_REMOVE_ONE : LdapProblem.Kind.REFUSED_REMOVE_OTHER);
+        return LdapProblem.of(kind, String.valueOf(offending), attribute);
     }
 
     /** As {@link #reason}, for a secret-named attribute: no values, and no claim about the entry. */
     static String secretReason(String key, String attribute) {
-        return ADD.equals(key)
-                ? "cannot add to " + attribute + ": the directory refused it because a value already exists"
-                : "cannot remove from " + attribute + ": the directory refused it because a value is missing";
+        return secretReasonProblem(key, attribute).english();
+    }
+
+    /** As {@link #secretReason}, structured. */
+    static LdapProblem secretReasonProblem(String key, String attribute) {
+        return LdapProblem.of(ADD.equals(key) ? LdapProblem.Kind.REFUSED_ADD_SECRET : LdapProblem.Kind.REFUSED_REMOVE_SECRET,
+                attribute);
     }
 
     static List<Object> values(Object value) {

@@ -52,7 +52,8 @@ public final class DbExecuteStep implements StepType {
 
         if (!result.isSuccess()) {
             StepOutcome failure = StepOutcome.failure(
-                    Message.of("step.db.execute.failed", database, result.getMessage()));
+                    Message.of("step.db.execute.failed", database,
+                            ConnectorProblems.database(result, e -> connector.updateProblem(database, e))));
             // An unknown database was never contacted, so there is nothing to show.
             return result.getErrorType().filter(ErrorType.CONFIGURATION_ERROR::equals).isPresent()
                     ? failure

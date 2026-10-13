@@ -89,7 +89,7 @@ public class MultiDatabaseConnector {
             log.error("Database query failed on '{}': {}", databaseName, e.getMessage());
             return OperationResult.<List<Map<String, Object>>>builder()
                     .success(false)
-                    .message("Query failed: " + e.getMessage())
+                    .message(queryProblem(databaseName, e).english())
                     .errorType(ErrorType.DATABASE_ERROR)
                     .throwable(e)
                     .build();
@@ -97,7 +97,7 @@ public class MultiDatabaseConnector {
             log.error("Unexpected error executing query on '{}': {}", databaseName, e.getMessage());
             return OperationResult.<List<Map<String, Object>>>builder()
                     .success(false)
-                    .message("Unexpected error: " + e.getMessage())
+                    .message(queryProblem(databaseName, e).english())
                     .errorType(ErrorType.UNKNOWN_ERROR)
                     .throwable(e)
                     .build();
@@ -146,7 +146,7 @@ public class MultiDatabaseConnector {
             log.error("Database update failed on '{}': {}", databaseName, e.getMessage());
             return OperationResult.<Integer>builder()
                     .success(false)
-                    .message("Update failed: " + e.getMessage())
+                    .message(updateProblem(databaseName, e).english())
                     .errorType(ErrorType.DATABASE_ERROR)
                     .throwable(e)
                     .build();
@@ -154,7 +154,7 @@ public class MultiDatabaseConnector {
             log.error("Unexpected error executing update on '{}': {}", databaseName, e.getMessage());
             return OperationResult.<Integer>builder()
                     .success(false)
-                    .message("Unexpected error: " + e.getMessage())
+                    .message(updateProblem(databaseName, e).english())
                     .errorType(ErrorType.UNKNOWN_ERROR)
                     .throwable(e)
                     .build();
@@ -328,6 +328,32 @@ public class MultiDatabaseConnector {
     }
 
     /**
+     * Why {@link #executeQuery} on {@code databaseName} failed with {@code e}, structured: its
+     * failure message is this problem's {@link DatabaseProblem#english()}. Lets a caller word the
+     * failure in another language.
+     */
+    public DatabaseProblem queryProblem(String databaseName, Throwable e) {
+        return problem(databaseName, e, DatabaseProblem.Kind.QUERY_FAILED);
+    }
+
+    /** Why {@link #executeUpdate} on {@code databaseName} failed with {@code e}, structured. */
+    public DatabaseProblem updateProblem(String databaseName, Throwable e) {
+        return problem(databaseName, e, DatabaseProblem.Kind.UPDATE_FAILED);
+    }
+
+    private DatabaseProblem problem(String databaseName, Throwable e, DatabaseProblem.Kind dataAccess) {
+        if (e instanceof ConfigurationException) {
+            return notConfigured(databaseName);
+        }
+        return DatabaseProblem.of(e instanceof DataAccessException ? dataAccess : DatabaseProblem.Kind.UNEXPECTED,
+                e.getMessage());
+    }
+
+    private DatabaseProblem notConfigured(String databaseName) {
+        return DatabaseProblem.of(DatabaseProblem.Kind.NOT_CONFIGURED, databaseName, String.valueOf(jdbcTemplates.keySet()));
+    }
+
+    /**
      * Retrieves the JdbcTemplate for a specific database.
      *
      * @param databaseName name of the database
@@ -338,11 +364,7 @@ public class MultiDatabaseConnector {
         JdbcTemplate template = jdbcTemplates.get(databaseName);
 
         if (template == null) {
-            throw new ConfigurationException(
-                    String.format("Database '%s' is not configured. Available databases: %s",
-                            databaseName, jdbcTemplates.keySet()),
-                    databaseName
-            );
+            throw new ConfigurationException(notConfigured(databaseName).english(), databaseName);
         }
 
         return template;

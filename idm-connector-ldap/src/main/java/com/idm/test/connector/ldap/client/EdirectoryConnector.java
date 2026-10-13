@@ -146,7 +146,7 @@ public class EdirectoryConnector {
             log.error("Failed to create LDAP user '{}': {}", user.getDn(), e.getMessage());
             return OperationResult.<LdapUser>builder()
                     .success(false)
-                    .message("Failed to create user: " + e.getMessage())
+                    .message(createProblem(e).english())
                     .errorType(ErrorType.LDAP_ERROR)
                     .throwable(e)
                     .build();
@@ -233,7 +233,7 @@ public class EdirectoryConnector {
             log.warn("LDAP entry not found: {}", dn);
             return OperationResult.<Map<String, Object>>builder()
                     .success(false)
-                    .message("Entry not found: " + dn)
+                    .message(readAttributesProblem(dn, e).english())
                     .errorType(ErrorType.NOT_FOUND)
                     .throwable(e)
                     .build();
@@ -241,7 +241,7 @@ public class EdirectoryConnector {
             log.error("Failed to read LDAP attributes '{}': {}", dn, e.getMessage());
             return OperationResult.<Map<String, Object>>builder()
                     .success(false)
-                    .message("Failed to read entry: " + e.getMessage())
+                    .message(readAttributesProblem(dn, e).english())
                     .errorType(ErrorType.LDAP_ERROR)
                     .throwable(e)
                     .build();
@@ -326,7 +326,7 @@ public class EdirectoryConnector {
             log.error("Failed to update LDAP user '{}': {}", dn, detail);
             return OperationResult.<Void>builder()
                     .success(false)
-                    .message("Failed to update user: " + detail)
+                    .message(updateProblem(dn, attributes, e).english())
                     .errorType(ErrorType.LDAP_ERROR)
                     .throwable(e)
                     .build();
@@ -351,16 +351,7 @@ public class EdirectoryConnector {
      * attribute is part of an add/remove change.
      */
     private OperationResult<Void> refused(String dn, Map<String, Object> attributes, String key, Exception e) {
-        String explanation = explain(dn, attributes, key);
-        String message;
-        if (explanation != null) {
-            message = explanation;
-        } else if (touchesSecret(attributes)) {
-            message = "Failed to update user: the directory refused the add/remove ("
-                    + (LdapValueChanges.ADD.equals(key) ? "LDAP 20" : "LDAP 16") + ")";
-        } else {
-            message = "Failed to update user: " + e.getMessage();
-        }
+        String message = refusedProblem(dn, attributes, key, e).english();
         log.error("Failed to update LDAP user '{}': {}", dn, message);
         return OperationResult.<Void>builder()
                 .success(false)
@@ -375,23 +366,81 @@ public class EdirectoryConnector {
                 .anyMatch(entry -> SecretNames.isSecret(entry.getKey()));
     }
 
-    private String explain(String dn, Map<String, Object> attributes, String key) {
+    private LdapProblem refusedProblem(String dn, Map<String, Object> attributes, String key, Throwable e) {
+        LdapProblem explanation = explain(dn, attributes, key);
+        if (explanation != null) {
+            return explanation;
+        }
+        if (touchesSecret(attributes)) {
+            return LdapProblem.of(LdapProblem.Kind.UPDATE_REFUSED_CHANGE,
+                    LdapValueChanges.ADD.equals(key) ? "LDAP 20" : "LDAP 16");
+        }
+        return LdapProblem.of(LdapProblem.Kind.UPDATE_FAILED, e.getMessage());
+    }
+
+    private LdapProblem explain(String dn, Map<String, Object> attributes, String key) {
         OperationResult<Map<String, Object>> read = readAttributes(dn);
         Map<String, Object> actual = read.isSuccess() ? read.getData().orElse(null) : null;
-        List<String> reasons = new ArrayList<>();
+        List<Object> reasons = new ArrayList<>();
         attributes.forEach((attribute, value) -> {
             if (value instanceof Map<?, ?> change && change.containsKey(key)) {
                 if (SecretNames.isSecret(attribute)) {
-                    reasons.add(LdapValueChanges.secretReason(key, attribute));
+                    reasons.add(LdapValueChanges.secretReasonProblem(key, attribute));
                 } else if (actual != null) {
                     List<Object> offending = LdapValueChanges.offending(key, change.get(key), actual.get(attribute));
                     if (!offending.isEmpty()) {
-                        reasons.add(LdapValueChanges.reason(key, attribute, offending));
+                        reasons.add(LdapValueChanges.reasonProblem(key, attribute, offending));
                     }
                 }
             }
         });
-        return reasons.isEmpty() ? null : String.join("; ", reasons);
+        if (reasons.isEmpty()) {
+            return null;
+        }
+        return reasons.size() == 1 ? (LdapProblem) reasons.get(0) : new LdapProblem(LdapProblem.Kind.REFUSED_ALL, reasons);
+    }
+
+    /**
+     * Why {@link #create} failed with {@code e}, structured: its failure message is this
+     * problem's {@link LdapProblem#english()}. Lets a caller word the failure in another language.
+     */
+    public static LdapProblem createProblem(Throwable e) {
+        return LdapProblem.of(LdapProblem.Kind.CREATE_FAILED, e.getMessage());
+    }
+
+    /** Why {@link #readAttributes} of {@code dn} failed with {@code e}, structured. */
+    public static LdapProblem readAttributesProblem(String dn, Throwable e) {
+        return e instanceof org.springframework.ldap.NameNotFoundException
+                ? LdapProblem.of(LdapProblem.Kind.ENTRY_NOT_FOUND, dn)
+                : LdapProblem.of(LdapProblem.Kind.READ_FAILED, e.getMessage());
+    }
+
+    /**
+     * Why {@link #update} of {@code dn} with {@code attributes} failed with {@code e}, structured.
+     * When the directory refused an add or remove, this reads the entry, as {@link #update} did,
+     * to say which values; a caller should use the result only when its English equals the
+     * failure's message.
+     */
+    public LdapProblem updateProblem(String dn, Map<String, Object> attributes, Throwable e) {
+        if (e instanceof org.springframework.ldap.AttributeInUseException) {
+            return refusedProblem(dn, attributes, LdapValueChanges.ADD, e);
+        }
+        if (e instanceof org.springframework.ldap.NoSuchAttributeException) {
+            return refusedProblem(dn, attributes, LdapValueChanges.REMOVE, e);
+        }
+        return touchesSecret(attributes)
+                ? LdapProblem.of(LdapProblem.Kind.UPDATE_REFUSED_REQUEST)
+                : LdapProblem.of(LdapProblem.Kind.UPDATE_FAILED, e.getMessage());
+    }
+
+    /** Why {@link #delete} failed with {@code e}, structured. */
+    public static LdapProblem deleteProblem(Throwable e) {
+        return LdapProblem.of(LdapProblem.Kind.DELETE_FAILED, e.getMessage());
+    }
+
+    /** Why {@link #exists} failed with {@code e}, structured. */
+    public static LdapProblem existsProblem(Throwable e) {
+        return LdapProblem.of(LdapProblem.Kind.EXISTS_FAILED, e.getMessage());
     }
 
     /**
@@ -473,7 +522,7 @@ public class EdirectoryConnector {
             log.error("Failed to delete LDAP user '{}': {}", dn, e.getMessage());
             return OperationResult.<Void>builder()
                     .success(false)
-                    .message("Failed to delete user: " + e.getMessage())
+                    .message(deleteProblem(e).english())
                     .errorType(ErrorType.LDAP_ERROR)
                     .throwable(e)
                     .build();
@@ -514,7 +563,7 @@ public class EdirectoryConnector {
             log.error("Error checking LDAP entry existence '{}': {}", dn, e.getMessage());
             return OperationResult.<Boolean>builder()
                     .success(false)
-                    .message("Error checking existence: " + e.getMessage())
+                    .message(existsProblem(e).english())
                     .errorType(ErrorType.LDAP_ERROR)
                     .throwable(e)
                     .build();

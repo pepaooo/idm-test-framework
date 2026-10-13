@@ -1,5 +1,6 @@
 package com.idm.test.engine;
 
+import com.idm.test.engine.i18n.Messages;
 import com.idm.test.engine.model.Scenario;
 import com.idm.test.engine.model.WaitSpec;
 import org.junit.jupiter.api.DisplayName;
@@ -9,6 +10,7 @@ import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.Locale;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -311,5 +313,29 @@ class ScenarioLoaderTest {
         Scenario scenario = ScenarioLoader.load(stream("name: First\n---\nname: Second\n"), "multi.yaml");
 
         assertThat(scenario.name()).isEqualTo("First");
+    }
+
+    private static InputStream text(String yaml) {
+        return new ByteArrayInputStream(yaml.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static String spanish(Throwable e) {
+        return Messages.render(((ValidationException) e).detail(), Locale.of("es"));
+    }
+
+    @Test
+    @DisplayName("Load failures read in Spanish, with the file and step frame, English unchanged")
+    void testLoadFailuresRenderInSpanish() {
+        assertThatThrownBy(() -> ScenarioLoader.load(text("null\n"), "e.yaml"))
+                .hasMessage("e.yaml: file is empty")
+                .satisfies(e -> assertThat(spanish(e)).isEqualTo("e.yaml: el archivo está vacío"));
+        assertThatThrownBy(() -> ScenarioLoader.load(text("name: X\nsteps:\n  - ldap.create: 5\n"), "p.yaml"))
+                .hasMessage("p.yaml, step 1 (ldap.create): parameters must be a map, not a Integer")
+                .satisfies(e -> assertThat(spanish(e))
+                        .isEqualTo("p.yaml, paso 1 (ldap.create): los parámetros deben ser un mapa, no un Integer"));
+        assertThatThrownBy(() -> ScenarioLoader.load(text("name: X\ncleanup:\n  - ldap.delete: 5\n"), "c.yaml"))
+                .hasMessage("c.yaml: cleanup entry 1 (ldap.delete): parameters must be a map, not a Integer")
+                .satisfies(e -> assertThat(spanish(e))
+                        .isEqualTo("c.yaml: entrada de limpieza 1 (ldap.delete): los parámetros deben ser un mapa, no un Integer"));
     }
 }

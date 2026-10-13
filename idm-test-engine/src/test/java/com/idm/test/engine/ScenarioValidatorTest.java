@@ -1,5 +1,6 @@
 package com.idm.test.engine;
 
+import com.idm.test.engine.i18n.Messages;
 import com.idm.test.engine.model.FixtureSpec;
 import com.idm.test.engine.model.Scenario;
 import com.idm.test.engine.model.StepSpec;
@@ -12,9 +13,11 @@ import org.junit.jupiter.api.Test;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -777,5 +780,36 @@ class ScenarioValidatorTest {
         Scenario as = scenario(new StepSpec("ldap.create", Map.of("dn", "x", "as", "excludesAll")));
         assertThatThrownBy(() -> validator.validate(as, "bad.yaml"))
                 .hasMessageContaining("'excludesAll' is a built-in helper name; choose another");
+    }
+
+    private static String spanish(Throwable e) {
+        return Messages.render(((ValidationException) e).detail(), Locale.of("es"));
+    }
+
+    @Test
+    @DisplayName("Validation problems read in Spanish, with the step and cleanup frames, English unchanged")
+    void testProblemsRenderInSpanish() {
+        assertThatThrownBy(() -> validator.validate(scenario(
+                new StepSpec("ldap.create", Map.of("dn", "${nobody.dn}"))), "v.yaml"))
+                .hasMessage("v.yaml, step 1 (ldap.create): references '${nobody...}' but nothing named 'nobody'"
+                        + " has been declared or bound at this point")
+                .satisfies(e -> assertThat(spanish(e)).isEqualTo("v.yaml, paso 1 (ldap.create): hace referencia a"
+                        + " '${nobody...}' pero no se ha declarado ni asignado nada llamado 'nobody' en este punto"));
+        assertThatThrownBy(() -> validator.validate(scenario(
+                new StepSpec("ldap.verify", Map.of("dn", "x", "expect", Map.of(), "wait", "soon"))), "w.yaml"))
+                .hasMessage("w.yaml, step 1 (ldap.verify): invalid 'wait': wait must be true or a map with timeout"
+                        + " and poll, but was: soon")
+                .satisfies(e -> assertThat(spanish(e)).isEqualTo("w.yaml, paso 1 (ldap.verify): 'wait' no válido:"
+                        + " wait debe ser true o un mapa con timeout y poll, pero era: soon"));
+        assertThatThrownBy(() -> validator.validate(scenarioWithCleanup(
+                List.of(new StepSpec("ldap.create", Map.of("dn", "x"))),
+                new StepSpec("ldap.create", Map.of())), "c.yaml"))
+                .hasMessage("c.yaml: cleanup entry 1 (ldap.create): missing required parameter 'dn'")
+                .satisfies(e -> assertThat(spanish(e))
+                        .isEqualTo("c.yaml: entrada de limpieza 1 (ldap.create): falta el parámetro obligatorio 'dn'"));
+        assertThatThrownBy(() -> validator.validate(scenario(
+                new StepSpec("ldap.create", Map.of("dn", "x", "attribtes", Map.of("a", 1)))), "t.yaml"))
+                .satisfies(e -> assertThat(spanish(e)).isEqualTo("t.yaml, paso 1 (ldap.create): parámetro desconocido"
+                        + " 'attribtes'. ldap.create acepta: [as, attributes, description, dn]"));
     }
 }

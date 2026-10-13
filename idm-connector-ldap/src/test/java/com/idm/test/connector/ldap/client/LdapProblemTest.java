@@ -1,6 +1,7 @@
 package com.idm.test.connector.ldap.client;
 
 import org.junit.jupiter.api.DisplayName;
+import org.springframework.ldap.core.LdapTemplate;
 import org.junit.jupiter.api.Test;
 
 import java.util.EnumSet;
@@ -68,7 +69,51 @@ class LdapProblemTest {
         for (Object[] c : changes) {
             problems.add(LdapValueChanges.problem((String) c[0], c[1]));
         }
+        problems.addAll(operationProblems());
         return problems;
+    }
+
+    /** One input per problem the connector's operations can report (ITF-51). */
+    static List<LdapProblem> operationProblems() {
+        RuntimeException boom = new RuntimeException("boom");
+        // The refusal kinds read the entry; a template that finds nothing leaves only the secret reasons.
+        EdirectoryConnector connector = new EdirectoryConnector(org.mockito.Mockito.mock(LdapTemplate.class));
+        Exception inUse = new org.springframework.ldap.AttributeInUseException(
+                new javax.naming.directory.AttributeInUseException("in use"));
+        List<LdapProblem> problems = new java.util.ArrayList<>(List.of(
+                EdirectoryConnector.createProblem(boom),
+                EdirectoryConnector.readAttributesProblem("cn=x", new org.springframework.ldap.NameNotFoundException(
+                        new javax.naming.NameNotFoundException("gone"))),
+                EdirectoryConnector.readAttributesProblem("cn=x", boom),
+                connector.updateProblem("cn=x", Map.of("mail", "a"), boom),
+                connector.updateProblem("cn=x", Map.of("userPassword", "a"), boom),
+                connector.updateProblem("cn=x", Map.of("userPassword", "a", "mail", Map.of("add", "b")), inUse),
+                connector.updateProblem("cn=x", Map.of("userPassword", Map.of("add", "a"),
+                        "pwdHistory", Map.of("add", "b")), inUse),
+                EdirectoryConnector.deleteProblem(boom),
+                EdirectoryConnector.existsProblem(boom),
+                LdapValueChanges.reasonProblem(LdapValueChanges.ADD, "mail", List.of("a")),
+                LdapValueChanges.reasonProblem(LdapValueChanges.ADD, "mail", List.of("a", "b")),
+                LdapValueChanges.reasonProblem(LdapValueChanges.REMOVE, "mail", List.of("a")),
+                LdapValueChanges.reasonProblem(LdapValueChanges.REMOVE, "mail", List.of("a", "b")),
+                LdapValueChanges.secretReasonProblem(LdapValueChanges.ADD, "userPassword"),
+                LdapValueChanges.secretReasonProblem(LdapValueChanges.REMOVE, "userPassword")));
+        return problems;
+    }
+
+    @Test
+    @DisplayName("Each operation problem's English is the connector's message, character for character")
+    void testOperationProblemsWording() {
+        List<LdapProblem> problems = operationProblems();
+
+        assertThat(problems.get(0).english()).isEqualTo("Failed to create user: boom");
+        assertThat(problems.get(1).english()).isEqualTo("Entry not found: cn=x");
+        assertThat(problems.get(3).english()).isEqualTo("Failed to update user: boom");
+        assertThat(problems.get(4).english()).isEqualTo("Failed to update user: the directory refused the request");
+        assertThat(problems.get(5).english()).isEqualTo("Failed to update user: the directory refused the add/remove (LDAP 20)");
+        assertThat(problems.get(6).kind()).isEqualTo(LdapProblem.Kind.REFUSED_ALL);
+        assertThat(problems.get(6).english()).contains("; ");
+        assertThat(problems.get(10).english()).isEqualTo(LdapValueChanges.reason(LdapValueChanges.ADD, "mail", List.of("a", "b")));
     }
 
     @Test

@@ -7,6 +7,7 @@ import com.idm.test.connector.rest.client.TokenFailureText;
 import com.idm.test.connector.rest.config.RestProperties;
 import com.idm.test.connector.rest.model.TextResponse;
 import com.idm.test.core.model.OperationResult;
+import com.idm.test.engine.expr.ExpressionEvaluator.ExpressionException;
 import com.idm.test.engine.i18n.Messages;
 import com.idm.test.engine.spi.DeferredExpression;
 import com.idm.test.engine.spi.Explained;
@@ -117,8 +118,10 @@ public final class HttpVerifyStep implements StepType {
                 explained = check.explain(Map.of("response", bound.response()));
             } catch (RuntimeException e) {
                 String error = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+                Object reason = e instanceof ExpressionException expression && expression.detail() != null
+                        ? masked(expression.detail()) : safe(error);
                 return StepOutcome.failure(Message.of("step.http.verify.checkThrew", method, url, number, total,
-                        safe(error), response.status(), body, hint));
+                        reason, response.status(), body, hint));
             }
             Object value = explained.value();
             if (!(value instanceof Boolean passed)) {

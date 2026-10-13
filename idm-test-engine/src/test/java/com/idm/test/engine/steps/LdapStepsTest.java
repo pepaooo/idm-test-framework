@@ -898,4 +898,31 @@ class LdapStepsTest {
         assertThat(spanish(change)).isEqualTo(
                 "ldap.update para cn=x,ou=users: el atributo 'seeAlso' es un mapa vacío; use add y/o remove");
     }
+
+    @Test
+    @DisplayName("The directory connector's own frames render in Spanish, the server text unchanged")
+    void testConnectorFramesRenderInSpanish() {
+        String dn = "cn=ada.frames,ou=users";
+        String b = "cn=b,ou=groups,dc=test,dc=com";
+        Map<String, Object> attributes = Map.of("cn", "ada.frames", "sn", "Lovelace", "seeAlso", List.of(b));
+        new LdapCreateStep(directories).execute(Map.of("dn", dn, "attributes", attributes), false);
+
+        StepOutcome again = new LdapCreateStep(directories).execute(Map.of("dn", dn, "attributes", attributes), false);
+        assertThat(again.message()).startsWith("ldap.create failed for " + dn + ": Failed to create user: ");
+        String server = again.message().substring(("ldap.create failed for " + dn + ": Failed to create user: ").length());
+        assertThat(spanish(again)).isEqualTo("ldap.create falló para " + dn + ": No se pudo crear el usuario: " + server);
+
+        StepOutcome refused = new LdapUpdateStep(directories).execute(Map.of("dn", dn,
+                "attributes", Map.of("seeAlso", Map.of("add", b))), false);
+        assertThat(refused.message())
+                .isEqualTo("ldap.update failed for " + dn + ": cannot add [" + b + "] to seeAlso: the entry already has it");
+        assertThat(spanish(refused))
+                .isEqualTo("ldap.update falló para " + dn + ": no se puede agregar [" + b + "] a seeAlso: la entrada ya lo tiene");
+
+        connector.delete(dn);
+        StepOutcome absent = new LdapVerifyStep(directories).execute(Map.of("dn", dn,
+                "expect", Map.of("sn", "Lovelace")), false);
+        assertThat(absent.message()).isEqualTo("ldap.verify failed for " + dn + ": Entry not found: " + dn);
+        assertThat(spanish(absent)).isEqualTo("ldap.verify falló para " + dn + ": No se encontró la entrada: " + dn);
+    }
 }

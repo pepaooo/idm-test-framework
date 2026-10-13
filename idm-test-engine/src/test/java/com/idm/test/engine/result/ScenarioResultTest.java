@@ -82,13 +82,13 @@ class ScenarioResultTest {
     void testSpanishSummary() {
         assertThat(gaveUp().failureSummary(ES)).isEqualTo(
                 "a.yaml, paso 3 (ldap.verify: \"Wait until the entry exists\"): sn was 'X', expected 'Y'"
-                        + " — se abandonó tras 3 intentos en 10060 ms");
+                        + " — se dejó de reintentar tras 3 intentos en 10060 ms");
         assertThat(stepAndCleanups().failureSummary(ES)).isEqualTo(
                 "b.yaml, paso 1 (roles.grant): Role service error; "
                         + "b.yaml, entrada de limpieza 1 (ldap.delete: \"Remove the test account\"): no such entry; "
                         + "b.yaml, entrada de limpieza 2 (db.execute): relation missing");
         assertThat(detail().failureSummary(ES)).isEqualTo("d.yaml: fixture 'user' failed: boom");
-        assertThat(none().failureSummary(ES)).isEqualTo("e.yaml: el escenario falló antes de ejecutar algún paso");
+        assertThat(none().failureSummary(ES)).isEqualTo("e.yaml: el escenario falló antes de ejecutar ningún paso");
     }
 
     @Test

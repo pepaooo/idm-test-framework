@@ -588,7 +588,7 @@ class ExpressionEvaluatorTest {
                         .startsWith("no se pudo evaluar js:{ containsAll(groups) }: ")
                         .contains("containsAll: los valores a buscar son undefined"));
         assertThatThrownBy(() -> evaluator.evaluate("(function f() { return 1 + f(); })()", Map.of()))
-                .satisfies(e -> assertThat(spanish(e)).isEqualTo("la expresión se anidó o fue recursiva a demasiada"
+                .satisfies(e -> assertThat(spanish(e)).isEqualTo("la expresión se anidó o recurrió con demasiada"
                         + " profundidad y se detuvo: js:{ (function f() { return 1 + f(); })() }"));
         assertThatThrownBy(() -> evaluator.validate("user.("))
                 .hasMessageStartingWith("invalid expression js:{ user.( }: ")

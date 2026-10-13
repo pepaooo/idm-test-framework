@@ -639,7 +639,7 @@ class RestStepsTest {
                 "target", "nope", "method", "GET", "path", "/users/1"), false);
 
         assertThat(spanish(outcome)).isEqualTo(
-                "rest.request nombra el destino desconocido 'nope'. Destinos configurados: [broken, idm, slow]");
+                "rest.request hace referencia al destino desconocido 'nope'. Destinos configurados: [broken, idm, slow]");
         assertThat(outcome.message()).isEqualTo(
                 "rest.request names unknown target 'nope'. Configured targets: [broken, idm, slow]");
     }

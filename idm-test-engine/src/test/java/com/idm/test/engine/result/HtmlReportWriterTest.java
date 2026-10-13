@@ -311,7 +311,7 @@ class HtmlReportWriterTest {
                 .contains("Expandir todo").contains("Solo fallidos")
                 .contains("Los pasos posteriores no se ejecutaron.")
                 .contains("<h3>Limpieza</h3>")
-                .contains(">CORRECTO<").contains(">OMITIDO<")
+                .contains(">CORRECTA<").contains(">OMITIDA<")
                 .contains("3 intentos · 10,1 s")
                 .contains("Parámetros")
                 .doesNotContain("Expand all").doesNotContain("Only failed");
@@ -365,7 +365,7 @@ class HtmlReportWriterTest {
                 .contains("parámetros: [&quot;jdoe&quot;]")
                 .contains("… 5 filas más");
         assertThat(renderStepEs(withEvidence(true, null, SqlEvidence.update("hr", "DELETE FROM t", new Object[0], 3))))
-                .contains("SQL · 0 parámetros · actualizadas: 3 filas");
+                .contains("SQL · 0 parámetros · actualización: 3 filas");
         assertThat(renderStepEs(withEvidence(true, null,
                 SqlEvidence.query("hr", "SELECT 1", new Object[0], List.of()))))
                 .contains("sin filas");
@@ -466,11 +466,11 @@ class HtmlReportWriterTest {
         assertThat(html)
                 .contains("<div class=\"message\">Connection refused: ldap://edir.lab:636"
                         + " (último valor observado tras reintentar)</div>")
-                .contains("gone (sin reintentos: esperar no cambia este resultado)")
+                .contains("gone (sin reintentos: esperar no puede cambiar este resultado)")
                 .contains("<p class=\"failure\">" + HtmlReportWriter.esc(keyedFailure().failureSummary(java.util.Locale.of("es"))))
                 .contains("keyed.yaml, paso 1 (ldap.verify: &quot;Wait until the entry exists&quot;): "
                         + "Connection refused: ldap://edir.lab:636 (último valor observado tras reintentar)"
-                        + " — se abandonó tras 3 intentos en 2000 ms")
+                        + " — se dejó de reintentar tras 3 intentos en 2000 ms")
                 .doesNotContain("last observed value");
     }
 

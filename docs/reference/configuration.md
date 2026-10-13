@@ -324,9 +324,19 @@ any scenario runs; the first non-blank source wins:
 2. the environment variable `IDM_TEST_LOCALE`
 3. the system property `-Didm.test.locale`
 
-Translated: report labels, evidence, and the framework's own messages. Not translated: scenario,
-step and cleanup names and descriptions, error text from external systems (LDAP, JDBC, HTTP), log
-output, JSON field names, step types and YAML keys.
+Translated: report labels, evidence, the framework's step, engine, validation and runner messages,
+and JUnit's failure text. Not translated: scenario, step and cleanup names and descriptions, error
+text from external servers and drivers (LDAP, JDBC, HTTP, SOAP), log output, JSON field names, step
+types and YAML keys.
+
+A few framework texts are still English in a Spanish run:
+
+- the error in an HTTP evidence panel when no response arrived (the step's message above it is Spanish)
+- the real-environment refusal when `idm.test.default-directory` names a directory that is not configured
+- the container runner's Docker checks, and `-Dscenario` selection errors
+- the runner name in the minimal header used when the run could not be described
+- check notes or XML reasons longer than 300 characters (shown in English, as written)
+- the JavaScript engine's own wording around a list-helper error
 
 An unsupported value stops the run before any scenario executes, with
 `unsupported report locale 'fr'; supported: en, es`.

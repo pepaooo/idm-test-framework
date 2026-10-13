@@ -888,7 +888,7 @@ class RealEnvironmentGuardsTest {
         assertThatThrownBy(() -> RealEnvironmentScenarios.requireNotEmbedded(target(REAL_LDAP, REAL_SOAP, "test"),
                 Locale.of("es")))
                 .hasMessage("Los perfiles activos [test] incluyen 'test', la configuración de pruebas embebida."
-                        + " Defina IDM_TEST_PROFILE con el perfil que nombra su entorno real, por ejemplo"
+                        + " Defina IDM_TEST_PROFILE con el nombre del perfil de su entorno real, por ejemplo"
                         + " IDM_TEST_PROFILE=dev.");
     }
 }

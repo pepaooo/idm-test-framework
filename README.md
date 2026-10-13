@@ -180,6 +180,8 @@ the HTML report from its results.
 
 Each run also writes a self-contained HTML report beside it (`scenario-report.html`, `real-environment-report.html`, `multi-directory-report.html`) — open it in a browser to read or share the run. Each step's evidence — the HTTP or SOAP exchange, the SQL and its rows, or the LDAP entry — is shown under it, with secrets masked.
 
+The report and messages are in English by default; set `IDM_TEST_LOCALE=es` (or `idm.test.report.locale: es`) for Spanish. See [Report language](docs/reference/configuration.md#report-language).
+
 ---
 
 ## Project structure

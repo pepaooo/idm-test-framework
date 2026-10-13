@@ -1152,7 +1152,7 @@ class ScenarioEngineTest {
         assertThat(step.message())
                 .isEqualTo("probe (last observed value after retrying) (not retried: waiting cannot change this)");
         assertThat(Messages.render(step.messageDetail(), Locale.of("es")))
-                .endsWith("(sin reintentos: esperar no cambia este resultado)");
+                .endsWith("(sin reintentos: esperar no puede cambiar este resultado)");
     }
 
     @Test

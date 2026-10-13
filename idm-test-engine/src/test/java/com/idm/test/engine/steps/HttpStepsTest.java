@@ -458,7 +458,7 @@ class HttpStepsTest {
         StepOutcome outcome = STEP.execute(params("target", "mock", "method", "FETCH", "path", "/x"), false);
 
         assertThat(spanish(outcome)).isEqualTo(
-                "el método 'FETCH' de http.request no es uno de [DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT]");
+                "el método 'FETCH' de http.request no es ninguno de [DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT]");
         assertThat(outcome.message()).isEqualTo(
                 "http.request method 'FETCH' is not one of [DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT]");
     }

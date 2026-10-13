@@ -480,7 +480,7 @@ class DbStepsTest {
         assertThat(Messages.render(failed.detail(), Locale.of("es"))).isEqualTo("db.execute falló en 'nope':"
                 + " La base de datos 'nope' no está configurada. Bases de datos disponibles: " + available);
         assertThat(Messages.render(done.detail(), Locale.of("es")))
-                .isEqualTo("ejecutado en 'test-db', 0 fila(s) afectada(s)");
+                .isEqualTo("se ejecutó en 'test-db'; 0 fila(s) afectada(s)");
     }
 
     @Test

@@ -794,13 +794,13 @@ class ScenarioValidatorTest {
                 .hasMessage("v.yaml, step 1 (ldap.create): references '${nobody...}' but nothing named 'nobody'"
                         + " has been declared or bound at this point")
                 .satisfies(e -> assertThat(spanish(e)).isEqualTo("v.yaml, paso 1 (ldap.create): hace referencia a"
-                        + " '${nobody...}' pero no se ha declarado ni asignado nada llamado 'nobody' en este punto"));
+                        + " '${nobody...}' pero no se ha declarado ni asignado nada llamado 'nobody' hasta este punto"));
         assertThatThrownBy(() -> validator.validate(scenario(
                 new StepSpec("ldap.verify", Map.of("dn", "x", "expect", Map.of(), "wait", "soon"))), "w.yaml"))
                 .hasMessage("w.yaml, step 1 (ldap.verify): invalid 'wait': wait must be true or a map with timeout"
                         + " and poll, but was: soon")
                 .satisfies(e -> assertThat(spanish(e)).isEqualTo("w.yaml, paso 1 (ldap.verify): 'wait' no válido:"
-                        + " wait debe ser true o un mapa con timeout y poll, pero era: soon"));
+                        + " wait debe ser true o un mapa con timeout y poll, pero se recibió: soon"));
         assertThatThrownBy(() -> validator.validate(scenarioWithCleanup(
                 List.of(new StepSpec("ldap.create", Map.of("dn", "x"))),
                 new StepSpec("ldap.create", Map.of())), "c.yaml"))

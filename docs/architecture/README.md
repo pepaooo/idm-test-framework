@@ -133,6 +133,6 @@ The [authoring guide](../guides/scenario-authoring.md) explains the current step
 
 ## 10. Current risks and deferred work
 
-The [capability matrix](capabilities.md) is the authoritative status list. The key limitations for coworkers are narrow YAML coverage, incomplete real-environment authentication/wiring, best-effort cleanup, and no real IdM validation in the current baseline. CLI/UI/reporting and broader YAML vocabulary are separate work.
+The [capability matrix](capabilities.md) is the authoritative status list. The key limitations for coworkers are narrow YAML coverage, incomplete real-environment authentication/wiring, best-effort cleanup, and no real IdM validation in the current baseline. A runner for end users, a local web workbench and collaboration are planned in that order ([ADR 0007](decisions/0007-end-user-runner-and-local-workbench.md)); broader YAML vocabulary is separate work.
 
 Maintain these diagrams and documents when changing module dependencies, step registration, syntax, result shape or environment wiring. Keep ADRs as rationale and mark superseded decisions explicitly; do not silently rewrite historical intent into an implementation claim.

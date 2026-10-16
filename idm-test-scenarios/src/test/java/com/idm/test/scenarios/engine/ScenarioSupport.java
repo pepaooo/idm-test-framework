@@ -10,19 +10,16 @@ import com.idm.test.engine.i18n.ReportLocale;
 import com.idm.test.engine.result.RunInfo;
 import com.idm.test.engine.result.ScenarioResult;
 import com.idm.test.engine.spi.Message;
+import com.idm.test.wiring.ClasspathScenarioSource;
 import com.idm.test.wiring.RunRecorder;
+import com.idm.test.wiring.ScenarioGlob;
 import org.junit.jupiter.api.DynamicTest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.IOException;
 import java.io.InputStream;
-import java.io.UncheckedIOException;
 import java.net.URISyntaxException;
-import java.nio.file.FileSystems;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.PathMatcher;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -30,8 +27,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.function.Function;
-import java.util.regex.PatternSyntaxException;
-import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.fail;
@@ -53,7 +48,7 @@ final class ScenarioSupport {
     }
 
     /** System property naming the scenario file, or glob of files, to run. */
-    static final String SCENARIO_PROPERTY = "scenario";
+    static final String SCENARIO_PROPERTY = ScenarioGlob.SCENARIO_PROPERTY;
 
     /** The header used when describing the run failed; always English. */
     private static RunInfo minimalRun() {
@@ -192,17 +187,7 @@ final class ScenarioSupport {
                     + " unset to run every scenario in " + scenarioDir + ".");
         }
 
-        PathMatcher matcher;
-        try {
-            matcher = FileSystems.getDefault().getPathMatcher("glob:" + pattern);
-        } catch (PatternSyntaxException e) {
-            throw new IllegalStateException("-D" + SCENARIO_PROPERTY + "=" + pattern
-                    + " is not a valid glob: " + e.getDescription(), e);
-        }
-
-        List<String> selected = files.stream()
-                .filter(file -> matcher.matches(Path.of(file)) || matcher.matches(Path.of(stripYaml(file))))
-                .toList();
+        List<String> selected = ScenarioGlob.select(files, pattern);
 
         if (selected.isEmpty()) {
             throw new IllegalStateException("-D" + SCENARIO_PROPERTY + "=" + pattern + " matches no scenario in "
@@ -211,33 +196,14 @@ final class ScenarioSupport {
         return selected;
     }
 
-    private static String stripYaml(String file) {
-        return file.endsWith(".yaml") ? file.substring(0, file.length() - ".yaml".length()) : file;
-    }
-
     private static InputStream resource(String scenarioDir, String file) {
-        return ScenarioSupport.class.getClassLoader()
-                .getResourceAsStream(scenarioDir + "/" + file);
+        return new ClasspathScenarioSource(scenarioDir).open(file);
     }
 
     /**
      * Lists the scenario file names on the classpath, under {@code scenarioDir}.
      */
     static List<String> scenarioFiles(String scenarioDir) throws URISyntaxException {
-        var url = ScenarioSupport.class.getClassLoader().getResource(scenarioDir);
-        if (url == null) {
-            return List.of();
-        }
-
-        Path dir = Path.of(url.toURI());
-        try (Stream<Path> files = Files.list(dir)) {
-            return files
-                    .filter(path -> path.toString().endsWith(".yaml"))
-                    .map(path -> path.getFileName().toString())
-                    .sorted()
-                    .toList();
-        } catch (IOException e) {
-            throw new UncheckedIOException("Could not list scenarios in " + dir, e);
-        }
+        return new ClasspathScenarioSource(scenarioDir).names();
     }
 }

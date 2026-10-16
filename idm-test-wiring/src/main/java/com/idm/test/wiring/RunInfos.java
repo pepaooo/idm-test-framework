@@ -67,7 +67,7 @@ public final class RunInfos {
         }
 
         return new RunInfo(runner, Instant.now(), List.of(environment.getActiveProfiles()),
-                System.getProperty("scenario"), endpoints, locale);
+                System.getProperty(ScenarioGlob.SCENARIO_PROPERTY), endpoints, locale);
     }
 
     /** An endpoint row's label in the run's language. */

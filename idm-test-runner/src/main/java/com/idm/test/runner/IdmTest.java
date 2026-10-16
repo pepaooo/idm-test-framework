@@ -9,6 +9,7 @@ import java.io.InputStream;
 import java.io.PrintStream;
 import java.io.UncheckedIOException;
 import java.nio.file.Path;
+import java.time.Clock;
 import java.util.Locale;
 import java.util.Properties;
 
@@ -68,6 +69,9 @@ public final class IdmTest {
             }
             case "validate" -> {
                 return ValidateCommand.run(line, out, err);
+            }
+            case "run" -> {
+                return RunCommand.run(line, out, err, Clock.systemDefaultZone());
             }
             default -> {
                 err.println(Messages.render(Message.of("runner.cli.notImplemented"), locale));

@@ -7,6 +7,8 @@ import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.ByteArrayOutputStream;
@@ -16,6 +18,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.Statement;
@@ -352,6 +355,76 @@ class RunCommandTest {
         assertThat(err()).doesNotContain(secret);
         assertThat(out()).doesNotContain(secret);
         assertThat(console.toString(StandardCharsets.UTF_8)).doesNotContain(secret);
+    }
+
+    @Test
+    @DisplayName("Should keep a secrets.env value out of a log file the profile configures")
+    void testUserLogFileGetsNothing() throws Exception {
+        String secret = "s3cr3tVal-userlog";
+        Path userLog = temp.resolve("user.log");
+        Path ws = workspace("ws");
+        Files.writeString(ws.resolve("secrets.env"), "IDM_TEST_TIMEOUT=" + secret + "\n", StandardOpenOption.APPEND);
+        Files.writeString(ws.resolve("config/application-lab.yml"),
+                Files.readString(ws.resolve("config/application-lab.yml"))
+                        .replace("default-timeout-seconds: 2", "default-timeout-seconds: ${IDM_TEST_TIMEOUT}")
+                + "logging:\n  file:\n    name: " + userLog.toAbsolutePath() + "\n");
+        corpusScenario(ws);
+
+        int exit = run(ws, "--profile", "lab");
+
+        assertThat(exit).isEqualTo(ExitCodes.CANNOT_START);
+        if (Files.exists(userLog)) {
+            assertThat(Files.readString(userLog)).doesNotContain(secret);
+        }
+        String log = Files.readString(runFolder(ws).resolve("run.log"));
+        assertThat(log).contains("NumberFormatException", "****").doesNotContain(secret);
+        assertThat(out() + err()).doesNotContain(secret);
+    }
+
+    @Test
+    @EnabledOnOs({OS.MAC, OS.LINUX})
+    @DisplayName("Should stop with one masked line and exit 2 when the scenarios cannot be listed")
+    void testUnlistableScenarios() throws Exception {
+        Path ws = workspace("ws");
+        corpusScenario(ws);
+        // An unreadable scenarios/ folder: listing it fails with a checked IOException.
+        Path locked = ws.resolve("scenarios");
+        Files.setPosixFilePermissions(locked, PosixFilePermissions.fromString("---------"));
+        try {
+            Assumptions.assumeFalse(Files.isReadable(locked), "running as a user who can read anything");
+
+            int exit = run(ws, "--profile", "lab");
+
+            assertThat(exit).isEqualTo(ExitCodes.CANNOT_START);
+            assertThat(err()).startsWith("the run could not start: ");
+            assertThat(err().strip().lines()).hasSize(1);
+            assertThat(out()).doesNotContain("✔");
+        } finally {
+            Files.setPosixFilePermissions(locked, PosixFilePermissions.fromString("rwx------"));
+        }
+    }
+
+    @Test
+    @EnabledOnOs({OS.MAC, OS.LINUX})
+    @DisplayName("Should record an unreadable scenario file as failed while the others run, and exit 1")
+    void testUnreadableScenarioFile() throws Exception {
+        Path ws = workspace("ws");
+        corpusScenario(ws);
+        Path unreadable = ws.resolve("scenarios/a-unreadable.yaml");
+        Files.writeString(unreadable, REST_ACCOUNT);
+        Files.setPosixFilePermissions(unreadable, PosixFilePermissions.fromString("---------"));
+        try {
+            Assumptions.assumeFalse(Files.isReadable(unreadable), "running as a user who can read anything");
+
+            int exit = run(ws, "--profile", "lab");
+
+            assertThat(exit).as(out() + err()).isEqualTo(ExitCodes.FAILED);
+            assertThat(out()).contains("✖ a-unreadable.yaml  0 ms — ", "✔ provisioning-user-to-ldap.yaml  ",
+                    "2 scenarios: 1 passed, 1 failed");
+            assertThat(Files.readString(runFolder(ws).resolve("results.json"))).contains("a-unreadable.yaml");
+        } finally {
+            Files.setPosixFilePermissions(unreadable, PosixFilePermissions.fromString("rw-------"));
+        }
     }
 
     @Test

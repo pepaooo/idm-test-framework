@@ -25,7 +25,9 @@ import java.util.List;
  * Every line it writes, stack traces included, passes through the run's {@link SecretMask}, so a
  * {@code secrets.env} value an exception quotes never reaches the file (ITF-23).
  * <p>
- * The console's own appenders are always detached. With {@code --verbose} a console appender of
+ * While the run lasts, the run's appenders are the only log output: every other appender, on the
+ * root logger and on any other logger (a console, or a file a user's {@code logging.*} settings
+ * added), is detached, and given back on {@link #close()}. With {@code --verbose} a console appender of
  * the run's, masked the same way, echoes the log; without it the console shows progress only.
  * Spring Boot re-initialises Logback when it starts, which removes every appender, so
  * {@link #listener()} attaches the run's appenders again right after.
@@ -39,7 +41,7 @@ final class RunLog implements AutoCloseable {
     private final Path file;
     private final boolean verbose;
     private final SecretMask mask;
-    private final List<Appender<ILoggingEvent>> detached = new ArrayList<>();
+    private final List<Detached> detached = new ArrayList<>();
     private FileAppender<ILoggingEvent> appender;
     private ConsoleAppender<ILoggingEvent> console;
 
@@ -70,11 +72,17 @@ final class RunLog implements AutoCloseable {
     synchronized void attach() {
         Logger root = root();
         LoggerContext context = root.getLoggerContext();
-        for (Iterator<Appender<ILoggingEvent>> it = root.iteratorForAppenders(); it.hasNext(); ) {
-            Appender<ILoggingEvent> candidate = it.next();
-            if (candidate instanceof ConsoleAppender<ILoggingEvent> && candidate != console) {
-                root.detachAppender(candidate);
-                detached.add(candidate);
+        for (Logger logger : context.getLoggerList()) {
+            List<Appender<ILoggingEvent>> others = new ArrayList<>();
+            for (Iterator<Appender<ILoggingEvent>> it = logger.iteratorForAppenders(); it.hasNext(); ) {
+                Appender<ILoggingEvent> candidate = it.next();
+                if (candidate != appender && candidate != console) {
+                    others.add(candidate);
+                }
+            }
+            for (Appender<ILoggingEvent> other : others) {
+                logger.detachAppender(other);
+                detached.add(new Detached(logger, other));
             }
         }
         if (!attached(root, appender)) {
@@ -131,9 +139,10 @@ final class RunLog implements AutoCloseable {
         stop(root, console);
         appender = null;
         console = null;
-        for (Appender<ILoggingEvent> previous : detached) {
-            if (previous.isStarted() && root.getAppender(previous.getName()) == null) {
-                root.addAppender(previous);
+        for (Detached previous : detached) {
+            Appender<ILoggingEvent> other = previous.appender();
+            if (other.isStarted() && previous.logger().getAppender(other.getName()) == null) {
+                previous.logger().addAppender(other);
             }
         }
         detached.clear();
@@ -148,6 +157,10 @@ final class RunLog implements AutoCloseable {
 
     private static Logger root() {
         return (Logger) LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    }
+
+    /** An appender this run took from a logger, to give back when it ends. */
+    private record Detached(Logger logger, Appender<ILoggingEvent> appender) {
     }
 
     /** A pattern layout whose formatted event (message and stack trace alike) is masked. */

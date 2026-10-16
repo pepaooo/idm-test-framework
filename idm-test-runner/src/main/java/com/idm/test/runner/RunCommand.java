@@ -40,7 +40,6 @@ import org.springframework.core.env.Environment;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintStream;
-import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
@@ -128,13 +127,18 @@ public final class RunCommand {
     }
 
     /**
-     * The command-line arguments for Spring: the profile and the run's language, and lazy
-     * initialisation pinned so that no configuration file can switch it off. A lazy context builds
+     * The command-line arguments for Spring: the profile and the run's language, with lazy
+     * initialisation and the logging outputs pinned so that no configuration file can change them. A lazy context builds
      * no connector before the guards have read the settings.
      */
     private static String[] springArgs(String profile, String localeTag) {
         List<String> args = new ArrayList<>(List.of(RunnerSettings.commandLineArgs(profile, localeTag)));
         args.add("--spring.main.lazy-initialization=true");
+        // The run's masked run.log is the only log output: no settings file may add a log file
+        // or a Logback configuration of its own, which would receive secrets.env values unmasked.
+        args.add("--logging.file.name=");
+        args.add("--logging.file.path=");
+        args.add("--logging.config=");
         return args.toArray(String[]::new);
     }
 
@@ -219,9 +223,7 @@ public final class RunCommand {
                 LOG.error("Refused: {}", e.getMessage());
                 err.println(e.getMessage());
                 return ExitCodes.CANNOT_START;
-            } catch (IOException e) {
-                throw new UncheckedIOException(e);
-            } catch (RuntimeException e) {
+            } catch (IOException | RuntimeException e) {
                 return startFailed(e, line, err, locale, mask);
             }
 

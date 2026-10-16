@@ -63,9 +63,17 @@ When a setting is given in several places, the first of these wins:
 5. `config/application.yml`
 6. the runner's built-in defaults (timeouts and pool sizes; no lab URLs or credentials)
 
+Settings come only from the workspace's `config/` folder and the built-in defaults (the runner sets
+`spring.config.location=optional:classpath:/,optional:file:<workspace>/config/`): an `application.yml` or
+`config/` folder in the current folder is never read, so `--workspace` never mixes in another workspace's
+settings.
+
 The report language follows the order under [Report language](#report-language) with `--locale` first.
 During a run the masked `run.log` is the only log output, so `logging.file.*` and `logging.config` are
-ignored. Secret values shorter than 4 characters are not masked, so use real passwords.
+ignored. The console, `run.log`, `results.json` and `report.html` mask the `secrets.env` values, the
+environment variables that override them, and every environment variable whose name looks secret (the
+same name rule as the report's parameter masking; `PWD` and `OLDPWD` excepted). Secret values shorter
+than 4 characters are not masked, so use real passwords.
 
 ## Sensitive Data Management
 

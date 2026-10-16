@@ -139,8 +139,14 @@ IDM_TEST_LDAP_PASSWORD=the-real-password
 ```
 
 `secrets.env` must be UTF-8. The key is used exactly as written, and everything after the first `=` is the
-value, so a value may contain `=`. Use real passwords: a secret value shorter than 4 characters is not
-masked in the log and the reports.
+value, so a value may contain `=`.
+
+Secret values are masked as `****` on the console, in `run.log`, in `results.json` and in `report.html`.
+A secret value is each `secrets.env` value (and the environment variable that overrides it, the value the
+run actually uses), and the value of every environment variable whose name contains `password`, `passwd`,
+`pwd`, `secret`, `token`, `authorization`, `credential`, `apikey`, `api_key`, `api-key` or `cookie`, in
+any case (except `PWD` and `OLDPWD`, which hold folders). Use real passwords: a value shorter than 4
+characters is not masked.
 
 Never commit `secrets.env`. `init` puts it, and `reports/`, in `.gitignore`, and `run` warns when Git
 tracks it (see Troubleshooting).
@@ -156,6 +162,9 @@ When the same setting is given in several places, the first of these wins:
 
 So an environment variable overrides `secrets.env`, which is how a CI job supplies its own passwords. A
 setting that no layer gives stays missing, and `run` reports it before any scenario runs.
+
+Settings come only from these layers. An `application.yml` or a `config/` folder in the folder you run
+`idmtest` from is never read: `--workspace <dir>` uses that workspace's settings and no other's.
 
 The language of the console and the report is, in the same first-wins order: `--locale`, the environment
 variable `IDM_TEST_LOCALE`, `-Didm.test.locale`, the profile's `idm.test.report.locale`, then English.
@@ -271,10 +280,13 @@ Each message below stops the run with exit code 2. `<...>` stands for your value
 | `the run could not start: <reason>` | The settings could not be loaded; the reason names the problem. Add `--verbose` for the stack trace. |
 | `IDM_TEST_JAVA_HOME points to Java <n> (<path>); idmtest needs Java 25 or newer` | Point `IDM_TEST_JAVA_HOME` at a Java 25 or newer, or unset it to use the bundled runtime. |
 | `IDM_TEST_JAVA_HOME points to <path>, which is not a Java installation; idmtest needs Java 25 or newer` | The folder must hold `bin/java` and a `release` file. |
+| `the bundled Java runtime in <path> is missing or broken; reinstall idmtest or set IDM_TEST_JAVA_HOME to a Java 25+` | The ZIP's `runtime/` folder is damaged: unzip `idmtest` again, or point `IDM_TEST_JAVA_HOME` at your own Java 25 or newer. |
 
 Refusals from the checks before a run name the setting to change, for example `<setting> is not set. Set
 <variable> or activate a profile that defines it.`, or that the settings are still the placeholder values.
-They also tell you when the embedded `test` profile is active, which would test nothing real.
+They also tell you when the embedded `test` profile is active, which would test nothing real:
+`Active profiles [test] include 'test', the embedded test configuration. Run with --profile set to the
+profile that names your real environment, for example --profile lab.`
 
 One message does not stop the run:
 

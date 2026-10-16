@@ -53,31 +53,25 @@ public final class IdmTest {
     }
 
     private static int dispatch(CommandLine line, PrintStream out, PrintStream err, Locale locale) {
-        switch (line.command()) {
+        return switch (line.command()) {
             case "help" -> {
                 out.println(usage(locale));
-                return ExitCodes.OK;
+                yield ExitCodes.OK;
             }
             case "version" -> {
                 out.println("idmtest " + version());
-                return ExitCodes.OK;
+                yield ExitCodes.OK;
             }
             case "init" -> {
                 Path target = line.initTarget() != null ? line.initTarget()
                         : line.workspace() != null ? line.workspace() : Path.of("");
-                return InitCommand.run(target.toAbsolutePath().normalize(), out, locale);
+                yield InitCommand.run(target.toAbsolutePath().normalize(), out, locale);
             }
-            case "validate" -> {
-                return ValidateCommand.run(line, out, err);
-            }
-            case "run" -> {
-                return RunCommand.run(line, out, err, Clock.systemDefaultZone());
-            }
-            default -> {
-                err.println(Messages.render(Message.of("runner.cli.notImplemented"), locale));
-                return ExitCodes.CANNOT_START;
-            }
-        }
+            case "validate" -> ValidateCommand.run(line, out, err);
+            case "run" -> RunCommand.run(line, out, err, Clock.systemDefaultZone());
+            // CommandLine.parse accepts no other command.
+            default -> throw new IllegalStateException("unhandled command " + line.command());
+        };
     }
 
     private static String usage(Locale locale) {

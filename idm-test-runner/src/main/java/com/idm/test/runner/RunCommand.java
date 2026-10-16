@@ -68,10 +68,15 @@ public final class RunCommand {
     }
 
     public static int run(CommandLine line, PrintStream out, PrintStream err, Clock clock) {
+        // One language for the run: --locale, then IDM_TEST_LOCALE, then -Didm.test.locale, then the
+        // profile's idm.test.report.locale, then English. The first three are known now and are
+        // handed to Spring as the command-line idm.test.report.locale, so the console and the
+        // report agree; only messages before Spring starts cannot see the profile file.
+        String localeTag = firstNonBlank(line.locale(), System.getenv("IDM_TEST_LOCALE"),
+                System.getProperty("idm.test.locale"));
         Locale early;
         try {
-            early = ReportLocale.resolve(line.locale(), System.getenv("IDM_TEST_LOCALE"),
-                    System.getProperty("idm.test.locale"));
+            early = ReportLocale.resolve(localeTag);
         } catch (ReportLocale.UnsupportedLocaleException e) {
             if (line.profile() == null) {
                 err.println(Messages.render(Message.of("runner.run.needsProfile"), Locale.ENGLISH));
@@ -98,9 +103,10 @@ public final class RunCommand {
         if (Files.exists(workspace.secretsFile()) && GitTracking.isTracked(workspace.root(), workspace.secretsFile())) {
             err.println(Messages.render(GitTracking.trackedWarning(), early));
         }
+        SecretMask mask = new SecretMask(secrets.values());
 
         Path folder = workspace.newRunFolder(line.profile(), clock);
-        try (RunLog runLog = RunLog.start(folder.resolve("run.log"), line.verbose())) {
+        try (RunLog runLog = RunLog.start(folder.resolve("run.log"), line.verbose(), mask)) {
             LOG.info("idmtest run: workspace {}, profile {}", workspace.root(), line.profile());
             ConfigurableApplicationContext context;
             try {
@@ -111,23 +117,42 @@ public final class RunCommand {
                         .properties(RunnerSettings.defaultProperties(workspace))
                         .initializers(new SecretsInitializer(secrets))
                         .listeners(runLog.listener())
-                        .run(RunnerSettings.commandLineArgs(line.profile(), line.locale()));
-            } catch (RuntimeException e) {
-                return startFailed(e, line, err, early, secrets);
+                        .run(springArgs(line.profile(), localeTag));
+            } catch (RuntimeException | Error e) {
+                return startFailed(e, line, err, early, mask);
             }
             try (context) {
-                return new Run(workspace, folder, line, context, out, err, secrets).execute();
+                return new Run(workspace, folder, line, context, out, err, mask).execute();
             }
         }
     }
 
-    /** One line on {@code err} (a stack trace too with {@code --verbose}); exit 2. */
-    private static int startFailed(Throwable e, CommandLine line, PrintStream err, Locale locale,
-                                   Map<String, String> secrets) {
+    /**
+     * The command-line arguments for Spring: the profile and the run's language, and lazy
+     * initialisation pinned so that no configuration file can switch it off. A lazy context builds
+     * no connector before the guards have read the settings.
+     */
+    private static String[] springArgs(String profile, String localeTag) {
+        List<String> args = new ArrayList<>(List.of(RunnerSettings.commandLineArgs(profile, localeTag)));
+        args.add("--spring.main.lazy-initialization=true");
+        return args.toArray(String[]::new);
+    }
+
+    private static String firstNonBlank(String... values) {
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                return value.strip();
+            }
+        }
+        return null;
+    }
+
+    /** One line on {@code err} (a masked stack trace too with {@code --verbose}); exit 2. */
+    private static int startFailed(Throwable e, CommandLine line, PrintStream err, Locale locale, SecretMask mask) {
         LOG.error("The run could not start", e);
-        err.println(Messages.render(Message.of("runner.run.startFailed", mask(describe(e), secrets)), locale));
+        err.println(Messages.render(Message.of("runner.run.startFailed", mask.apply(describe(e))), locale));
         if (line.verbose()) {
-            e.printStackTrace(err);
+            err.print(mask.stackTrace(e));
         }
         return ExitCodes.CANNOT_START;
     }
@@ -145,17 +170,6 @@ public final class RunCommand {
         return message.lines().findFirst().orElse(message).strip();
     }
 
-    /** Hides any {@code secrets.env} value an exception message might quote. */
-    static String mask(String text, Map<String, String> secrets) {
-        String masked = text;
-        for (String value : secrets.values()) {
-            if (value != null && !value.isEmpty()) {
-                masked = masked.replace(value, "****");
-            }
-        }
-        return masked;
-    }
-
     /** One run, from a started context to the summary. */
     private static final class Run {
 
@@ -165,17 +179,17 @@ public final class RunCommand {
         private final ConfigurableApplicationContext context;
         private final PrintStream out;
         private final PrintStream err;
-        private final Map<String, String> secrets;
+        private final SecretMask mask;
 
         Run(Workspace workspace, Path folder, CommandLine line, ConfigurableApplicationContext context,
-            PrintStream out, PrintStream err, Map<String, String> secrets) {
+            PrintStream out, PrintStream err, SecretMask mask) {
             this.workspace = workspace;
             this.folder = folder;
             this.line = line;
             this.context = context;
             this.out = out;
             this.err = err;
-            this.secrets = secrets;
+            this.mask = mask;
         }
 
         int execute() {
@@ -208,7 +222,7 @@ public final class RunCommand {
             } catch (IOException e) {
                 throw new UncheckedIOException(e);
             } catch (RuntimeException e) {
-                return startFailed(e, line, err, locale, secrets);
+                return startFailed(e, line, err, locale, mask);
             }
 
             ScenarioEngine engine;
@@ -220,9 +234,19 @@ public final class RunCommand {
                 err.println(e.getMessage());
                 return ExitCodes.CANNOT_START;
             } catch (RuntimeException e) {
-                return startFailed(e, line, err, locale, secrets);
+                return startFailed(e, line, err, locale, mask);
             }
-            return runAll(names, loaded, engine, runInfo, locale);
+            try {
+                return runAll(names, loaded, engine, runInfo, locale);
+            } catch (RuntimeException e) {
+                // Scenarios have run: what was written so far stays, and the run counts as failed.
+                LOG.error("The run stopped", e);
+                err.println(Messages.render(Message.of("runner.run.stopped", mask.apply(describe(e))), locale));
+                if (line.verbose()) {
+                    err.print(mask.stackTrace(e));
+                }
+                return ExitCodes.FAILED;
+            }
         }
 
         /**
@@ -250,13 +274,14 @@ public final class RunCommand {
                 if (scenario == null) {
                     result = loaded.failures().get(name);
                     Message detail = result.failureDetailMessage();
-                    progress.invalid(name, detail != null ? Messages.render(detail, locale) : result.failureDetail());
+                    progress.failed(name, 0L,
+                            mask.apply(detail != null ? Messages.render(detail, locale) : result.failureDetail()));
                 } else {
                     result = runOne(engine, scenario, name);
                     if (result.success()) {
                         progress.passed(name, result.durationMillis());
                     } else {
-                        progress.failed(name, result.durationMillis(), result.failureSummary(locale));
+                        progress.failed(name, result.durationMillis(), mask.apply(result.failureSummary(locale)));
                     }
                 }
                 LOG.info("{} {}", result.success() ? "passed" : "failed", name);
@@ -280,7 +305,7 @@ public final class RunCommand {
                 LOG.error("Scenario {} stopped unexpectedly", name, e);
                 long millis = (System.nanoTime() - start) / 1_000_000;
                 return new ScenarioResult(name, name, false, millis, List.of(), List.of(),
-                        mask(e.toString(), secrets), null);
+                        mask.apply(e.toString()), null);
             }
         }
 

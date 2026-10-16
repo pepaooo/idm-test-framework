@@ -2,11 +2,14 @@ package com.idm.test.runner;
 
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.LoggerContext;
-import ch.qos.logback.classic.encoder.PatternLayoutEncoder;
+import ch.qos.logback.classic.PatternLayout;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.Appender;
 import ch.qos.logback.core.ConsoleAppender;
 import ch.qos.logback.core.FileAppender;
+import ch.qos.logback.core.LayoutBase;
+import ch.qos.logback.core.OutputStreamAppender;
+import ch.qos.logback.core.encoder.LayoutWrappingEncoder;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.event.ApplicationEnvironmentPreparedEvent;
 import org.springframework.context.ApplicationListener;
@@ -19,33 +22,41 @@ import java.util.List;
 
 /**
  * The run's {@code run.log}: a Logback file appender on the root logger for the length of one run.
- * Unless {@code --verbose}, the console appenders are detached, so framework logging goes to the
- * file only and the console shows progress. Spring Boot re-initialises Logback when it starts,
- * which removes every appender, so {@link #listener()} attaches the file again right after.
+ * Every line it writes, stack traces included, passes through the run's {@link SecretMask}, so a
+ * {@code secrets.env} value an exception quotes never reaches the file (ITF-23).
+ * <p>
+ * The console's own appenders are always detached. With {@code --verbose} a console appender of
+ * the run's, masked the same way, echoes the log; without it the console shows progress only.
+ * Spring Boot re-initialises Logback when it starts, which removes every appender, so
+ * {@link #listener()} attaches the run's appenders again right after.
  */
 final class RunLog implements AutoCloseable {
 
     static final String APPENDER_NAME = "IDMTEST_RUN_LOG";
+    static final String CONSOLE_NAME = "IDMTEST_RUN_CONSOLE";
     private static final String PATTERN = "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] %logger{36} - %msg%n";
 
     private final Path file;
     private final boolean verbose;
+    private final SecretMask mask;
     private final List<Appender<ILoggingEvent>> detached = new ArrayList<>();
     private FileAppender<ILoggingEvent> appender;
+    private ConsoleAppender<ILoggingEvent> console;
 
-    private RunLog(Path file, boolean verbose) {
+    private RunLog(Path file, boolean verbose, SecretMask mask) {
         this.file = file;
         this.verbose = verbose;
+        this.mask = mask;
     }
 
-    /** Starts logging to {@code file}; with {@code verbose} false, the console no longer shows the log. */
-    static RunLog start(Path file, boolean verbose) {
-        RunLog log = new RunLog(file, verbose);
+    /** Starts logging to {@code file}; with {@code verbose}, the console echoes the (masked) log. */
+    static RunLog start(Path file, boolean verbose, SecretMask mask) {
+        RunLog log = new RunLog(file, verbose, mask);
         log.attach();
         return log;
     }
 
-    /** Re-attaches the file (and detaches the console again) once Spring Boot has configured logging. */
+    /** Re-attaches the run's appenders once Spring Boot has configured logging. */
     ApplicationListener<ApplicationEnvironmentPreparedEvent> listener() {
         // A class, not a lambda, so Spring can see the event type and calls it for this event only.
         return new ApplicationListener<>() {
@@ -58,59 +69,101 @@ final class RunLog implements AutoCloseable {
 
     synchronized void attach() {
         Logger root = root();
-        if (appender == null || !appender.isStarted() || root.getAppender(APPENDER_NAME) != appender) {
+        LoggerContext context = root.getLoggerContext();
+        for (Iterator<Appender<ILoggingEvent>> it = root.iteratorForAppenders(); it.hasNext(); ) {
+            Appender<ILoggingEvent> candidate = it.next();
+            if (candidate instanceof ConsoleAppender<ILoggingEvent> && candidate != console) {
+                root.detachAppender(candidate);
+                detached.add(candidate);
+            }
+        }
+        if (!attached(root, appender)) {
             if (appender != null) {
                 appender.stop();
             }
-            appender = newAppender(root.getLoggerContext());
+            FileAppender<ILoggingEvent> fileAppender = new FileAppender<>();
+            fileAppender.setFile(file.toAbsolutePath().toString());
+            fileAppender.setAppend(true);
+            appender = configure(fileAppender, APPENDER_NAME, context);
             root.addAppender(appender);
         }
-        if (!verbose) {
-            for (Iterator<Appender<ILoggingEvent>> it = root.iteratorForAppenders(); it.hasNext(); ) {
-                Appender<ILoggingEvent> candidate = it.next();
-                if (candidate instanceof ConsoleAppender<ILoggingEvent>) {
-                    root.detachAppender(candidate);
-                    detached.add(candidate);
-                }
+        if (verbose && !attached(root, console)) {
+            if (console != null) {
+                console.stop();
             }
+            console = configure(new ConsoleAppender<>(), CONSOLE_NAME, context);
+            root.addAppender(console);
         }
     }
 
-    private FileAppender<ILoggingEvent> newAppender(LoggerContext context) {
-        PatternLayoutEncoder encoder = new PatternLayoutEncoder();
+    private static boolean attached(Logger root, Appender<ILoggingEvent> candidate) {
+        return candidate != null && candidate.isStarted() && root.getAppender(candidate.getName()) == candidate;
+    }
+
+    private <A extends OutputStreamAppender<ILoggingEvent>> A configure(A target, String name, LoggerContext context) {
+        PatternLayout pattern = new PatternLayout();
+        pattern.setContext(context);
+        pattern.setPattern(PATTERN);
+        pattern.start();
+
+        MaskingLayout layout = new MaskingLayout(pattern, mask);
+        layout.setContext(context);
+        layout.start();
+
+        LayoutWrappingEncoder<ILoggingEvent> encoder = new LayoutWrappingEncoder<>();
         encoder.setContext(context);
-        encoder.setPattern(PATTERN);
+        encoder.setLayout(layout);
         encoder.setCharset(StandardCharsets.UTF_8);
         encoder.start();
 
-        FileAppender<ILoggingEvent> file = new FileAppender<>();
-        file.setContext(context);
-        file.setName(APPENDER_NAME);
-        file.setFile(this.file.toAbsolutePath().toString());
-        file.setAppend(true);
-        file.setEncoder(encoder);
-        file.start();
-        return file;
+        target.setContext(context);
+        target.setName(name);
+        target.setEncoder(encoder);
+        target.start();
+        return target;
     }
 
-    /** Detaches and closes the file, and gives the console back the appenders this run took. */
+    /** Detaches and closes the run's appenders, and gives the console back the appenders this run took. */
     @Override
     public synchronized void close() {
         Logger root = root();
-        if (appender != null) {
-            root.detachAppender(appender);
-            appender.stop();
-            appender = null;
-        }
-        for (Appender<ILoggingEvent> console : detached) {
-            if (console.isStarted() && root.getAppender(console.getName()) == null) {
-                root.addAppender(console);
+        stop(root, appender);
+        stop(root, console);
+        appender = null;
+        console = null;
+        for (Appender<ILoggingEvent> previous : detached) {
+            if (previous.isStarted() && root.getAppender(previous.getName()) == null) {
+                root.addAppender(previous);
             }
         }
         detached.clear();
     }
 
+    private static void stop(Logger root, Appender<ILoggingEvent> own) {
+        if (own != null) {
+            root.detachAppender(own);
+            own.stop();
+        }
+    }
+
     private static Logger root() {
         return (Logger) LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    }
+
+    /** A pattern layout whose formatted event (message and stack trace alike) is masked. */
+    static final class MaskingLayout extends LayoutBase<ILoggingEvent> {
+
+        private final PatternLayout pattern;
+        private final SecretMask mask;
+
+        MaskingLayout(PatternLayout pattern, SecretMask mask) {
+            this.pattern = pattern;
+            this.mask = mask;
+        }
+
+        @Override
+        public String doLayout(ILoggingEvent event) {
+            return mask.apply(pattern.doLayout(event));
+        }
     }
 }

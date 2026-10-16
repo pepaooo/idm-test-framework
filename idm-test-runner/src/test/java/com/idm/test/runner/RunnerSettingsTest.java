@@ -15,6 +15,7 @@ import org.springframework.core.env.StandardEnvironment;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -60,6 +61,78 @@ class RunnerSettingsTest {
         try (ConfigurableApplicationContext context = start(ws, null)) {
             assertThat(context.getEnvironment().getProperty("idm.test.b")).isEqualTo("profile");
             assertThat(context.getEnvironment().getActiveProfiles()).containsExactly("lab");
+        }
+    }
+
+    @Test
+    @DisplayName("Should read settings only from the built-in defaults and the workspace's config/ folder")
+    void testConfigLocation(@TempDir Path temp) throws Exception {
+        Workspace ws = workspace(temp, "idm.test.b: profile\n");
+
+        assertThat(RunnerSettings.defaultProperties(ws))
+                .containsExactly(Map.entry("spring.config.location", "optional:classpath:/,optional:file:"
+                        + ws.config().toAbsolutePath().normalize() + "/"));
+    }
+
+    @Test
+    @DisplayName("Should ignore the current folder's config/ and application.yml when --workspace names another folder")
+    void testCurrentFolderIgnored(@TempDir Path temp) throws Exception {
+        Path a = Files.createDirectories(temp.resolve("A"));
+        Files.createDirectories(a.resolve("scenarios"));
+        Files.createDirectories(a.resolve("config"));
+        Files.writeString(a.resolve("config/application-lab.yml"), "idm.test.b: from-A\nidm.test.only-a: leaked\n");
+        Files.writeString(a.resolve("config/application.yml"), "idm.test.a: from-A\n");
+        Files.writeString(a.resolve("application.yml"), "idm.test.root-a: leaked\n");
+        Files.writeString(a.resolve("application-lab.yml"), "idm.test.root-lab-a: leaked\n");
+        Path b = Files.createDirectories(temp.resolve("B"));
+        Files.createDirectories(b.resolve("scenarios"));
+        Files.createDirectories(b.resolve("config"));
+        Files.writeString(b.resolve("config/application-lab.yml"), "idm.test.b: from-B\n");
+
+        // The current folder is fixed for a JVM, so the run starts in A as a child process.
+        Path out = temp.resolve("probe.txt");
+        Process process = new ProcessBuilder(Path.of(System.getProperty("java.home"), "bin", "java").toString(),
+                "-cp", classPath(), SettingsProbe.class.getName(), "../B")
+                .directory(a.toFile())
+                .redirectErrorStream(true)
+                .redirectOutput(out.toFile())
+                .start();
+        assertThat(process.waitFor(60, TimeUnit.SECONDS)).isTrue();
+
+        String output = Files.readString(out);
+        assertThat(process.exitValue()).as(output).isZero();
+        assertThat(output.lines().filter(line -> line.startsWith("probe ")).toList()).containsExactly(
+                "probe idm.test.b=from-B",
+                "probe idm.test.a=null",
+                "probe idm.test.only-a=null",
+                "probe idm.test.root-a=null",
+                "probe idm.test.root-lab-a=null");
+    }
+
+    /**
+     * This JVM's class path without empty entries: Surefire's ends with a separator, and an empty
+     * entry would put the child's current folder on its class path.
+     */
+    private static String classPath() {
+        return java.util.Arrays.stream(System.getProperty("java.class.path").split(java.io.File.pathSeparator))
+                .filter(entry -> !entry.isBlank())
+                .collect(java.util.stream.Collectors.joining(java.io.File.pathSeparator));
+    }
+
+    /** Starts Spring as the runner does, over the workspace in {@code args[0]}, and prints what it reads. */
+    static final class SettingsProbe {
+
+        public static void main(String[] args) {
+            SpringApplication app = new SpringApplication(Empty.class);
+            app.setWebApplicationType(WebApplicationType.NONE);
+            app.setBannerMode(org.springframework.boot.Banner.Mode.OFF);
+            app.setDefaultProperties(RunnerSettings.defaultProperties(Workspace.open(Path.of(args[0]))));
+            try (ConfigurableApplicationContext context = app.run(RunnerSettings.commandLineArgs("lab", null))) {
+                for (String key : java.util.List.of("idm.test.b", "idm.test.a", "idm.test.only-a", "idm.test.root-a",
+                        "idm.test.root-lab-a")) {
+                    System.out.println("probe " + key + "=" + context.getEnvironment().getProperty(key));
+                }
+            }
         }
     }
 

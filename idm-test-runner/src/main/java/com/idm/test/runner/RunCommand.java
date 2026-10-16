@@ -37,6 +37,8 @@ import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.boot.context.properties.bind.Binder;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.core.env.Environment;
+import org.springframework.core.env.StandardEnvironment;
+import org.springframework.core.env.SystemEnvironmentPropertySource;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -69,11 +71,20 @@ public final class RunCommand {
     }
 
     public static int run(CommandLine line, PrintStream out, PrintStream err, Clock clock) {
+        return run(line, out, err, clock, null);
+    }
+
+    /**
+     * The run, with {@code environment} standing in for the process's environment variables when it
+     * is not null: tests hand in their own, and Spring then sees it in place of the real one.
+     */
+    static int run(CommandLine line, PrintStream out, PrintStream err, Clock clock, Map<String, String> environment) {
+        Map<String, String> variables = environment == null ? System.getenv() : Map.copyOf(environment);
         // One language for the run: --locale, then IDM_TEST_LOCALE, then -Didm.test.locale, then the
         // profile's idm.test.report.locale, then English. The first three are known now and are
         // handed to Spring as the command-line idm.test.report.locale, so the console and the
         // report agree; only messages before Spring starts cannot see the profile file.
-        String localeTag = firstNonBlank(line.locale(), System.getenv("IDM_TEST_LOCALE"),
+        String localeTag = firstNonBlank(line.locale(), variables.get("IDM_TEST_LOCALE"),
                 System.getProperty("idm.test.locale"));
         Locale early;
         try {
@@ -104,7 +115,8 @@ public final class RunCommand {
         if (Files.exists(workspace.secretsFile()) && GitTracking.isTracked(workspace.root(), workspace.secretsFile())) {
             err.println(Messages.render(GitTracking.trackedWarning(), early));
         }
-        SecretMask mask = new SecretMask(secrets.values());
+        // The values the run will use, environment variables included, not only the file's.
+        SecretMask mask = SecretMask.of(secrets, variables);
 
         Path folder = workspace.newRunFolder(line.profile(), clock);
         try (RunLog runLog = RunLog.start(folder.resolve("run.log"), line.verbose(), mask)) {
@@ -126,32 +138,42 @@ public final class RunCommand {
                     // A pool loads a driver-class-name through the context class loader.
                     thread.setContextClassLoader(drivers.loader());
                 }
-                return startAndRun(workspace, secrets, folder, line, localeTag, runLog, out, err, early, mask);
+                return startAndRun(workspace, secrets, environment, variables, folder, line, localeTag, runLog, out,
+                        err, early, mask);
             } finally {
                 thread.setContextClassLoader(previousLoader);
             }
         }
     }
 
-    /** Starts Spring with the run's settings and runs the scenarios; the context is closed after. */
-    private static int startAndRun(Workspace workspace, Map<String, String> secrets, Path folder, CommandLine line,
-                                   String localeTag, RunLog runLog, PrintStream out, PrintStream err, Locale early,
-                                   SecretMask mask) {
+    /**
+     * Starts Spring with the run's settings and runs the scenarios; the context is closed after.
+     * {@code fakeEnvironment}, when not null, replaces the real environment variables in Spring.
+     */
+    private static int startAndRun(Workspace workspace, Map<String, String> secrets, Map<String, String> fakeEnvironment,
+                                   Map<String, String> variables, Path folder, CommandLine line, String localeTag,
+                                   RunLog runLog, PrintStream out, PrintStream err, Locale early, SecretMask mask) {
         ConfigurableApplicationContext context;
         try {
-            context = new SpringApplicationBuilder(RunnerApplication.class)
+            SpringApplicationBuilder builder = new SpringApplicationBuilder(RunnerApplication.class)
                     .web(WebApplicationType.NONE)
                     .lazyInitialization(true)
                     .registerShutdownHook(false)
                     .properties(RunnerSettings.defaultProperties(workspace))
                     .initializers(new SecretsInitializer(secrets))
-                    .listeners(runLog.listener())
-                    .run(springArgs(line.profile(), localeTag));
+                    .listeners(runLog.listener());
+            if (fakeEnvironment != null) {
+                builder.initializers(started -> started.getEnvironment().getPropertySources().replace(
+                        StandardEnvironment.SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME,
+                        new SystemEnvironmentPropertySource(StandardEnvironment.SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME,
+                                new LinkedHashMap<String, Object>(fakeEnvironment))));
+            }
+            context = builder.run(springArgs(line.profile(), localeTag));
         } catch (RuntimeException | Error e) {
             return startFailed(e, line, err, early, mask);
         }
         try (context) {
-            return new Run(workspace, folder, line, context, out, err, mask).execute();
+            return new Run(workspace, folder, line, context, out, err, mask, variables).execute();
         }
     }
 
@@ -213,9 +235,10 @@ public final class RunCommand {
         private final PrintStream out;
         private final PrintStream err;
         private final SecretMask mask;
+        private final Map<String, String> variables;
 
         Run(Workspace workspace, Path folder, CommandLine line, ConfigurableApplicationContext context,
-            PrintStream out, PrintStream err, SecretMask mask) {
+            PrintStream out, PrintStream err, SecretMask mask, Map<String, String> variables) {
             this.workspace = workspace;
             this.folder = folder;
             this.line = line;
@@ -223,13 +246,14 @@ public final class RunCommand {
             this.out = out;
             this.err = err;
             this.mask = mask;
+            this.variables = variables;
         }
 
         int execute() {
             Environment environment = context.getEnvironment();
             Locale locale;
             try {
-                locale = RunInfos.locale(environment, System.getenv("IDM_TEST_LOCALE"),
+                locale = RunInfos.locale(environment, variables.get("IDM_TEST_LOCALE"),
                         System.getProperty("idm.test.locale"));
             } catch (ReportLocale.UnsupportedLocaleException e) {
                 err.println(e.getMessage());
@@ -242,6 +266,7 @@ public final class RunCommand {
                 names = ValidateCommand.select(source, line.scenario());
                 loaded = load(source, names);
                 checkDrivers(loaded);
+                requireNotEmbedded(environment);
                 RealEnvironmentGuards.check(environment, source, names, locale,
                         context.getBean(RestProperties.class), context.getBean(DatabaseProperties.class),
                         soapProperties(environment));
@@ -251,8 +276,9 @@ public final class RunCommand {
                 err.println(message);
                 return ExitCodes.CANNOT_START;
             } catch (RealEnvironmentGuards.Refusal e) {
-                LOG.error("Refused: {}", e.getMessage());
-                err.println(e.getMessage());
+                String message = mask.apply(e.getMessage());
+                LOG.error("Refused: {}", message);
+                err.println(message);
                 return ExitCodes.CANNOT_START;
             } catch (IOException | RuntimeException e) {
                 return startFailed(e, line, err, locale, mask);
@@ -262,7 +288,7 @@ public final class RunCommand {
             RunInfo runInfo;
             try {
                 engine = engine();
-                runInfo = runInfo(environment, loaded);
+                runInfo = mask.runInfo(runInfo(environment, loaded));
             } catch (ReportLocale.UnsupportedLocaleException e) {
                 err.println(e.getMessage());
                 return ExitCodes.CANNOT_START;
@@ -279,6 +305,18 @@ public final class RunCommand {
                     err.print(mask.stackTrace(e));
                 }
                 return ExitCodes.FAILED;
+            }
+        }
+
+        /**
+         * Guard 1 in the runner's words: the user chose the profile with {@code --profile}, not with
+         * the JUnit runners' {@code IDM_TEST_PROFILE}.
+         */
+        private static void requireNotEmbedded(Environment environment) {
+            List<String> profiles = List.of(environment.getActiveProfiles());
+            if (profiles.contains(RealEnvironmentGuards.EMBEDDED_PROFILE)) {
+                throw new UsageException(Message.of("runner.guard.embeddedProfile", profiles.toString(),
+                        RealEnvironmentGuards.EMBEDDED_PROFILE));
             }
         }
 
@@ -307,12 +345,12 @@ public final class RunCommand {
                 ScenarioResult result;
                 Scenario scenario = loaded.scenarios().get(name);
                 if (scenario == null) {
-                    result = loaded.failures().get(name);
+                    result = mask.result(loaded.failures().get(name));
                     Message detail = result.failureDetailMessage();
                     progress.failed(name, 0L,
                             mask.apply(detail != null ? Messages.render(detail, locale) : result.failureDetail()));
                 } else {
-                    result = runOne(engine, scenario, name);
+                    result = mask.result(runOne(engine, scenario, name));
                     if (result.success()) {
                         progress.passed(name, result.durationMillis());
                     } else {
@@ -323,6 +361,7 @@ public final class RunCommand {
                 if (result.success()) {
                     passed++;
                 }
+                // Each result is masked like the console lines: the reports are the files people share.
                 results.add(result);
                 RunRecorder.write(results, folder.resolve(RESULTS_FILE), folder.resolve(REPORT_FILE), runInfo);
             }

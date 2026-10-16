@@ -27,6 +27,7 @@ exit /b %ERRORLEVEL%
 
 rem The messages expand paths with !...! so characters such as & in a path are printed, not run.
 :notjava
+if not defined IDM_TEST_JAVA_HOME goto broken
 setlocal EnableDelayedExpansion
 >&2 echo(IDM_TEST_JAVA_HOME points to !JAVA_DIR!, which is not a Java installation; idmtest needs Java 25 or newer
 exit /b 2
@@ -34,8 +35,15 @@ exit /b 2
 :unknown
 set "VERSION=unknown"
 :oldjava
+if not defined IDM_TEST_JAVA_HOME goto broken
 setlocal EnableDelayedExpansion
 >&2 echo(IDM_TEST_JAVA_HOME points to Java !VERSION! (!JAVA_DIR!); idmtest needs Java 25 or newer
+exit /b 2
+
+rem A bundled runtime that fails a check is a broken install, not the user's choice of Java.
+:broken
+setlocal EnableDelayedExpansion
+>&2 echo(the bundled Java runtime in !JAVA_DIR! is missing or broken; reinstall idmtest or set IDM_TEST_JAVA_HOME to a Java 25+
 exit /b 2
 
 :nojar

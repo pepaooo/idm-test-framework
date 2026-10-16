@@ -65,13 +65,6 @@ public class DatabaseConfiguration implements DisposableBean {
         return templates;
     }
 
-    /**
-     * Creates a HikariCP DataSource for the given database configuration.
-     *
-     * @param name   database name
-     * @param config database configuration
-     * @return configured DataSource
-     */
     /** Closes every pool {@link #jdbcTemplates} built: their connections, and their housekeeper threads. */
     @Override
     public void destroy() {
@@ -89,6 +82,13 @@ public class DatabaseConfiguration implements DisposableBean {
         }
     }
 
+    /**
+     * Creates a HikariCP DataSource for the given database configuration.
+     *
+     * @param name   database name
+     * @param config database configuration
+     * @return configured DataSource
+     */
     private DataSource createDataSource(String name, DatabaseProperties.DatabaseConfig config) {
         HikariConfig hikariConfig = new HikariConfig();
 

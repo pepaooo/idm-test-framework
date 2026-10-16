@@ -28,6 +28,7 @@ import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.jar.JarEntry;
 import java.util.jar.JarOutputStream;
@@ -206,11 +207,59 @@ class RunCommandTest {
     }
 
     private int run(Path ws, String... extra) {
+        return run(null, ws, extra);
+    }
+
+    /** A run that sees {@code environment} as its environment variables, unless null (the real ones). */
+    private int run(Map<String, String> environment, Path ws, String... extra) {
         List<String> args = new ArrayList<>(List.of("run", "--workspace", ws.toString()));
         args.addAll(List.of(extra));
         return RunCommand.run(CommandLine.parse(args.toArray(String[]::new)),
                 new PrintStream(outBytes, true, StandardCharsets.UTF_8),
-                new PrintStream(errBytes, true, StandardCharsets.UTF_8), CLOCK);
+                new PrintStream(errBytes, true, StandardCharsets.UTF_8), CLOCK, environment);
+    }
+
+    /**
+     * Adds two REST targets whose base URL carries {@code ${variable}}: {@code tenant} on WireMock,
+     * which answers only at {@code /tenant-<expected>/users}, and {@code offline}, which nothing
+     * answers; and one scenario for each.
+     */
+    private static void tenantTargets(Path ws, String variable, String expected) throws Exception {
+        Path settings = ws.resolve("config/application-lab.yml");
+        Files.writeString(settings, Files.readString(settings).replace("    executor:",
+                "      tenant:\n        base-url: " + wireMock.baseUrl() + "/tenant-${" + variable + "}\n"
+                        + "      offline:\n        base-url: http://127.0.0.1:1/tenant-${" + variable + "}\n"
+                        + "    executor:"));
+        wireMock.stubFor(get(urlEqualTo("/tenant-" + expected + "/users")).willReturn(okJson("[]")));
+        scenario(ws, "tenant.yaml", """
+                name: Tenant answers
+                steps:
+                  - rest.verify:
+                      target: tenant
+                      path: /users
+                      expect:
+                        status: 200
+                """);
+        scenario(ws, "offline.yaml", """
+                name: Offline tenant
+                steps:
+                  - rest.verify:
+                      target: offline
+                      path: /users
+                      expect:
+                        status: 200
+                """);
+    }
+
+    /** {@code secret} is nowhere in the run's outputs; the console and results show the mask instead. */
+    private void assertMaskedEverywhere(Path ws, String secret) throws Exception {
+        Path folder = runFolder(ws);
+        String results = Files.readString(folder.resolve("results.json"));
+        assertThat(results).doesNotContain(secret).contains("tenant-****");
+        assertThat(Files.readString(folder.resolve("report.html"))).doesNotContain(secret).contains("tenant-****");
+        assertThat(Files.readString(folder.resolve("run.log"))).doesNotContain(secret);
+        assertThat(out() + err()).doesNotContain(secret);
+        assertThat(out()).contains("✖ offline.yaml  ", "tenant-****");
     }
 
     private String out() {
@@ -369,6 +418,68 @@ class RunCommandTest {
         assertThat(err()).doesNotContain(secret);
         assertThat(out()).doesNotContain(secret);
         assertThat(console.toString(StandardCharsets.UTF_8)).doesNotContain(secret);
+    }
+
+    @Test
+    @DisplayName("Should keep a secrets.env value in a REST URL out of results.json, report.html, run.log and the console")
+    void testSecretInReportsIsMasked() throws Exception {
+        String secret = "Zq9xLeakProbe";
+        Path ws = workspace("ws");
+        Files.writeString(ws.resolve("secrets.env"), "IDM_TEST_TENANT_KEY=" + secret + "\n", StandardOpenOption.APPEND);
+        tenantTargets(ws, "IDM_TEST_TENANT_KEY", secret);
+
+        int exit = run(ws, "--profile", "lab");
+
+        assertThat(exit).as(out() + err()).isEqualTo(ExitCodes.FAILED);
+        assertThat(out()).contains("✔ tenant.yaml  ");
+        assertMaskedEverywhere(ws, secret);
+    }
+
+    @Test
+    @DisplayName("Should mask the environment variable that overrides a secrets.env value, the value the run uses")
+    void testEnvironmentOverrideIsMasked() throws Exception {
+        String secret = "EnvWinsProbe7";
+        Path ws = workspace("ws");
+        Files.writeString(ws.resolve("secrets.env"), "IDM_TEST_TENANT_KEY=FileLoses-1\n", StandardOpenOption.APPEND);
+        tenantTargets(ws, "IDM_TEST_TENANT_KEY", secret);
+
+        int exit = run(Map.of("IDM_TEST_TENANT_KEY", secret), ws, "--profile", "lab");
+
+        assertThat(exit).as(out() + err()).isEqualTo(ExitCodes.FAILED);
+        // WireMock answers only at the environment variable's value: the run used it.
+        assertThat(out()).contains("✔ tenant.yaml  ");
+        assertMaskedEverywhere(ws, secret);
+    }
+
+    @Test
+    @DisplayName("Should mask an environment variable whose name looks secret, with no secrets.env entry, but not PWD")
+    void testSecretNamedEnvironmentVariableIsMasked() throws Exception {
+        String secret = "TokenProbe42x";
+        Path ws = workspace("ws");
+        tenantTargets(ws, "IDM_TEST_TENANT_TOKEN", secret);
+
+        int exit = run(Map.of("IDM_TEST_TENANT_TOKEN", secret, "PWD", ws.toString()), ws, "--profile", "lab");
+
+        assertThat(exit).as(out() + err()).isEqualTo(ExitCodes.FAILED);
+        assertThat(out()).contains("✔ tenant.yaml  ");
+        assertMaskedEverywhere(ws, secret);
+        // PWD names the current folder, not a password: the workspace path stays readable.
+        assertThat(Files.readString(runFolder(ws).resolve("run.log"))).contains("workspace " + ws);
+    }
+
+    @Test
+    @DisplayName("Should refuse the embedded profile with a message that names --profile, and exit 2")
+    void testEmbeddedProfileRefusal() throws Exception {
+        Path ws = workspace("ws");
+        Files.copy(ws.resolve("config/application-lab.yml"), ws.resolve("config/application-test.yml"));
+        corpusScenario(ws);
+
+        int exit = run(ws, "--profile", "test");
+
+        assertThat(exit).isEqualTo(ExitCodes.CANNOT_START);
+        assertThat(err()).contains("Active profiles [test] include 'test', the embedded test configuration.",
+                "--profile").doesNotContain("IDM_TEST_PROFILE");
+        assertThat(out()).doesNotContain("✔").doesNotContain("✖");
     }
 
     @Test

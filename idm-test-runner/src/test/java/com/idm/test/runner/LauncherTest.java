@@ -100,6 +100,30 @@ class LauncherTest {
     }
 
     @Test
+    @DisplayName("Should call the bundled runtime missing, not IDM_TEST_JAVA_HOME, when the variable is not set")
+    void testMissingBundledRuntime() throws Exception {
+        Result result = launch(home.resolve("bin/idmtest"), null);
+
+        assertThat(result.exit()).isEqualTo(2);
+        assertThat(result.stdout()).isEmpty();
+        assertThat(result.stderr().strip()).isEqualTo("the bundled Java runtime in " + home.resolve("runtime")
+                + " is missing or broken; reinstall idmtest or set IDM_TEST_JAVA_HOME to a Java 25+");
+    }
+
+    @Test
+    @DisplayName("Should call a bundled runtime older than 25 broken when IDM_TEST_JAVA_HOME is not set")
+    void testOldBundledRuntime() throws Exception {
+        Path runtime = fakeJava(home.resolve("runtime"), "21.0.2");
+
+        Result result = launch(home.resolve("bin/idmtest"), null);
+
+        assertThat(result.exit()).isEqualTo(2);
+        assertThat(result.stdout()).isEmpty();
+        assertThat(result.stderr().strip()).isEqualTo("the bundled Java runtime in " + runtime
+                + " is missing or broken; reinstall idmtest or set IDM_TEST_JAVA_HOME to a Java 25+");
+    }
+
+    @Test
     @DisplayName("Should find its install folder when started through a symbolic link on PATH")
     void testStartsThroughSymlink() throws Exception {
         Path runtime = fakeJava(home.resolve("runtime"), "25.0.3");

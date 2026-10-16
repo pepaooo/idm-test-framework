@@ -19,11 +19,16 @@ public final class RunnerSettings {
     private RunnerSettings() {
     }
 
-    /** Default properties: the workspace's {@code config/} folder as an additional config location. */
+    /**
+     * Default properties: the config locations are the runner's built-in {@code application.yml} and
+     * the workspace's {@code config/} folder, and nothing else. They replace Spring Boot's defaults,
+     * which would also read {@code ./} and {@code ./config/} of the current folder: another
+     * workspace's settings when the run names {@code --workspace}.
+     */
     public static Map<String, Object> defaultProperties(Workspace ws) {
         Map<String, Object> properties = new LinkedHashMap<>();
-        properties.put("spring.config.additional-location",
-                "optional:file:" + ws.config().toAbsolutePath().normalize() + "/");
+        properties.put("spring.config.location",
+                "optional:classpath:/,optional:file:" + ws.config().toAbsolutePath().normalize() + "/");
         return properties;
     }
 

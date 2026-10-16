@@ -54,6 +54,9 @@ jobs:
           out=$("$RUNNER_TEMP/smoke dir/idmtest/bin/idmtest" --version)
           echo "$out"
           case "$out" in "idmtest "*) ;; *) echo "unexpected --version output" >&2; exit 1 ;; esac
+          # init writes a sample workspace; validate checks it without connecting (both exit 0).
+          "$RUNNER_TEMP/smoke dir/idmtest/bin/idmtest" init "$RUNNER_TEMP/smoke ws"
+          "$RUNNER_TEMP/smoke dir/idmtest/bin/idmtest" validate --workspace "$RUNNER_TEMP/smoke ws"
 
       - name: Unzip (Windows)
         if: runner.os == 'Windows'
@@ -69,6 +72,9 @@ jobs:
           call "%RUNNER_TEMP%\smoke dir\idmtest\bin\idmtest.cmd" --version > "%RUNNER_TEMP%\version.txt" || exit /b 1
           type "%RUNNER_TEMP%\version.txt"
           findstr /b /c:"idmtest " "%RUNNER_TEMP%\version.txt" || exit /b 1
+          rem init writes a sample workspace; validate checks it without connecting (both exit 0).
+          call "%RUNNER_TEMP%\smoke dir\idmtest\bin\idmtest.cmd" init "%RUNNER_TEMP%\smoke ws" || exit /b 1
+          call "%RUNNER_TEMP%\smoke dir\idmtest\bin\idmtest.cmd" validate --workspace "%RUNNER_TEMP%\smoke ws" || exit /b 1
 
       - name: Upload the ZIP
         uses: actions/upload-artifact@v4

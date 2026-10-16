@@ -73,8 +73,9 @@ class ScenarioSupportIsolationTest {
             Class<?> authenticator = Class.forName("com.idm.test.connector.rest.client.RestAuthenticator", true, loader);
             Object properties = restProperties.getConstructor().newInstance();
             Object withoutOAuth = authenticator.getMethod("withoutOAuth").invoke(null);
-            Method registry = Arrays.stream(support.getDeclaredMethods())
-                    .filter(method -> method.getName().equals("registry"))
+            Class<?> stepRegistry = Class.forName("com.idm.test.wiring.StepRegistry", true, loader);
+            Method registry = Arrays.stream(stepRegistry.getDeclaredMethods())
+                    .filter(method -> method.getName().equals("of"))
                     .findFirst().orElseThrow();
             registry.setAccessible(true);
             registry.invoke(null, null, null, null, null, null, properties, withoutOAuth);

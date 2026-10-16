@@ -1,4 +1,4 @@
-package com.idm.test.scenarios.engine;
+package com.idm.test.wiring;
 
 import com.idm.test.engine.model.Scenario;
 import com.idm.test.engine.model.StepSpec;
@@ -17,19 +17,19 @@ import java.util.TreeSet;
  * time and is skipped; a null name is skipped; anything else is converted with
  * {@code String.valueOf}, as the steps themselves do.
  */
-record ScenarioNeeds(Set<String> directories, Set<String> databases, boolean roles, boolean resources,
+public record ScenarioNeeds(Set<String> directories, Set<String> databases, boolean roles, boolean resources,
                      Set<String> restTargets) {
 
     /** Stands for "the default directory" in {@link #directories()}: an ldap.* step that names none. */
-    static final String DEFAULT_DIRECTORY = "<default>";
+    public static final String DEFAULT_DIRECTORY = "<default>";
 
-    ScenarioNeeds {
+    public ScenarioNeeds {
         directories = Collections.unmodifiableSortedSet(new TreeSet<>(directories));
         databases = Collections.unmodifiableSortedSet(new TreeSet<>(databases));
         restTargets = Collections.unmodifiableSortedSet(new TreeSet<>(restTargets));
     }
 
-    static ScenarioNeeds of(List<Scenario> scenarios) {
+    public static ScenarioNeeds of(List<Scenario> scenarios) {
         Set<String> directories = new TreeSet<>();
         boolean roles = false;
         boolean resources = false;
@@ -62,12 +62,12 @@ record ScenarioNeeds(Set<String> directories, Set<String> databases, boolean rol
     }
 
     /** Whether any ldap.* step is used. */
-    boolean ldap() {
+    public boolean ldap() {
         return !directories.isEmpty();
     }
 
     /** Whether any SOAP service is used, which is when guard 5 checks SOAP credentials. */
-    boolean soap() {
+    public boolean soap() {
         return roles || resources;
     }
 

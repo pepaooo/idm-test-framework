@@ -1,4 +1,4 @@
-package com.idm.test.scenarios.engine;
+package com.idm.test.wiring;
 
 import com.idm.test.engine.ScenarioLoader;
 import com.idm.test.engine.model.Scenario;

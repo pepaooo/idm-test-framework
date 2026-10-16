@@ -1,15 +1,15 @@
 package com.idm.test.scenarios.engine;
 
-import com.idm.test.engine.FixtureFactory;
 import com.idm.test.engine.ScenarioEngine;
 import com.idm.test.engine.ScenarioLoader;
 import com.idm.test.engine.ScenarioValidator;
-import com.idm.test.engine.expr.ExpressionEvaluator;
 import com.idm.test.engine.i18n.ReportLocale;
 import com.idm.test.engine.model.Scenario;
 import com.idm.test.engine.result.RunInfo;
 import com.idm.test.engine.spi.StepType;
 import com.idm.test.scenarios.base.BaseIntegrationTest;
+import com.idm.test.wiring.EngineFactory;
+import com.idm.test.wiring.StepRegistry;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.Test;
@@ -48,17 +48,11 @@ class YamlScenarioValidationTest extends BaseIntegrationTest {
     @Test
     @DisplayName("Produces a test for every file; the invalid one fails by name, the valid one still passes")
     void testFactoryHandlesMixOfValidAndInvalidFiles(@TempDir Path tempDir) throws Exception {
-        Map<String, StepType> registry = ScenarioSupport.registry(
+        Map<String, StepType> registry = StepRegistry.of(
                 ldapDirectories, databaseConnector, roleServiceConnector,
                 resourceServiceConnector, idmRestConnector, restProperties, restAuthenticator);
-        ScenarioValidator validator = new ScenarioValidator(registry, FixtureFactory.SUPPORTED_GENERATORS);
-        ScenarioEngine engine = new ScenarioEngine(
-                registry,
-                new FixtureFactory(testDataGenerator),
-                testExecutor,
-                executorProperties.getDefaultTimeout(),
-                executorProperties.getDefaultPollInterval(),
-                new ExpressionEvaluator());
+        ScenarioValidator validator = EngineFactory.validator(registry);
+        ScenarioEngine engine = EngineFactory.engine(registry, testDataGenerator, testExecutor, executorProperties);
         Path results = tempDir.resolve("scenario-results.json");
 
         List<DynamicTest> tests = ScenarioSupport.buildTests(FIXTURE_DIR, validator, engine, results);
@@ -108,17 +102,11 @@ class YamlScenarioValidationTest extends BaseIntegrationTest {
     @Test
     @DisplayName("A failure describing the run does not abort the factory; results and report are still written")
     void testRunInfoFailureDoesNotAbortFactory(@TempDir Path tempDir) throws Exception {
-        Map<String, StepType> registry = ScenarioSupport.registry(
+        Map<String, StepType> registry = StepRegistry.of(
                 ldapDirectories, databaseConnector, roleServiceConnector,
                 resourceServiceConnector, idmRestConnector, restProperties, restAuthenticator);
-        ScenarioValidator validator = new ScenarioValidator(registry, FixtureFactory.SUPPORTED_GENERATORS);
-        ScenarioEngine engine = new ScenarioEngine(
-                registry,
-                new FixtureFactory(testDataGenerator),
-                testExecutor,
-                executorProperties.getDefaultTimeout(),
-                executorProperties.getDefaultPollInterval(),
-                new ExpressionEvaluator());
+        ScenarioValidator validator = EngineFactory.validator(registry);
+        ScenarioEngine engine = EngineFactory.engine(registry, testDataGenerator, testExecutor, executorProperties);
         Path results = tempDir.resolve("scenario-results.json");
 
         List<DynamicTest> tests = ScenarioSupport.buildTests(FIXTURE_DIR, List.of("valid-user.yaml"), validator,
@@ -136,17 +124,11 @@ class YamlScenarioValidationTest extends BaseIntegrationTest {
     @Test
     @DisplayName("An unsupported report locale stops the run instead of falling back to a minimal header")
     void testUnsupportedLocaleStopsTheRun(@TempDir Path tempDir) {
-        Map<String, StepType> registry = ScenarioSupport.registry(
+        Map<String, StepType> registry = StepRegistry.of(
                 ldapDirectories, databaseConnector, roleServiceConnector,
                 resourceServiceConnector, idmRestConnector, restProperties, restAuthenticator);
-        ScenarioValidator validator = new ScenarioValidator(registry, FixtureFactory.SUPPORTED_GENERATORS);
-        ScenarioEngine engine = new ScenarioEngine(
-                registry,
-                new FixtureFactory(testDataGenerator),
-                testExecutor,
-                executorProperties.getDefaultTimeout(),
-                executorProperties.getDefaultPollInterval(),
-                new ExpressionEvaluator());
+        ScenarioValidator validator = EngineFactory.validator(registry);
+        ScenarioEngine engine = EngineFactory.engine(registry, testDataGenerator, testExecutor, executorProperties);
         Path results = tempDir.resolve("scenario-results.json");
 
         assertThatThrownBy(() -> ScenarioSupport.buildTests(FIXTURE_DIR, List.of("valid-user.yaml"), validator,
@@ -161,17 +143,11 @@ class YamlScenarioValidationTest extends BaseIntegrationTest {
     @Test
     @DisplayName("In a Spanish run, JUnit's failure text for a failed scenario and for an invalid file is Spanish")
     void testSpanishFailureText(@TempDir Path tempDir) throws Exception {
-        Map<String, StepType> registry = ScenarioSupport.registry(
+        Map<String, StepType> registry = StepRegistry.of(
                 ldapDirectories, databaseConnector, roleServiceConnector,
                 resourceServiceConnector, idmRestConnector, restProperties, restAuthenticator);
-        ScenarioValidator validator = new ScenarioValidator(registry, FixtureFactory.SUPPORTED_GENERATORS);
-        ScenarioEngine engine = new ScenarioEngine(
-                registry,
-                new FixtureFactory(testDataGenerator),
-                testExecutor,
-                executorProperties.getDefaultTimeout(),
-                executorProperties.getDefaultPollInterval(),
-                new ExpressionEvaluator());
+        ScenarioValidator validator = EngineFactory.validator(registry);
+        ScenarioEngine engine = EngineFactory.engine(registry, testDataGenerator, testExecutor, executorProperties);
         RunInfo spanish = RunInfo.minimal("Escenarios").withLocale(Locale.of("es"));
 
         List<DynamicTest> invalid = ScenarioSupport.buildTests(FIXTURE_DIR, List.of("broken-wait.yaml"), validator,
@@ -193,11 +169,11 @@ class YamlScenarioValidationTest extends BaseIntegrationTest {
     @Test
     @DisplayName("A scenario using every step type should load and validate")
     void testFullVocabularyValidates() {
-        Map<String, StepType> registry = ScenarioSupport.registry(
+        Map<String, StepType> registry = StepRegistry.of(
                 ldapDirectories, databaseConnector, roleServiceConnector,
                 resourceServiceConnector, idmRestConnector, restProperties, restAuthenticator);
         ScenarioValidator validator =
-                new ScenarioValidator(registry, FixtureFactory.SUPPORTED_GENERATORS);
+                EngineFactory.validator(registry);
 
         Scenario scenario;
         try (InputStream yaml = getClass().getClassLoader()

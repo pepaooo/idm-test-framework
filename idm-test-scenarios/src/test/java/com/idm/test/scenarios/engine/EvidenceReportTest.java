@@ -1,12 +1,11 @@
 package com.idm.test.scenarios.engine;
 
-import com.idm.test.engine.FixtureFactory;
 import com.idm.test.engine.ScenarioEngine;
-import com.idm.test.engine.ScenarioValidator;
-import com.idm.test.engine.expr.ExpressionEvaluator;
 import com.idm.test.engine.result.RunInfo;
 import com.idm.test.engine.spi.StepType;
 import com.idm.test.scenarios.base.BaseIntegrationTest;
+import com.idm.test.wiring.EngineFactory;
+import com.idm.test.wiring.StepRegistry;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.Test;
@@ -26,17 +25,15 @@ class EvidenceReportTest extends BaseIntegrationTest {
     @Test
     @DisplayName("The JSON results and the HTML report hold SQL and LDAP evidence")
     void testEvidenceWritten(@TempDir Path dir) throws Throwable {
-        Map<String, StepType> registry = ScenarioSupport.registry(
+        Map<String, StepType> registry = StepRegistry.of(
                 ldapDirectories, databaseConnector, roleServiceConnector,
                 resourceServiceConnector, idmRestConnector, restProperties, restAuthenticator);
-        ScenarioEngine engine = new ScenarioEngine(registry, new FixtureFactory(testDataGenerator), testExecutor,
-                executorProperties.getDefaultTimeout(), executorProperties.getDefaultPollInterval(),
-                new ExpressionEvaluator());
+        ScenarioEngine engine = EngineFactory.engine(registry, testDataGenerator, testExecutor, executorProperties);
         Path results = dir.resolve("scenario-results.json");
 
         List<DynamicTest> tests = ScenarioSupport.buildTests("scenarios",
                 List.of("provisioning-user-to-database.yaml", "provisioning-user-to-ldap.yaml"),
-                new ScenarioValidator(registry, FixtureFactory.SUPPORTED_GENERATORS), engine, results,
+                EngineFactory.validator(registry), engine, results,
                 scenarios -> RunInfo.minimal("Embedded"));
         for (DynamicTest test : tests) {
             test.getExecutable().execute();

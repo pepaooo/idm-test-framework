@@ -12,16 +12,18 @@ import com.idm.test.connector.soap.client.RoleServiceConnector;
 import com.idm.test.connector.soap.config.SoapProperties;
 import com.idm.test.core.config.TestExecutorProperties;
 import com.idm.test.core.engine.TestExecutor;
-import com.idm.test.engine.FixtureFactory;
 import com.idm.test.engine.ScenarioEngine;
 import com.idm.test.engine.ScenarioLoader;
 import com.idm.test.engine.ScenarioValidator;
-import com.idm.test.engine.expr.ExpressionEvaluator;
 import com.idm.test.engine.i18n.Messages;
 import com.idm.test.engine.model.Scenario;
 import com.idm.test.engine.spi.Message;
 import com.idm.test.engine.spi.StepType;
 import com.idm.test.utils.data.TestDataGenerator;
+import com.idm.test.wiring.EngineFactory;
+import com.idm.test.wiring.StepRegistry;
+import com.idm.test.wiring.RunInfos;
+import com.idm.test.wiring.ScenarioNeeds;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.TestFactory;
@@ -197,17 +199,11 @@ public class RealEnvironmentScenarios {
         requireDatabases(needs.databases(), databaseProperties, locale);
         requireCredentials(needs.restTargets(), needs.soap(), restProperties, soapProperties, environment, locale);
 
-        Map<String, StepType> registry = ScenarioSupport.registry(
+        Map<String, StepType> registry = StepRegistry.of(
                 ldapDirectories, databaseConnector, roleServiceConnector.getIfAvailable(),
                 resourceServiceConnector.getIfAvailable(), idmRestConnector, restProperties, restAuthenticator);
-        ScenarioValidator validator = new ScenarioValidator(registry, FixtureFactory.SUPPORTED_GENERATORS);
-        ScenarioEngine engine = new ScenarioEngine(
-                registry,
-                new FixtureFactory(testDataGenerator),
-                testExecutor,
-                executorProperties.getDefaultTimeout(),
-                executorProperties.getDefaultPollInterval(),
-                new ExpressionEvaluator());
+        ScenarioValidator validator = EngineFactory.validator(registry);
+        ScenarioEngine engine = EngineFactory.engine(registry, testDataGenerator, testExecutor, executorProperties);
 
         return ScenarioSupport.buildTests(scenarioDir, selected, validator, engine, RESULTS,
                 scenarios -> RunInfos.of(runnerName(), environment, scenarios)).stream();

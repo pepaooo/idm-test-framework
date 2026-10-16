@@ -39,6 +39,7 @@
         <module>idm-connector-rest</module>
         <module>idm-connector-soap</module>
         <module>idm-connector-idm</module>
+        <module>idm-test-wiring</module>
         <module>idm-test-scenarios</module>
     </modules>
 
@@ -90,6 +91,12 @@
             <dependency>
                 <groupId>com.idm.test</groupId>
                 <artifactId>idm-connector-idm</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.idm.test</groupId>
+                <artifactId>idm-test-wiring</artifactId>
                 <version>${project.version}</version>
             </dependency>
 

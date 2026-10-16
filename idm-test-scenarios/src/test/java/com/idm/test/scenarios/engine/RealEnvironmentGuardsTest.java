@@ -5,6 +5,7 @@ import com.idm.test.connector.rest.config.RestProperties;
 import com.idm.test.connector.soap.config.SoapProperties;
 import com.idm.test.engine.ScenarioLoader;
 import com.idm.test.engine.model.Scenario;
+import com.idm.test.wiring.ScenarioNeeds;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;

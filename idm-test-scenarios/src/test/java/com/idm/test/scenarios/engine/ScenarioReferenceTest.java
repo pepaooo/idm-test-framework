@@ -2,11 +2,12 @@ package com.idm.test.scenarios.engine;
 
 import com.idm.test.connector.rest.client.RestAuthenticator;
 import com.idm.test.connector.rest.config.RestProperties;
-import com.idm.test.engine.FixtureFactory;
 import com.idm.test.engine.ScenarioLoader;
 import com.idm.test.engine.ScenarioValidator;
 import com.idm.test.engine.model.Scenario;
 import com.idm.test.engine.spi.StepType;
+import com.idm.test.wiring.EngineFactory;
+import com.idm.test.wiring.StepRegistry;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -51,7 +52,7 @@ class ScenarioReferenceTest {
     @BeforeAll
     static void load() throws IOException {
         lines = Files.readAllLines(PAGE, StandardCharsets.UTF_8);
-        registry = ScenarioSupport.registry(null, null, null, null, null,
+        registry = StepRegistry.of(null, null, null, null, null,
                 new RestProperties(), RestAuthenticator.withoutOAuth());
     }
 
@@ -129,7 +130,7 @@ class ScenarioReferenceTest {
     @DisplayName("The worked example is a complete scenario that passes the loader and validator")
     void testWorkedExample() {
         String yaml = workedExample(lines);
-        ScenarioValidator validator = new ScenarioValidator(registry, FixtureFactory.SUPPORTED_GENERATORS);
+        ScenarioValidator validator = EngineFactory.validator(registry);
 
         assertThatCode(() -> {
             Scenario scenario = ScenarioLoader.load(

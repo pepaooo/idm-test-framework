@@ -19,12 +19,17 @@ public final class SecretsEnv {
 
     /** The values of {@code file}; empty when it does not exist. Errors name the line, never its content. */
     public static Map<String, String> read(Path file) {
-        if (!Files.isRegularFile(file)) {
+        if (!Files.exists(file)) {
             return Map.of();
+        }
+        if (!Files.isRegularFile(file)) {
+            throw new UsageException(Message.of("runner.secrets.notFile"));
         }
         List<String> lines;
         try {
             lines = Files.readAllLines(file, StandardCharsets.UTF_8);
+        } catch (java.nio.charset.CharacterCodingException e) {
+            throw new UsageException(Message.of("runner.secrets.encoding"));
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }

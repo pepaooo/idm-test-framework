@@ -44,4 +44,17 @@ class SecretsEnvTest {
                 .hasMessage("secrets.env line 2 is not KEY=VALUE")
                 .satisfies(e -> assertThat(e.getMessage()).doesNotContain("TOPSECRET"));
     }
+
+    @Test
+    @DisplayName("A file that is not UTF-8 or not a regular file is a usage error that never shows content")
+    void testBadFile(@TempDir Path dir) throws Exception {
+        Path file = dir.resolve("secrets.env");
+        Files.write(file, new byte[] {'A', '=', (byte) 0xE9, (byte) 0xFF, '\n'});
+        assertThatThrownBy(() -> SecretsEnv.read(file)).isInstanceOf(UsageException.class)
+                .hasMessage("secrets.env is not UTF-8 text; save it as UTF-8");
+
+        Path folder = Files.createDirectory(dir.resolve("folder"));
+        assertThatThrownBy(() -> SecretsEnv.read(folder)).isInstanceOf(UsageException.class)
+                .hasMessage("secrets.env is not a file");
+    }
 }

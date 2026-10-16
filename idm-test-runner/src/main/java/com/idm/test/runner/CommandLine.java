@@ -65,7 +65,7 @@ public record CommandLine(String command, Path workspace, String profile, String
             throw new UsageException(Message.of("runner.cli.missingValue", option));
         }
         String value = rest.next();
-        if (value.startsWith("--")) {
+        if (value.startsWith("--") || value.equals("-h")) {
             throw new UsageException(Message.of("runner.cli.missingValue", option));
         }
         return value;

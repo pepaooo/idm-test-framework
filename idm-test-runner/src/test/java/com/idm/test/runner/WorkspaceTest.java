@@ -67,4 +67,17 @@ class WorkspaceTest {
         ZoneId zone = ZoneId.systemDefault();
         return Clock.fixed(LocalDateTime.of(2026, 10, 15, 14, 30, 5).atZone(zone).toInstant(), zone);
     }
+
+    @Test
+    @DisplayName("Should reject profile names that could leave config/ or reports/")
+    void testInvalidProfile(@TempDir Path dir) throws Exception {
+        Files.createDirectories(dir.resolve("scenarios"));
+        Workspace ws = Workspace.open(dir);
+
+        for (String bad : new String[] {"../x", "a/b", "a\\b", "x..y"}) {
+            assertThatThrownBy(() -> Workspace.requireProfile(ws, bad)).isInstanceOf(UsageException.class)
+                    .hasMessage("profile name '" + bad + "' may not contain '/', '\\' or '..'");
+            assertThatThrownBy(() -> ws.newRunFolder(bad, fixedClock())).isInstanceOf(UsageException.class);
+        }
+    }
 }

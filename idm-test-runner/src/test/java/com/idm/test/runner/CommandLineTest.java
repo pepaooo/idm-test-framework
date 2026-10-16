@@ -51,6 +51,8 @@ class CommandLineTest {
     void testOptionValueLooksLikeOption() {
         assertThatThrownBy(() -> CommandLine.parse("run", "--profile", "--verbose"))
                 .isInstanceOf(UsageException.class).hasMessage("option '--profile' needs a value");
+        assertThatThrownBy(() -> CommandLine.parse("run", "--profile", "-h"))
+                .isInstanceOf(UsageException.class).hasMessage("option '--profile' needs a value");
     }
 
     @Test

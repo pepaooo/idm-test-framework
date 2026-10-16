@@ -50,6 +50,19 @@ class RunnerSettingsTest {
         }
     }
 
+    @Test
+    @DisplayName("Should keep --profile above SPRING_PROFILES_ACTIVE and spring.profiles.active in application.yml")
+    void testProfileBeatsEnvironmentAndConfig(@TempDir Path temp) throws Exception {
+        Workspace ws = workspace(temp, "idm.test.b: profile\n");
+        Files.writeString(ws.config().resolve("application.yml"),
+                "spring.profiles.active: other\nidm.test.a: base\nidm.test.b: base\n");
+
+        try (ConfigurableApplicationContext context = start(ws, null)) {
+            assertThat(context.getEnvironment().getProperty("idm.test.b")).isEqualTo("profile");
+            assertThat(context.getEnvironment().getActiveProfiles()).containsExactly("lab");
+        }
+    }
+
     private static Workspace workspace(Path temp, String profileYaml) throws Exception {
         Path dir = Files.createDirectories(temp.resolve("My Tests"));
         Files.createDirectories(dir.resolve("scenarios"));
@@ -64,14 +77,18 @@ class RunnerSettingsTest {
         SpringApplication app = new SpringApplication(Empty.class);
         app.setWebApplicationType(WebApplicationType.NONE);
         app.setBannerMode(org.springframework.boot.Banner.Mode.OFF);
-        app.setDefaultProperties(RunnerSettings.defaultProperties(ws, "lab", null));
+        app.setDefaultProperties(RunnerSettings.defaultProperties(ws));
         ApplicationContextInitializer<ConfigurableApplicationContext> fakeEnvironment = context ->
                 context.getEnvironment().getPropertySources().replace(
                         StandardEnvironment.SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME,
                         new MapPropertySource(StandardEnvironment.SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME,
-                                Map.of("IDM_TEST_D", "env")));
+                                Map.of("IDM_TEST_D", "env", "SPRING_PROFILES_ACTIVE", "other")));
         app.addInitializers(fakeEnvironment,
                 new SecretsInitializer(SecretsEnv.read(ws.secretsFile())));
-        return app.run(commandLineArg == null ? new String[0] : new String[] {commandLineArg});
+        java.util.List<String> args = new java.util.ArrayList<>(java.util.List.of(RunnerSettings.commandLineArgs("lab", null)));
+        if (commandLineArg != null) {
+            args.add(commandLineArg);
+        }
+        return app.run(args.toArray(String[]::new));
     }
 }

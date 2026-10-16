@@ -50,13 +50,21 @@ public record Workspace(Path root) {
 
     /** Fails with {@code runner.profile.missing} when the profile's settings file does not exist. */
     public static void requireProfile(Workspace ws, String profile) {
+        checkProfileName(profile);
         if (!Files.isRegularFile(ws.profileFile(profile))) {
             throw new UsageException(Message.of("runner.profile.missing", profile));
         }
     }
 
+    private static void checkProfileName(String profile) {
+        if (profile.contains("/") || profile.contains("\\") || profile.contains("..")) {
+            throw new UsageException(Message.of("runner.profile.invalid", profile));
+        }
+    }
+
     /** Creates {@code reports/<yyyyMMdd-HHmmss>-<profile>/}, adding {@code -2}, {@code -3} when it exists. */
     public Path newRunFolder(String profile, Clock clock) {
+        checkProfileName(profile);
         String id = RUN_ID.format(LocalDateTime.now(clock)) + "-" + profile;
         try {
             Files.createDirectories(reports());

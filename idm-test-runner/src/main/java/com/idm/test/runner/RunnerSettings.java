@@ -19,18 +19,27 @@ public final class RunnerSettings {
     private RunnerSettings() {
     }
 
-    /** Default properties: the workspace's {@code config/} folder, the profile and (optionally) the locale. */
-    public static Map<String, Object> defaultProperties(Workspace ws, String profile, String locale) {
+    /** Default properties: the workspace's {@code config/} folder as an additional config location. */
+    public static Map<String, Object> defaultProperties(Workspace ws) {
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("spring.config.additional-location",
                 "optional:file:" + ws.config().toAbsolutePath().normalize() + "/");
+        return properties;
+    }
+
+    /**
+     * The command-line options that carry {@code --profile} and {@code --locale}; as command-line
+     * arguments they beat environment variables and every config file.
+     */
+    public static String[] commandLineArgs(String profile, String locale) {
+        java.util.List<String> args = new java.util.ArrayList<>();
         if (profile != null) {
-            properties.put("spring.profiles.active", profile);
+            args.add("--spring.profiles.active=" + profile);
         }
         if (locale != null) {
-            properties.put("idm.test.report.locale", locale);
+            args.add("--idm.test.report.locale=" + locale);
         }
-        return properties;
+        return args.toArray(String[]::new);
     }
 
     /** The {@code secrets.env} values as a property source, to sit just after the environment variables. */

@@ -27,7 +27,8 @@ class GitTrackingTest {
         Files.writeString(repo.resolve("other.txt"), "x\n");
         git(repo, "init", "-q");
         git(repo, "add", "secrets.env");
-        git(repo, "-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-q", "-m", "x");
+        git(repo, "-c", "user.name=t", "-c", "user.email=t@example.com", "-c", "commit.gpgsign=false",
+                "-c", "core.hooksPath=" + Files.createDirectories(temp.resolve("nohooks")), "commit", "-q", "-m", "x");
 
         assertThat(GitTracking.isTracked(repo, repo.resolve("secrets.env"))).isTrue();
         assertThat(GitTracking.isTracked(repo, repo.resolve("other.txt"))).isFalse();
@@ -45,14 +46,15 @@ class GitTrackingTest {
         System.arraycopy(args, 0, command, 3, args.length);
         Process p = new ProcessBuilder(command).redirectErrorStream(true)
                 .redirectOutput(ProcessBuilder.Redirect.DISCARD).start();
-        assertThat(p.waitFor()).isZero();
+        assertThat(p.waitFor(10, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+        assertThat(p.exitValue()).isZero();
     }
 
     private static boolean gitAvailable() {
         try {
             Process p = new ProcessBuilder("git", "--version").redirectErrorStream(true)
                     .redirectOutput(ProcessBuilder.Redirect.DISCARD).start();
-            return p.waitFor() == 0;
+            return p.waitFor(10, java.util.concurrent.TimeUnit.SECONDS) && p.exitValue() == 0;
         } catch (Exception e) {
             return false;
         }

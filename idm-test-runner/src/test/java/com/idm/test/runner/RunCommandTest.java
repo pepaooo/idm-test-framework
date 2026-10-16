@@ -28,6 +28,11 @@ import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import java.util.jar.JarEntry;
+import java.util.jar.JarOutputStream;
+
+import javax.tools.JavaCompiler;
+import javax.tools.ToolProvider;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
 import static com.github.tomakehurst.wiremock.client.WireMock.okJson;
@@ -121,6 +126,11 @@ class RunCommandTest {
     // --- workspace ----------------------------------------------------------------------------
 
     private Path workspace(String folder) throws Exception {
+        return workspace(folder, database(), null);
+    }
+
+    /** A workspace whose test-db has {@code jdbcUrl} and, unless null, {@code driverClassName}. */
+    private Path workspace(String folder, String jdbcUrl, String driverClassName) throws Exception {
         Path ws = Files.createDirectories(temp.resolve(folder));
         Files.createDirectories(ws.resolve("scenarios"));
         Files.createDirectories(ws.resolve("config"));
@@ -137,7 +147,7 @@ class RunCommandTest {
                         jdbc-url: %s
                         username: sa
                         password: ${IDM_TEST_DB_PASSWORD}
-                    rest:
+                %s    rest:
                       idm:
                         base-url: %s
                         username: runner
@@ -145,7 +155,9 @@ class RunCommandTest {
                     executor:
                       default-timeout-seconds: 2
                       default-poll-interval-seconds: 1
-                """.formatted(ldap.getUrl(), BASE_DN, BIND_DN, database(), wireMock.baseUrl()));
+                """.formatted(ldap.getUrl(), BASE_DN, BIND_DN, jdbcUrl,
+                driverClassName == null ? "" : "        driver-class-name: " + driverClassName + "\n",
+                wireMock.baseUrl()));
         Files.writeString(ws.resolve("secrets.env"), "# lab secrets\nIDM_TEST_LDAP_PASSWORD=" + LDAP_PASSWORD
                 + "\nIDM_TEST_REST_PASSWORD=" + REST_PASSWORD + "\nIDM_TEST_DB_PASSWORD=" + DB_PASSWORD + "\n");
         return ws;
@@ -507,6 +519,104 @@ class RunCommandTest {
         assertThat(exit).as(out() + err()).isEqualTo(ExitCodes.OK);
         assertThat(runFolder(ws).resolve("report.html")).isRegularFile();
         assertThat(out()).contains("1 scenarios: 1 passed, 0 failed · report: reports/" + RUN_ID + "/report.html");
+    }
+
+    // --- drivers ------------------------------------------------------------------------------
+
+    @Test
+    @DisplayName("Should connect through a driver jar in the workspace's drivers/ folder and list it in run.log")
+    void testWorkspaceDriver() throws Exception {
+        Path ws = workspace("ws", fakeUrl(), null);
+        Path jar = fakeDriverJar(ws.resolve("drivers"));
+        corpusScenario(ws, "provisioning-user-to-database.yaml");
+
+        int exit = run(ws, "--profile", "lab");
+
+        assertThat(exit).as(out() + err()).isEqualTo(ExitCodes.OK);
+        assertThat(out()).contains("✔ provisioning-user-to-database.yaml  ");
+        assertThat(Files.readString(runFolder(ws).resolve("run.log")))
+                .contains("driver jars loaded: [" + jar + "]");
+    }
+
+    @Test
+    @DisplayName("Should load a workspace driver named by driver-class-name through the pool")
+    void testWorkspaceDriverClassName() throws Exception {
+        Path ws = workspace("ws", fakeUrl(), FAKE_DRIVER);
+        fakeDriverJar(ws.resolve("drivers"));
+        corpusScenario(ws, "provisioning-user-to-database.yaml");
+
+        int exit = run(ws, "--profile", "lab");
+
+        assertThat(exit).as(out() + err()).isEqualTo(ExitCodes.OK);
+        assertThat(out()).contains("✔ provisioning-user-to-database.yaml  ");
+        assertThat(Thread.currentThread().getContextClassLoader()).isSameAs(RunCommandTest.class.getClassLoader());
+    }
+
+    @Test
+    @DisplayName("Should stop before any scenario when a used database has no driver, and exit 2")
+    void testMissingDriver() throws Exception {
+        Path ws = workspace("ws", "jdbc:db2://db.example.com/hr;password=${IDM_TEST_DB_PASSWORD}", null);
+        corpusScenario(ws);
+        corpusScenario(ws, "provisioning-user-to-database.yaml");
+
+        int exit = run(ws, "--profile", "lab");
+
+        assertThat(exit).as(out() + err()).isEqualTo(ExitCodes.CANNOT_START);
+        assertThat(err().strip()).isEqualTo("no JDBC driver for 'jdbc:db2://db.example.com/hr;password=***' "
+                + "(database 'test-db'); put the driver jar in " + ws.resolve("drivers") + "/");
+        assertThat(out()).doesNotContain("✔").doesNotContain("✖");
+        assertThat(runFolder(ws).resolve("results.json")).doesNotExist();
+        assertThat(Files.readString(runFolder(ws).resolve("run.log")) + err()).doesNotContain(DB_PASSWORD);
+    }
+
+    private static final String FAKE_DRIVER = "fakejdbc.FakeDriver";
+
+    /** A driver for {@code jdbc:fake:} URLs that hands them on to H2; compiled here, so no class path has it. */
+    private static final String FAKE_DRIVER_SOURCE = """
+            package fakejdbc;
+
+            import java.sql.*;
+            import java.util.Properties;
+            import java.util.logging.Logger;
+
+            public final class FakeDriver implements Driver {
+                private static final String PREFIX = "jdbc:fake:";
+                public Connection connect(String url, Properties info) throws SQLException {
+                    return acceptsURL(url) ? DriverManager.getConnection("jdbc:h2:" + url.substring(PREFIX.length()), info)
+                            : null;
+                }
+                public boolean acceptsURL(String url) { return url != null && url.startsWith(PREFIX); }
+                public DriverPropertyInfo[] getPropertyInfo(String url, Properties info) { return new DriverPropertyInfo[0]; }
+                public int getMajorVersion() { return 1; }
+                public int getMinorVersion() { return 0; }
+                public boolean jdbcCompliant() { return false; }
+                public Logger getParentLogger() throws SQLFeatureNotSupportedException {
+                    throw new SQLFeatureNotSupportedException();
+                }
+            }
+            """;
+
+    /** The test database's URL under the fake driver's {@code jdbc:fake:} prefix. */
+    private String fakeUrl() throws Exception {
+        return "jdbc:fake:" + database().substring("jdbc:h2:".length());
+    }
+
+    private Path fakeDriverJar(Path drivers) throws Exception {
+        Path source = Files.createDirectories(temp.resolve("fake-src/fakejdbc")).resolve("FakeDriver.java");
+        Files.writeString(source, FAKE_DRIVER_SOURCE);
+        Path classes = Files.createDirectories(temp.resolve("fake-classes"));
+        JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
+        assertThat(compiler.run(null, null, null, "-d", classes.toString(), source.toString())).isZero();
+        Path jar = Files.createDirectories(drivers).resolve("fake-driver.jar");
+        try (JarOutputStream out = new JarOutputStream(Files.newOutputStream(jar))) {
+            out.putNextEntry(new JarEntry("fakejdbc/FakeDriver.class"));
+            out.write(Files.readAllBytes(classes.resolve("fakejdbc/FakeDriver.class")));
+            out.closeEntry();
+            out.putNextEntry(new JarEntry("META-INF/services/java.sql.Driver"));
+            out.write((FAKE_DRIVER + "\n").getBytes(StandardCharsets.UTF_8));
+            out.closeEntry();
+        }
+        return jar;
     }
 
     // --- git ----------------------------------------------------------------------------------

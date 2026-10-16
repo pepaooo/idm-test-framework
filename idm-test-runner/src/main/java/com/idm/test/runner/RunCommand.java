@@ -28,6 +28,7 @@ import com.idm.test.wiring.EngineFactory;
 import com.idm.test.wiring.RealEnvironmentGuards;
 import com.idm.test.wiring.RunInfos;
 import com.idm.test.wiring.RunRecorder;
+import com.idm.test.wiring.ScenarioNeeds;
 import com.idm.test.wiring.StepRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -51,8 +52,9 @@ import java.util.Map;
 
 /**
  * {@code idmtest run}: runs a workspace's scenarios against the systems of a profile. The order is
- * fixed: options, workspace and profile file, {@code secrets.env}, the run folder and its log, Spring,
- * scenario selection, loading and validation, then the guards; only then does any scenario run.
+ * fixed: options, workspace and profile file, {@code secrets.env}, the run folder and its log, the
+ * workspace's JDBC drivers, Spring, scenario selection, loading and validation, the driver check, then
+ * the guards; only then does any scenario run.
  * The context starts lazily, so the guards read settings before any connector is even built.
  */
 public final class RunCommand {
@@ -107,22 +109,49 @@ public final class RunCommand {
         Path folder = workspace.newRunFolder(line.profile(), clock);
         try (RunLog runLog = RunLog.start(folder.resolve("run.log"), line.verbose(), mask)) {
             LOG.info("idmtest run: workspace {}, profile {}", workspace.root(), line.profile());
-            ConfigurableApplicationContext context;
+            Thread thread = Thread.currentThread();
+            ClassLoader previousLoader = thread.getContextClassLoader();
+            DriverLoader.Drivers drivers;
             try {
-                context = new SpringApplicationBuilder(RunnerApplication.class)
-                        .web(WebApplicationType.NONE)
-                        .lazyInitialization(true)
-                        .registerShutdownHook(false)
-                        .properties(RunnerSettings.defaultProperties(workspace))
-                        .initializers(new SecretsInitializer(secrets))
-                        .listeners(runLog.listener())
-                        .run(springArgs(line.profile(), localeTag));
-            } catch (RuntimeException | Error e) {
+                // Before Spring starts, so every pool the context builds can reach the drivers.
+                drivers = DriverLoader.open(workspace.drivers(), previousLoader);
+            } catch (RuntimeException e) {
                 return startFailed(e, line, err, early, mask);
             }
-            try (context) {
-                return new Run(workspace, folder, line, context, out, err, mask).execute();
+            List<Path> jars = new ArrayList<>(DriverLoader.installJars(System.getProperty("loader.path")));
+            jars.addAll(drivers.jars());
+            LOG.info("driver jars loaded: {}", jars);
+            try (drivers) {
+                if (drivers.loader() != null) {
+                    // A pool loads a driver-class-name through the context class loader.
+                    thread.setContextClassLoader(drivers.loader());
+                }
+                return startAndRun(workspace, secrets, folder, line, localeTag, runLog, out, err, early, mask);
+            } finally {
+                thread.setContextClassLoader(previousLoader);
             }
+        }
+    }
+
+    /** Starts Spring with the run's settings and runs the scenarios; the context is closed after. */
+    private static int startAndRun(Workspace workspace, Map<String, String> secrets, Path folder, CommandLine line,
+                                   String localeTag, RunLog runLog, PrintStream out, PrintStream err, Locale early,
+                                   SecretMask mask) {
+        ConfigurableApplicationContext context;
+        try {
+            context = new SpringApplicationBuilder(RunnerApplication.class)
+                    .web(WebApplicationType.NONE)
+                    .lazyInitialization(true)
+                    .registerShutdownHook(false)
+                    .properties(RunnerSettings.defaultProperties(workspace))
+                    .initializers(new SecretsInitializer(secrets))
+                    .listeners(runLog.listener())
+                    .run(springArgs(line.profile(), localeTag));
+        } catch (RuntimeException | Error e) {
+            return startFailed(e, line, err, early, mask);
+        }
+        try (context) {
+            return new Run(workspace, folder, line, context, out, err, mask).execute();
         }
     }
 
@@ -212,12 +241,14 @@ public final class RunCommand {
             try {
                 names = ValidateCommand.select(source, line.scenario());
                 loaded = load(source, names);
-                checkDrivers();
+                checkDrivers(loaded);
                 RealEnvironmentGuards.check(environment, source, names, locale,
                         context.getBean(RestProperties.class), context.getBean(DatabaseProperties.class),
                         soapProperties(environment));
             } catch (UsageException e) {
-                err.println(Messages.render(e.detail(), locale));
+                String message = mask.apply(Messages.render(e.detail(), locale));
+                LOG.error("The run could not start: {}", message);
+                err.println(message);
                 return ExitCodes.CANNOT_START;
             } catch (RealEnvironmentGuards.Refusal e) {
                 LOG.error("Refused: {}", e.getMessage());
@@ -261,8 +292,10 @@ public final class RunCommand {
                     .bind("idm.test.soap", SoapProperties.class).orElseGet(SoapProperties::new));
         }
 
-        /** Task 9 checks here that every database the selected scenarios use has a JDBC driver. */
-        private void checkDrivers() {
+        /** Every database the selected scenarios use must have a JDBC driver, before any scenario runs. */
+        private void checkDrivers(Loaded loaded) {
+            ScenarioNeeds needs = ScenarioNeeds.of(List.copyOf(loaded.scenarios().values()));
+            DriverCheck.check(context.getBean(DatabaseProperties.class), needs.databases(), workspace.drivers());
         }
 
         private int runAll(List<String> names, Loaded loaded, ScenarioEngine engine, RunInfo runInfo,

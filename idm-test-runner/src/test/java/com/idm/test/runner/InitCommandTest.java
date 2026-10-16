@@ -77,6 +77,9 @@ class InitCommandTest {
         assertThat(output()).contains("creado README.md", "espacio de trabajo listo: ");
         Object parsed = new org.yaml.snakeyaml.Yaml()
                 .load(Files.readString(temp.resolve("config/application-lab.yml")));
-        assertThat(parsed).isInstanceOf(java.util.Map.class);
+        // every key is commented out, so a fresh profile names no system and the guards refuse it
+        assertThat(parsed).isNull();
+        assertThat(Files.readString(temp.resolve("config/application-lab.yml")))
+                .doesNotContainPattern("(?m)^\\s*[^#\\s]");
     }
 }

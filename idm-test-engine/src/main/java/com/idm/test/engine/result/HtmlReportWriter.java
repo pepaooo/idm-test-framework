@@ -233,7 +233,7 @@ public final class HtmlReportWriter {
     }
 
     /** 850 ms, 10.1 s (10,1 s in Spanish), 1m 42s. */
-    static String duration(long millis, Locale locale) {
+    public static String duration(long millis, Locale locale) {
         if (millis < 1000) {
             return millis + " ms";
         }

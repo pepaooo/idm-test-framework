@@ -7,6 +7,7 @@ import com.idm.test.engine.spi.Message;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintStream;
+import java.io.UncheckedIOException;
 import java.nio.file.Path;
 import java.util.Locale;
 import java.util.Properties;
@@ -31,6 +32,26 @@ public final class IdmTest {
             err.println(usage(locale));
             return ExitCodes.CANNOT_START;
         }
+        try {
+            return dispatch(line, out, err, locale);
+        } catch (UsageException e) {
+            err.println(Messages.render(e.detail(), locale));
+            return ExitCodes.CANNOT_START;
+        } catch (UncheckedIOException e) {
+            Throwable cause = e.getCause();
+            err.println(Messages.render(Message.of("runner.cli.ioError", line.command(), describe(cause)), locale));
+            if (line.verbose()) {
+                e.printStackTrace(err);
+            }
+            return ExitCodes.CANNOT_START;
+        }
+    }
+
+    private static String describe(Throwable e) {
+        return e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+    }
+
+    private static int dispatch(CommandLine line, PrintStream out, PrintStream err, Locale locale) {
         switch (line.command()) {
             case "help" -> {
                 out.println(usage(locale));
@@ -44,6 +65,9 @@ public final class IdmTest {
                 Path target = line.initTarget() != null ? line.initTarget()
                         : line.workspace() != null ? line.workspace() : Path.of("");
                 return InitCommand.run(target.toAbsolutePath().normalize(), out, locale);
+            }
+            case "validate" -> {
+                return ValidateCommand.run(line, out, err);
             }
             default -> {
                 err.println(Messages.render(Message.of("runner.cli.notImplemented"), locale));

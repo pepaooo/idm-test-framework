@@ -48,4 +48,19 @@ class IdmTestTest {
         assertThat(run("deploy", "--locale", "es")).isEqualTo(ExitCodes.CANNOT_START);
         assertThat(errBytes.toString(StandardCharsets.UTF_8)).contains("comando desconocido 'deploy'");
     }
+
+    @Test
+    @DisplayName("Should report an I/O failure on one line, with the stack trace only for --verbose")
+    void testIoErrorOneLine(@org.junit.jupiter.api.io.TempDir java.nio.file.Path temp) throws Exception {
+        java.nio.file.Files.writeString(temp.resolve("scenarios"), "a file, not a folder");
+
+        assertThat(run("init", temp.toString())).isEqualTo(ExitCodes.CANNOT_START);
+        String quiet = errBytes.toString(StandardCharsets.UTF_8);
+        assertThat(quiet).startsWith("cannot complete 'init': ").doesNotContain("\tat ");
+        assertThat(quiet.strip().lines()).hasSize(1);
+
+        errBytes.reset();
+        assertThat(run("init", temp.toString(), "--verbose")).isEqualTo(ExitCodes.CANNOT_START);
+        assertThat(errBytes.toString(StandardCharsets.UTF_8)).contains("cannot complete 'init': ", "\tat ");
+    }
 }

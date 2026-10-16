@@ -30,12 +30,32 @@ public final class ScenarioGlob {
         try {
             matcher = FileSystems.getDefault().getPathMatcher("glob:" + pattern);
         } catch (PatternSyntaxException e) {
-            throw new IllegalStateException("-D" + SCENARIO_PROPERTY + "=" + pattern
-                    + " is not a valid glob: " + e.getDescription(), e);
+            throw new InvalidPatternException(pattern, e.getDescription(), e);
         }
         return names.stream()
                 .filter(name -> matcher.matches(Path.of(name)) || matcher.matches(Path.of(stripExtension(name))))
                 .toList();
+    }
+
+    /** The pattern is not a valid glob; the text names {@code -Dscenario}, the JUnit runners' option. */
+    public static final class InvalidPatternException extends IllegalStateException {
+
+        private final String pattern;
+        private final String reason;
+
+        InvalidPatternException(String pattern, String reason, Throwable cause) {
+            super("-D" + SCENARIO_PROPERTY + "=" + pattern + " is not a valid glob: " + reason, cause);
+            this.pattern = pattern;
+            this.reason = reason;
+        }
+
+        public String pattern() {
+            return pattern;
+        }
+
+        public String reason() {
+            return reason;
+        }
     }
 
     private static String stripExtension(String name) {

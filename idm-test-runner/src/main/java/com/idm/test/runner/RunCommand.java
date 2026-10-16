@@ -115,7 +115,7 @@ public final class RunCommand {
             try {
                 // Before Spring starts, so every pool the context builds can reach the drivers.
                 drivers = DriverLoader.open(workspace.drivers(), previousLoader);
-            } catch (RuntimeException e) {
+            } catch (RuntimeException | Error e) {
                 return startFailed(e, line, err, early, mask);
             }
             List<Path> jars = new ArrayList<>(DriverLoader.installJars(System.getProperty("loader.path")));

@@ -26,6 +26,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.jar.JarEntry;
@@ -249,6 +250,7 @@ class RunCommandTest {
                 Files.readString(folder.resolve("report.html")))) {
             assertThat(text).doesNotContain(LDAP_PASSWORD).doesNotContain(REST_PASSWORD).doesNotContain(DB_PASSWORD);
         }
+        assertNoPoolThreads();
     }
 
     @Test
@@ -536,6 +538,7 @@ class RunCommandTest {
         assertThat(out()).contains("✔ provisioning-user-to-database.yaml  ");
         assertThat(Files.readString(runFolder(ws).resolve("run.log")))
                 .contains("driver jars loaded: [" + jar + "]");
+        assertNoPoolThreads();
     }
 
     @Test
@@ -550,6 +553,24 @@ class RunCommandTest {
         assertThat(exit).as(out() + err()).isEqualTo(ExitCodes.OK);
         assertThat(out()).contains("✔ provisioning-user-to-database.yaml  ");
         assertThat(Thread.currentThread().getContextClassLoader()).isSameAs(RunCommandTest.class.getClassLoader());
+        assertNoPoolThreads();
+    }
+
+    @Test
+    @DisplayName("Should give the context class loader back when a run with workspace drivers cannot start")
+    void testClassLoaderRestoredOnFailure() throws Exception {
+        Path ws = workspace("ws", fakeUrl(), "fakejdbc.NoSuchDriver");
+        fakeDriverJar(ws.resolve("drivers"));
+        corpusScenario(ws, "provisioning-user-to-database.yaml");
+        ClassLoader before = Thread.currentThread().getContextClassLoader();
+
+        int exit = run(ws, "--profile", "lab");
+
+        assertThat(exit).as(out() + err()).isEqualTo(ExitCodes.CANNOT_START);
+        assertThat(err()).contains("no JDBC driver for 'jdbc:fake:", "(database 'test-db')");
+        assertThat(Thread.currentThread().getContextClassLoader()).isSameAs(before);
+        assertThat(Collections.list(DriverManager.getDrivers())).noneMatch(DelegatingDriver.class::isInstance);
+        assertNoPoolThreads();
     }
 
     @Test
@@ -567,6 +588,24 @@ class RunCommandTest {
         assertThat(out()).doesNotContain("✔").doesNotContain("✖");
         assertThat(runFolder(ws).resolve("results.json")).doesNotExist();
         assertThat(Files.readString(runFolder(ws).resolve("run.log")) + err()).doesNotContain(DB_PASSWORD);
+    }
+
+    /** The run's pools are closed with its context: no thread of the test database's pool is left. */
+    private static void assertNoPoolThreads() throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (poolThreadAlive() && System.nanoTime() < deadline) {
+            Thread.sleep(50);
+        }
+        assertThat(Thread.getAllStackTraces().keySet()).noneMatch(RunCommandTest::isPoolThread);
+    }
+
+    private static boolean poolThreadAlive() {
+        return Thread.getAllStackTraces().keySet().stream().anyMatch(RunCommandTest::isPoolThread);
+    }
+
+    /** Hikari names its threads {@code <pool name>:housekeeper}, {@code <pool name>:connection-adder}, … */
+    private static boolean isPoolThread(Thread thread) {
+        return thread.isAlive() && thread.getName().startsWith("HikariPool-test-db:");
     }
 
     private static final String FAKE_DRIVER = "fakejdbc.FakeDriver";

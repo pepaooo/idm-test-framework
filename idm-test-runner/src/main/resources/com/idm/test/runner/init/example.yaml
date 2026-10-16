@@ -1,0 +1,39 @@
+# Example scenario: create a user in the directory, check it is there, clean up.
+# Copy this file, rename it and change it. Every scenario needs a name and steps.
+# All step types and options are described in docs/reference/writing-scenarios.md.
+name: Example - create a user in the directory
+description: Creates a test user, waits until the entry carries its surname, then removes it
+
+# Fixtures are test data made for each run. "random-user" gives user.userId,
+# user.firstName, user.lastName, user.email and more, different every run.
+fixtures:
+  user:
+    generate: random-user
+
+steps:
+  # Create the entry. The DN is relative to the directory's base DN (idm.test.ldap.base-dn).
+  # "as" remembers the DN so that cleanup can delete it.
+  - ldap.create:
+      description: "Create ${user.userId}"
+      dn: "cn=${user.userId},ou=users"
+      as: createdDn
+      attributes:
+        objectClass: [top, inetOrgPerson]
+        cn: "${user.userId}"
+        sn: "${user.lastName}"
+        givenName: "${user.firstName}"
+
+  # Check the entry. "wait" keeps retrying until it passes or 30 seconds have gone,
+  # checking every 2 seconds. Use it when another system fills the directory later.
+  - ldap.verify:
+      description: "The surname is stored"
+      dn: "cn=${user.userId},ou=users"
+      expect:
+        sn: "${user.lastName}"
+      wait: { timeout: 30s, poll: 2s }
+
+# Cleanup always runs afterwards, even when a step above failed.
+cleanup:
+  - ldap.delete:
+      description: "Remove the test user"
+      dn: "${createdDn}"

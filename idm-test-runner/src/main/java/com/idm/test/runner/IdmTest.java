@@ -7,6 +7,7 @@ import com.idm.test.engine.spi.Message;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintStream;
+import java.nio.file.Path;
 import java.util.Locale;
 import java.util.Properties;
 
@@ -38,6 +39,11 @@ public final class IdmTest {
             case "version" -> {
                 out.println("idmtest " + version());
                 return ExitCodes.OK;
+            }
+            case "init" -> {
+                Path target = line.initTarget() != null ? line.initTarget()
+                        : line.workspace() != null ? line.workspace() : Path.of("");
+                return InitCommand.run(target.toAbsolutePath().normalize(), out, locale);
             }
             default -> {
                 err.println(Messages.render(Message.of("runner.cli.notImplemented"), locale));

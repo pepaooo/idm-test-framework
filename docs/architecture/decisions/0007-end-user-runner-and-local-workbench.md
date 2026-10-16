@@ -1,6 +1,6 @@
 # 0007 — An end-user runner, then a local web workbench
 
-**Status:** Accepted direction. Nothing is implemented yet; each part has its own spec, plan and tickets.
+**Status:** Accepted direction. Part 1 implemented (ITF-55); Parts 2 and 3 are not started. Each part has its own spec, plan and tickets.
 
 **Recorded:** 2026-10-15, decided with jangulo (ITF-53).
 

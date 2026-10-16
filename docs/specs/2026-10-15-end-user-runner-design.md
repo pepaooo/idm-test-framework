@@ -154,8 +154,8 @@ errors are one line on stderr in the run's language.
   ```
 
 **Runtime:** `jlink --add-modules java.base,java.sql,java.naming,java.xml,java.net.http,java.logging,
-java.management,java.desktop,java.instrument,jdk.unsupported,jdk.crypto.ec,jdk.charsets,jdk.zipfs
---strip-debug --no-header-files --no-man-pages --compress zip-6`. The list is verified by running the jar
+java.management,java.desktop,java.instrument,jdk.unsupported,jdk.crypto.ec,jdk.charsets,jdk.zipfs,jdk.dynalink,
+jdk.net,java.security.jgss,jdk.security.jgss --strip-debug --no-header-files --no-man-pages --compress zip-6`. The list is verified by running the jar
 on the image. jlink runs per OS: a GitHub Actions matrix (macOS, Windows, Ubuntu) builds the ZIPs and
 attaches them as workflow artifacts; locally `./mvnw -Pdist package -pl idm-test-runner -am` builds the
 current machine's ZIP. The default build does not run jlink.
@@ -205,3 +205,24 @@ macOS: the README documents the one-time `xattr -dr com.apple.quarantine idmtest
 - OS keychain or encrypted secrets.
 - A `check` command for connectivity (the guards in `run` cover the refusals).
 - ITF-44 (per-profile files in the repository); the workspace's `config/` works without it.
+
+## 10. Refinements made during implementation
+
+- **Profile at the command-line layer.** `--profile` reaches Spring as `--spring.profiles.active`, like
+  `--locale` as `--idm.test.report.locale`, so both beat environment variables and every file. The
+  language is `--locale`, then `IDM_TEST_LOCALE`, then `-Didm.test.locale`, then the profile's
+  `idm.test.report.locale`, then English.
+- **Logging during runs.** The masked `run.log` (and the console with `--verbose`) are the only log outputs;
+  `logging.file.*` and `logging.config` in workspace settings are ignored, so no file can receive
+  `secrets.env` values unmasked. Secret values shorter than 4 characters are not masked.
+- **Names and files.** A profile name may not contain `/`, `\` or `..`; `secrets.env` must be UTF-8.
+- **`DriverLoader` reads service files per jar.** Each jar's own `META-INF/services/java.sql.Driver` is read,
+  and a provider the parent class loader already has (a built-in driver) is skipped, so the built-in one is used.
+- **Pools closed with the context.** Database pools are closed when the run's context closes.
+- **No `Locale` on `DriverCheck`.** It throws a `UsageException` carrying a message key; the caller renders it
+  in the run's language.
+- **Init example.** The example scenario's DN is relative to the base DN, and the example settings use
+  `user-dn` for the LDAP bind.
+- **CI runner.** The x64 macOS job runs on `macos-15-intel`.
+- **jlink modules.** The runtime also needs `jdk.dynalink`, `jdk.net`, `java.security.jgss` and
+  `jdk.security.jgss`, found by running the jar on the image.

@@ -44,7 +44,8 @@ Reviewed on **2026-09-25** against Git revision `fb35547c76bfecc0c4b4ca1c7fe71b8
 | Embedded scenario environment | Implemented | Run without Docker or vendor systems | [Test base][base], [schema initializer][schema] | Test base forces `test` profile and dynamically overrides LDAP/role SOAP endpoints; schema initializer targets `test-db`. Spring Boot's own DataSource is excluded (ITF-32); TestSchemaInitializer alone creates the test-db schema |
 | Container execution | Implemented, optional (ITF-14) | Run the corpus against real protocol servers | [ContainerScenarios][containers] | OpenLDAP, PostgreSQL and WireMock via Testcontainers; needs Docker and is not part of the default suite. Starts no embedded LDAP or WireMock server (ITF-17) |
 | Real-environment runner | Implemented (ITF-12, ITF-15, ITF-23) | Run author scenarios against a real lab | [RealEnvironmentScenarios][real], [its README][real-readme] | Guards refuse a run that would test nothing real, checking only what the selected scenarios use (ITF-30): the embedded profile, an empty directory, and for used repositories an unset or placeholder LDAP/SOAP URL, REST target, database or credential, an in-memory database, or placeholder LDAP bind credentials (ITF-31). Unused repositories are never contacted; no embedded LDAP or WireMock server is started (ITF-17), and Spring Boot creates no embedded H2 database of its own (ITF-32). Database pools open on first use — except the embedded `test-db` (in-memory H2 by default), which is always opened at startup because the scenarios module's schema initializer recreates its schema there, so never point `test-db` at a real database. **Not yet exercised against a real Identity Manager** |
-| CLI, frontend, HTML report | Future / deferred | Reuse engine and structured results | [Design non-goals][design] | No shipped entry point or renderer for these surfaces |
+| Runner | Implemented (ITF-55) | Run YAML scenarios from a user-owned workspace, without Maven or an IDE | [Runner][runner], [runner design][runner-design], [guide][runner-guide] | `idmtest init`, `validate` and `run` over `scenarios/`, `config/application-<profile>.yml` and `secrets.env`; results JSON, HTML report and `run.log` per run; PostgreSQL, Oracle and SQL Server drivers built in, others from `drivers/`; per-OS ZIPs with a Java 25 runtime built by CI, not signed or published. Not yet exercised against a real Identity Manager |
+| Frontend | Future / deferred | Reuse engine and structured results | [Design non-goals][design] | No web interface; planned as ADR 0007 Part 2 |
 | Parallel scenarios and scenario includes | Future / deferred | Explicitly outside current increment | [Design non-goals][design] | Do not infer support from JUnit capabilities |
 
 ## Reconciled differences
@@ -137,3 +138,6 @@ All five diagrams rendered from their Mermaid sources. The eight-slide PowerPoin
 [containers]: ../../idm-test-scenarios/src/test/java/com/idm/test/scenarios/engine/ContainerScenarios.java
 [real]: ../../idm-test-scenarios/src/test/java/com/idm/test/scenarios/engine/RealEnvironmentScenarios.java
 [real-readme]: ../../idm-test-scenarios/src/test/resources/scenarios-real/README.md
+[runner]: ../../idm-test-runner/src/main/java/com/idm/test/runner/IdmTest.java
+[runner-design]: ../specs/2026-10-15-end-user-runner-design.md
+[runner-guide]: ../guides/runner.md

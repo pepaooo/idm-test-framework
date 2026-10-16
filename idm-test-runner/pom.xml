@@ -108,4 +108,117 @@
             </plugin>
         </plugins>
     </build>
+
+    <profiles>
+        <!-- os.detected names the ZIP: set by the OS of the machine that builds it (jlink is per OS) -->
+        <profile>
+            <id>os-macos-arm64</id>
+            <activation>
+                <os>
+                    <family>mac</family>
+                    <arch>aarch64</arch>
+                </os>
+            </activation>
+            <properties>
+                <os.detected>macos-arm64</os.detected>
+            </properties>
+        </profile>
+        <profile>
+            <id>os-macos-x64</id>
+            <activation>
+                <os>
+                    <family>mac</family>
+                    <arch>x86_64</arch>
+                </os>
+            </activation>
+            <properties>
+                <os.detected>macos-x64</os.detected>
+            </properties>
+        </profile>
+        <profile>
+            <id>os-windows-x64</id>
+            <activation>
+                <os>
+                    <family>windows</family>
+                    <arch>amd64</arch>
+                </os>
+            </activation>
+            <properties>
+                <os.detected>windows-x64</os.detected>
+            </properties>
+        </profile>
+        <profile>
+            <id>os-linux-x64</id>
+            <activation>
+                <os>
+                    <name>linux</name>
+                    <arch>amd64</arch>
+                </os>
+            </activation>
+            <properties>
+                <os.detected>linux-x64</os.detected>
+            </properties>
+        </profile>
+
+        <!-- ./mvnw -Pdist package -pl idm-test-runner -am: target/idmtest-<version>-<os>.zip for this machine -->
+        <profile>
+            <id>dist</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-antrun-plugin</artifactId>
+                        <executions>
+                            <execution>
+                                <id>jlink-runtime</id>
+                                <phase>package</phase>
+                                <goals>
+                                    <goal>run</goal>
+                                </goals>
+                                <configuration>
+                                    <target>
+                                        <fail unless="os.detected"
+                                              message="idmtest ZIPs are built on macOS arm64/x64, Windows x64 or Linux x64; this is ${os.name} ${os.arch}"/>
+                                        <delete dir="${project.build.directory}/runtime"/>
+                                        <exec executable="${java.home}/bin/jlink" failonerror="true">
+                                            <arg value="--add-modules"/>
+                                            <arg value="java.base,java.sql,java.naming,java.xml,java.net.http,java.logging,java.management,java.desktop,java.instrument,jdk.unsupported,jdk.crypto.ec,jdk.charsets,jdk.zipfs,jdk.dynalink"/>
+                                            <arg value="--strip-debug"/>
+                                            <arg value="--no-header-files"/>
+                                            <arg value="--no-man-pages"/>
+                                            <arg value="--compress"/>
+                                            <arg value="zip-6"/>
+                                            <arg value="--output"/>
+                                            <arg value="${project.build.directory}/runtime"/>
+                                        </exec>
+                                    </target>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-assembly-plugin</artifactId>
+                        <executions>
+                            <execution>
+                                <id>dist-zip</id>
+                                <phase>package</phase>
+                                <goals>
+                                    <goal>single</goal>
+                                </goals>
+                                <configuration>
+                                    <descriptors>
+                                        <descriptor>src/assembly/dist.xml</descriptor>
+                                    </descriptors>
+                                    <finalName>idmtest-${project.version}-${os.detected}</finalName>
+                                    <appendAssemblyId>false</appendAssemblyId>
+                                    <attach>false</attach>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>

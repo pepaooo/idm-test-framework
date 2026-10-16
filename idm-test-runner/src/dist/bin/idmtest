@@ -1,0 +1,27 @@
+#!/bin/sh
+# idmtest launcher: uses IDM_TEST_JAVA_HOME when set, otherwise the bundled runtime.
+set -e
+SELF="$0"
+while [ -h "$SELF" ]; do
+  LINK=$(ls -ld "$SELF" | sed 's/.*-> //')
+  case "$LINK" in /*) SELF="$LINK" ;; *) SELF="$(dirname "$SELF")/$LINK" ;; esac
+done
+HOME_DIR=$(cd "$(dirname "$SELF")/.." && pwd)
+
+if [ -n "$IDM_TEST_JAVA_HOME" ]; then
+  JAVA_DIR="$IDM_TEST_JAVA_HOME"
+else
+  JAVA_DIR="$HOME_DIR/runtime"
+fi
+RELEASE="$JAVA_DIR/release"
+if [ ! -f "$RELEASE" ] || [ ! -x "$JAVA_DIR/bin/java" ]; then
+  echo "IDM_TEST_JAVA_HOME points to $JAVA_DIR, which is not a Java installation; idmtest needs Java 25 or newer" >&2
+  exit 2
+fi
+VERSION=$(sed -n 's/^JAVA_VERSION="\([0-9]*\).*/\1/p' "$RELEASE")
+if [ -z "$VERSION" ] || [ "$VERSION" -lt 25 ]; then
+  echo "IDM_TEST_JAVA_HOME points to Java ${VERSION:-unknown} ($JAVA_DIR); idmtest needs Java 25 or newer" >&2
+  exit 2
+fi
+JAR=$(ls "$HOME_DIR"/lib/idm-test-runner-*.jar | head -n 1)
+exec "$JAVA_DIR/bin/java" "-Dloader.path=$HOME_DIR/lib/drivers" -jar "$JAR" "$@"

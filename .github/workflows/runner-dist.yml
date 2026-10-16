@@ -1,0 +1,67 @@
+name: Runner distribution - idmtest ZIPs
+
+# Builds the idmtest ZIP for each OS (the jlink runtime is per OS), smoke-tests the unzipped launcher
+# and keeps the ZIP as a workflow artifact. Nothing is published as a release.
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'idm-test-*/**'
+      - 'idm-connector-*/**'
+      - 'pom.xml'
+      - '.github/workflows/runner-dist.yml'
+  workflow_dispatch:
+
+jobs:
+  dist:
+    name: idmtest ZIP (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        # macos-14: arm64, macos-13: x64, windows-latest: x64, ubuntu-latest: x64
+        os: [ macos-14, macos-13, windows-latest, ubuntu-latest ]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v4
+        with:
+          java-version: '25'
+          distribution: 'temurin'
+          cache: 'maven'
+
+      - name: Build the ZIP
+        shell: bash
+        run: ./mvnw -B -Pdist -DskipTests package -pl idm-test-runner -am
+
+      - name: Smoke test (macOS, Linux)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/smoke dir"
+          unzip -q idm-test-runner/target/idmtest-*.zip -d "$RUNNER_TEMP/smoke dir"
+          "$RUNNER_TEMP/smoke dir/idmtest/bin/idmtest" --version
+
+      - name: Unzip (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $zip = Get-ChildItem idm-test-runner/target/idmtest-*.zip | Select-Object -First 1
+          Expand-Archive -Path $zip.FullName -DestinationPath (Join-Path $env:RUNNER_TEMP 'smoke dir')
+
+      - name: Smoke test (Windows)
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: '"%RUNNER_TEMP%\smoke dir\idmtest\bin\idmtest.cmd" --version'
+
+      - name: Upload the ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: idmtest-${{ matrix.os }}
+          path: idm-test-runner/target/idmtest-*.zip
+          if-no-files-found: error
+          retention-days: 14

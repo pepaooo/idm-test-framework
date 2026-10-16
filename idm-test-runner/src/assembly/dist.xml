@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- The per-OS idmtest ZIP (spec §6): launchers, the runner jar, an empty drivers folder and the jlink runtime -->
+<assembly xmlns="http://maven.apache.org/ASSEMBLY/2.2.0"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xsi:schemaLocation="http://maven.apache.org/ASSEMBLY/2.2.0 https://maven.apache.org/xsd/assembly-2.2.0.xsd">
+    <id>dist</id>
+    <formats>
+        <format>zip</format>
+    </formats>
+    <includeBaseDirectory>true</includeBaseDirectory>
+    <baseDirectory>idmtest</baseDirectory>
+
+    <fileSets>
+        <fileSet>
+            <directory>src/dist/bin</directory>
+            <outputDirectory>bin</outputDirectory>
+            <fileMode>0755</fileMode>
+            <lineEnding>keep</lineEnding>
+        </fileSet>
+        <fileSet>
+            <directory>src/dist</directory>
+            <outputDirectory/>
+            <includes>
+                <include>README.md</include>
+                <include>LICENSE-THIRD-PARTY</include>
+            </includes>
+            <fileMode>0644</fileMode>
+        </fileSet>
+        <!-- An empty lib/drivers/ for extra JDBC driver jars -->
+        <fileSet>
+            <directory>src/dist</directory>
+            <outputDirectory>lib/drivers</outputDirectory>
+            <excludes>
+                <exclude>**/*</exclude>
+            </excludes>
+        </fileSet>
+        <!-- The jlink image keeps its own file modes (bin/java must stay executable) -->
+        <fileSet>
+            <directory>${project.build.directory}/runtime</directory>
+            <outputDirectory>runtime</outputDirectory>
+        </fileSet>
+    </fileSets>
+
+    <files>
+        <file>
+            <source>${project.build.directory}/${project.build.finalName}.jar</source>
+            <outputDirectory>lib</outputDirectory>
+            <destName>idm-test-runner-${project.version}.jar</destName>
+            <fileMode>0644</fileMode>
+        </file>
+    </files>
+</assembly>

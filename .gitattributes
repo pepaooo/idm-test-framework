@@ -1,2 +1,3 @@
 /mvnw text eol=lf
 *.cmd text eol=crlf
+/idm-test-runner/src/dist/bin/idmtest text eol=lf

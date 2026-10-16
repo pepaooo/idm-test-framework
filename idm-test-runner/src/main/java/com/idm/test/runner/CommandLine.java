@@ -40,7 +40,10 @@ public record CommandLine(String command, Path workspace, String profile, String
         while (rest.hasNext()) {
             String arg = rest.next();
             switch (arg) {
-                case "--workspace" -> workspace = Path.of(value(arg, rest));
+                case "--workspace" -> workspace = Path.of(value(arg, rest)).toAbsolutePath().normalize();
+                case "--help", "-h" -> {
+                    return of("help", null, null, null, null, false, null);
+                }
                 case "--profile" -> profile = value(arg, rest);
                 case "--scenario" -> scenario = value(arg, rest);
                 case "--locale" -> locale = value(arg, rest);
@@ -61,7 +64,11 @@ public record CommandLine(String command, Path workspace, String profile, String
         if (!rest.hasNext()) {
             throw new UsageException(Message.of("runner.cli.missingValue", option));
         }
-        return rest.next();
+        String value = rest.next();
+        if (value.startsWith("--")) {
+            throw new UsageException(Message.of("runner.cli.missingValue", option));
+        }
+        return value;
     }
 
     private static CommandLine of(String command, Path workspace, String profile, String scenario,

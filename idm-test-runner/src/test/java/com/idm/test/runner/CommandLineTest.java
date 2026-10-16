@@ -45,4 +45,25 @@ class CommandLineTest {
         assertThatThrownBy(() -> CommandLine.parse("run", "--profile")).isInstanceOf(UsageException.class)
                 .hasMessage("option '--profile' needs a value");
     }
+
+    @Test
+    @DisplayName("An option value starting with -- is not a value")
+    void testOptionValueLooksLikeOption() {
+        assertThatThrownBy(() -> CommandLine.parse("run", "--profile", "--verbose"))
+                .isInstanceOf(UsageException.class).hasMessage("option '--profile' needs a value");
+    }
+
+    @Test
+    @DisplayName("--help or -h after a command means help")
+    void testHelpAnywhere() {
+        assertThat(CommandLine.parse("run", "--help").command()).isEqualTo("help");
+        assertThat(CommandLine.parse("validate", "--profile", "lab", "-h").command()).isEqualTo("help");
+    }
+
+    @Test
+    @DisplayName("A relative --workspace is made absolute")
+    void testRelativeWorkspace() {
+        assertThat(CommandLine.parse("validate", "--workspace", "tests/../lab").workspace())
+                .isEqualTo(Path.of("lab").toAbsolutePath());
+    }
 }

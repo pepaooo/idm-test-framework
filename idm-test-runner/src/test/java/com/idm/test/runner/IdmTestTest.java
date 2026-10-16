@@ -24,7 +24,7 @@ class IdmTestTest {
     @DisplayName("Should print the version and exit 0")
     void testVersion() {
         assertThat(run("--version")).isEqualTo(ExitCodes.OK);
-        assertThat(outBytes.toString(StandardCharsets.UTF_8)).startsWith("idmtest ").doesNotContain("${");
+        assertThat(outBytes.toString(StandardCharsets.UTF_8)).matches("(?s)idmtest \\d+\\.\\d+.*");
     }
 
     @Test

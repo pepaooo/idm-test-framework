@@ -4,9 +4,9 @@ set -e
 SELF="$0"
 while [ -h "$SELF" ]; do
   LINK=$(ls -ld "$SELF" | sed 's/.*-> //')
-  case "$LINK" in /*) SELF="$LINK" ;; *) SELF="$(dirname "$SELF")/$LINK" ;; esac
+  case "$LINK" in /*) SELF="$LINK" ;; *) SELF="$(dirname -- "$SELF")/$LINK" ;; esac
 done
-HOME_DIR=$(cd "$(dirname "$SELF")/.." && pwd)
+HOME_DIR=$(CDPATH= cd -- "$(dirname -- "$SELF")/.." && pwd)
 
 if [ -n "$IDM_TEST_JAVA_HOME" ]; then
   JAVA_DIR="$IDM_TEST_JAVA_HOME"
@@ -23,5 +23,15 @@ if [ -z "$VERSION" ] || [ "$VERSION" -lt 25 ]; then
   echo "IDM_TEST_JAVA_HOME points to Java ${VERSION:-unknown} ($JAVA_DIR); idmtest needs Java 25 or newer" >&2
   exit 2
 fi
-JAR=$(ls "$HOME_DIR"/lib/idm-test-runner-*.jar | head -n 1)
+JAR=
+for CANDIDATE in "$HOME_DIR"/lib/idm-test-runner-*.jar; do
+  if [ -f "$CANDIDATE" ]; then
+    JAR="$CANDIDATE"
+    break
+  fi
+done
+if [ -z "$JAR" ]; then
+  echo "idmtest is not installed correctly: lib/idm-test-runner-*.jar not found in $HOME_DIR" >&2
+  exit 2
+fi
 exec "$JAVA_DIR/bin/java" "-Dloader.path=$HOME_DIR/lib/drivers" -jar "$JAR" "$@"

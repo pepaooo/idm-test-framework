@@ -10,6 +10,13 @@ on:
       - 'idm-connector-*/**'
       - 'pom.xml'
       - '.github/workflows/runner-dist.yml'
+  # Pull requests too, so the Windows launcher runs before a change is merged.
+  pull_request:
+    paths:
+      - 'idm-test-*/**'
+      - 'idm-connector-*/**'
+      - 'pom.xml'
+      - '.github/workflows/runner-dist.yml'
   workflow_dispatch:
 
 jobs:
@@ -20,8 +27,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # macos-14: arm64, macos-13: x64, windows-latest: x64, ubuntu-latest: x64
-        os: [ macos-14, macos-13, windows-latest, ubuntu-latest ]
+        # macos-14: arm64, macos-15-intel: x64, windows-latest: x64, ubuntu-latest: x64
+        os: [ macos-14, macos-15-intel, windows-latest, ubuntu-latest ]
 
     steps:
       - name: Checkout code
@@ -44,7 +51,9 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/smoke dir"
           unzip -q idm-test-runner/target/idmtest-*.zip -d "$RUNNER_TEMP/smoke dir"
-          "$RUNNER_TEMP/smoke dir/idmtest/bin/idmtest" --version
+          out=$("$RUNNER_TEMP/smoke dir/idmtest/bin/idmtest" --version)
+          echo "$out"
+          case "$out" in "idmtest "*) ;; *) echo "unexpected --version output" >&2; exit 1 ;; esac
 
       - name: Unzip (Windows)
         if: runner.os == 'Windows'
@@ -56,7 +65,10 @@ jobs:
       - name: Smoke test (Windows)
         if: runner.os == 'Windows'
         shell: cmd
-        run: '"%RUNNER_TEMP%\smoke dir\idmtest\bin\idmtest.cmd" --version'
+        run: |
+          call "%RUNNER_TEMP%\smoke dir\idmtest\bin\idmtest.cmd" --version > "%RUNNER_TEMP%\version.txt" || exit /b 1
+          type "%RUNNER_TEMP%\version.txt"
+          findstr /b /c:"idmtest " "%RUNNER_TEMP%\version.txt" || exit /b 1
 
       - name: Upload the ZIP
         uses: actions/upload-artifact@v4

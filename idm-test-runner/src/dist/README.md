@@ -13,6 +13,13 @@ from a workspace folder. This ZIP contains everything it needs, including a Java
    idmtest --version
    ```
 
+### Windows: how to call it
+
+Call `idmtest` without quotes, from a folder on `PATH` or as `C:\Tools\idmtest\bin\idmtest`. If the path
+has spaces and needs quotes, include the extension: `"C:\My Tools\idmtest\bin\idmtest.cmd"`. A quoted
+call without `.cmd` (`"idmtest"`) makes Windows report the wrong folder to the launcher, and it then
+can't find its runtime.
+
 ### macOS: first start
 
 The launcher is not signed. Once, after unzipping, remove the quarantine flag macOS puts on downloaded files:

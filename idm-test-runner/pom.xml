@@ -182,7 +182,7 @@
                                         <delete dir="${project.build.directory}/runtime"/>
                                         <exec executable="${java.home}/bin/jlink" failonerror="true">
                                             <arg value="--add-modules"/>
-                                            <arg value="java.base,java.sql,java.naming,java.xml,java.net.http,java.logging,java.management,java.desktop,java.instrument,jdk.unsupported,jdk.crypto.ec,jdk.charsets,jdk.zipfs,jdk.dynalink"/>
+                                            <arg value="java.base,java.sql,java.naming,java.xml,java.net.http,java.logging,java.management,java.desktop,java.instrument,jdk.unsupported,jdk.crypto.ec,jdk.charsets,jdk.zipfs,jdk.dynalink,jdk.net,java.security.jgss,jdk.security.jgss"/>
                                             <arg value="--strip-debug"/>
                                             <arg value="--no-header-files"/>
                                             <arg value="--no-man-pages"/>

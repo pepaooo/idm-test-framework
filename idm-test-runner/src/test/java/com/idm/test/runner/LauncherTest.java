@@ -13,6 +13,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -116,6 +117,66 @@ class LauncherTest {
                 "--version");
     }
 
+    @Test
+    @DisplayName("Should accept a release that gives only the major version")
+    void testAcceptsMajorOnlyVersion() throws Exception {
+        Path java25 = fakeJava(temp.resolve("Java Homes/jdk 25"), "25");
+
+        Result result = launch(home.resolve("bin/idmtest"), java25.toString());
+
+        assertThat(result.exit()).isZero();
+        assertThat(result.stdout().lines().findFirst()).contains(java25.resolve("bin/java").toString());
+    }
+
+    @Test
+    @DisplayName("Should call the version unknown when the release file has no JAVA_VERSION line")
+    void testReleaseWithoutVersion() throws Exception {
+        Path javaHome = fakeJava(temp.resolve("Java Homes/odd jdk"), "25.0.3");
+        Files.writeString(javaHome.resolve("release"), "IMPLEMENTOR=\"Test\"\n", StandardCharsets.UTF_8);
+
+        Result result = launch(home.resolve("bin/idmtest"), javaHome.toString());
+
+        assertThat(result.exit()).isEqualTo(2);
+        assertThat(result.stderr().strip()).isEqualTo(
+                "IDM_TEST_JAVA_HOME points to Java unknown (" + javaHome + "); idmtest needs Java 25 or newer");
+    }
+
+    @Test
+    @DisplayName("Should say the install is broken when the runner jar is missing")
+    void testMissingRunnerJar() throws Exception {
+        fakeJava(home.resolve("runtime"), "25.0.3");
+        Files.delete(home.resolve("lib/idm-test-runner-0.jar"));
+
+        Result result = launch(home.resolve("bin/idmtest"), null);
+
+        assertThat(result.exit()).isEqualTo(2);
+        assertThat(result.stdout()).isEmpty();
+        assertThat(result.stderr()).isEqualTo("idmtest is not installed correctly: "
+                + "lib/idm-test-runner-*.jar not found in " + home + "\n");
+    }
+
+    @Test
+    @DisplayName("Should find its install folder when CDPATH is set and it is started by a relative path")
+    void testIgnoresCdpath() throws Exception {
+        Path runtime = fakeJava(home.resolve("runtime"), "25.0.3");
+        // A decoy with the same relative layout: a cd that consults CDPATH would land (and print) here.
+        Path decoy = Files.createDirectories(temp.resolve("Decoy/idmtest/bin")).getParent().getParent();
+
+        Result result = launch(List.of("/bin/sh", "-c", "idmtest/bin/idmtest --version"),
+                home.getParent(), null, Map.of("CDPATH", decoy.toString()));
+
+        // The shell starts in the physical folder (macOS: /private/var/...), so pwd reports the real path.
+        Path realHome = home.toRealPath();
+        assertThat(result.exit()).isZero();
+        assertThat(result.stderr()).isEmpty();
+        assertThat(result.stdout().lines().toList()).containsExactly(
+                runtime.toRealPath().resolve("bin/java").toString(),
+                "-Dloader.path=" + realHome + "/lib/drivers",
+                "-jar",
+                realHome + "/lib/idm-test-runner-0.jar",
+                "--version");
+    }
+
     private static Path fakeJava(Path javaHome, String version) throws IOException {
         Path java = Files.createDirectories(javaHome.resolve("bin")).resolve("java");
         Files.writeString(java, "#!/bin/sh\nprintf '%s\\n' \"$0\" \"$@\"\n", StandardCharsets.UTF_8);
@@ -130,14 +191,21 @@ class LauncherTest {
     }
 
     private Result launch(Path launcher, String javaHome) throws Exception {
-        ProcessBuilder builder = new ProcessBuilder(List.of(launcher.toString(), "--version"))
-                .directory(temp.toFile())
+        return launch(List.of(launcher.toString(), "--version"), temp, javaHome, Map.of());
+    }
+
+    private Result launch(List<String> command, Path directory, String javaHome, Map<String, String> env)
+            throws Exception {
+        ProcessBuilder builder = new ProcessBuilder(command)
+                .directory(directory.toFile())
                 .redirectOutput(temp.resolve("out.txt").toFile())
                 .redirectError(temp.resolve("err.txt").toFile());
         builder.environment().remove("IDM_TEST_JAVA_HOME");
+        builder.environment().remove("CDPATH");
         if (javaHome != null) {
             builder.environment().put("IDM_TEST_JAVA_HOME", javaHome);
         }
+        builder.environment().putAll(env);
         Process process = builder.start();
         assertThat(process.waitFor(30, TimeUnit.SECONDS)).isTrue();
         return new Result(process.exitValue(),

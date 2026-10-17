@@ -59,6 +59,23 @@ Both tiers use the same connectors underneath, so a fix in a connector reaches b
 
 ---
 
+## Getting started without Maven
+
+An IdM consultant who does not write Java can run YAML scenarios from a folder of their own with
+`idmtest`: unzip one download (it carries its own Java 25), create a workspace, point it at the lab and
+run.
+
+```bash
+idmtest init my-tests
+cd my-tests
+idmtest validate
+idmtest run --profile lab
+```
+
+See the [runner guide](docs/guides/runner.md) for installing, settings and secrets, reports and drivers.
+
+---
+
 ## Quick start
 
 **Prerequisites:** Java 25 and Maven 3.9+. That is all — Docker is not required.
@@ -324,6 +341,7 @@ Organised by how much you should trust it.
 - [Architecture guide](docs/architecture/README.md) — system context, modules, and execution diagrams
 - [Capability baseline](docs/architecture/capabilities.md) — implemented capabilities, planned work, and verification evidence
 - [Scenario authoring](docs/guides/scenario-authoring.md) — YAML and Java examples
+- [Running scenarios with `idmtest`](docs/guides/runner.md) — install, workspace, settings, reports
 - [Architecture decisions](docs/architecture/decisions/README.md) — design choices and their rationale
 - Team presentation — [PowerPoint](docs/presentations/project-introduction.pptx), [PDF](docs/presentations/project-introduction.pdf), and [speaker notes](docs/presentations/project-introduction.md)
 

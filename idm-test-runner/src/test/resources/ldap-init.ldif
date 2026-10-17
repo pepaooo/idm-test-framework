@@ -1,0 +1,26 @@
+# IdM Test Framework - LDAP Initialization
+# This file creates the organizational structure required for integration tests
+#
+# Structure:
+# dc=test,dc=com (root - created by container)
+# ├── ou=users (user accounts)
+# ├── ou=roles (role definitions)
+# └── ou=groups (security groups)
+
+dn: ou=users,dc=test,dc=com
+objectClass: organizationalUnit
+objectClass: top
+ou: users
+description: User accounts
+
+dn: ou=roles,dc=test,dc=com
+objectClass: organizationalUnit
+objectClass: top
+ou: roles
+description: Role definitions
+
+dn: ou=groups,dc=test,dc=com
+objectClass: organizationalUnit
+objectClass: top
+ou: groups
+description: Security groups

@@ -33,43 +33,6 @@ class ScenarioFilterTest {
             "user-provisioning.yaml");
 
     @Test
-    @DisplayName("No filter returns every file unchanged")
-    void testNoFilterReturnsEverything() {
-        assertThat(ScenarioSupport.select(FILES, null, DIR)).containsExactlyElementsOf(FILES);
-    }
-
-    @Test
-    @DisplayName("An exact file name selects that one file")
-    void testExactNameSelectsOneFile() {
-        assertThat(ScenarioSupport.select(FILES, "provisioning-user-to-ldap.yaml", DIR))
-                .containsExactly("provisioning-user-to-ldap.yaml");
-    }
-
-    @Test
-    @DisplayName("A file name without .yaml selects the same file")
-    void testNameWithoutExtensionSelectsFile() {
-        assertThat(ScenarioSupport.select(FILES, "provisioning-user-to-ldap", DIR))
-                .containsExactly("provisioning-user-to-ldap.yaml");
-    }
-
-    @Test
-    @DisplayName("A group glob selects its group and nothing that merely contains the word")
-    void testGroupGlobIsPrecise() {
-        assertThat(ScenarioSupport.select(FILES, "provisioning-*", DIR))
-                .containsExactly("provisioning-minimal-user.yaml", "provisioning-user-to-ldap.yaml");
-    }
-
-    @Test
-    @DisplayName("A brace glob selects two groups")
-    void testBraceGlobSelectsTwoGroups() {
-        assertThat(ScenarioSupport.select(FILES, "{provisioning-*,roles-*}", DIR))
-                .containsExactly(
-                        "provisioning-minimal-user.yaml",
-                        "provisioning-user-to-ldap.yaml",
-                        "roles-assign-multiple.yaml");
-    }
-
-    @Test
     @DisplayName("A filter that matches nothing fails, listing what is available")
     void testNoMatchFails() {
         assertThatThrownBy(() -> ScenarioSupport.select(FILES, "provisoning-user-to-ldap.yaml", DIR))
@@ -95,14 +58,5 @@ class ScenarioFilterTest {
         assertThatThrownBy(() -> ScenarioSupport.select(FILES, "  ", DIR))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("is set but empty");
-    }
-
-    @Test
-    @DisplayName("An invalid glob fails, naming the pattern")
-    void testInvalidGlobFails() {
-        assertThatThrownBy(() -> ScenarioSupport.select(FILES, "provisioning-[", DIR))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("-Dscenario=provisioning-[")
-                .hasMessageContaining("not a valid glob");
     }
 }

@@ -2,6 +2,7 @@ package com.idm.test.scenarios.engine;
 
 import com.idm.test.engine.result.RunInfo;
 import com.idm.test.engine.result.ScenarioResult;
+import com.idm.test.wiring.RunRecorder;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -24,7 +25,7 @@ class ScenarioSupportReportFailureTest {
         Files.createDirectory(dir.resolve("x-report.html"));
         List<ScenarioResult> collected = List.of(new ScenarioResult("a", "a.yaml", true, 1L, List.of(), null));
 
-        assertThatCode(() -> ScenarioSupport.writeResults(collected, results, RunInfo.minimal("Scenarios")))
+        assertThatCode(() -> RunRecorder.write(collected, results, RunRecorder.reportPath(results), RunInfo.minimal("Scenarios")))
                 .doesNotThrowAnyException();
 
         assertThat(Files.readString(results)).contains("a.yaml");

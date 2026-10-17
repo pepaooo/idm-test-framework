@@ -98,6 +98,11 @@ Nothing the selected scenarios don't use is checked or contacted.
 [scenarios-real/README.md](../../idm-test-scenarios/src/test/resources/scenarios-real/README.md)
 lists the variables to set and explains why profile values need the `IDM_TEST_*` form.
 
+## Without Maven
+
+People who do not write Java can run the same YAML scenarios from their own folder with the `idmtest`
+runner: see [Running scenarios with `idmtest`](../guides/runner.md).
+
 ## Reading the results
 
 - Surefire reports: each module's `target/surefire-reports/`.

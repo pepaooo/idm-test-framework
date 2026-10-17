@@ -1,0 +1,54 @@
+# Settings for the "lab" profile: idmtest run --profile lab
+# Every key is commented out, so nothing is contacted until you choose. For each system you use,
+# replace the placeholder values and remove the "# " at the start of its lines, together with the
+# "# idm:" and "#   test:" lines (keep the explanations after them as comments).
+# Secrets are never written here: ${IDM_TEST_...} reads them from secrets.env
+# (copy secrets.env.example to secrets.env) or from the environment.
+# All keys are described in docs/reference/configuration.md.
+# idm:
+#   test:
+#     ldap:
+#       url: ldap://directory.example.com:389   # replace with your directory
+#       base-dn: o=data
+#       user-dn: cn=admin,o=data
+#       password: ${IDM_TEST_LDAP_PASSWORD}
+
+    # Several directories: name each one and say which steps use by default.
+#     default-directory: edirectory
+#     directories:
+#       edirectory:
+#         url: ldaps://edir.example.com:636
+#         base-dn: o=company
+#         user-dn: cn=admin,o=company
+#         password: ${IDM_TEST_EDIR_PASSWORD}
+
+    # Databases: one entry per database, named as the db.* steps name it.
+#     databases:
+#       sap:
+#         jdbc-url: jdbc:postgresql://db.example.com:5432/sap
+#         username: idmtest
+#         password: ${IDM_TEST_SAP_DB_PASSWORD}
+#         driver-class-name: org.postgresql.Driver
+#         max-pool-size: 5
+
+    # REST targets: basic authentication, or OAuth2 with use-oauth and oauth-client-name.
+#     rest:
+#       idm:
+#         base-url: https://idm.example.com:8543/IDMProv
+#         username: idmtest
+#         password: ${IDM_TEST_REST_PASSWORD}
+#         connect-timeout: 10000
+#         read-timeout: 30000
+
+    # SOAP services of NetIQ Identity Manager (roles.* and resources.* steps).
+#     soap:
+#       url: https://idm.example.com:8543/IDMProv/role/service
+#       resource-url: https://idm.example.com:8543/IDMProv/resource/service
+#       username: idmtest
+#       password: ${IDM_TEST_SOAP_PASSWORD}
+#       connection-timeout: 10000
+#       read-timeout: 30000
+
+    # Language of the report and messages: en or es.
+#     report:
+#       locale: en

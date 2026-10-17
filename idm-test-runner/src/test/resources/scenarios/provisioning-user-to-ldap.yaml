@@ -1,0 +1,39 @@
+name: Provision a user to eDirectory
+description: Create a user and verify the directory entry carries its attributes
+
+fixtures:
+  user:
+    generate: random-user
+    values:
+      department: Engineering
+      jobTitle: Software Engineer
+
+steps:
+  - ldap.create:
+      description: "Create ${user.userId} in the directory"
+      dn: "cn=${user.userId},ou=users"
+      as: createdDn
+      attributes:
+        cn: "${user.userId}"
+        sn: "${user.lastName}"
+        givenName: "${user.firstName}"
+        mail: "${user.email}"
+
+  - ldap.verify:
+      description: Wait until the entry exists
+      dn: "cn=${user.userId},ou=users"
+      exists: true
+      wait: true
+
+  - ldap.verify:
+      description: Check the entry carries the generated attributes
+      dn: "cn=${user.userId},ou=users"
+      expect:
+        givenName: "${user.firstName}"
+        sn: "${user.lastName}"
+        mail: "${user.email}"
+
+cleanup:
+  - ldap.delete:
+      description: Remove the test entry
+      dn: "${createdDn}"

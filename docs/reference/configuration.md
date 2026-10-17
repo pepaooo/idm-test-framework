@@ -41,6 +41,40 @@ Or in your IDE/Maven command:
 mvn test -Dspring.profiles.active=dev
 ```
 
+## Workspace configuration
+
+The `idmtest` runner ([guide](../guides/runner.md)) reads its settings from the workspace's `config/`
+folder instead of `application.yml`, with the same `idm.test.*` keys:
+
+- `config/application-<profile>.yml`: one file per environment, chosen with `--profile <profile>`
+  (required for `run`; a profile name may not contain `/`, `\` or `..`)
+- `config/application.yml`: optional, shared by every profile
+- `secrets.env`: optional `KEY=VALUE` lines in UTF-8 (`#` comments and blank lines allowed), referenced from
+  the YAML as `${KEY}`; never commit it
+- `drivers/`: optional JDBC driver jars for databases other than PostgreSQL, Oracle and SQL Server, which are
+  built in and never replaced by a jar here; `<install>/lib/drivers/` serves every workspace
+
+When a setting is given in several places, the first of these wins:
+
+1. command-line options (`--profile`, `--locale`, which sets `idm.test.report.locale`)
+2. real environment variables
+3. `secrets.env`
+4. `config/application-<profile>.yml`
+5. `config/application.yml`
+6. the runner's built-in defaults (timeouts and pool sizes; no lab URLs or credentials)
+
+Settings come only from the workspace's `config/` folder and the built-in defaults (the runner sets
+`spring.config.location=optional:classpath:/,optional:file:<workspace>/config/`): an `application.yml` or
+`config/` folder in the current folder is never read, so `--workspace` never mixes in another workspace's
+settings.
+
+The report language follows the order under [Report language](#report-language) with `--locale` first.
+During a run the masked `run.log` is the only log output, so `logging.file.*` and `logging.config` are
+ignored. The console, `run.log`, `results.json` and `report.html` mask the `secrets.env` values, the
+environment variables that override them, and every environment variable whose name looks secret (the
+same name rule as the report's parameter masking; `PWD` and `OLDPWD` excepted). Secret values shorter
+than 4 characters are not masked, so use real passwords.
+
 ## Sensitive Data Management
 
 **NEVER commit passwords or secrets to version control!**
@@ -320,6 +354,7 @@ The HTML report and the messages in the JSON results are written in English by d
 language with `idm.test.report.locale` (`en` or `es`). The setting is read once per run, before
 any scenario runs; the first non-blank source wins:
 
+0. for `idmtest`, the `--locale` option (the runner passes it on as `idm.test.report.locale`)
 1. the Spring property `idm.test.report.locale` (a profile file or `IDM_TEST_REPORT_LOCALE`)
 2. the environment variable `IDM_TEST_LOCALE`
 3. the system property `-Didm.test.locale`

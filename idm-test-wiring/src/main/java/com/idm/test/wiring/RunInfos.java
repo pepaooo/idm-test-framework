@@ -1,4 +1,4 @@
-package com.idm.test.scenarios.engine;
+package com.idm.test.wiring;
 
 import com.idm.test.connector.database.config.DatabaseProperties;
 import com.idm.test.connector.ldap.client.LdapDirectories;
@@ -27,12 +27,12 @@ import java.util.TreeSet;
  * selected: its profiles, its -Dscenario filter, and the endpoints those scenarios use (the same
  * needs the real-environment guards check). URLs are sanitised by {@link RunInfo} itself.
  */
-final class RunInfos {
+public final class RunInfos {
 
     private RunInfos() {
     }
 
-    static RunInfo of(String runnerKey, Environment environment, List<Scenario> scenarios) {
+    public static RunInfo of(String runnerKey, Environment environment, List<Scenario> scenarios) {
         // First, so an unsupported language fails before anything else is read.
         Locale locale = locale(environment, System.getenv("IDM_TEST_LOCALE"), System.getProperty("idm.test.locale"));
         String runner = Messages.render(Message.of(runnerKey), locale);
@@ -67,7 +67,7 @@ final class RunInfos {
         }
 
         return new RunInfo(runner, Instant.now(), List.of(environment.getActiveProfiles()),
-                System.getProperty(ScenarioSupport.SCENARIO_PROPERTY), endpoints, locale);
+                System.getProperty(ScenarioGlob.SCENARIO_PROPERTY), endpoints, locale);
     }
 
     /** An endpoint row's label in the run's language. */
@@ -76,7 +76,7 @@ final class RunInfos {
     }
 
     /** The report language: the profile property, then the environment variable, then the system property. */
-    static Locale locale(Environment environment, String env, String systemProperty) {
+    public static Locale locale(Environment environment, String env, String systemProperty) {
         return ReportLocale.resolve(environment.getProperty("idm.test.report.locale"), env, systemProperty);
     }
 

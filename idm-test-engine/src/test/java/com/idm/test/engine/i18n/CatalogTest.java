@@ -27,7 +27,8 @@ class CatalogTest {
     private static final Pattern KEY_LITERAL = Pattern.compile(
             "\"((?:report|evidence|step|engine|validation|runner)\\.[A-Za-z0-9_.]+)\"");
     /** Sources that may use keys: the engine, and the runners in the scenarios module. */
-    private static final Path[] SOURCES = {Path.of("src/main/java"), Path.of("../idm-test-scenarios/src/test/java")};
+    private static final Path[] SOURCES = {Path.of("src/main/java"), Path.of("../idm-test-scenarios/src/test/java"),
+        Path.of("../idm-test-wiring/src/main/java"), Path.of("../idm-test-runner/src/main/java")};
     /** Keys whose Spanish text may equal the English (technical words that stay as they are). */
     private static final Set<String> SAME_IN_BOTH = Set.of(
             "report.datePattern",

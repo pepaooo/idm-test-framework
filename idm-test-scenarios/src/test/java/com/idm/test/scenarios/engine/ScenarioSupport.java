@@ -1,12 +1,5 @@
 package com.idm.test.scenarios.engine;
 
-import com.idm.test.connector.database.client.MultiDatabaseConnector;
-import com.idm.test.connector.ldap.client.LdapDirectories;
-import com.idm.test.connector.rest.client.IdmRestConnector;
-import com.idm.test.connector.rest.client.RestAuthenticator;
-import com.idm.test.connector.rest.config.RestProperties;
-import com.idm.test.connector.soap.client.ResourceServiceConnector;
-import com.idm.test.connector.soap.client.RoleServiceConnector;
 import com.idm.test.engine.ScenarioEngine;
 import com.idm.test.engine.ScenarioLoader;
 import com.idm.test.engine.ScenarioValidator;
@@ -14,38 +7,19 @@ import com.idm.test.engine.ValidationException;
 import com.idm.test.engine.model.Scenario;
 import com.idm.test.engine.i18n.Messages;
 import com.idm.test.engine.i18n.ReportLocale;
-import com.idm.test.engine.result.HtmlReportWriter;
-import com.idm.test.engine.result.JsonResultWriter;
 import com.idm.test.engine.result.RunInfo;
 import com.idm.test.engine.result.ScenarioResult;
 import com.idm.test.engine.spi.Message;
-import com.idm.test.engine.spi.StepType;
-import com.idm.test.engine.steps.DbExecuteStep;
-import com.idm.test.engine.steps.DbVerifyStep;
-import com.idm.test.engine.steps.HttpRequestStep;
-import com.idm.test.engine.steps.HttpVerifyStep;
-import com.idm.test.engine.steps.LdapCreateStep;
-import com.idm.test.engine.steps.LdapDeleteStep;
-import com.idm.test.engine.steps.LdapUpdateStep;
-import com.idm.test.engine.steps.LdapVerifyStep;
-import com.idm.test.engine.steps.ResourcesGrantStep;
-import com.idm.test.engine.steps.ResourcesRevokeStep;
-import com.idm.test.engine.steps.RestRequestStep;
-import com.idm.test.engine.steps.RestVerifyStep;
-import com.idm.test.engine.steps.RolesGrantStep;
-import com.idm.test.engine.steps.RolesRevokeStep;
+import com.idm.test.wiring.ClasspathScenarioSource;
+import com.idm.test.wiring.RunRecorder;
+import com.idm.test.wiring.ScenarioGlob;
 import org.junit.jupiter.api.DynamicTest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.IOException;
 import java.io.InputStream;
-import java.io.UncheckedIOException;
 import java.net.URISyntaxException;
-import java.nio.file.FileSystems;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.PathMatcher;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -53,14 +27,12 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.function.Function;
-import java.util.regex.PatternSyntaxException;
-import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.fail;
 
 /**
- * The scenario helpers every runner shares: the step registry, file discovery and
+ * The scenario helpers every JUnit runner shares: file discovery and
  * {@code -Dscenario} selection, and turning files into dynamic tests.
  * <p>
  * Extends nothing, on purpose. {@code BaseIntegrationTest} starts the embedded LDAP servers and
@@ -76,7 +48,7 @@ final class ScenarioSupport {
     }
 
     /** System property naming the scenario file, or glob of files, to run. */
-    static final String SCENARIO_PROPERTY = "scenario";
+    static final String SCENARIO_PROPERTY = ScenarioGlob.SCENARIO_PROPERTY;
 
     /** The header used when describing the run failed; always English. */
     private static RunInfo minimalRun() {
@@ -166,7 +138,7 @@ final class ScenarioSupport {
                 tests.add(DynamicTest.dynamicTest(file, () -> {
                     ScenarioResult result = engine.run(scenario, file);
                     collected.add(result);
-                    writeResults(collected, resultsPath, reportRun);
+                    RunRecorder.write(collected, resultsPath, RunRecorder.reportPath(resultsPath), reportRun);
 
                     assertThat(result.success())
                             .as(result.failureSummary(locale))
@@ -179,38 +151,12 @@ final class ScenarioSupport {
                     ScenarioResult result = new ScenarioResult(file, file, false, 0L, List.of(), List.of(), message,
                             null, detail == null ? null : detail.key(), detail == null ? null : detail.args());
                     collected.add(result);
-                    writeResults(collected, resultsPath, reportRun);
+                    RunRecorder.write(collected, resultsPath, RunRecorder.reportPath(resultsPath), reportRun);
                     fail(detail == null ? message : Messages.render(detail, locale));
                 }));
             }
         }
         return tests;
-    }
-
-    /**
-     * The JSON results and, beside them, the HTML report, both of everything run so far. The JSON
-     * is the record and its failure is fatal; the report is auxiliary, so a failure to write it is
-     * logged and never changes a scenario's outcome.
-     */
-    static void writeResults(List<ScenarioResult> collected, Path resultsPath, RunInfo run) {
-        List<ScenarioResult> snapshot = List.copyOf(collected);
-        JsonResultWriter.write(snapshot, resultsPath);
-        Path report = reportPath(resultsPath);
-        try {
-            HtmlReportWriter.write(run, snapshot, report);
-        } catch (RuntimeException e) {
-            LOG.warn("Could not write the HTML report to {}: {}", report, e.toString());
-        }
-    }
-
-    /** {@code x-results.json} becomes {@code x-report.html}; any other name gets {@code .html} appended. */
-    static Path reportPath(Path resultsPath) {
-        String name = resultsPath.getFileName().toString();
-        String suffix = "-results.json";
-        String report = name.endsWith(suffix)
-                ? name.substring(0, name.length() - suffix.length()) + "-report.html"
-                : name + ".html";
-        return resultsPath.resolveSibling(report);
     }
 
     /**
@@ -241,17 +187,7 @@ final class ScenarioSupport {
                     + " unset to run every scenario in " + scenarioDir + ".");
         }
 
-        PathMatcher matcher;
-        try {
-            matcher = FileSystems.getDefault().getPathMatcher("glob:" + pattern);
-        } catch (PatternSyntaxException e) {
-            throw new IllegalStateException("-D" + SCENARIO_PROPERTY + "=" + pattern
-                    + " is not a valid glob: " + e.getDescription(), e);
-        }
-
-        List<String> selected = files.stream()
-                .filter(file -> matcher.matches(Path.of(file)) || matcher.matches(Path.of(stripYaml(file))))
-                .toList();
+        List<String> selected = ScenarioGlob.select(files, pattern);
 
         if (selected.isEmpty()) {
             throw new IllegalStateException("-D" + SCENARIO_PROPERTY + "=" + pattern + " matches no scenario in "
@@ -260,62 +196,14 @@ final class ScenarioSupport {
         return selected;
     }
 
-    private static String stripYaml(String file) {
-        return file.endsWith(".yaml") ? file.substring(0, file.length() - ".yaml".length()) : file;
-    }
-
-    static Map<String, StepType> registry(
-            LdapDirectories ldapDirectories,
-            MultiDatabaseConnector databaseConnector,
-            RoleServiceConnector roleServiceConnector,
-            ResourceServiceConnector resourceServiceConnector,
-            IdmRestConnector restConnector,
-            RestProperties restProperties,
-            RestAuthenticator restAuthenticator) {
-        Map<String, StepType> registry = new LinkedHashMap<>();
-        for (StepType type : List.of(
-                new LdapCreateStep(ldapDirectories),
-                new LdapVerifyStep(ldapDirectories),
-                new LdapUpdateStep(ldapDirectories),
-                new LdapDeleteStep(ldapDirectories),
-                new DbExecuteStep(databaseConnector),
-                new DbVerifyStep(databaseConnector),
-                new RolesGrantStep(roleServiceConnector),
-                new RolesRevokeStep(roleServiceConnector),
-                new ResourcesGrantStep(resourceServiceConnector),
-                new ResourcesRevokeStep(resourceServiceConnector),
-                new RestRequestStep(restConnector, restProperties, restAuthenticator),
-                new RestVerifyStep(restConnector, restProperties, restAuthenticator),
-                new HttpRequestStep(restConnector, restProperties, restAuthenticator),
-                new HttpVerifyStep(restConnector, restProperties, restAuthenticator))) {
-            registry.put(type.name(), type);
-        }
-        return registry;
-    }
-
     private static InputStream resource(String scenarioDir, String file) {
-        return ScenarioSupport.class.getClassLoader()
-                .getResourceAsStream(scenarioDir + "/" + file);
+        return new ClasspathScenarioSource(scenarioDir).open(file);
     }
 
     /**
      * Lists the scenario file names on the classpath, under {@code scenarioDir}.
      */
     static List<String> scenarioFiles(String scenarioDir) throws URISyntaxException {
-        var url = ScenarioSupport.class.getClassLoader().getResource(scenarioDir);
-        if (url == null) {
-            return List.of();
-        }
-
-        Path dir = Path.of(url.toURI());
-        try (Stream<Path> files = Files.list(dir)) {
-            return files
-                    .filter(path -> path.toString().endsWith(".yaml"))
-                    .map(path -> path.getFileName().toString())
-                    .sorted()
-                    .toList();
-        } catch (IOException e) {
-            throw new UncheckedIOException("Could not list scenarios in " + dir, e);
-        }
+        return new ClasspathScenarioSource(scenarioDir).names();
     }
 }

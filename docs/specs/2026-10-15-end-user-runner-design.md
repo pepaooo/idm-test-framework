@@ -75,7 +75,9 @@ my-tests/
 ```
 
 **Settings**, set before Spring starts:
-- `spring.config.additional-location=optional:file:<workspace>/config/`
+- `spring.config.location=optional:classpath:/,optional:file:<workspace>/config/`: it replaces Spring Boot's
+  default locations, so settings come only from the workspace's `config/` and the built-in defaults; an
+  `application.yml` or `config/` folder in the current folder is never read
 - `spring.profiles.active=<--profile>`; for `run`, `--profile` is required and
   `config/application-<p>.yml` must exist (`no settings for profile 'lab': config/application-lab.yml not found`, exit 2)
 - precedence, highest first: command-line options (`--locale` → `idm.test.report.locale`) → real
@@ -90,7 +92,10 @@ my-tests/
 **Protections:** `init` writes `.gitignore` with `secrets.env` and `reports/`. Before `run`, when `git` is on
 the PATH and the workspace is in a Git repository, `git ls-files --error-unmatch secrets.env` succeeding
 prints a warning (`secrets.env is tracked by Git; remove it with 'git rm --cached secrets.env'`) and the
-run continues. Secret values never appear on the console, in `run.log` or in reports (ITF-23).
+run continues. Secret values never appear on the console, in `run.log` or in reports (ITF-23). The mask
+holds each `secrets.env` value as the run resolves it (an environment variable of the same name wins) and
+the file's own value, plus every environment variable whose name looks secret (the engine's `Secrets.isSecret`
+rule; `PWD` and `OLDPWD` excepted, as they hold folders).
 
 **Drivers:** two places, both optional:
 - `<install>/lib/drivers/` — on the class path from launch: the jar is built with Spring Boot's ZIP layout
@@ -154,8 +159,10 @@ errors are one line on stderr in the run's language.
   ```
 
 **Runtime:** `jlink --add-modules java.base,java.sql,java.naming,java.xml,java.net.http,java.logging,
-java.management,java.desktop,java.instrument,jdk.unsupported,jdk.crypto.ec,jdk.charsets,jdk.zipfs
---strip-debug --no-header-files --no-man-pages --compress zip-6`. The list is verified by running the jar
+java.management,java.desktop,java.instrument,jdk.unsupported,jdk.crypto.ec,jdk.charsets,jdk.zipfs,jdk.dynalink,
+jdk.net,java.security.jgss,jdk.security.jgss,jdk.localedata --include-locales=en,es --strip-debug --no-header-files
+--no-man-pages --compress zip-6`. `jdk.localedata` (cut to English and Spanish) gives the report the same
+Spanish formatting as a full JDK: decimal commas (`2,1 s`) and month names. The list is verified by running the jar
 on the image. jlink runs per OS: a GitHub Actions matrix (macOS, Windows, Ubuntu) builds the ZIPs and
 attaches them as workflow artifacts; locally `./mvnw -Pdist package -pl idm-test-runner -am` builds the
 current machine's ZIP. The default build does not run jlink.
@@ -163,7 +170,9 @@ current machine's ZIP. The default build does not run jlink.
 **Launcher** (`idmtest` and `idmtest.cmd`, same logic):
 1. Java = `$IDM_TEST_JAVA_HOME/bin/java` when set, else `<install>/runtime/bin/java`;
 2. read `JAVA_VERSION` from that Java's `release` file; below 25: `IDM_TEST_JAVA_HOME points to Java 21
-   (<path>); idmtest needs Java 25 or newer` (exit 2);
+   (<path>); idmtest needs Java 25 or newer` (exit 2); with `IDM_TEST_JAVA_HOME` unset, a missing, broken
+   or old bundled runtime: `the bundled Java runtime in <path> is missing or broken; reinstall idmtest or
+   set IDM_TEST_JAVA_HOME to a Java 25+` (exit 2);
 3. run `<java> -Dloader.path=<install>/lib/drivers -jar <install>/lib/idm-test-runner-<version>.jar "$@"`
    (the workspace's `drivers/` is added by the runner itself); works from any folder and through `PATH`.
 
@@ -186,7 +195,8 @@ macOS: the README documents the one-time `xattr -dr com.apple.quarantine idmtest
   - drivers: a driver jar placed in `drivers/` is loaded (H2 copied there, absent from the runner's
     own class path in that test); a URL without a driver gives the exit-2 message;
   - packaging (under `-Pdist`): ZIP layout; launcher picks `IDM_TEST_JAVA_HOME` and rejects Java below 25
-    (fake `release` file); the jlink runtime runs `--version` and `validate` on a sample workspace.
+    (fake `release` file); the jlink runtime runs `--version`, `init` and `validate` on a sample workspace
+    (the CI smoke test, on every OS).
 - **`idm-test-scenarios`:** the full suite and corpus pass unchanged after the move (1032 tests,
   0 failed scenarios).
 
@@ -205,3 +215,33 @@ macOS: the README documents the one-time `xattr -dr com.apple.quarantine idmtest
 - OS keychain or encrypted secrets.
 - A `check` command for connectivity (the guards in `run` cover the refusals).
 - ITF-44 (per-profile files in the repository); the workspace's `config/` works without it.
+
+## 10. Refinements made during implementation
+
+- **Profile at the command-line layer.** `--profile` reaches Spring as `--spring.profiles.active`, like
+  `--locale` as `--idm.test.report.locale`, so both beat environment variables and every file. The
+  language is `--locale`, then `IDM_TEST_LOCALE`, then `-Didm.test.locale`, then the profile's
+  `idm.test.report.locale`, then English.
+- **Logging during runs.** The masked `run.log` (and the console with `--verbose`) are the only log outputs;
+  `logging.file.*` and `logging.config` in workspace settings are ignored, so no file can receive
+  `secrets.env` values unmasked. Secret values shorter than 4 characters are not masked.
+- **Names and files.** A profile name may not contain `/`, `\` or `..`; `secrets.env` must be UTF-8.
+- **`DriverLoader` reads service files per jar.** Each jar's own `META-INF/services/java.sql.Driver` is read,
+  and a provider the parent class loader already has (a built-in driver) is skipped, so the built-in one is used.
+- **Pools closed with the context.** Database pools are closed when the run's context closes.
+- **No `Locale` on `DriverCheck`.** It throws a `UsageException` carrying a message key; the caller renders it
+  in the run's language.
+- **Init example.** The example scenario's DN is relative to the base DN, and the example settings use
+  `user-dn` for the LDAP bind.
+- **CI runner.** The x64 macOS job runs on `macos-15-intel`.
+- **jlink modules.** The runtime also needs `jdk.dynalink`, `jdk.net`, `java.security.jgss` and
+  `jdk.security.jgss`, found by running the jar on the image, and `jdk.localedata` with
+  `--include-locales=en,es`, without which Spanish falls back to `2.1 s` and English month abbreviations.
+- **Config locations.** `spring.config.location` (not `additional-location`), so the current folder's
+  `./` and `./config/` are never read: running from workspace A with `--workspace ../B` reads only B.
+- **What is masked.** The console, `run.log`, `results.json` and `report.html` are masked (each result is
+  masked before it is written), from the effective secret values: `secrets.env` values, the environment
+  variables that override them, and secret-named environment variables.
+- **Embedded profile in the runner.** `--profile test` is refused with the runner's own message
+  (`runner.guard.embeddedProfile`), which names `--profile`; the JUnit runners keep theirs, which names
+  `IDM_TEST_PROFILE`.

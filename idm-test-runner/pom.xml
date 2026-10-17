@@ -1,0 +1,226 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+         https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.idm.test</groupId>
+        <artifactId>idm-test-framework</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>idm-test-runner</artifactId>
+    <name>IdM Test Runner</name>
+    <description>The idmtest command line: init, validate and run YAML scenarios from a workspace folder</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.idm.test</groupId>
+            <artifactId>idm-test-wiring</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter</artifactId>
+        </dependency>
+
+        <!-- Bundled JDBC drivers; any other goes into <install>/lib/drivers/ or <workspace>/drivers/ -->
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>com.oracle.database.jdbc</groupId>
+            <artifactId>ojdbc11</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>com.microsoft.sqlserver</groupId>
+            <artifactId>mssql-jdbc</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+
+        <!-- Testing -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.assertj</groupId>
+            <artifactId>assertj-core</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- RunCommandTest: a configured, unused in-memory database and a REST target on WireMock -->
+        <dependency>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.wiremock</groupId>
+            <artifactId>wiremock-standalone</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <resources>
+            <resource>
+                <directory>src/main/resources</directory>
+                <filtering>false</filtering>
+                <excludes>
+                    <exclude>idmtest-version.properties</exclude>
+                </excludes>
+            </resource>
+            <resource>
+                <directory>src/main/resources</directory>
+                <filtering>true</filtering>
+                <includes>
+                    <include>idmtest-version.properties</include>
+                </includes>
+            </resource>
+        </resources>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <mainClass>com.idm.test.runner.IdmTest</mainClass>
+                    <!-- ZIP layout starts through PropertiesLauncher, so -Dloader.path adds driver jars -->
+                    <layout>ZIP</layout>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>repackage</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+
+    <profiles>
+        <!-- os.detected names the ZIP: set by the OS of the machine that builds it (jlink is per OS) -->
+        <profile>
+            <id>os-macos-arm64</id>
+            <activation>
+                <os>
+                    <family>mac</family>
+                    <arch>aarch64</arch>
+                </os>
+            </activation>
+            <properties>
+                <os.detected>macos-arm64</os.detected>
+            </properties>
+        </profile>
+        <profile>
+            <id>os-macos-x64</id>
+            <activation>
+                <os>
+                    <family>mac</family>
+                    <arch>x86_64</arch>
+                </os>
+            </activation>
+            <properties>
+                <os.detected>macos-x64</os.detected>
+            </properties>
+        </profile>
+        <profile>
+            <id>os-windows-x64</id>
+            <activation>
+                <os>
+                    <family>windows</family>
+                    <arch>amd64</arch>
+                </os>
+            </activation>
+            <properties>
+                <os.detected>windows-x64</os.detected>
+            </properties>
+        </profile>
+        <profile>
+            <id>os-linux-x64</id>
+            <activation>
+                <os>
+                    <name>linux</name>
+                    <arch>amd64</arch>
+                </os>
+            </activation>
+            <properties>
+                <os.detected>linux-x64</os.detected>
+            </properties>
+        </profile>
+
+        <!-- ./mvnw -Pdist package -pl idm-test-runner -am: target/idmtest-<version>-<os>.zip for this machine -->
+        <profile>
+            <id>dist</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-antrun-plugin</artifactId>
+                        <executions>
+                            <execution>
+                                <id>jlink-runtime</id>
+                                <phase>package</phase>
+                                <goals>
+                                    <goal>run</goal>
+                                </goals>
+                                <configuration>
+                                    <target>
+                                        <fail unless="os.detected"
+                                              message="idmtest ZIPs are built on macOS arm64/x64, Windows x64 or Linux x64; this is ${os.name} ${os.arch}"/>
+                                        <delete dir="${project.build.directory}/runtime"/>
+                                        <exec executable="${java.home}/bin/jlink" failonerror="true">
+                                            <arg value="--add-modules"/>
+                                            <arg value="java.base,java.sql,java.naming,java.xml,java.net.http,java.logging,java.management,java.desktop,java.instrument,jdk.unsupported,jdk.crypto.ec,jdk.charsets,jdk.zipfs,jdk.dynalink,jdk.net,java.security.jgss,jdk.security.jgss,jdk.localedata"/>
+                                            <!-- jdk.localedata, cut to the report languages: Spanish decimal commas and month names -->
+                                            <arg value="--include-locales=en,es"/>
+                                            <arg value="--strip-debug"/>
+                                            <arg value="--no-header-files"/>
+                                            <arg value="--no-man-pages"/>
+                                            <arg value="--compress"/>
+                                            <arg value="zip-6"/>
+                                            <arg value="--output"/>
+                                            <arg value="${project.build.directory}/runtime"/>
+                                        </exec>
+                                    </target>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-assembly-plugin</artifactId>
+                        <executions>
+                            <execution>
+                                <id>dist-zip</id>
+                                <phase>package</phase>
+                                <goals>
+                                    <goal>single</goal>
+                                </goals>
+                                <configuration>
+                                    <descriptors>
+                                        <descriptor>src/assembly/dist.xml</descriptor>
+                                    </descriptors>
+                                    <finalName>idmtest-${project.version}-${os.detected}</finalName>
+                                    <appendAssemblyId>false</appendAssemblyId>
+                                    <attach>false</attach>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
+</project>

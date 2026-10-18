@@ -36,6 +36,9 @@ operating system. To build the ZIP for your own machine:
 ./mvnw -Pdist package -pl idm-test-runner -am
 ```
 
+See [Building the runner](../reference/running-tests.md#building-the-runner) for what the build produces,
+the JDK it needs, and where to download the ZIPs that CI builds.
+
 ### macOS: first start
 
 The launcher is not signed. Once, after unzipping, remove the quarantine flag macOS puts on downloaded

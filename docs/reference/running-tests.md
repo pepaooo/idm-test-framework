@@ -103,6 +103,53 @@ lists the variables to set and explains why profile values need the `IDM_TEST_*`
 People who do not write Java can run the same YAML scenarios from their own folder with the `idmtest`
 runner: see [Running scenarios with `idmtest`](../guides/runner.md).
 
+## Building the runner
+
+The `idm-test-runner` module produces two artifacts: an executable jar for anyone with Java 25, and a
+ZIP that carries its own Java runtime.
+
+**The jar.** Any normal build with `package` or `install` produces it:
+
+```bash
+./mvnw package -pl idm-test-runner -am -DskipTests
+```
+
+It lands in `idm-test-runner/target/idm-test-runner-<version>.jar` and runs with
+`java -jar idm-test-runner-<version>.jar --version`. Extra JDBC drivers go on the class path with
+`-Dloader.path=<folder>`.
+
+**The ZIP for your own machine.** The `dist` profile adds the runtime and the ZIP:
+
+```bash
+./mvnw -Pdist package -pl idm-test-runner -am -DskipTests
+```
+
+It runs `jlink` from the JDK Maven runs on, so that must be a full JDK 25 (not a runtime-only
+image). The result is `idm-test-runner/target/idmtest-<version>-<os>.zip`, where `<os>` is
+`macos-arm64`, `macos-x64`, `windows-x64` or `linux-x64`. It contains `bin/` (the `idmtest` and
+`idmtest.cmd` launchers), `lib/` (the jar, plus an empty `drivers/` folder for extra JDBC drivers),
+`runtime/` (the trimmed Java 25), `README.md` and `LICENSE-THIRD-PARTY`.
+
+`jlink` can only build a runtime for the operating system it runs on, so a machine produces only its
+own ZIP: a Mac on Apple silicon builds `macos-arm64`, and so on. Without `-Pdist` no runtime or ZIP is
+built; the default build and `./mvnw test` never run `jlink`.
+
+**All four ZIPs, through GitHub Actions.** The `Runner distribution - idmtest ZIPs` workflow
+([`.github/workflows/runner-dist.yml`](../../.github/workflows/runner-dist.yml)) builds them:
+
+- **When:** on every push to `main` and every pull request that touches the modules, the parent
+  `pom.xml` or the workflow, and on demand with **Run workflow** in the Actions tab.
+- **How:** four parallel jobs, one each on macOS arm64, macOS Intel, Windows and Ubuntu. Each job
+  installs Temurin JDK 25 and runs the same `-Pdist` command. It then smoke-tests the unzipped
+  launcher from a folder whose name has a space: `--version`, `init`, and `validate` on the new
+  workspace.
+- **Where:** open the workflow run in the Actions tab. Its **Artifacts** section has one ZIP per
+  operating system, kept for 14 days.
+
+Nothing is published as a GitHub Release: to hand the ZIPs to users, download them from the run and
+attach them to a release, or share them another way. The launcher scripts are not signed; macOS users
+remove the quarantine flag once, as the [runner guide](../guides/runner.md) explains.
+
 ## Reading the results
 
 - Surefire reports: each module's `target/surefire-reports/`.

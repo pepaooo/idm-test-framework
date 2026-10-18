@@ -1,11 +1,24 @@
 name: CI - Build and Test
 
+# Builds every module and runs the whole test suite (the same command developers run locally).
+# The default build needs no Docker: ContainerScenarios and RealEnvironmentScenarios run only when
+# selected explicitly, so they are not part of this job.
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main ]
   pull_request:
-    branches: [ main, develop ]
+    branches: [ main ]
   workflow_dispatch:
+
+# Least privilege: read the code; write check runs only for the test report.
+permissions:
+  contents: read
+  checks: write
+
+# A newer push to the same branch or pull request cancels the run it supersedes.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -14,15 +27,9 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      # ===================================================================
-      # Checkout
-      # ===================================================================
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # ===================================================================
-      # Setup Java
-      # ===================================================================
       - name: Set up JDK 25
         uses: actions/setup-java@v4
         with:
@@ -30,88 +37,28 @@ jobs:
           distribution: 'temurin'
           cache: 'maven'
 
-      # ===================================================================
-      # Build
-      # ===================================================================
-      - name: Build with Maven
-        run: mvn clean install -DskipTests
+      # The Maven wrapper pins the project's Maven version; -B keeps the log readable.
+      - name: Build and run all tests
+        run: ./mvnw -B verify
 
-      # ===================================================================
-      # Run Configuration Tests (no containers needed)
-      # ===================================================================
-      - name: Run Configuration Tests
-        run: mvn test -Dtest=ConfigurationTest -pl idm-test-scenarios
-
-      # ===================================================================
-      # Run Integration Tests (with Testcontainers)
-      # ===================================================================
-      - name: Run Integration Tests
-        run: mvn verify -pl idm-test-scenarios
-        env:
-          # Testcontainers needs Docker
-          TESTCONTAINERS_RYUK_DISABLED: false
-
-      # ===================================================================
-      # Upload Test Results
-      # ===================================================================
-      - name: Upload Test Results
+      - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: test-results
           path: |
             **/target/surefire-reports/**
-            **/target/failsafe-reports/**
+            idm-test-scenarios/target/*-results.json
+            idm-test-scenarios/target/*-report.html
           retention-days: 7
 
-      # ===================================================================
-      # Publish Test Report
-      # ===================================================================
-      - name: Publish Test Report
-        if: always()
-        uses: dorny/test-reporter@v1
+      # Pinned to a commit (v3.0.0) because it is a third-party action. Skipped on pull requests from
+      # forks, whose token cannot write check runs.
+      - name: Publish test report
+        if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        uses: dorny/test-reporter@a43b3a5f7366b97d083190328d2c652e1a8b6aa2
         with:
           name: Test Results
           path: '**/target/surefire-reports/TEST-*.xml'
           reporter: java-junit
           fail-on-error: false
-
-      # ===================================================================
-      # Upload Coverage (optional - requires jacoco)
-      # ===================================================================
-      # - name: Upload Coverage to Codecov
-      #   if: always()
-      #   uses: codecov/codecov-action@v4
-      #   with:
-      #     files: ./target/site/jacoco/jacoco.xml
-      #     fail_ci_if_error: false
-
-  # ===================================================================
-  # Code Quality Check (optional)
-  # ===================================================================
-  code-quality:
-    name: Code Quality
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up JDK 25
-        uses: actions/setup-java@v4
-        with:
-          java-version: '25'
-          distribution: 'temurin'
-          cache: 'maven'
-
-      # Compile only to check for compilation errors
-      - name: Compile
-        run: mvn clean compile test-compile
-
-      # Optional: Add SpotBugs, Checkstyle, PMD, etc.
-      # - name: Run SpotBugs
-      #   run: mvn spotbugs:check
-
-      # - name: Run Checkstyle
-      #   run: mvn checkstyle:check

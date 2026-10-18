@@ -30,7 +30,7 @@ idmtest --version
 ```
 
 The ZIPs are built by the `Runner distribution - idmtest ZIPs` workflow (`.github/workflows/runner-dist.yml`), one job per
-operating system. To build the ZIP for your own machine:
+operating system, when a version tag is pushed or someone runs it from the Actions tab. To build the ZIP for your own machine:
 
 ```bash
 ./mvnw -Pdist package -pl idm-test-runner -am

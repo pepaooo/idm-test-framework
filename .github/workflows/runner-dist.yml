@@ -2,20 +2,17 @@ name: Runner distribution - idmtest ZIPs
 
 # Builds the idmtest ZIP for each OS (the jlink runtime is per OS), smoke-tests the unzipped launcher
 # and keeps the ZIP as a workflow artifact. Nothing is published as a release.
+#
+# Runs when it matters, not on every commit: on a version tag (v1.0.0, …), on demand (Run workflow
+# in the Actions tab), and on pull requests that change the packaging itself.
 on:
   push:
-    branches: [ main ]
-    paths:
-      - 'idm-test-*/**'
-      - 'idm-connector-*/**'
-      - 'pom.xml'
-      - '.github/workflows/runner-dist.yml'
-  # Pull requests too, so the Windows launcher runs before a change is merged.
+    tags: [ 'v*' ]
   pull_request:
     paths:
-      - 'idm-test-*/**'
-      - 'idm-connector-*/**'
-      - 'pom.xml'
+      - 'idm-test-runner/src/dist/**'
+      - 'idm-test-runner/src/assembly/**'
+      - 'idm-test-runner/pom.xml'
       - '.github/workflows/runner-dist.yml'
   workflow_dispatch:
 
@@ -32,10 +29,10 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up JDK 25
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           java-version: '25'
           distribution: 'temurin'
@@ -77,7 +74,7 @@ jobs:
           call "%RUNNER_TEMP%\smoke dir\idmtest\bin\idmtest.cmd" validate --workspace "%RUNNER_TEMP%\smoke ws" || exit /b 1
 
       - name: Upload the ZIP
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: idmtest-${{ matrix.os }}
           path: idm-test-runner/target/idmtest-*.zip

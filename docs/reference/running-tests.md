@@ -140,8 +140,21 @@ built; the default build and `./mvnw test` never run `jlink`.
 **All four ZIPs, through GitHub Actions.** The `Runner distribution - idmtest ZIPs` workflow
 ([`.github/workflows/runner-dist.yml`](../../.github/workflows/runner-dist.yml)) builds them:
 
-- **When:** on every push to `main` and every pull request that touches the modules, the parent
-  `pom.xml` or the workflow, and on demand with **Run workflow** in the Actions tab.
+- **When:** not on every commit. It runs when you push a version tag, on demand with **Run workflow**
+  in the Actions tab (pick a branch), and on pull requests that change the packaging itself
+  (`idm-test-runner/src/dist/**`, `idm-test-runner/src/assembly/**`, `idm-test-runner/pom.xml` or the
+  workflow). To build the ZIPs for a release, tag the commit and push the tag:
+
+  ```bash
+  git tag v1.0.0
+  ```
+
+  ```bash
+  git push origin v1.0.0
+  ```
+
+  The ZIP names carry the version in the POMs (`<version>` in `pom.xml`), not the tag name, so set
+  the version before tagging if it should match.
 - **How:** four parallel jobs, one each on macOS arm64, macOS Intel, Windows and Ubuntu. Each job
   installs Temurin JDK 25 and runs the same `-Pdist` command. It then smoke-tests the unzipped
   launcher from a folder whose name has a space: `--version`, `init`, and `validate` on the new

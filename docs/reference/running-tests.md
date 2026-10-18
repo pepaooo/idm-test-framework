@@ -10,9 +10,12 @@ suite needs nothing else: no Docker, no external services.
 ```
 
 This starts an embedded UnboundID directory and a WireMock server on ephemeral ports, creates an
-H2 schema, and runs every module's tests: 932 on 2026-10-09. Every test runs; none is skipped
+H2 schema, and runs every module's tests: 1129 on 2026-10-17. Every test runs; none is skipped
 for a missing service. A connector the context cannot build fails the context, so a broken
 environment is red, never quietly green.
+
+CI (`.github/workflows/ci.yml`) runs the same suite on every push and pull request to `main`, with
+`./mvnw -B verify`, and keeps the surefire reports and the YAML results as a run artifact.
 
 It includes `YamlScenarioTest`, which runs the 21 YAML scenarios in
 `idm-test-scenarios/src/test/resources/scenarios/` against the embedded services and writes

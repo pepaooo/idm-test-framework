@@ -155,6 +155,11 @@ built; the default build and `./mvnw test` never run `jlink`.
 
   The ZIP names carry the version in the POMs (`<version>` in `pom.xml`), not the tag name, so set
   the version before tagging if it should match.
+
+  To build them on every push to `main` again, uncomment the `branches` and `paths` lines under
+  `push:` in the workflow; tag pushes keep building. Each run builds the exact commit that triggered
+  it, so a push build holds the latest code on `main`, although its file name still shows the POM
+  version (`1.0.0-SNAPSHOT`); tell such builds apart by the workflow run's commit and date.
 - **How:** four parallel jobs, one each on macOS arm64, macOS Intel, Windows and Ubuntu. Each job
   installs Temurin JDK 25 and runs the same `-Pdist` command. It then smoke-tests the unzipped
   launcher from a folder whose name has a space: `--version`, `init`, and `validate` on the new

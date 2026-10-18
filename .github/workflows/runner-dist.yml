@@ -8,6 +8,14 @@ name: Runner distribution - idmtest ZIPs
 on:
   push:
     tags: [ 'v*' ]
+    # To also build the ZIPs on every push to main (the behaviour before ITF-60), uncomment the
+    # lines below. Tag pushes still build: GitHub does not evaluate path filters for tag pushes.
+    # branches: [ main ]
+    # paths:
+    #   - 'idm-test-*/**'
+    #   - 'idm-connector-*/**'
+    #   - 'pom.xml'
+    #   - '.github/workflows/runner-dist.yml'
   pull_request:
     paths:
       - 'idm-test-runner/src/dist/**'

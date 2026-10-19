@@ -283,9 +283,16 @@ class RunCommandTest {
         corpusScenario(ws);
         corpusScenario(ws, "provisioning-user-to-database.yaml");
 
+        int before = StartedContexts.all().size();
         int exit = run(ws, "--profile", "lab");
 
         assertThat(exit).as(out() + err()).isEqualTo(ExitCodes.OK);
+        List<StartedContexts.Started> started = StartedContexts.all().subList(before, StartedContexts.all().size());
+        assertThat(started).as("the run starts Spring once, without a web server").singleElement()
+                .satisfies(context -> {
+                    assertThat(context.webServer()).isFalse();
+                    assertThat(context.localServerPort()).isNull();
+                });
         Path folder = runFolder(ws);
         assertThat(folder.resolve("results.json")).isRegularFile();
         assertThat(folder.resolve("report.html")).isRegularFile();

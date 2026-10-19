@@ -3,6 +3,7 @@ package com.idm.test.runner;
 import com.idm.test.engine.i18n.Messages;
 import com.idm.test.engine.i18n.ReportLocale;
 import com.idm.test.engine.spi.Message;
+import com.idm.test.runner.ui.UiCommand;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -69,6 +70,7 @@ public final class IdmTest {
             }
             case "validate" -> ValidateCommand.run(line, out, err);
             case "run" -> RunCommand.run(line, out, err, Clock.systemDefaultZone());
+            case "ui" -> UiCommand.run(line, out, err);
             // CommandLine.parse accepts no other command.
             default -> throw new IllegalStateException("unhandled command " + line.command());
         };
@@ -92,7 +94,7 @@ public final class IdmTest {
         return Locale.ENGLISH;
     }
 
-    static String version() {
+    public static String version() {
         Properties properties = new Properties();
         try (InputStream in = IdmTest.class.getResourceAsStream("/idmtest-version.properties")) {
             if (in != null) {

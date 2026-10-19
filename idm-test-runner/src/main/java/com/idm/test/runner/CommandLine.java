@@ -7,24 +7,25 @@ import java.util.Iterator;
 
 /**
  * The parsed {@code idmtest} command line. {@code --help}/{@code -h} and {@code --version} become
- * the commands {@code help} and {@code version}; no arguments at all is {@code help}.
+ * the commands {@code help} and {@code version}; no arguments at all is {@code help}. {@code port}
+ * is {@code ui}'s {@code --port}, null when not given.
  */
 public record CommandLine(String command, Path workspace, String profile, String scenario, String locale,
-                          boolean verbose, Path initTarget) {
+                          boolean verbose, Path initTarget, Integer port) {
 
     public static CommandLine parse(String... args) {
         if (args.length == 0) {
-            return of("help", null, null, null, null, false, null);
+            return of("help", null, null, null, null, false, null, null);
         }
         String first = args[0];
         switch (first) {
             case "--help", "-h", "help" -> {
-                return of("help", null, null, null, null, false, null);
+                return of("help", null, null, null, null, false, null, null);
             }
             case "--version" -> {
-                return of("version", null, null, null, null, false, null);
+                return of("version", null, null, null, null, false, null, null);
             }
-            case "init", "validate", "run" -> {
+            case "init", "validate", "run", "ui" -> {
             }
             default -> throw new UsageException(first.startsWith("-")
                     ? Message.of("runner.cli.unknownOption", first)
@@ -36,18 +37,25 @@ public record CommandLine(String command, Path workspace, String profile, String
         String locale = null;
         boolean verbose = false;
         Path initTarget = null;
+        Integer port = null;
         Iterator<String> rest = java.util.Arrays.asList(args).subList(1, args.length).iterator();
         while (rest.hasNext()) {
             String arg = rest.next();
             switch (arg) {
                 case "--workspace" -> workspace = Path.of(value(arg, rest)).toAbsolutePath().normalize();
                 case "--help", "-h" -> {
-                    return of("help", null, null, null, null, false, null);
+                    return of("help", null, null, null, null, false, null, null);
                 }
                 case "--profile" -> profile = value(arg, rest);
                 case "--scenario" -> scenario = value(arg, rest);
                 case "--locale" -> locale = value(arg, rest);
                 case "--verbose" -> verbose = true;
+                case "--port" -> {
+                    if (!first.equals("ui")) {
+                        throw new UsageException(Message.of("runner.cli.unknownOption", arg));
+                    }
+                    port = port(value(arg, rest));
+                }
                 default -> {
                     if (first.equals("init") && !arg.startsWith("-") && initTarget == null) {
                         initTarget = Path.of(arg);
@@ -57,7 +65,20 @@ public record CommandLine(String command, Path workspace, String profile, String
                 }
             }
         }
-        return of(first, workspace, profile, scenario, locale, verbose, initTarget);
+        return of(first, workspace, profile, scenario, locale, verbose, initTarget, port);
+    }
+
+    /** {@code value} as a TCP port, 0 to 65535 (0: any free port). */
+    private static int port(String value) {
+        try {
+            int port = Integer.parseInt(value);
+            if (port >= 0 && port <= 65535) {
+                return port;
+            }
+        } catch (NumberFormatException e) {
+            // reported below
+        }
+        throw new UsageException(Message.of("runner.cli.badPort", value));
     }
 
     private static String value(String option, Iterator<String> rest) {
@@ -72,8 +93,8 @@ public record CommandLine(String command, Path workspace, String profile, String
     }
 
     private static CommandLine of(String command, Path workspace, String profile, String scenario,
-                                  String locale, boolean verbose, Path initTarget) {
+                                  String locale, boolean verbose, Path initTarget, Integer port) {
         return new CommandLine(command, workspace != null ? workspace : Path.of("").toAbsolutePath(),
-                profile, scenario, locale, verbose, initTarget);
+                profile, scenario, locale, verbose, initTarget, port);
     }
 }

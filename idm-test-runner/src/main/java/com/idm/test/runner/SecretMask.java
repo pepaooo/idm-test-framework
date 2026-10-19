@@ -10,6 +10,7 @@ import com.idm.test.engine.spi.HttpEvidence;
 import com.idm.test.engine.spi.LdapEvidence;
 import com.idm.test.engine.spi.Message;
 import com.idm.test.engine.spi.SqlEvidence;
+import com.idm.test.engine.spi.WaitObservation;
 import org.springframework.core.env.MutablePropertySources;
 import org.springframework.core.env.PropertiesPropertySource;
 import org.springframework.core.env.PropertySourcesPropertyResolver;
@@ -104,8 +105,8 @@ final class SecretMask {
 
     /**
      * {@code result} with every text in it masked: failure detail and its arguments, each step's
-     * and cleanup entry's message, arguments, description, resolved parameters and evidence.
-     * Names and step types stay as they are.
+     * and cleanup entry's message, arguments, description, resolved parameters and evidence, each
+     * waiting-history message, and the entries a stop skipped. Names and step types stay as they are.
      */
     ScenarioResult result(ScenarioResult result) {
         if (values.isEmpty() || result == null) {
@@ -114,9 +115,10 @@ final class SecretMask {
         List<StepResult> steps = result.steps() == null ? null
                 : result.steps().stream().map(this::step).toList();
         List<CleanupResult> cleanup = result.cleanup().stream().map(this::cleanup).toList();
+        List<CleanupResult> skipped = result.skippedCleanup().stream().map(this::cleanup).toList();
         return new ScenarioResult(result.name(), result.sourceName(), result.success(), result.durationMillis(),
                 steps, cleanup, apply(result.failureDetail()), apply(result.description()),
-                result.failureDetailKey(), list(result.failureDetailArgs()));
+                result.failureDetailKey(), list(result.failureDetailArgs()), result.stopped(), skipped);
     }
 
     /** {@code run} with its endpoint URLs masked. */
@@ -134,7 +136,13 @@ final class SecretMask {
         return new StepResult(step.index(), step.type(), map(step.resolvedParams()), step.success(),
                 step.durationMillis(), apply(step.message()), step.attempts(), step.waitedMillis(),
                 apply(step.description()), evidence(step.evidence()), step.messageKey(), list(step.messageArgs()),
-                step.failureKind());
+                step.failureKind(), history(step.waitHistory()));
+    }
+
+    private List<WaitObservation> history(List<WaitObservation> history) {
+        return history == null ? null : history.stream()
+                .map(entry -> new WaitObservation(entry.attempt(), entry.elapsedMillis(), apply(entry.message())))
+                .toList();
     }
 
     private CleanupResult cleanup(CleanupResult entry) {

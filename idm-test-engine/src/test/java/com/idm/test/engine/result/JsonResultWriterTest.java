@@ -240,4 +240,52 @@ class JsonResultWriterTest {
         assertThat(json.split("\"failureKind\"", -1)).as("one per failure, none when passing").hasSize(3);
         assertThat(json.split("\"failureKind\" : \"FINDING\"\n", -1)).as("the last field").hasSize(3);
     }
+
+    @Test
+    @DisplayName("Should write the waiting history last, after the failure kind")
+    void testWritesWaitHistory(@TempDir Path dir) throws Exception {
+        StepResult step = new StepResult(0, "ldap.verify", Map.of(), false, 5, "m", 3, 100L, null, null, null, null,
+                "FINDING", List.of(new com.idm.test.engine.spi.WaitObservation(1, 0, "status=PENDING"),
+                new com.idm.test.engine.spi.WaitObservation(3, 40, "status=LOCKED")));
+        ScenarioResult scenario = new ScenarioResult("S", "s.yaml", false, 10, List.of(step), null);
+
+        Path target = dir.resolve("history.json");
+        JsonResultWriter.write(List.of(scenario), target);
+
+        String json = Files.readString(target).replace("\r\n", "\n");
+        assertThat(json).contains("    \"failureKind\" : \"FINDING\",\n"
+                + "    \"waitHistory\" : [ {\n"
+                + "      \"attempt\" : 1,\n"
+                + "      \"elapsedMillis\" : 0,\n"
+                + "      \"message\" : \"status=PENDING\"\n"
+                + "    }, {");
+    }
+
+    @Test
+    @DisplayName("Should write a stopped run's flag and skipped cleanup last, and neither for an ordinary run")
+    void testWritesStopped(@TempDir Path dir) throws Exception {
+        CleanupResult skipped = new CleanupResult(0, "ldap.delete", Map.of("dn", "cn=ada"), CleanupStatus.SKIPPED, 0,
+                "Stopped — cleanup did not run", null, "engine.run.stopped", List.of(), null);
+        ScenarioResult stopped = new ScenarioResult("S", "s.yaml", false, 10, List.of(), List.of(), null, null,
+                null, null, true, List.of(skipped));
+
+        Path target = dir.resolve("stopped.json");
+        JsonResultWriter.write(List.of(stopped), target);
+
+        String json = Files.readString(target).replace("\r\n", "\n");
+        assertThat(json).contains("  \"description\" : null,\n"
+                + "  \"stopped\" : true,\n"
+                + "  \"skippedCleanup\" : [ {\n"
+                + "    \"index\" : 0,\n"
+                + "    \"type\" : \"ldap.delete\",\n"
+                + "    \"resolvedParams\" : {\n"
+                + "      \"dn\" : \"cn=ada\"\n"
+                + "    },\n"
+                + "    \"status\" : \"SKIPPED\",");
+
+        ScenarioResult ordinary = new ScenarioResult("S", "s.yaml", true, 10, List.of(), List.of(), null, null,
+                null, null, false, List.of());
+        JsonResultWriter.write(List.of(ordinary), target);
+        assertThat(Files.readString(target)).doesNotContain("stopped").doesNotContain("skippedCleanup");
+    }
 }

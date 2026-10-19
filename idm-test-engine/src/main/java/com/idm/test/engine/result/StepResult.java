@@ -5,6 +5,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.idm.test.engine.spi.Evidence;
 import com.idm.test.engine.spi.FailureKind;
 import com.idm.test.engine.spi.Message;
+import com.idm.test.engine.spi.WaitObservation;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -25,6 +26,9 @@ import java.util.Map;
  * @param messageArgs    the arguments of {@code messageKey}, or null when there is no key
  * @param failureKind    {@code FINDING} or {@code SETUP} (a {@link FailureKind} name) when the step
  *                       failed; null when it passed
+ * @param waitHistory    the tries under {@code wait:} whose observation differed from the try before
+ *                       (the first always counts), at most {@link #MAX_WAIT_HISTORY}; null when the
+ *                       step did not wait
  */
 public record StepResult(
         int index,
@@ -39,10 +43,23 @@ public record StepResult(
         @JsonInclude(JsonInclude.Include.NON_NULL) Evidence evidence,
         @JsonInclude(JsonInclude.Include.NON_NULL) String messageKey,
         @JsonInclude(JsonInclude.Include.NON_NULL) List<Object> messageArgs,
-        @JsonInclude(JsonInclude.Include.NON_NULL) String failureKind) {
+        @JsonInclude(JsonInclude.Include.NON_NULL) String failureKind,
+        @JsonInclude(JsonInclude.Include.NON_NULL) List<WaitObservation> waitHistory) {
+
+    /** The most entries a waiting history keeps. */
+    public static final int MAX_WAIT_HISTORY = 50;
 
     public StepResult {
         messageArgs = messageArgs == null ? null : Collections.unmodifiableList(new ArrayList<>(messageArgs));
+        waitHistory = waitHistory == null ? null : List.copyOf(waitHistory);
+    }
+
+    /** A result without a waiting history. */
+    public StepResult(int index, String type, Map<String, Object> resolvedParams, boolean success,
+                      long durationMillis, String message, Integer attempts, Long waitedMillis, String description,
+                      Evidence evidence, String messageKey, List<Object> messageArgs, String failureKind) {
+        this(index, type, resolvedParams, success, durationMillis, message, attempts, waitedMillis, description,
+                evidence, messageKey, messageArgs, failureKind, null);
     }
 
     /** A result without a failure kind. */

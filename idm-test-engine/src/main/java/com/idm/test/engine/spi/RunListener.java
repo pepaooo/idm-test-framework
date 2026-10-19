@@ -7,8 +7,9 @@ import com.idm.test.engine.result.StepResult;
  * Hears a scenario's progress as it runs, so a UI can show it live: each step starting and
  * finishing, each try of a step under {@code wait:}, and each cleanup entry that ran.
  * <p>
- * Called on the thread running the scenario, in order. Implementations must be quick and must not
- * throw: what they do cannot change what the scenario does. Every method does nothing by default.
+ * Called on the thread running the scenario, in order. Implementations should be quick. What they
+ * throw is logged and ignored by the engine: a listener cannot change what the scenario does. Every
+ * method does nothing by default.
  */
 public interface RunListener {
 

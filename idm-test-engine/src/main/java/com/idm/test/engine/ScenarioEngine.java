@@ -20,6 +20,9 @@ import com.idm.test.engine.spi.StepOutcome;
 import com.idm.test.engine.spi.StepType;
 import com.idm.test.engine.spi.WaitObservation;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -38,7 +41,8 @@ import java.util.function.BooleanSupplier;
  * declare a wait, stop at the first failure, then run the author's cleanup block.
  * <p>
  * A run can be watched ({@link RunListener}) and stopped: a stop is honoured before each step,
- * before each try under {@code wait:} and before the cleanup, and skips the cleanup entirely, so the
+ * before and between the tries under {@code wait:} (within a fraction of a second, however long the
+ * poll) and before the cleanup, and skips the cleanup entirely, so the
  * result lists those entries with the values they would have used.
  * <p>
  * Deliberately knows nothing about Spring, JUnit, files or output formats. It takes its
@@ -50,6 +54,8 @@ public final class ScenarioEngine {
     private static final String SET_STEP = "set";
 
     private static final String DESCRIPTION = "description";
+
+    private static final Logger LOG = LoggerFactory.getLogger(ScenarioEngine.class);
 
     /** Why a step, a cleanup entry or a scenario ended when the run was stopped. */
     private static final Message STOPPED = Message.of("engine.run.stopped");
@@ -85,8 +91,10 @@ public final class ScenarioEngine {
      * {@code stopRequested} answers true. A stopped scenario fails as a setup problem; its cleanup
      * does not run and comes back in {@link ScenarioResult#skippedCleanup()} instead.
      */
-    public ScenarioResult run(Scenario scenario, String sourceName, RunListener listener,
+    public ScenarioResult run(Scenario scenario, String sourceName, RunListener runListener,
                               BooleanSupplier stopRequested) {
+        // Every call goes through the guard: a listener that throws must not change the run.
+        RunListener listener = guarded(runListener);
         long started = System.currentTimeMillis();
         Map<String, Object> scope = new LinkedHashMap<>();
 
@@ -223,14 +231,10 @@ public final class ScenarioEngine {
         List<WaitObservation> history = new ArrayList<>();
 
         long waitStarted = System.currentTimeMillis();
-        // True when the assertion passed, a final failure ended the wait early or the run was
-        // stopped; either way waitUntil's loop condition was satisfied. Success itself always
-        // comes from `outcome`.
+        // True when the assertion passed or a final failure ended the wait early; either way
+        // waitUntil's loop condition was satisfied. False on timeout or stop (see `stopped`).
+        // Success itself always comes from `outcome`.
         boolean ended = executor.waitUntil(() -> {
-            if (stopRequested.getAsBoolean()) {
-                stopped.set(true);
-                return true;
-            }
             int attempt = attempts.incrementAndGet();
             StepOutcome outcome;
             try {
@@ -255,7 +259,14 @@ public final class ScenarioEngine {
             listener.attempt(index, attempt, elapsed, outcome.message());
             // A final failure ends the wait: polling it again cannot change the answer.
             return outcome.success() || outcome.isFinal();
-        }, wait.timeout(), wait.poll());
+        }, wait.timeout(), wait.poll(), () -> {
+            // Asked before each try and every few hundred milliseconds while sleeping between
+            // tries, so a stop does not wait out a long poll interval.
+            if (stopRequested.getAsBoolean()) {
+                stopped.set(true);
+            }
+            return stopped.get();
+        });
         long waitedMillis = System.currentTimeMillis() - waitStarted;
         List<WaitObservation> waitHistory = history.isEmpty() ? null : history;
 
@@ -301,6 +312,45 @@ public final class ScenarioEngine {
         return new StepResult(index, step.type(), reportable(resolved), success, elapsed, message,
                 attempts.get(), waitedMillis, description, outcome == null ? null : outcome.evidence(),
                 key(detail), args(detail), kind, waitHistory);
+    }
+
+    /**
+     * {@code listener} with every call guarded: what it throws is logged (its type only, never its
+     * message, which could carry a secret) and dropped.
+     */
+    private static RunListener guarded(RunListener listener) {
+        if (listener == null || listener == RunListener.NONE) {
+            return RunListener.NONE;
+        }
+        return new RunListener() {
+            @Override
+            public void stepStarted(int index, String type, String description) {
+                safely(listener, () -> listener.stepStarted(index, type, description));
+            }
+
+            @Override
+            public void attempt(int index, int attempt, long elapsedMillis, String message) {
+                safely(listener, () -> listener.attempt(index, attempt, elapsedMillis, message));
+            }
+
+            @Override
+            public void stepFinished(StepResult result) {
+                safely(listener, () -> listener.stepFinished(result));
+            }
+
+            @Override
+            public void cleanupFinished(CleanupResult result) {
+                safely(listener, () -> listener.cleanupFinished(result));
+            }
+        };
+    }
+
+    private static void safely(RunListener listener, Runnable call) {
+        try {
+            call.run();
+        } catch (RuntimeException e) {
+            LOG.warn("Run listener {} threw {}; ignored", listener.getClass().getName(), e.getClass().getName());
+        }
     }
 
     /**

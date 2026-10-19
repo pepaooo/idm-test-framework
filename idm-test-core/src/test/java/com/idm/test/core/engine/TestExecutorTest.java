@@ -312,4 +312,48 @@ class TestExecutorTest {
         assertThat(result).isTrue();
         assertThat(attempts.get()).isGreaterThanOrEqualTo(3);
     }
+
+    @Test
+    @DisplayName("A cancellable waitUntil returns false within a slice once cancelled, without trying again")
+    void testWaitUntilCancelled() {
+        AtomicInteger checks = new AtomicInteger();
+        long started = System.currentTimeMillis();
+
+        boolean result = executor.waitUntil(
+                () -> {
+                    checks.incrementAndGet();
+                    return false;
+                },
+                Duration.ofSeconds(60),
+                Duration.ofSeconds(5),
+                () -> System.currentTimeMillis() - started > 100);
+
+        assertThat(result).isFalse();
+        assertThat(checks.get()).isEqualTo(1);
+        assertThat(System.currentTimeMillis() - started).isLessThan(1500);
+    }
+
+    @Test
+    @DisplayName("A cancellable waitUntil that is never cancelled behaves like the plain one")
+    void testWaitUntilNotCancelled() {
+        AtomicInteger checks = new AtomicInteger();
+
+        boolean result = executor.waitUntil(() -> checks.incrementAndGet() >= 3,
+                Duration.ofSeconds(5), Duration.ofMillis(10), () -> false);
+
+        assertThat(result).isTrue();
+        assertThat(checks.get()).isEqualTo(3);
+    }
+
+    @Test
+    @DisplayName("A cancellable waitUntil cancelled before it starts never checks the condition")
+    void testWaitUntilCancelledBeforeStart() {
+        AtomicInteger checks = new AtomicInteger();
+
+        boolean result = executor.waitUntil(() -> checks.incrementAndGet() > 0,
+                Duration.ofSeconds(5), Duration.ofMillis(10), () -> true);
+
+        assertThat(result).isFalse();
+        assertThat(checks.get()).isZero();
+    }
 }

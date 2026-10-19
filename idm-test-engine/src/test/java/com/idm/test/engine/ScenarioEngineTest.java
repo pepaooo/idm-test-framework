@@ -1603,4 +1603,62 @@ class ScenarioEngineTest {
         assertThat(result.failureKind()).isEqualTo(com.idm.test.engine.spi.FailureKind.SETUP);
         assertThat(result.failureSummary()).contains("Stopped — cleanup did not run");
     }
+
+    @Test
+    @DisplayName("A listener that throws changes nothing: the wait passes, every cleanup entry runs, a result comes back")
+    void testThrowingListener() {
+        com.idm.test.engine.spi.RunListener throwing = new com.idm.test.engine.spi.RunListener() {
+            public void stepStarted(int index, String type, String description) {
+                throw new IllegalStateException("started");
+            }
+
+            public void attempt(int index, int attempt, long elapsedMillis, String message) {
+                throw new IllegalStateException("attempt");
+            }
+
+            public void stepFinished(StepResult result) {
+                throw new IllegalStateException("finished");
+            }
+
+            public void cleanupFinished(com.idm.test.engine.result.CleanupResult result) {
+                throw new IllegalStateException("cleanup");
+            }
+        };
+        ScenarioEngine engine = engineWith(eventuallyPassing("check", 2), recordingAction("undo"));
+
+        ScenarioResult result = engine.run(withCleanup(List.of(
+                        new StepSpec("check", Map.of("wait", Boolean.TRUE))),
+                new StepSpec("undo", Map.of("dn", "1")),
+                new StepSpec("undo", Map.of("dn", "2"))), "t.yaml", throwing, () -> false);
+
+        assertThat(result).isNotNull();
+        assertThat(result.success()).isTrue();
+        assertThat(result.steps().get(0).success()).isTrue();
+        assertThat(result.steps().get(0).attempts()).isEqualTo(3);
+        assertThat(result.cleanup()).extracting(com.idm.test.engine.result.CleanupResult::status)
+                .containsExactly(CleanupStatus.SUCCEEDED, CleanupStatus.SUCCEEDED);
+        assertThat(events).containsExactly("run:undo:1", "run:undo:2");
+    }
+
+    @Test
+    @DisplayName("Stop during a long poll interval is noticed within a fraction of a second")
+    void testStopIsImmediate() {
+        java.util.concurrent.atomic.AtomicLong firstTry = new java.util.concurrent.atomic.AtomicLong();
+        StepType check = observing("check", call -> "not yet", Integer.MAX_VALUE,
+                () -> firstTry.compareAndSet(0, System.currentTimeMillis()));
+        ScenarioEngine engine = new ScenarioEngine(Map.of("check", check),
+                new FixtureFactory(new TestDataGenerator()), new TestExecutor(),
+                Duration.ofSeconds(60), Duration.ofSeconds(5), new ExpressionEvaluator());
+
+        long started = System.currentTimeMillis();
+        ScenarioResult result = engine.run(scenario(new StepSpec("check", Map.of("wait", Boolean.TRUE))), "t.yaml",
+                com.idm.test.engine.spi.RunListener.NONE,
+                () -> firstTry.get() != 0 && System.currentTimeMillis() - firstTry.get() > 100);
+        long elapsed = System.currentTimeMillis() - started;
+
+        assertThat(result.stopped()).isTrue();
+        assertThat(result.steps().get(0).messageKey()).isEqualTo("engine.run.stopped");
+        assertThat(result.steps().get(0).attempts()).isEqualTo(1);
+        assertThat(elapsed).isLessThan(1500);
+    }
 }

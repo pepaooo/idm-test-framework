@@ -5,6 +5,7 @@ import com.idm.test.connector.rest.client.IdmRestConnector;
 import com.idm.test.connector.rest.client.RestAuthenticator;
 import com.idm.test.connector.rest.config.RestProperties;
 import com.idm.test.connector.rest.model.RestResponse;
+import com.idm.test.core.model.ErrorType;
 import com.idm.test.core.model.OperationResult;
 import com.idm.test.engine.spi.Message;
 import com.idm.test.engine.spi.StepOutcome;
@@ -99,7 +100,8 @@ public final class RestVerifyStep implements StepType {
                                      String url, boolean captureRequested) {
         if (!result.isSuccess() || result.getData().isEmpty()) {
             return StepOutcome.failure(Message.of("step.rest.verify.failed",
-                    url, ConnectorProblems.request(method, url, result)));
+                    url, ConnectorProblems.request(method, url, result)),
+                    result.getErrorType().orElse(ErrorType.UNKNOWN_ERROR));
         }
 
         RestResponse response = result.getData().get();

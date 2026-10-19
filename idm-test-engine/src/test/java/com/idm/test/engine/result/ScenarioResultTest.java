@@ -134,4 +134,19 @@ class ScenarioResultTest {
         assertThat(entry.messageArgs()).isNull();
         assertThat(entry.messageDetail()).isNull();
     }
+
+    @Test
+    @DisplayName("A scenario's failure kind: its failed step's, setup when nothing ran, finding when only cleanup failed")
+    void testFailureKind() {
+        com.idm.test.engine.spi.FailureKind none = null;
+        assertThat(new ScenarioResult("n", "p.yaml", true, 1, List.of(), null).failureKind()).isEqualTo(none);
+        assertThat(new ScenarioResult("n", "s.yaml", false, 1,
+                List.of(new StepResult(0, "a", Map.of(), false, 1, "m", null, null, null, null, null, null, "SETUP")),
+                null).failureKind()).isEqualTo(com.idm.test.engine.spi.FailureKind.SETUP);
+        assertThat(stepAndCleanups().failureKind()).as("a step failure without a recorded kind")
+                .isEqualTo(com.idm.test.engine.spi.FailureKind.FINDING);
+        assertThat(new ScenarioResult("n", "l.yaml", false, 0, List.of(), "invalid").failureKind())
+                .isEqualTo(com.idm.test.engine.spi.FailureKind.SETUP);
+        assertThat(cleanupOnly().failureKind()).isEqualTo(com.idm.test.engine.spi.FailureKind.FINDING);
+    }
 }

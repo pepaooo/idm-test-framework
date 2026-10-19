@@ -3,6 +3,7 @@ package com.idm.test.engine.steps;
 import com.idm.test.connector.soap.client.RoleServiceConnector;
 import com.idm.test.connector.soap.client.SoapProblem;
 import com.idm.test.connector.soap.generated.role.RequestRolesAssignmentResponse;
+import com.idm.test.core.model.ErrorType;
 import com.idm.test.core.model.OperationResult;
 import com.idm.test.engine.spi.HttpEvidence;
 import com.idm.test.engine.spi.Message;
@@ -66,7 +67,8 @@ public final class RolesGrantStep implements StepType {
 
         if (!result.isSuccess() || result.getData().isEmpty()) {
             return StepOutcome.failure(Message.of("step.roles.grant.failed",
-                    user, ConnectorProblems.soap(result, SoapProblem::assignRoles))).withEvidence(evidence);
+                    user, ConnectorProblems.soap(result, SoapProblem::assignRoles)),
+                    result.getErrorType().orElse(ErrorType.UNKNOWN_ERROR)).withEvidence(evidence);
         }
 
         List<String> assignments = SoapDns.of(result.getData().get().getResult());

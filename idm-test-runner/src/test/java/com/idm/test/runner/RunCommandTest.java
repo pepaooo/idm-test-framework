@@ -314,7 +314,10 @@ class RunCommandTest {
         assertThat(exit).as(out() + err()).isEqualTo(ExitCodes.FAILED);
         assertThat(out()).contains("✔ provisioning-user-to-ldap.yaml  ", "✖ wrong-sn.yaml  ", " — ",
                 "2 scenarios: 1 passed, 1 failed · report: reports/" + RUN_ID + "/report.html");
+        assertThat(out().lines().filter(l -> l.startsWith("✖ wrong-sn.yaml")).findFirst().orElseThrow())
+                .endsWith(" · finding");
         String results = Files.readString(runFolder(ws).resolve("results.json"));
+        assertThat(results).contains("\"failureKind\" : \"FINDING\"");
         assertThat(results).contains("provisioning-user-to-ldap.yaml", "wrong-sn.yaml");
     }
 
@@ -330,6 +333,8 @@ class RunCommandTest {
         assertThat(exit).as(out() + err()).isEqualTo(ExitCodes.FAILED);
         assertThat(out()).contains("✖ a-bad.yaml  0 ms — ", "no.such.step", "✔ rest/account.yaml  ",
                 "2 scenarios: 1 passed, 1 failed");
+        assertThat(out().lines().filter(l -> l.startsWith("✖ a-bad.yaml")).findFirst().orElseThrow())
+                .endsWith(" · setup problem");
         Path folder = runFolder(ws);
         assertThat(Files.readString(folder.resolve("results.json"))).contains("a-bad.yaml", "rest/account.yaml");
         assertThat(Files.readString(folder.resolve("report.html"))).contains("a-bad.yaml", "rest/account.yaml");
@@ -347,7 +352,7 @@ class RunCommandTest {
         assertThat(out()).contains("✖ wrong-sn.yaml  ",
                 "1 escenarios: 0 superados, 1 fallidos · informe: reports/" + RUN_ID + "/report.html");
         String failureLine = out().lines().filter(l -> l.startsWith("✖ ")).findFirst().orElseThrow();
-        assertThat(failureLine).doesNotContain("expected").doesNotContain("Step ");
+        assertThat(failureLine).doesNotContain("expected").doesNotContain("Step ").endsWith(" · hallazgo");
         assertThat(Files.readString(runFolder(ws).resolve("report.html"))).contains("lang=\"es\"");
     }
 

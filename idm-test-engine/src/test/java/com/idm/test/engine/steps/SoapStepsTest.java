@@ -499,4 +499,31 @@ class SoapStepsTest {
                 .isEqualTo("resources.revoke no puede ejecutarse: no hay un servicio de recursos configurado "
                         + "(idm.test.soap.resource-url)");
     }
+
+    @Test
+    @DisplayName("Failure kinds: a SOAP fault is a finding; an unreachable service is a setup problem")
+    void testFailureKinds() {
+        stubFor(post(urlEqualTo(ROLE_PATH)).willReturn(aResponse()
+                .withStatus(500)
+                .withHeader("Content-Type", "text/xml; charset=utf-8")
+                .withBody("<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
+                        + "<soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\">"
+                        + "<soap:Body><soap:Fault><faultcode>soap:Server</faultcode>"
+                        + "<faultstring>Invalid name</faultstring></soap:Fault></soap:Body></soap:Envelope>")));
+        StepOutcome fault = new RolesGrantStep(roleConnector).execute(Map.of(
+                "user", USER_DN, "roles", List.of(ROLE_DN)), false);
+        assertThat(fault.success()).isFalse();
+        assertThat(fault.kind()).as(fault.message()).isEqualTo(com.idm.test.engine.spi.FailureKind.FINDING);
+
+        SoapProperties properties = new SoapProperties();
+        properties.setUrl("http://localhost:1" + ROLE_PATH);
+        StepOutcome unreachable = new RolesGrantStep(new RoleServiceConnector(properties)).execute(Map.of(
+                "user", USER_DN, "roles", List.of(ROLE_DN)), false);
+        assertThat(unreachable.success()).isFalse();
+        assertThat(unreachable.kind()).as(unreachable.message()).isEqualTo(com.idm.test.engine.spi.FailureKind.SETUP);
+
+        StepOutcome notConfigured = new RolesGrantStep(null).execute(Map.of(
+                "user", USER_DN, "roles", List.of(ROLE_DN)), false);
+        assertThat(notConfigured.kind()).isEqualTo(com.idm.test.engine.spi.FailureKind.SETUP);
+    }
 }

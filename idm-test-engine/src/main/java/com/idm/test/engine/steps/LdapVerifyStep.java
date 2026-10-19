@@ -81,7 +81,8 @@ public final class LdapVerifyStep implements StepType {
         OperationResult<Map<String, Object>> entry = connector.readAttributes(dn);
         if (!entry.isSuccess() || entry.getData().isEmpty()) {
             StepOutcome failure = StepOutcome.failure(Message.of("step.ldap.verify.failed", where,
-                    LdapProblems.failure(entry, e -> EdirectoryConnector.readAttributesProblem(dn, e))));
+                    LdapProblems.failure(entry, e -> EdirectoryConnector.readAttributesProblem(dn, e))),
+                    entry.getErrorType().orElse(ErrorType.UNKNOWN_ERROR));
             return entry.getErrorType().filter(ErrorType.NOT_FOUND::equals).isPresent()
                     ? failure.withEvidence(LdapEvidence.absent(directory, dn, "read"))
                     : failure;
@@ -124,7 +125,8 @@ public final class LdapVerifyStep implements StepType {
 
         if (!result.isSuccess()) {
             return StepOutcome.failure(Message.of("step.ldap.verify.checkFailed", where,
-                    LdapProblems.failure(result, EdirectoryConnector::existsProblem)));
+                    LdapProblems.failure(result, EdirectoryConnector::existsProblem)),
+                    result.getErrorType().orElse(ErrorType.UNKNOWN_ERROR));
         }
 
         boolean present = Boolean.TRUE.equals(result.getData().orElse(false));

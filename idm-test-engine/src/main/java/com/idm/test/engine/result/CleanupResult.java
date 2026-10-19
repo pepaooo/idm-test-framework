@@ -22,6 +22,8 @@ import java.util.Map;
  * @param messageKey     the key of {@code message}, so it can be shown in another language, or
  *                       null when the message is plain text
  * @param messageArgs    the arguments of {@code messageKey}, or null when there is no key
+ * @param failureKind    {@code FINDING} when the entry FAILED (something may be left in the lab);
+ *                       null when it succeeded or was skipped
  */
 public record CleanupResult(
         int index,
@@ -32,16 +34,25 @@ public record CleanupResult(
         String message,
         String description,
         @JsonInclude(JsonInclude.Include.NON_NULL) String messageKey,
-        @JsonInclude(JsonInclude.Include.NON_NULL) List<Object> messageArgs) {
+        @JsonInclude(JsonInclude.Include.NON_NULL) List<Object> messageArgs,
+        @JsonInclude(JsonInclude.Include.NON_NULL) String failureKind) {
 
     public CleanupResult {
         messageArgs = messageArgs == null ? null : Collections.unmodifiableList(new ArrayList<>(messageArgs));
     }
 
+    /** A result without a failure kind. */
+    public CleanupResult(int index, String type, Map<String, Object> resolvedParams, CleanupStatus status,
+                         long durationMillis, String message, String description, String messageKey,
+                         List<Object> messageArgs) {
+        this(index, type, resolvedParams, status, durationMillis, message, description, messageKey, messageArgs,
+                null);
+    }
+
     /** A result whose message is plain text. */
     public CleanupResult(int index, String type, Map<String, Object> resolvedParams, CleanupStatus status,
                          long durationMillis, String message, String description) {
-        this(index, type, resolvedParams, status, durationMillis, message, description, null, null);
+        this(index, type, resolvedParams, status, durationMillis, message, description, null, null, null);
     }
 
     /** A result for an entry without a description. */

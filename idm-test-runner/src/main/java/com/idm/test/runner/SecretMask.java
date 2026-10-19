@@ -133,13 +133,14 @@ final class SecretMask {
     private StepResult step(StepResult step) {
         return new StepResult(step.index(), step.type(), map(step.resolvedParams()), step.success(),
                 step.durationMillis(), apply(step.message()), step.attempts(), step.waitedMillis(),
-                apply(step.description()), evidence(step.evidence()), step.messageKey(), list(step.messageArgs()));
+                apply(step.description()), evidence(step.evidence()), step.messageKey(), list(step.messageArgs()),
+                step.failureKind());
     }
 
     private CleanupResult cleanup(CleanupResult entry) {
         return new CleanupResult(entry.index(), entry.type(), map(entry.resolvedParams()), entry.status(),
                 entry.durationMillis(), apply(entry.message()), apply(entry.description()), entry.messageKey(),
-                list(entry.messageArgs()));
+                list(entry.messageArgs()), entry.failureKind());
     }
 
     /** The evidence rebuilt from masked parts; its constructor masks and cuts it again as usual. */

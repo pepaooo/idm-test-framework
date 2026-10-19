@@ -1303,4 +1303,93 @@ class ScenarioEngineTest {
         assertThat(Messages.render(cleanup.cleanup().get(0).messageDetail(), ES)).isEqualTo(
                 "la limpieza 'a' lanzó IllegalArgumentException: no se puede resolver ${user.nope} — no hay valor para 'nope'");
     }
+
+    private StepType returning(String name, boolean retryable, StepOutcome outcome) {
+        return new StepType() {
+            public String name() { return name; }
+            public boolean retryable() { return retryable; }
+            public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
+                return outcome;
+            }
+        };
+    }
+
+    @Test
+    @DisplayName("A step's own failure is a finding; a final failure or an unknown type is a setup problem")
+    void testFailureKinds() {
+        ScenarioResult finding = engineWith(failingAction("a")).run(scenario(
+                new StepSpec("a", Map.of())), "t.yaml");
+        assertThat(finding.steps().get(0).failureKind()).isEqualTo("FINDING");
+
+        ScenarioResult setup = engineWith(returning("a", false, StepOutcome.finalFailure("bad param")))
+                .run(scenario(new StepSpec("a", Map.of())), "t.yaml");
+        assertThat(setup.steps().get(0).failureKind()).isEqualTo("SETUP");
+
+        ScenarioResult unknown = engineWith().run(scenario(new StepSpec("nope", Map.of())), "t.yaml");
+        assertThat(unknown.steps().get(0).failureKind()).isEqualTo("SETUP");
+
+        ScenarioResult passed = engineWith(recordingAction("a")).run(scenario(
+                new StepSpec("a", Map.of())), "t.yaml");
+        assertThat(passed.steps().get(0).failureKind()).isNull();
+    }
+
+    @Test
+    @DisplayName("A step that throws is a setup problem, with or without wait")
+    void testThrownIsSetup() {
+        StepType throwing = new StepType() {
+            public String name() { return "boom"; }
+            public boolean retryable() { return true; }
+            public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
+                throw new IllegalStateException("kaput");
+            }
+        };
+
+        ScenarioResult plain = engineWith(throwing).run(scenario(new StepSpec("boom", Map.of())), "t.yaml");
+        assertThat(plain.steps().get(0).failureKind()).isEqualTo("SETUP");
+
+        ScenarioResult waited = engineWith(throwing).run(scenario(new StepSpec("boom",
+                Map.of("wait", Map.of("timeout", "1s", "poll", "1s")))), "t.yaml");
+        assertThat(waited.steps().get(0).success()).isFalse();
+        assertThat(waited.steps().get(0).attempts()).as("the wait ran").isNotNull();
+        assertThat(waited.steps().get(0).failureKind()).isEqualTo("SETUP");
+    }
+
+    @Test
+    @DisplayName("Under wait the last outcome's kind is kept, through both message suffixes")
+    void testWaitKeepsKind() {
+        ScenarioResult unreachable = engineWith(returning("check", true,
+                StepOutcome.failure("connection refused", com.idm.test.core.model.ErrorType.NETWORK_ERROR)))
+                .run(scenario(new StepSpec("check",
+                        Map.of("wait", Map.of("timeout", "1s", "poll", "1s")))), "t.yaml");
+        assertThat(unreachable.steps().get(0).attempts()).as("the wait ran").isNotNull();
+        assertThat(unreachable.steps().get(0).failureKind()).isEqualTo("SETUP");
+
+        ScenarioResult mismatch = engineWith(returning("check", true, StepOutcome.failure("not yet")))
+                .run(scenario(new StepSpec("check",
+                        Map.of("wait", Map.of("timeout", "1s", "poll", "1s")))), "t.yaml");
+        assertThat(mismatch.steps().get(0).failureKind()).isEqualTo("FINDING");
+
+        ScenarioResult terminal = engineWith(returning("check", true, StepOutcome.finalFailure("never")))
+                .run(scenario(new StepSpec("check",
+                        Map.of("wait", Map.of("timeout", "1s", "poll", "1s")))), "t.yaml");
+        assertThat(terminal.steps().get(0).attempts()).as("the wait ran").isEqualTo(1);
+        assertThat(terminal.steps().get(0).failureKind()).isEqualTo("SETUP");
+    }
+
+    @Test
+    @DisplayName("A failing cleanup entry is a finding: something may be left in the lab")
+    void testCleanupFailureIsFinding() {
+        ScenarioResult result = engineWith(recordingAction("a"), returning("undo", false,
+                StepOutcome.failure("unreachable", com.idm.test.core.model.ErrorType.NETWORK_ERROR)))
+                .run(withCleanup(List.of(new StepSpec("a", Map.of())),
+                        new StepSpec("undo", Map.of()),
+                        new StepSpec("undo", Map.of("dn", "${never}")),
+                        new StepSpec("a", Map.of())), "t.yaml");
+
+        assertThat(result.cleanup().get(0).status()).isEqualTo(CleanupStatus.FAILED);
+        assertThat(result.cleanup().get(0).failureKind()).isEqualTo("FINDING");
+        assertThat(result.cleanup().get(1).status()).isEqualTo(CleanupStatus.SKIPPED);
+        assertThat(result.cleanup().get(1).failureKind()).isNull();
+        assertThat(result.cleanup().get(2).failureKind()).isNull();
+    }
 }

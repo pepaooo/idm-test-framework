@@ -3,6 +3,7 @@ package com.idm.test.engine.result;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.idm.test.engine.spi.Evidence;
+import com.idm.test.engine.spi.FailureKind;
 import com.idm.test.engine.spi.Message;
 
 import java.util.ArrayList;
@@ -22,6 +23,8 @@ import java.util.Map;
  * @param messageKey     the key of {@code message}, so it can be shown in another language, or
  *                       null when the message is plain text
  * @param messageArgs    the arguments of {@code messageKey}, or null when there is no key
+ * @param failureKind    {@code FINDING} or {@code SETUP} (a {@link FailureKind} name) when the step
+ *                       failed; null when it passed
  */
 public record StepResult(
         int index,
@@ -35,10 +38,19 @@ public record StepResult(
         String description,
         @JsonInclude(JsonInclude.Include.NON_NULL) Evidence evidence,
         @JsonInclude(JsonInclude.Include.NON_NULL) String messageKey,
-        @JsonInclude(JsonInclude.Include.NON_NULL) List<Object> messageArgs) {
+        @JsonInclude(JsonInclude.Include.NON_NULL) List<Object> messageArgs,
+        @JsonInclude(JsonInclude.Include.NON_NULL) String failureKind) {
 
     public StepResult {
         messageArgs = messageArgs == null ? null : Collections.unmodifiableList(new ArrayList<>(messageArgs));
+    }
+
+    /** A result without a failure kind. */
+    public StepResult(int index, String type, Map<String, Object> resolvedParams, boolean success,
+                      long durationMillis, String message, Integer attempts, Long waitedMillis, String description,
+                      Evidence evidence, String messageKey, List<Object> messageArgs) {
+        this(index, type, resolvedParams, success, durationMillis, message, attempts, waitedMillis, description,
+                evidence, messageKey, messageArgs, null);
     }
 
     /** A result whose message is plain text. */
@@ -46,7 +58,7 @@ public record StepResult(
                       long durationMillis, String message, Integer attempts, Long waitedMillis, String description,
                       Evidence evidence) {
         this(index, type, resolvedParams, success, durationMillis, message, attempts, waitedMillis, description,
-                evidence, null, null);
+                evidence, null, null, null);
     }
 
     /** A result without evidence. */
@@ -59,6 +71,15 @@ public record StepResult(
     public StepResult(int index, String type, Map<String, Object> resolvedParams, boolean success,
                       long durationMillis, String message, Integer attempts, Long waitedMillis) {
         this(index, type, resolvedParams, success, durationMillis, message, attempts, waitedMillis, null);
+    }
+
+    /** The failure's kind, or null when the step passed; a failure recorded without one is a finding. */
+    @JsonIgnore
+    public FailureKind kind() {
+        if (success) {
+            return null;
+        }
+        return failureKind == null ? FailureKind.FINDING : FailureKind.valueOf(failureKind);
     }
 
     /** The message by key, or null when it is plain text. */

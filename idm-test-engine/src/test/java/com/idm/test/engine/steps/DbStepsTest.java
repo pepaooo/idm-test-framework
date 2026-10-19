@@ -499,4 +499,28 @@ class DbStepsTest {
         assertThat(Messages.render(bad.detail(), Locale.of("es")))
                 .isEqualTo("db.verify falló en '" + DB + "': La consulta falló: " + bad.message().substring(prefix.length()));
     }
+
+    @Test
+    @DisplayName("Failure kinds: a mismatch or SQL error is a finding; an unknown database is a setup problem")
+    void testFailureKinds() {
+        jdbc.update("INSERT INTO sap_users VALUES (?,?,?)", "kind", "PENDING", 0);
+        StepOutcome mismatch = new DbVerifyStep(connector).execute(Map.of(
+                "database", DB,
+                "query", "SELECT * FROM sap_users WHERE username = 'kind'",
+                "expect", Map.of("row", Map.of("status", "ACTIVE"))), false);
+        assertThat(mismatch.success()).isFalse();
+        assertThat(mismatch.kind()).isEqualTo(com.idm.test.engine.spi.FailureKind.FINDING);
+
+        StepOutcome sqlError = new DbExecuteStep(connector).execute(Map.of(
+                "database", DB, "statement", "INSERT INTO no_such_table (a) VALUES (1)"), false);
+        assertThat(sqlError.kind()).as(sqlError.message()).isEqualTo(com.idm.test.engine.spi.FailureKind.FINDING);
+
+        StepOutcome unknown = new DbExecuteStep(connector).execute(Map.of(
+                "database", "no-such-db", "statement", "SELECT 1"), false);
+        assertThat(unknown.kind()).isEqualTo(com.idm.test.engine.spi.FailureKind.SETUP);
+
+        StepOutcome unknownVerify = new DbVerifyStep(connector).execute(Map.of(
+                "database", "no-such-db", "query", "SELECT 1", "expect", Map.of("rowCount", 1)), false);
+        assertThat(unknownVerify.kind()).isEqualTo(com.idm.test.engine.spi.FailureKind.SETUP);
+    }
 }

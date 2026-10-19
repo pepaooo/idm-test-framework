@@ -75,14 +75,14 @@ class SecretMaskTest {
         StepResult http = new StepResult(0, "rest.verify", params, false, 5, "failed at " + secret, null, null,
                 "desc " + secret, new HttpEvidence("GET", "http://h/" + secret, Map.of("X-Trace", List.of(secret)),
                         "body " + secret, null, null, Map.of("id", secret), 4, "error " + secret),
-                "step.key", List.of("http://h/" + secret, Message.of("inner", secret, 7)));
+                "step.key", List.of("http://h/" + secret, Message.of("inner", secret, 7)), "SETUP");
         StepResult sql = new StepResult(1, "db.verify", Map.of(), true, 1, null, null, null, null,
                 SqlEvidence.query("db", "SELECT '" + secret + "'", new Object[] {secret},
                         List.of(Map.of("col", secret))), null, null);
         StepResult ldap = new StepResult(2, "ldap.verify", Map.of(), true, 1, null, null, null, null,
                 LdapEvidence.read(null, "cn=" + secret, Map.of("sn", secret)), null, null);
         CleanupResult cleanup = new CleanupResult(0, "ldap.delete", Map.of("dn", secret), CleanupStatus.FAILED, 1,
-                "cleanup " + secret, "about " + secret, "cleanup.key", List.of(secret));
+                "cleanup " + secret, "about " + secret, "cleanup.key", List.of(secret), "FINDING");
         ScenarioResult result = new ScenarioResult("s.yaml", "s.yaml", false, 9, List.of(http, sql, ldap),
                 List.of(cleanup), "detail " + secret, "scenario " + secret, "detail.key", List.of(secret));
 
@@ -93,6 +93,8 @@ class SecretMaskTest {
         String written = Files.readString(json);
         assertThat(written).doesNotContain(secret).contains("****", "s.yaml", "rest.verify", "step.key", "inner");
         assertThat(masked.steps().get(0).resolvedParams()).containsEntry("count", 3);
+        assertThat(masked.steps().get(0).failureKind()).isEqualTo("SETUP");
+        assertThat(masked.cleanup().get(0).failureKind()).isEqualTo("FINDING");
         assertThat(masked.failureSummary()).doesNotContain(secret);
         assertThat(mask.result(null)).isNull();
         assertThat(new SecretMask(List.of()).result(result)).isSameAs(result);

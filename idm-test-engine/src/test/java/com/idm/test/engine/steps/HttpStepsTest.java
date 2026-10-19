@@ -462,4 +462,12 @@ class HttpStepsTest {
         assertThat(outcome.message()).isEqualTo(
                 "http.request method 'FETCH' is not one of [DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT]");
     }
+
+    @Test
+    @DisplayName("Failure kinds: a refused connection is a setup problem")
+    void testFailureKinds() {
+        StepOutcome refused = STEP.execute(params("target", "down", "method", "GET", "path", "/x"), true);
+        assertThat(refused.success()).isFalse();
+        assertThat(refused.kind()).as(refused.message()).isEqualTo(com.idm.test.engine.spi.FailureKind.SETUP);
+    }
 }

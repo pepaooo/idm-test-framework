@@ -342,4 +342,25 @@ class HttpAuthStepsTest {
                 + "el registro 'svc' (destino 'oauth') falló: [invalid_client]")
                 .doesNotContain(CLIENT_SECRET);
     }
+
+    @Test
+    @DisplayName("Failure kinds: a token endpoint answering 401 is a setup problem for every step")
+    void testTokenRejectedIsSetup() {
+        WIREMOCK.stubFor(post(urlEqualTo("/oauth/token")).willReturn(aResponse().withStatus(401)));
+        for (StepType step : steps(freshAuthenticator())) {
+            StepOutcome outcome = step.execute(params(step, "oauth", null), false);
+            assertThat(outcome.success()).as(step.name()).isFalse();
+            assertThat(outcome.kind()).as(step.name() + ": " + outcome.message()).isEqualTo(com.idm.test.engine.spi.FailureKind.SETUP);
+        }
+    }
+
+    @Test
+    @DisplayName("Failure kinds: a token endpoint answering 503 is a finding: the system answered")
+    void testTokenServerErrorIsFinding() {
+        WIREMOCK.stubFor(post(urlEqualTo("/oauth/token")).willReturn(aResponse().withStatus(503)));
+        StepType step = steps(freshAuthenticator()).get(0);
+        StepOutcome outcome = step.execute(params(step, "oauth", null), false);
+        assertThat(outcome.success()).isFalse();
+        assertThat(outcome.kind()).as(outcome.message()).isEqualTo(com.idm.test.engine.spi.FailureKind.FINDING);
+    }
 }

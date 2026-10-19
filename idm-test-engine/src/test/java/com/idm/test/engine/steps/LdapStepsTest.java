@@ -4,6 +4,7 @@ import com.idm.test.connector.ldap.client.EdirectoryConnector;
 import com.idm.test.connector.ldap.client.LdapDirectories;
 import com.idm.test.connector.ldap.model.LdapUser;
 import com.idm.test.core.model.OperationResult;
+import com.idm.test.engine.spi.FailureKind;
 import com.idm.test.engine.spi.LdapEvidence;
 import com.idm.test.engine.i18n.Messages;
 import com.idm.test.engine.spi.StepOutcome;
@@ -945,5 +946,69 @@ class LdapStepsTest {
                 .isEqualTo("ldap.update falló para " + dn + ": no se puede agregar [" + b + "] a seeAlso: la entrada ya lo tiene");
         verify(counted, times(1)).readAttributes(dn);
         connector.delete(dn);
+    }
+
+    private static LdapDirectories directoryAt(String url, String password) {
+        LdapContextSource contextSource = new LdapContextSource();
+        contextSource.setUrl(url);
+        contextSource.setBase(BASE_DN);
+        contextSource.setUserDn(BIND_DN);
+        contextSource.setPassword(password);
+        contextSource.afterPropertiesSet();
+        return only(new EdirectoryConnector(new LdapTemplate(contextSource)));
+    }
+
+    @Test
+    @DisplayName("Failure kinds: a mismatch or an existing entry is a finding")
+    void testFindingKinds() {
+        String dn = "cn=kind.finding,ou=users";
+        Map<String, Object> attributes = Map.of("cn", "kind.finding", "sn", "Kind", "givenName", "Ada");
+        assertThat(new LdapCreateStep(directories).execute(Map.of("dn", dn, "attributes", attributes), false)
+                .success()).isTrue();
+
+        StepOutcome mismatch = new LdapVerifyStep(directories).execute(Map.of(
+                "dn", dn, "expect", Map.of("givenName", "Grace")), false);
+        assertThat(mismatch.success()).isFalse();
+        assertThat(mismatch.kind()).isEqualTo(FailureKind.FINDING);
+
+        StepOutcome exists = new LdapCreateStep(directories).execute(Map.of("dn", dn, "attributes", attributes), false);
+        assertThat(exists.success()).isFalse();
+        assertThat(exists.kind()).as(exists.message()).isEqualTo(FailureKind.FINDING);
+
+        StepOutcome absent = new LdapVerifyStep(directories).execute(Map.of(
+                "dn", "cn=kind.nobody,ou=users", "expect", Map.of("sn", "x")), false);
+        assertThat(absent.success()).isFalse();
+        assertThat(absent.kind()).isEqualTo(FailureKind.FINDING);
+    }
+
+    @Test
+    @DisplayName("Failure kinds: a closed port or a rejected bind is a setup problem")
+    void testSetupKinds() {
+        LdapDirectories closed = directoryAt("ldap://localhost:1", BIND_PASSWORD);
+        StepOutcome unreachable = new LdapVerifyStep(closed).execute(Map.of(
+                "dn", "cn=anyone,ou=users", "expect", Map.of("sn", "x")), false);
+        assertThat(unreachable.success()).isFalse();
+        assertThat(unreachable.kind()).as(unreachable.message()).isEqualTo(FailureKind.SETUP);
+
+        StepOutcome unreachableCreate = new LdapCreateStep(closed).execute(Map.of(
+                "dn", "cn=anyone,ou=users", "attributes", Map.of("cn", "anyone", "sn", "x")), false);
+        assertThat(unreachableCreate.kind()).as(unreachableCreate.message()).isEqualTo(FailureKind.SETUP);
+
+        LdapDirectories rejected = directoryAt(server.getUrl(), "wrong-fake-password");
+        StepOutcome refused = new LdapVerifyStep(rejected).execute(Map.of(
+                "dn", "cn=anyone,ou=users", "expect", Map.of("sn", "x")), false);
+        assertThat(refused.success()).isFalse();
+        assertThat(refused.kind()).as(refused.message()).isEqualTo(FailureKind.SETUP);
+
+        StepOutcome refusedExists = new LdapVerifyStep(rejected).execute(Map.of(
+                "dn", "cn=anyone,ou=users", "exists", false), false);
+        assertThat(refusedExists.kind()).as(refusedExists.message()).isEqualTo(FailureKind.SETUP);
+
+        StepOutcome refusedDelete = new LdapDeleteStep(rejected).execute(Map.of("dn", "cn=anyone,ou=users"), false);
+        assertThat(refusedDelete.kind()).as(refusedDelete.message()).isEqualTo(FailureKind.SETUP);
+
+        StepOutcome refusedUpdate = new LdapUpdateStep(rejected).execute(Map.of(
+                "dn", "cn=anyone,ou=users", "attributes", Map.of("sn", "y")), false);
+        assertThat(refusedUpdate.kind()).as(refusedUpdate.message()).isEqualTo(FailureKind.SETUP);
     }
 }

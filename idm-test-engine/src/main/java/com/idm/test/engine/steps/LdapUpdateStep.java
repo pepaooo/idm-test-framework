@@ -2,6 +2,7 @@ package com.idm.test.engine.steps;
 
 import com.idm.test.connector.ldap.client.EdirectoryConnector;
 import com.idm.test.connector.ldap.client.LdapDirectories;
+import com.idm.test.core.model.ErrorType;
 import com.idm.test.core.model.OperationResult;
 import com.idm.test.engine.spi.LdapEvidence;
 import com.idm.test.engine.spi.Message;
@@ -68,7 +69,8 @@ public final class LdapUpdateStep implements StepType {
         OperationResult<Void> result = connector.update(dn, attributes);
         if (!result.isSuccess()) {
             return StepOutcome.failure(Message.of("step.ldap.update.failed", where,
-                    LdapProblems.failure(result, e -> EdirectoryConnector.updateProblem(attributes, e))))
+                    LdapProblems.failure(result, e -> EdirectoryConnector.updateProblem(attributes, e))),
+                    result.getErrorType().orElse(ErrorType.UNKNOWN_ERROR))
                     .withEvidence(evidence);
         }
 

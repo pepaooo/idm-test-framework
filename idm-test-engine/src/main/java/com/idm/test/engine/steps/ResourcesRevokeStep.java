@@ -3,6 +3,7 @@ package com.idm.test.engine.steps;
 import com.idm.test.connector.soap.client.ResourceServiceConnector;
 import com.idm.test.connector.soap.client.SoapProblem;
 import com.idm.test.connector.soap.generated.resource.RequestResourceRevokeResponse;
+import com.idm.test.core.model.ErrorType;
 import com.idm.test.core.model.OperationResult;
 import com.idm.test.engine.spi.HttpEvidence;
 import com.idm.test.engine.spi.Message;
@@ -57,7 +58,8 @@ public final class ResourcesRevokeStep implements StepType {
 
         if (!result.isSuccess() || result.getData().isEmpty()) {
             return StepOutcome.failure(Message.of("step.resources.revoke.failed",
-                    user, ConnectorProblems.soap(result, SoapProblem::revokeResource))).withEvidence(evidence);
+                    user, ConnectorProblems.soap(result, SoapProblem::revokeResource)),
+                    result.getErrorType().orElse(ErrorType.UNKNOWN_ERROR)).withEvidence(evidence);
         }
 
         return StepOutcome.success(

@@ -42,7 +42,7 @@ final class RestAuthorization {
             ErrorType type = authorization.errorType() == null ? ErrorType.UNKNOWN_ERROR : authorization.errorType();
             return type == ErrorType.CONFIGURATION_ERROR || type == ErrorType.AUTHENTICATION_ERROR
                     ? StepOutcome.finalFailure(message)
-                    : StepOutcome.failure(message);
+                    : StepOutcome.failure(message, type);
         }
         if (authorization.header() != null) {
             headers.put(AUTHORIZATION, authorization.header());

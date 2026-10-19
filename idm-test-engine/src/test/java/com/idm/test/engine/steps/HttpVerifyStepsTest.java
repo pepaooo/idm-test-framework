@@ -537,4 +537,13 @@ class HttpVerifyStepsTest {
         assertThat(spanish(step)).startsWith(head + "la comprobación 1 de 1 falló: no se pudo evaluar"
                 + " js:{ response.json.missing.deeper }: ").endsWith(" (estado 200, body: {})");
     }
+
+    @Test
+    @DisplayName("Failure kinds: a check the response fails is a finding")
+    void testFailureKinds() {
+        stubJson(200, "{\"active\":false}");
+        StepResult step = run(params("check", "js:{ response.json.active === true }"));
+        assertThat(step.success()).isFalse();
+        assertThat(step.failureKind()).as(step.message()).isEqualTo("FINDING");
+    }
 }

@@ -643,4 +643,31 @@ class RestStepsTest {
         assertThat(outcome.message()).isEqualTo(
                 "rest.request names unknown target 'nope'. Configured targets: [broken, idm, slow]");
     }
+
+    @Test
+    @DisplayName("Failure kinds: an IdM answering 500 is a finding; a refused connection is a setup problem")
+    void testFailureKinds() {
+        stubFor(get(urlEqualTo("/users/jdoe")).willReturn(aResponse().withStatus(500)));
+        StepOutcome answered = new RestVerifyStep(CONNECTOR, PROPERTIES, RestAuthenticator.withoutOAuth()).execute(
+                Map.of("target", "idm", "path", "/users/jdoe", "expect", Map.of("status", 200)), false);
+        assertThat(answered.success()).isFalse();
+        assertThat(answered.kind()).isEqualTo(com.idm.test.engine.spi.FailureKind.FINDING);
+
+        RestProperties dead = new RestProperties();
+        RestProperties.RestApiConfig config = new RestProperties.RestApiConfig();
+        config.setBaseUrl("http://localhost:1");
+        dead.getRest().put("idm", config);
+        StepOutcome refused = new RestRequestStep(CONNECTOR, dead, RestAuthenticator.withoutOAuth()).execute(Map.of(
+                "target", "idm", "method", "GET", "path", "/users/1"), false);
+        assertThat(refused.success()).isFalse();
+        assertThat(refused.kind()).as(refused.message()).isEqualTo(com.idm.test.engine.spi.FailureKind.SETUP);
+
+        StepOutcome refusedVerify = new RestVerifyStep(CONNECTOR, dead, RestAuthenticator.withoutOAuth()).execute(
+                Map.of("target", "idm", "path", "/users/1", "expect", Map.of("status", 200)), false);
+        assertThat(refusedVerify.kind()).as(refusedVerify.message()).isEqualTo(com.idm.test.engine.spi.FailureKind.SETUP);
+
+        StepOutcome unknown = new RestRequestStep(CONNECTOR, PROPERTIES, RestAuthenticator.withoutOAuth()).execute(
+                Map.of("target", "nope", "method", "GET", "path", "/"), false);
+        assertThat(unknown.kind()).isEqualTo(com.idm.test.engine.spi.FailureKind.SETUP);
+    }
 }

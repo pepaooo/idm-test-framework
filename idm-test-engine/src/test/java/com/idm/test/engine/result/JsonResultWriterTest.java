@@ -220,4 +220,24 @@ class JsonResultWriterTest {
                   "failureDetailArgs" : [ "x" ]
                 } ]""");
     }
+
+    @Test
+    @DisplayName("Should write a failure's kind last, and no kind for a passing step or cleanup entry")
+    void testWritesFailureKind(@TempDir Path dir) throws Exception {
+        StepResult passed = new StepResult(0, "set", Map.of(), true, 1, "ok", null, null, null);
+        StepResult failed = new StepResult(1, "ldap.verify", Map.of(), false, 5, "m", null, null, null,
+                null, null, null, "FINDING");
+        CleanupResult undone = new CleanupResult(0, "ldap.delete", Map.of(), CleanupStatus.SUCCEEDED, 1, "ok");
+        CleanupResult left = new CleanupResult(1, "ldap.delete", Map.of(), CleanupStatus.FAILED, 1, "no",
+                null, null, null, "FINDING");
+        ScenarioResult scenario = new ScenarioResult("S", "s.yaml", false, 10, List.of(passed, failed),
+                List.of(undone, left), null);
+
+        Path target = dir.resolve("kind.json");
+        JsonResultWriter.write(List.of(scenario), target);
+
+        String json = Files.readString(target).replace("\r\n", "\n");
+        assertThat(json.split("\"failureKind\"", -1)).as("one per failure, none when passing").hasSize(3);
+        assertThat(json.split("\"failureKind\" : \"FINDING\"\n", -1)).as("the last field").hasSize(3);
+    }
 }

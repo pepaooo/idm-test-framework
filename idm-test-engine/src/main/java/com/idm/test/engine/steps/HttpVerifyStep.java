@@ -6,6 +6,7 @@ import com.idm.test.connector.rest.client.RestAuthenticator;
 import com.idm.test.connector.rest.client.TokenFailureText;
 import com.idm.test.connector.rest.config.RestProperties;
 import com.idm.test.connector.rest.model.TextResponse;
+import com.idm.test.core.model.ErrorType;
 import com.idm.test.core.model.OperationResult;
 import com.idm.test.engine.expr.ExpressionEvaluator.ExpressionException;
 import com.idm.test.engine.i18n.Messages;
@@ -98,7 +99,8 @@ public final class HttpVerifyStep implements StepType {
                                      OperationResult<TextResponse> result, boolean captureRequested) {
         if (!result.isSuccess() || result.getData().isEmpty()) {
             return StepOutcome.failure(Message.of("step.http.verify.failed",
-                    request.url(), ConnectorProblems.request(request.method(), request.url(), result)));
+                    request.url(), ConnectorProblems.request(request.method(), request.url(), result)),
+                    result.getErrorType().orElse(ErrorType.UNKNOWN_ERROR));
         }
 
         TextResponse response = result.getData().get();

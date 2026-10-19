@@ -80,7 +80,7 @@ public final class DbVerifyStep implements StepType {
             // row that provisioning has not created yet), so only configuration errors are final.
             return result.getErrorType().filter(ErrorType.CONFIGURATION_ERROR::equals).isPresent()
                     ? StepOutcome.finalFailure(message)
-                    : StepOutcome.failure(message)
+                    : StepOutcome.failure(message, result.getErrorType().orElse(ErrorType.UNKNOWN_ERROR))
                             .withEvidence(SqlEvidence.failed(database, query, arguments));
         }
 

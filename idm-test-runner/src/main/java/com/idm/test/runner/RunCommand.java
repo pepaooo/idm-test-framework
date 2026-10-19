@@ -348,13 +348,15 @@ public final class RunCommand {
                     result = mask.result(loaded.failures().get(name));
                     Message detail = result.failureDetailMessage();
                     progress.failed(name, 0L,
-                            mask.apply(detail != null ? Messages.render(detail, locale) : result.failureDetail()));
+                            mask.apply(detail != null ? Messages.render(detail, locale) : result.failureDetail()),
+                            result.failureKind());
                 } else {
                     result = mask.result(runOne(engine, scenario, name));
                     if (result.success()) {
                         progress.passed(name, result.durationMillis());
                     } else {
-                        progress.failed(name, result.durationMillis(), mask.apply(result.failureSummary(locale)));
+                        progress.failed(name, result.durationMillis(), mask.apply(result.failureSummary(locale)),
+                                result.failureKind());
                     }
                 }
                 LOG.info("{} {}", result.success() ? "passed" : "failed", name);

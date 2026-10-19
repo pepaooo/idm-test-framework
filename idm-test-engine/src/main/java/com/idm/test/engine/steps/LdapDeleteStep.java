@@ -2,6 +2,7 @@ package com.idm.test.engine.steps;
 
 import com.idm.test.connector.ldap.client.EdirectoryConnector;
 import com.idm.test.connector.ldap.client.LdapDirectories;
+import com.idm.test.core.model.ErrorType;
 import com.idm.test.core.model.OperationResult;
 import com.idm.test.engine.spi.LdapEvidence;
 import com.idm.test.engine.spi.Message;
@@ -57,7 +58,8 @@ public final class LdapDeleteStep implements StepType {
         OperationResult<Boolean> exists = connector.exists(dn);
         if (!exists.isSuccess()) {
             return StepOutcome.failure(Message.of("step.ldap.delete.checkFailed", where,
-                    LdapProblems.failure(exists, EdirectoryConnector::existsProblem)));
+                    LdapProblems.failure(exists, EdirectoryConnector::existsProblem)),
+                    exists.getErrorType().orElse(ErrorType.UNKNOWN_ERROR));
         }
         if (!Boolean.TRUE.equals(exists.getData().orElse(false))) {
             return StepOutcome.failure(Message.of("step.ldap.delete.notFound", where))
@@ -69,7 +71,8 @@ public final class LdapDeleteStep implements StepType {
 
         if (!result.isSuccess()) {
             return StepOutcome.failure(Message.of("step.ldap.delete.failed", where,
-                    LdapProblems.failure(result, EdirectoryConnector::deleteProblem)))
+                    LdapProblems.failure(result, EdirectoryConnector::deleteProblem)),
+                    result.getErrorType().orElse(ErrorType.UNKNOWN_ERROR))
                     .withEvidence(deleted);
         }
 

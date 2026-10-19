@@ -3,6 +3,7 @@ package com.idm.test.engine.result;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.idm.test.engine.i18n.Messages;
+import com.idm.test.engine.spi.FailureKind;
 import com.idm.test.engine.spi.Message;
 
 import java.util.ArrayList;
@@ -118,6 +119,25 @@ public record ScenarioResult(
         return parts.isEmpty()
                 ? Messages.render(Message.of("engine.summary.beforeAnyStep", sourceName), locale)
                 : String.join("; ", parts);
+    }
+
+    /**
+     * What kind of failure this scenario is, or null when it passed: its failed step's kind; a
+     * {@link FailureKind#SETUP} problem when it failed before any step (it did not load, or its
+     * fixtures failed); a {@link FailureKind#FINDING} when only its cleanup failed.
+     */
+    @JsonIgnore
+    public FailureKind failureKind() {
+        if (success) {
+            return null;
+        }
+        for (int i = steps.size() - 1; i >= 0; i--) {
+            if (!steps.get(i).success()) {
+                return steps.get(i).kind();
+            }
+        }
+        boolean cleanupFailed = cleanup.stream().anyMatch(entry -> entry.status() == CleanupStatus.FAILED);
+        return failureDetail == null && cleanupFailed ? FailureKind.FINDING : FailureKind.SETUP;
     }
 
     /** The failure detail by key, or null when it is plain text. */

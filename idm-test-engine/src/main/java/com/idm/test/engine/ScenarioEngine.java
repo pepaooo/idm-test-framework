@@ -12,6 +12,8 @@ import com.idm.test.engine.result.CleanupStatus;
 import com.idm.test.engine.result.ScenarioResult;
 import com.idm.test.engine.result.StepResult;
 import com.idm.test.engine.spi.DeferredExpression;
+import com.idm.test.engine.spi.Evidence;
+import com.idm.test.engine.spi.FailureKind;
 import com.idm.test.engine.spi.Message;
 import com.idm.test.engine.spi.StepOutcome;
 import com.idm.test.engine.spi.StepType;
@@ -164,7 +166,7 @@ public final class ScenarioEngine {
             outcome = bind(scope, asName, outcome, step.type());
             return new StepResult(index, step.type(), reportable(resolved), outcome.success(),
                     System.currentTimeMillis() - started, outcome.message(), null, null, description,
-                    outcome.evidence(), key(outcome.detail()), args(outcome.detail()));
+                    outcome.evidence(), key(outcome.detail()), args(outcome.detail()), kindOf(outcome));
         }
 
         AtomicInteger attempts = new AtomicInteger();
@@ -185,8 +187,9 @@ public final class ScenarioEngine {
                 // what actually happened on this attempt. Mirror the outer catch's format
                 // so the exception's class name is always present — otherwise a null
                 // message surfaces as the bare literal "null".
-                outcome = StepOutcome.failure(
-                        Message.of("engine.wait.threw", KeyedArgumentException.typeName(e), thrown(e)));
+                // An unexpected exception is a setup problem, as it is without wait.
+                outcome = setupFailure(
+                        Message.of("engine.wait.threw", KeyedArgumentException.typeName(e), thrown(e)), null);
             }
             last.set(outcome);
             // A final failure ends the wait: polling it again cannot change the answer.
@@ -222,16 +225,33 @@ public final class ScenarioEngine {
             message = Messages.english(detail);
         }
 
+        // The kind stays the last outcome's through the suffixes above; no outcome at all means
+        // the step never got an answer, a setup problem.
+        String kind = success ? null : outcome == null ? FailureKind.SETUP.name() : kindOf(outcome);
         return new StepResult(index, step.type(), reportable(resolved), success, elapsed, message,
                 attempts.get(), waitedMillis, description, outcome == null ? null : outcome.evidence(),
-                key(detail), args(detail));
+                key(detail), args(detail), kind);
     }
 
-    /** A failed step's result, its message by key. */
+    /**
+     * A failed step's result, its message by key: a setup problem, since the engine itself found
+     * the step could not run as written (or it threw).
+     */
     private static StepResult failed(int index, String type, Map<String, Object> params, long started,
                                      Message detail, String description) {
         return new StepResult(index, type, params, false, System.currentTimeMillis() - started,
-                Messages.english(detail), null, null, description, null, key(detail), args(detail));
+                Messages.english(detail), null, null, description, null, key(detail), args(detail),
+                FailureKind.SETUP.name());
+    }
+
+    /** A failure the engine records as a setup problem, with the evidence it has, if any. */
+    private static StepOutcome setupFailure(Message detail, Evidence evidence) {
+        return new StepOutcome(false, Messages.english(detail), null, false, evidence, detail, FailureKind.SETUP);
+    }
+
+    /** The outcome's failure kind by name, or null when it passed. */
+    private static String kindOf(StepOutcome outcome) {
+        return outcome.kind() == null ? null : outcome.kind().name();
     }
 
     /**
@@ -338,8 +358,8 @@ public final class ScenarioEngine {
             return outcome;
         }
         if (outcome.value() == null) {
-            return StepOutcome.failure(Message.of("engine.capture.noValue", stepType, asName))
-                    .withEvidence(outcome.evidence());
+            // The step's own defect, not the lab's: a setup problem.
+            return setupFailure(Message.of("engine.capture.noValue", stepType, asName), outcome.evidence());
         }
         scope.put(String.valueOf(asName), outcome.value());
         return outcome;
@@ -393,14 +413,23 @@ public final class ScenarioEngine {
         return new CleanupResult(index, entry.type(), resolved,
                 outcome.success() ? CleanupStatus.SUCCEEDED : CleanupStatus.FAILED,
                 System.currentTimeMillis() - started, outcome.message(), description,
-                key(outcome.detail()), args(outcome.detail()));
+                key(outcome.detail()), args(outcome.detail()), cleanupKind(outcome.success()));
     }
 
     /** A cleanup entry's result with no parameters recorded, its message by key. */
     private static CleanupResult cleanupResult(int index, String type, CleanupStatus status, long started,
                                                Message detail, String description) {
         return new CleanupResult(index, type, Map.of(), status, System.currentTimeMillis() - started,
-                Messages.english(detail), description, key(detail), args(detail));
+                Messages.english(detail), description, key(detail), args(detail),
+                cleanupKind(status != CleanupStatus.FAILED));
+    }
+
+    /**
+     * Every failed cleanup entry is a finding, whatever made it fail: something the scenario
+     * created may be left in the lab.
+     */
+    private static String cleanupKind(boolean succeededOrSkipped) {
+        return succeededOrSkipped ? null : FailureKind.FINDING.name();
     }
 
     /** The description as written, or null. */

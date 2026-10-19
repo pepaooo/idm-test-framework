@@ -31,7 +31,7 @@
 - A workspace with Windows line endings, a BOM, or tabs in YAML still loads, edits and saves byte-for-byte except the edited lines — pinned in Task 8 (`testSaveKeepsLineEndings`) and Task 9 (`testCommentsAndLayoutKept`).
 - Two saves of the same file from two tabs, or a save after `git pull` changed it: the second gets 409 and the UI offers Keep mine / Load from disk / Compare — pinned in Task 8 (`testStaleVersionRejected`) and Task 12 (`changedOnDisk.test.tsx`).
 - A run started while another is running is refused with a clear message, not queued silently — pinned in Task 10 (`testSecondRunRefused`).
-- Folder browsing on paths with spaces, non-ASCII names, symlinks and unreadable folders lists what it can and never escapes to a 500 — pinned in Task 8 (`testBrowseOddFolders`).
+- Folder browsing on paths with spaces, non-ASCII names, symlinks and unreadable folders lists what it can and never escapes to a 500 — pinned in Task 6 (`testBrowseOddFolders`).
 - A secret typed into the lab form never comes back in any later API response, SSE event, or the page's HTML — pinned in Task 9 (`testSecretNeverReturned`) and Task 10 (`testEventsMasked`).
 
 ---

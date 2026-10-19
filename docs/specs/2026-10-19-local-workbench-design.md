@@ -125,14 +125,14 @@ already have one). Connecting to the lab is part of those five minutes.
   targets, SOAP services), "+ add" for another. Each tab is a form for that system's settings:
   URL, base DN, bind DN, user, etc.; **password fields show dots only** — never the value again once
   saved — with a "Change" action.
-- **Save** (details are my calls: edits the profile file in place and keeps its comments and layout —
-  uncommenting the matching line from `idmtest init`'s template when there is one; writes overrides only
-  to the profile file, never to the shared `config/application.yml`, and shows a value inherited from it
-  as "from application.yml"; an open editor tab on that file is treated as "changed on disk" (§4.4))
-  writes writes plain settings to `config/application-<profile>.yml` and secrets to `secrets.env`
+- **Save** writes plain settings to `config/application-<profile>.yml` and secrets to `secrets.env`
   (named like `IDM_TEST_LDAP_PASSWORD`, referenced as `${…}` from the YAML), the files `idmtest run`
   reads. Values the user set through environment variables are shown as "from the environment" and
-  not editable.
+  not editable. *(My calls:)* it edits the profile file in place and keeps its comments and layout,
+  uncommenting the matching line from `idmtest init`'s template when there is one; it writes overrides
+  only to the profile file, never to the shared `config/application.yml`, and shows a value inherited
+  from that file as "from application.yml"; an open editor tab on the file is treated as "changed on
+  disk" (§4.4).
 - **Test connection** per system (what it does is my call): LDAP binds with the bind DN; a database
   opens a connection (and a validation query); a REST target fetches its OAuth token when it uses
   OAuth, otherwise sends a GET to its base URL (any HTTP answer = reachable; 401/403 = credentials

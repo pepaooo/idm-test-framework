@@ -42,7 +42,7 @@ public final class UiHttp {
         return send(server, "GET", path, null, headers);
     }
 
-    /** A request with the session cookie and, unless null, a JSON body. */
+    /** A request with the session cookie and, unless null, a body (JSON unless a header says otherwise). */
     public static Response send(UiServer server, String method, String path, String json) throws IOException {
         return send(server, method, path, json, Map.of());
     }
@@ -65,7 +65,10 @@ public final class UiHttp {
             StringBuilder head = new StringBuilder(method + " " + path + " HTTP/1.1\r\nHost: " + host + "\r\n");
             headers.forEach((name, value) -> head.append(name).append(": ").append(value).append("\r\n"));
             if (body != null) {
-                head.append("Content-Type: application/json\r\nContent-Length: ").append(body.length).append("\r\n");
+                if (headers.keySet().stream().noneMatch("Content-Type"::equalsIgnoreCase)) {
+                    head.append("Content-Type: application/json\r\n");
+                }
+                head.append("Content-Length: ").append(body.length).append("\r\n");
             }
             head.append("Connection: close\r\n\r\n");
             OutputStream out = socket.getOutputStream();

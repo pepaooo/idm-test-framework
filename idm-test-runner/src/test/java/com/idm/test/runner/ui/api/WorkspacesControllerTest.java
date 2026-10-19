@@ -129,7 +129,7 @@ class WorkspacesControllerTest {
         assertThat(json(taken).get("message").asString()).contains("taken");
         assertThat(temp.resolve("taken/scenarios")).doesNotExist();
 
-        for (String name : new String[] {"", "..", "a/b", "a\\b"}) {
+        for (String name : new String[] {"", "..", "a/b", "a\\b", "C:x", "a:b"}) {
             Response bad = post("/api/workspaces", Map.of("name", name, "parent", temp.toString(),
                     "includeExample", true, "gitInit", false));
             assertThat(bad.status()).as(name).isEqualTo(400);
@@ -139,13 +139,51 @@ class WorkspacesControllerTest {
                 "includeExample", true, "gitInit", false));
         assertThat(json(noParent).get("key").asString()).isEqualTo("ui.workspace.badParent");
 
-        Response malformed = UiHttp.send(server, "POST", "/api/workspaces", "{nope");
-        assertThat(malformed.status()).isEqualTo(400);
-        assertThat(json(malformed).get("key").asString()).isEqualTo("ui.request.invalid");
 
         Files.createDirectories(temp.resolve("empty"));
         assertThat(post("/api/workspaces", Map.of("name", "empty", "parent", temp.toString(),
                 "includeExample", true, "gitInit", false)).status()).as("an empty folder is fine").isEqualTo(200);
+    }
+
+    // --- client errors ------------------------------------------------------------------------
+
+    @Test
+    @DisplayName("Spring's client errors keep their status and the {key, message} body")
+    void testClientErrorsKeepShape() throws Exception {
+        Response malformed = UiHttp.send(server, "POST", "/api/workspaces", "{nope");
+        assertThat(malformed.status()).isEqualTo(400);
+        assertError(malformed, "ui.request.invalid");
+
+        Response mistyped = UiHttp.send(server, "POST", "/api/workspaces",
+                "{\"name\":\"x\",\"parent\":\"/tmp\",\"includeExample\":{\"no\":1}}");
+        assertThat(mistyped.status()).isEqualTo(400);
+        assertError(mistyped, "ui.request.invalid");
+
+        Response wrongType = UiHttp.send(server, "POST", "/api/workspaces/open", "path=/tmp",
+                Map.of("Content-Type", "text/plain"));
+        assertThat(wrongType.status()).isEqualTo(415);
+        assertError(wrongType, "ui.request.invalid");
+
+        Response wrongMethod = UiHttp.get(server, "/api/workspaces/open");
+        assertThat(wrongMethod.status()).isEqualTo(405);
+        assertError(wrongMethod, "ui.request.invalid");
+
+        Response missingParameter = UiHttp.send(server, "DELETE", "/api/workspaces/recent", null);
+        assertThat(missingParameter.status()).isEqualTo(400);
+        assertError(missingParameter, "ui.request.invalid");
+        assertThat(json(missingParameter).get("message").asString()).contains("path");
+
+        Response spanish = UiHttp.get(server, "/api/workspaces/open", Map.of("Accept-Language", "es"));
+        assertThat(spanish.status()).isEqualTo(405);
+        assertThat(json(spanish).get("message").asString()).contains("no se pudo leer la petición");
+    }
+
+    private static void assertError(Response response, String key) {
+        assertThat(response.header("Content-Type")).as(response.body()).startsWith("application/json");
+        JsonNode body = json(response);
+        assertThat(body.get("key").asString()).isEqualTo(key);
+        assertThat(body.get("message").asString()).isNotBlank();
+        assertThat(body.propertyNames()).containsExactlyInAnyOrder("key", "message");
     }
 
     // --- open ---------------------------------------------------------------------------------

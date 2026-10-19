@@ -86,7 +86,8 @@ class WorkspacesController {
     Created create(@RequestBody CreateRequest request, HttpServletRequest http) {
         String name = request.name();
         if (name == null || name.isBlank() || name.equals(".") || name.equals("..") || name.contains("/")
-                || name.contains("\\") || name.indexOf('\0') >= 0 || name.strip().length() != name.length()) {
+                || name.contains("\\") || name.contains(":") || name.indexOf('\0') >= 0
+                || name.strip().length() != name.length()) {
             throw ApiError.badRequest("runner.ui.workspace.badName", name == null ? "" : name);
         }
         Path parent = absolute(request.parent());
@@ -97,6 +98,10 @@ class WorkspacesController {
         try {
             target = parent.resolve(name).normalize();
         } catch (InvalidPathException e) {
+            throw ApiError.badRequest("runner.ui.workspace.badName", name);
+        }
+        if (!parent.equals(target.getParent())) {
+            // a name that is a path of its own (Windows "C:x") must not create the workspace elsewhere
             throw ApiError.badRequest("runner.ui.workspace.badName", name);
         }
         if (Files.exists(target) && !isEmptyFolder(target)) {

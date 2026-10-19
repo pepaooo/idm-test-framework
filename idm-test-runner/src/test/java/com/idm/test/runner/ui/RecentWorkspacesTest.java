@@ -1,15 +1,20 @@
 package com.idm.test.runner.ui;
 
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.io.UncheckedIOException;
+import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @DisplayName("Recent workspaces file")
 class RecentWorkspacesTest {
@@ -58,6 +63,28 @@ class RecentWorkspacesTest {
         try (Stream<Path> left = Files.list(file.getParent())) {
             assertThat(left).as("the temporary file of the atomic write is gone").containsExactly(file);
         }
+    }
+
+    @Test
+    @DisplayName("A file that cannot be read is not replaced: add and remove refuse, the bytes stay")
+    void testUnreadableFileKept(@TempDir Path home) throws Exception {
+        Assumptions.assumeTrue(FileSystems.getDefault().supportedFileAttributeViews().contains("posix"));
+        Path file = home.resolve(".idmtest/recent.json");
+        RecentWorkspaces recent = new RecentWorkspaces(file);
+        recent.add(home.resolve("one"));
+        recent.add(home.resolve("two"));
+        byte[] before = Files.readAllBytes(file);
+        Files.setPosixFilePermissions(file, PosixFilePermissions.fromString("---------"));
+        try {
+            Assumptions.assumeFalse(Files.isReadable(file), "running as a user who reads everything");
+            assertThat(recent.paths()).isEmpty();
+            assertThatThrownBy(() -> recent.add(home.resolve("three"))).isInstanceOf(UncheckedIOException.class);
+            assertThatThrownBy(() -> recent.remove(home.resolve("one"))).isInstanceOf(UncheckedIOException.class);
+        } finally {
+            Files.setPosixFilePermissions(file, PosixFilePermissions.fromString("rw-------"));
+        }
+        assertThat(Files.readAllBytes(file)).isEqualTo(before);
+        assertThat(recent.paths()).containsExactly(home.resolve("two"), home.resolve("one"));
     }
 
     @Test

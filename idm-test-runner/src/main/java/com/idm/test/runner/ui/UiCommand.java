@@ -77,13 +77,21 @@ public final class UiCommand {
     }
 
     static UiServer start(int port, Locale locale, Path workspace, Runnable onClosed) {
+        return start(port, locale, workspace, onClosed, new GitTool());
+    }
+
+    /** As {@link #start(int, Locale, Path)}, with {@code git} for the workbench to run (tests). */
+    static UiServer start(int port, Locale locale, Path workspace, Runnable onClosed, GitTool git) {
         String token = newToken();
         UiSession session = new UiSession(token, locale, workspace);
         ConfigurableApplicationContext context = new SpringApplicationBuilder(UiServerConfig.class)
                 .web(WebApplicationType.SERVLET)
                 .bannerMode(Banner.Mode.OFF)
                 .logStartupInfo(false)
-                .initializers(started -> started.getBeanFactory().registerSingleton("uiSession", session))
+                .initializers(started -> {
+                    started.getBeanFactory().registerSingleton("uiSession", session);
+                    started.getBeanFactory().registerSingleton("gitTool", git);
+                })
                 .listeners(event -> {
                     if (event instanceof ContextClosedEvent) {
                         onClosed.run();

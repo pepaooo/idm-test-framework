@@ -50,9 +50,4 @@ public class UiServerConfig {
     RecentWorkspaces recentWorkspaces() {
         return RecentWorkspaces.inUserHome();
     }
-
-    @Bean
-    GitTool gitTool() {
-        return new GitTool();
-    }
 }

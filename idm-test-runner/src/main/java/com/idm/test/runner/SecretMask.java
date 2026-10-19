@@ -5,6 +5,7 @@ import com.idm.test.engine.result.RunInfo;
 import com.idm.test.engine.result.ScenarioResult;
 import com.idm.test.engine.result.Secrets;
 import com.idm.test.engine.result.StepResult;
+import com.idm.test.engine.spi.Check;
 import com.idm.test.engine.spi.Evidence;
 import com.idm.test.engine.spi.HttpEvidence;
 import com.idm.test.engine.spi.LdapEvidence;
@@ -106,7 +107,7 @@ final class SecretMask {
     /**
      * {@code result} with every text in it masked: failure detail and its arguments, each step's
      * and cleanup entry's message, arguments, description, resolved parameters and evidence, each
-     * waiting-history message, and the entries a stop skipped. Names and step types stay as they are.
+     * waiting-history message, each check's name, expected and found text, and the entries a stop skipped. Names and step types stay as they are.
      */
     ScenarioResult result(ScenarioResult result) {
         if (values.isEmpty() || result == null) {
@@ -136,7 +137,15 @@ final class SecretMask {
         return new StepResult(step.index(), step.type(), map(step.resolvedParams()), step.success(),
                 step.durationMillis(), apply(step.message()), step.attempts(), step.waitedMillis(),
                 apply(step.description()), evidence(step.evidence()), step.messageKey(), list(step.messageArgs()),
-                step.failureKind(), history(step.waitHistory()));
+                step.failureKind(), history(step.waitHistory()), checks(step.checks()));
+    }
+
+    /** Each check's name, expected and found text masked; whether it matched kept. */
+    private List<Check> checks(List<Check> checks) {
+        return checks.stream()
+                .map(check -> new Check(apply(check.name()), apply(check.expected()), apply(check.found()),
+                        check.matched()))
+                .toList();
     }
 
     private List<WaitObservation> history(List<WaitObservation> history) {

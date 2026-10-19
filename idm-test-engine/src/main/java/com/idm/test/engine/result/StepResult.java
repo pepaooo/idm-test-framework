@@ -2,6 +2,7 @@ package com.idm.test.engine.result;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.idm.test.engine.spi.Check;
 import com.idm.test.engine.spi.Evidence;
 import com.idm.test.engine.spi.FailureKind;
 import com.idm.test.engine.spi.Message;
@@ -29,6 +30,8 @@ import java.util.Map;
  * @param waitHistory    the tries under {@code wait:} whose observation differed from the try before
  *                       (the first always counts), at most {@link #MAX_WAIT_HISTORY}; null when the
  *                       step did not wait
+ * @param checks         each comparison a verify step made on its last attempt, expected against
+ *                       found (see {@link Check}); empty when the step compared nothing, never null
  */
 public record StepResult(
         int index,
@@ -44,7 +47,8 @@ public record StepResult(
         @JsonInclude(JsonInclude.Include.NON_NULL) String messageKey,
         @JsonInclude(JsonInclude.Include.NON_NULL) List<Object> messageArgs,
         @JsonInclude(JsonInclude.Include.NON_NULL) String failureKind,
-        @JsonInclude(JsonInclude.Include.NON_NULL) List<WaitObservation> waitHistory) {
+        @JsonInclude(JsonInclude.Include.NON_NULL) List<WaitObservation> waitHistory,
+        @JsonInclude(JsonInclude.Include.NON_EMPTY) List<Check> checks) {
 
     /** The most entries a waiting history keeps. */
     public static final int MAX_WAIT_HISTORY = 50;
@@ -52,6 +56,16 @@ public record StepResult(
     public StepResult {
         messageArgs = messageArgs == null ? null : Collections.unmodifiableList(new ArrayList<>(messageArgs));
         waitHistory = waitHistory == null ? null : List.copyOf(waitHistory);
+        checks = checks == null ? List.of() : List.copyOf(checks);
+    }
+
+    /** A result without checks. */
+    public StepResult(int index, String type, Map<String, Object> resolvedParams, boolean success,
+                      long durationMillis, String message, Integer attempts, Long waitedMillis, String description,
+                      Evidence evidence, String messageKey, List<Object> messageArgs, String failureKind,
+                      List<WaitObservation> waitHistory) {
+        this(index, type, resolvedParams, success, durationMillis, message, attempts, waitedMillis, description,
+                evidence, messageKey, messageArgs, failureKind, waitHistory, null);
     }
 
     /** A result without a waiting history. */

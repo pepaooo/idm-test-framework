@@ -6,6 +6,7 @@ import com.idm.test.engine.result.JsonResultWriter;
 import com.idm.test.engine.result.RunInfo;
 import com.idm.test.engine.result.ScenarioResult;
 import com.idm.test.engine.result.StepResult;
+import com.idm.test.engine.spi.Check;
 import com.idm.test.engine.spi.HttpEvidence;
 import com.idm.test.engine.spi.LdapEvidence;
 import com.idm.test.engine.spi.Message;
@@ -113,6 +114,23 @@ class SecretMaskTest {
         assertThat(masked.failureSummary()).doesNotContain(secret);
         assertThat(mask.result(null)).isNull();
         assertThat(new SecretMask(List.of()).result(result)).isSameAs(result);
+    }
+
+    @Test
+    @DisplayName("Should mask each check's name, expected and found text, and keep whether it matched")
+    void testChecks() {
+        String secret = "Zq9xLeak";
+        SecretMask mask = new SecretMask(List.of(secret));
+        StepResult step = new StepResult(0, "http.verify", Map.of(), false, 5, "m", 2, 10L, null, null, null, null,
+                "FINDING", null, List.of(new Check("js:{ response.json.id === '" + secret + "' }", "true",
+                        "error near " + secret, false), new Check("sn", "x" + secret, null, true)));
+        ScenarioResult result = new ScenarioResult("s.yaml", "s.yaml", false, 9, List.of(step), List.of(), null);
+
+        List<Check> checks = mask.result(result).steps().get(0).checks();
+
+        assertThat(checks).containsExactly(
+                new Check("js:{ response.json.id === '****' }", "true", "error near ****", false),
+                new Check("sn", "x****", null, true));
     }
 
     @Test

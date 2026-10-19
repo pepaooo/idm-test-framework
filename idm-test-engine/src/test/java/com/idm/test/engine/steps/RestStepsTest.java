@@ -8,6 +8,7 @@ import com.idm.test.connector.rest.client.RestAuthenticator;
 import com.idm.test.connector.rest.config.RestClientConfiguration;
 import com.idm.test.connector.rest.config.RestProperties;
 import com.idm.test.engine.i18n.Messages;
+import com.idm.test.engine.spi.Check;
 import com.idm.test.engine.spi.HttpEvidence;
 import com.idm.test.engine.spi.StepOutcome;
 import org.junit.jupiter.api.AfterAll;
@@ -17,6 +18,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.web.client.RestClient;
 
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -694,5 +696,48 @@ class RestStepsTest {
         } finally {
             tls.stop();
         }
+    }
+
+    @Test
+    @DisplayName("rest.verify reports expected and found for the status and each body path")
+    void testVerifyChecks() {
+        stubFor(get(urlEqualTo("/users/jdoe")).willReturn(aResponse()
+                .withStatus(500)
+                .withHeader("Content-Type", "application/json")
+                .withBody("{\"department\":\"Sales\",\"profile\":{\"city\":\"Madrid\"}}")));
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("department", "Engineering");
+        body.put("profile", Map.of("city", "Madrid"));
+        body.put("manager", Map.of("id", 7));
+        Map<String, Object> expect = new LinkedHashMap<>();
+        expect.put("status", 200);
+        expect.put("body", body);
+
+        StepOutcome outcome = new RestVerifyStep(CONNECTOR, PROPERTIES, RestAuthenticator.withoutOAuth()).execute(Map.of(
+                "target", "idm", "path", "/users/jdoe", "expect", expect), false);
+
+        assertThat(outcome.success()).isFalse();
+        assertThat(outcome.message()).contains("200").contains("500");
+        assertThat(outcome.checks()).containsExactly(
+                new Check("status", "200", "500", false),
+                new Check("department", "Engineering", "Sales", false),
+                new Check("profile.city", "Madrid", "Madrid", true),
+                new Check("manager.id", "7", null, false));
+    }
+
+    @Test
+    @DisplayName("rest.verify checks never carry a secret-named field's values")
+    void testVerifyChecksMaskSecrets() {
+        stubFor(get(urlEqualTo("/users/jdoe")).willReturn(aResponse()
+                .withStatus(200)
+                .withHeader("Content-Type", "application/json")
+                .withBody("{\"auth\":{\"token\":\"abcdefgh123456\"}}")));
+
+        StepOutcome outcome = new RestVerifyStep(CONNECTOR, PROPERTIES, RestAuthenticator.withoutOAuth()).execute(Map.of(
+                "target", "idm", "path", "/users/jdoe",
+                "expect", Map.of("body", Map.of("auth", Map.of("token", "zyxwvut987654")))), false);
+
+        assertThat(outcome.success()).isFalse();
+        assertThat(outcome.checks()).containsExactly(new Check("auth.token", "••••", "••••", false));
     }
 }

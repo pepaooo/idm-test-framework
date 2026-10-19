@@ -223,7 +223,8 @@ public final class ScenarioEngine {
             outcome = bind(scope, asName, outcome, step.type());
             return new StepResult(index, step.type(), reportable(resolved), outcome.success(),
                     System.currentTimeMillis() - started, outcome.message(), null, null, description,
-                    outcome.evidence(), key(outcome.detail()), args(outcome.detail()), kindOf(outcome));
+                    outcome.evidence(), key(outcome.detail()), args(outcome.detail()), kindOf(outcome), null,
+                    outcome.checks());
         }
 
         AtomicInteger attempts = new AtomicInteger();
@@ -275,7 +276,7 @@ public final class ScenarioEngine {
             return new StepResult(index, step.type(), reportable(resolved), false,
                     System.currentTimeMillis() - started, Messages.english(STOPPED), attempts.get(), waitedMillis,
                     description, lastTry == null ? null : lastTry.evidence(), key(STOPPED), args(STOPPED),
-                    FailureKind.SETUP.name(), waitHistory);
+                    FailureKind.SETUP.name(), waitHistory, lastTry == null ? null : lastTry.checks());
         }
 
         StepOutcome outcome = bind(scope, asName, last.get(), step.type());
@@ -311,7 +312,7 @@ public final class ScenarioEngine {
         String kind = success ? null : outcome == null ? FailureKind.SETUP.name() : kindOf(outcome);
         return new StepResult(index, step.type(), reportable(resolved), success, elapsed, message,
                 attempts.get(), waitedMillis, description, outcome == null ? null : outcome.evidence(),
-                key(detail), args(detail), kind, waitHistory);
+                key(detail), args(detail), kind, waitHistory, outcome == null ? null : outcome.checks());
     }
 
     /**
@@ -479,7 +480,8 @@ public final class ScenarioEngine {
         }
         if (outcome.value() == null) {
             // The step's own defect, not the lab's: a setup problem.
-            return setupFailure(Message.of("engine.capture.noValue", stepType, asName), outcome.evidence());
+            return setupFailure(Message.of("engine.capture.noValue", stepType, asName), outcome.evidence())
+                    .withChecks(outcome.checks());
         }
         scope.put(String.valueOf(asName), outcome.value());
         return outcome;

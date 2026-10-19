@@ -3,6 +3,8 @@ package com.idm.test.engine.spi;
 import com.idm.test.core.model.ErrorType;
 import com.idm.test.engine.i18n.Messages;
 
+import java.util.List;
+
 /**
  * What happened when a step ran.
  *
@@ -20,12 +22,14 @@ import com.idm.test.engine.i18n.Messages;
  *                a malformed parameter or refused credentials) and {@link FailureKind#FINDING}
  *                otherwise (the step's own comparison failed). A step failing from a connector's
  *                result passes that result's {@link ErrorType} instead (see {@link FailureKind#of}).
+ * @param checks  each comparison the step made, expected against found (see {@link Check}); empty
+ *                when the step compared nothing, never null
  * <p>
  * A step never schedules teardown. Cleanup is written by the author in the scenario's
  * {@code cleanup:} block.
  */
 public record StepOutcome(boolean success, String message, Object value, boolean isFinal, Evidence evidence,
-                          Message detail, FailureKind kind) {
+                          Message detail, FailureKind kind, List<Check> checks) {
 
     public StepOutcome {
         if (success) {
@@ -33,6 +37,13 @@ public record StepOutcome(boolean success, String message, Object value, boolean
         } else if (kind == null) {
             kind = isFinal ? FailureKind.SETUP : FailureKind.FINDING;
         }
+        checks = checks == null ? List.of() : List.copyOf(checks);
+    }
+
+    /** An outcome without checks. */
+    public StepOutcome(boolean success, String message, Object value, boolean isFinal, Evidence evidence,
+                       Message detail, FailureKind kind) {
+        this(success, message, value, isFinal, evidence, detail, kind, null);
     }
 
     /** An outcome whose failure, if any, takes its default kind. */
@@ -58,7 +69,12 @@ public record StepOutcome(boolean success, String message, Object value, boolean
 
     /** This outcome, carrying what the step sent and received. */
     public StepOutcome withEvidence(Evidence evidence) {
-        return new StepOutcome(success, message, value, isFinal, evidence, detail, kind);
+        return new StepOutcome(success, message, value, isFinal, evidence, detail, kind, checks);
+    }
+
+    /** This outcome, carrying the comparisons the step made. */
+    public StepOutcome withChecks(List<Check> checks) {
+        return new StepOutcome(success, message, value, isFinal, evidence, detail, kind, checks);
     }
 
     public static StepOutcome success(Message detail) {

@@ -262,6 +262,29 @@ class JsonResultWriterTest {
     }
 
     @Test
+    @DisplayName("Should write the checks last, after the waiting history, and none when a step has no checks")
+    void testWritesChecks(@TempDir Path dir) throws Exception {
+        StepResult checked = new StepResult(0, "ldap.verify", Map.of(), false, 5, "m", null, null, null, null, null,
+                null, "FINDING", null, List.of(new com.idm.test.engine.spi.Check("sn", "X", null, false)));
+        StepResult plain = new StepResult(1, "ldap.create", Map.of(), true, 5, "m", null, null, null, null, null,
+                null, null, null, List.of());
+        ScenarioResult scenario = new ScenarioResult("S", "s.yaml", false, 10, List.of(checked, plain), null);
+
+        Path target = dir.resolve("checks.json");
+        JsonResultWriter.write(List.of(scenario), target);
+
+        String json = Files.readString(target).replace("\r\n", "\n");
+        assertThat(json).contains("    \"failureKind\" : \"FINDING\",\n"
+                + "    \"checks\" : [ {\n"
+                + "      \"name\" : \"sn\",\n"
+                + "      \"expected\" : \"X\",\n"
+                + "      \"found\" : null,\n"
+                + "      \"matched\" : false\n"
+                + "    } ]\n");
+        assertThat(json.split("\"checks\"", -1)).as("only the step with checks").hasSize(2);
+    }
+
+    @Test
     @DisplayName("Should write a stopped run's flag and skipped cleanup last, and neither for an ordinary run")
     void testWritesStopped(@TempDir Path dir) throws Exception {
         CleanupResult skipped = new CleanupResult(0, "ldap.delete", Map.of("dn", "cn=ada"), CleanupStatus.SKIPPED, 0,

@@ -4,6 +4,7 @@ import com.idm.test.connector.ldap.client.EdirectoryConnector;
 import com.idm.test.connector.ldap.client.LdapDirectories;
 import com.idm.test.connector.ldap.model.LdapUser;
 import com.idm.test.core.model.OperationResult;
+import com.idm.test.engine.spi.Check;
 import com.idm.test.engine.spi.FailureKind;
 import com.idm.test.engine.spi.LdapEvidence;
 import com.idm.test.engine.i18n.Messages;
@@ -18,6 +19,7 @@ import org.springframework.ldap.core.LdapTemplate;
 import org.springframework.ldap.core.support.LdapContextSource;
 
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -1033,5 +1035,65 @@ class LdapStepsTest {
                 "attributes", Map.of("cn", "kind.shape", "sn", "S", "mail", withNull)), false);
         assertThat(badCreateList.success()).isFalse();
         assertThat(badCreateList.kind()).as(badCreateList.message()).isEqualTo(com.idm.test.engine.spi.FailureKind.SETUP);
+    }
+
+    @Test
+    @DisplayName("ldap.verify reports expected and found per attribute, null when the attribute is absent")
+    void testVerifyChecks() {
+        EdirectoryConnector mockConnector = mock(EdirectoryConnector.class);
+        when(mockConnector.readAttributes(any())).thenReturn(OperationResult.success(Map.of("sn", "X")));
+        Map<String, Object> expect = new LinkedHashMap<>();
+        expect.put("sn", "X");
+        expect.put("groupMembership", Map.of("contains", "cn=Finance,ou=groups"));
+
+        StepOutcome outcome = new LdapVerifyStep(only(mockConnector)).execute(Map.of(
+                "dn", "cn=x,ou=users", "expect", expect), false);
+
+        assertThat(outcome.success()).isFalse();
+        assertThat(outcome.message()).contains("groupMembership");
+        assertThat(outcome.checks()).containsExactly(
+                new Check("sn", "X", "X", true),
+                new Check("groupMembership", "contains cn=Finance,ou=groups", null, false));
+    }
+
+    @Test
+    @DisplayName("ldap.verify checks render lists and matchers, and cover every attribute when the step passes")
+    void testVerifyChecksRenderValues() {
+        EdirectoryConnector mockConnector = mock(EdirectoryConnector.class);
+        when(mockConnector.readAttributes(any())).thenReturn(OperationResult.success(
+                Map.of("mail", List.of("a@x.test", "b@x.test"), "sn", "X")));
+        Map<String, Object> matcher = new LinkedHashMap<>();
+        matcher.put("contains", List.of("a@x.test", "b@x.test"));
+        matcher.put("count", 2);
+        Map<String, Object> expect = new LinkedHashMap<>();
+        expect.put("mail", matcher);
+        expect.put("sn", List.of("X"));
+
+        StepOutcome outcome = new LdapVerifyStep(only(mockConnector)).execute(Map.of(
+                "dn", "cn=x,ou=users", "expect", expect), false);
+
+        assertThat(outcome.success()).as(outcome.message()).isTrue();
+        assertThat(outcome.checks()).containsExactly(
+                new Check("mail", "contains [a@x.test, b@x.test]; count 2", "[a@x.test, b@x.test]", true),
+                new Check("sn", "[X]", "X", true));
+    }
+
+    @Test
+    @DisplayName("ldap.verify checks never carry a secret attribute's values")
+    void testVerifyChecksMaskSecrets() {
+        EdirectoryConnector mockConnector = mock(EdirectoryConnector.class);
+        when(mockConnector.readAttributes(any())).thenReturn(OperationResult.success(
+                Map.of("secretAnswer", "Actual-Value-1")));
+
+        StepOutcome outcome = new LdapVerifyStep(only(mockConnector)).execute(Map.of(
+                "dn", "cn=x,ou=users", "expect", Map.of("secretAnswer", "Expected-Value-1")), false);
+
+        assertThat(outcome.success()).isFalse();
+        assertThat(outcome.checks()).containsExactly(new Check("secretAnswer", "••••", "••••", false));
+
+        StepOutcome password = new LdapVerifyStep(only(mockConnector)).execute(Map.of(
+                "dn", "cn=x,ou=users", "expect", Map.of("userPassword", "S3cretValue!")), false);
+        assertThat(password.isFinal()).isTrue();
+        assertThat(password.checks()).isEmpty();
     }
 }

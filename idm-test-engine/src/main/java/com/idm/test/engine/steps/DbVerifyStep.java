@@ -4,11 +4,13 @@ import com.idm.test.connector.database.client.MultiDatabaseConnector;
 import com.idm.test.connector.database.client.ValueComparison;
 import com.idm.test.core.model.ErrorType;
 import com.idm.test.core.model.OperationResult;
+import com.idm.test.engine.spi.Check;
 import com.idm.test.engine.spi.SqlEvidence;
 import com.idm.test.engine.spi.Message;
 import com.idm.test.engine.spi.StepOutcome;
 import com.idm.test.engine.spi.StepType;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -29,6 +31,8 @@ public final class DbVerifyStep implements StepType {
     private static final String ROW_COUNT = "rowCount";
     private static final String ROW = "row";
     private static final Set<String> EXPECT_KEYS = Set.of(ROW_COUNT, ROW);
+    /** The name of the check on how many rows the query returned. */
+    private static final String ROW_COUNT_CHECK = "row count";
 
     private final MultiDatabaseConnector connector;
 
@@ -87,11 +91,17 @@ public final class DbVerifyStep implements StepType {
         List<Map<String, Object>> rows = result.getData().orElse(List.of());
         SqlEvidence evidence = SqlEvidence.query(database, query, arguments, rows);
 
+        // Every expectation is compared, so a finding shows each one; the message names the first
+        // that differs. Checks are named "row count" and by each expected column, as written.
+        List<Check> checks = new ArrayList<>();
+        Message mismatch = null;
+
         if (expect.containsKey(ROW_COUNT)) {
             Object expectedCount = expect.get(ROW_COUNT);
-            if (!ValueComparison.equal(expectedCount, rows.size())) {
-                return StepOutcome.failure(Message.of("step.db.verify.rowCountMismatch", database, expectedCount, rows.size()))
-                        .withEvidence(evidence);
+            boolean matched = ValueComparison.equal(expectedCount, rows.size());
+            checks.add(Check.compared(ROW_COUNT_CHECK, expectedCount, rows.size(), matched));
+            if (!matched) {
+                mismatch = Message.of("step.db.verify.rowCountMismatch", database, expectedCount, rows.size());
             }
         }
 
@@ -99,30 +109,37 @@ public final class DbVerifyStep implements StepType {
             if (rows.size() != 1) {
                 // Matching "the first row" of a multi-row result would depend on an
                 // unordered result set — intermittently green, which is worse than red.
-                return StepOutcome.failure(Message.of("step.db.verify.rowNeedsOne", database, rows.size()))
-                        .withEvidence(evidence);
-            }
+                checks.add(Check.compared(ROW_COUNT_CHECK, 1, rows.size(), false));
+                if (mismatch == null) {
+                    mismatch = Message.of("step.db.verify.rowNeedsOne", database, rows.size());
+                }
+            } else {
+                // Matched against the map executeQuery returned, which is case-insensitive on
+                // column names. Copying it into a plain map first would silently break
+                // `row: { status: ... }` against a database that stores STATUS.
+                Map<String, Object> actual = rows.get(0);
+                Map<String, Object> expectedRow = (Map<String, Object>) expect.get(ROW);
 
-            // Matched against the map executeQuery returned, which is case-insensitive on
-            // column names. Copying it into a plain map first would silently break
-            // `row: { status: ... }` against a database that stores STATUS.
-            Map<String, Object> actual = rows.get(0);
-            Map<String, Object> expectedRow = (Map<String, Object>) expect.get(ROW);
-
-            for (Map.Entry<String, Object> column : expectedRow.entrySet()) {
-                Object actualValue = actual.get(column.getKey());
-                if (!ValueComparison.equal(column.getValue(), actualValue)) {
-                    return StepOutcome.failure(Message.of("step.db.verify.columnMismatch", database, column.getKey(),
-                            column.getValue(), actualValue))
-                            .withEvidence(evidence);
+                for (Map.Entry<String, Object> column : expectedRow.entrySet()) {
+                    Object actualValue = actual.get(column.getKey());
+                    boolean matched = ValueComparison.equal(column.getValue(), actualValue);
+                    checks.add(Check.compared(column.getKey(), column.getValue(), actualValue, matched));
+                    if (!matched && mismatch == null) {
+                        mismatch = Message.of("step.db.verify.columnMismatch", database, column.getKey(),
+                                column.getValue(), actualValue);
+                    }
                 }
             }
+        }
+
+        if (mismatch != null) {
+            return StepOutcome.failure(mismatch).withEvidence(evidence).withChecks(checks);
         }
 
         Message message = Message.of("step.db.verify.verified", rows.size(), database);
         return (captureRequested
                 ? StepOutcome.success(message, rows)
-                : StepOutcome.success(message)).withEvidence(evidence);
+                : StepOutcome.success(message)).withEvidence(evidence).withChecks(checks);
     }
 
     /**

@@ -2,6 +2,7 @@ package com.idm.test.engine.steps;
 
 import com.idm.test.connector.database.client.MultiDatabaseConnector;
 import com.idm.test.engine.i18n.Messages;
+import com.idm.test.engine.spi.Check;
 import com.idm.test.engine.spi.SqlEvidence;
 import com.idm.test.engine.spi.StepOutcome;
 import org.junit.jupiter.api.BeforeAll;
@@ -12,6 +13,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -539,5 +541,54 @@ class DbStepsTest {
                 "database", DB, "query", "SELECT 1", "expect", Map.of("rowCount", 1)), false);
         assertThat(verify.success()).isFalse();
         assertThat(verify.kind()).as(verify.message()).isEqualTo(com.idm.test.engine.spi.FailureKind.SETUP);
+    }
+
+    @Test
+    @DisplayName("db.verify reports expected and found for the row count and each column")
+    void testVerifyChecks() {
+        jdbc.update("INSERT INTO sap_users (username, status, attempts) VALUES ('jdoe', 'LOCKED', 3)");
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("username", "jdoe");
+        row.put("status", "ACTIVE");
+        row.put("attempts", 3);
+        Map<String, Object> expect = new LinkedHashMap<>();
+        expect.put("rowCount", 1);
+        expect.put("row", row);
+
+        StepOutcome outcome = new DbVerifyStep(connector).execute(Map.of(
+                "database", DB, "query", "SELECT * FROM sap_users WHERE username = 'jdoe'",
+                "expect", expect), false);
+
+        assertThat(outcome.success()).isFalse();
+        assertThat(outcome.message()).contains("status");
+        assertThat(outcome.checks()).containsExactly(
+                new Check("row count", "1", "1", true),
+                new Check("username", "jdoe", "jdoe", true),
+                new Check("status", "ACTIVE", "LOCKED", false),
+                new Check("attempts", "3", "3", true));
+    }
+
+    @Test
+    @DisplayName("db.verify reports the row count a row expectation needs when the query returns none")
+    void testVerifyChecksNoRow() {
+        StepOutcome outcome = new DbVerifyStep(connector).execute(Map.of(
+                "database", DB, "query", "SELECT * FROM sap_users",
+                "expect", Map.of("row", Map.of("status", "ACTIVE"))), false);
+
+        assertThat(outcome.success()).isFalse();
+        assertThat(outcome.checks()).containsExactly(new Check("row count", "1", "0", false));
+    }
+
+    @Test
+    @DisplayName("db.verify checks never carry a secret-named column's values")
+    void testVerifyChecksMaskSecrets() {
+        jdbc.update("INSERT INTO sap_users (username, status) VALUES ('jdoe', 'ACTIVE')");
+
+        StepOutcome outcome = new DbVerifyStep(connector).execute(Map.of(
+                "database", DB, "query", "SELECT username AS api_token FROM sap_users",
+                "expect", Map.of("row", Map.of("api_token", "other"))), false);
+
+        assertThat(outcome.success()).isFalse();
+        assertThat(outcome.checks()).containsExactly(new Check("api_token", "••••", "••••", false));
     }
 }

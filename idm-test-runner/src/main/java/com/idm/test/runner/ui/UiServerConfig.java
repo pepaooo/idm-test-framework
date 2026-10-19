@@ -17,10 +17,10 @@ import org.springframework.core.Ordered;
 
 /**
  * The Spring application {@code idmtest ui} starts: an embedded Tomcat, Spring MVC with JSON, the
- * static workbench from {@code classpath:/static/}, and the controllers of this package, all behind
- * {@link TokenFilter}. Auto-configuration is a fixed list rather than everything on the class path:
- * Spring Security is there (for the REST connector's OAuth2) and must not add its own login, and
- * the connectors are not needed to serve the workbench (runs start their own context).
+ * static workbench from {@code classpath:/static/}, and the controllers of this package and its
+ * {@code api} package, all behind {@link TokenFilter}. Auto-configuration is a fixed list rather
+ * than everything on the class path: Spring Security is there (for the REST connector's OAuth2) and
+ * must not add its own login, and the connectors are not needed to serve the workbench (runs start their own context).
  * {@link com.idm.test.runner.RunnerApplication} leaves this package out.
  */
 @SpringBootConfiguration
@@ -43,5 +43,16 @@ public class UiServerConfig {
         registration.setOrder(Ordered.HIGHEST_PRECEDENCE);
         registration.addUrlPatterns("/*");
         return registration;
+    }
+
+    /** {@code <user.home>/.idmtest/recent.json}, with {@code user.home} as it is when the workbench starts. */
+    @Bean
+    RecentWorkspaces recentWorkspaces() {
+        return RecentWorkspaces.inUserHome();
+    }
+
+    @Bean
+    GitTool gitTool() {
+        return new GitTool();
     }
 }

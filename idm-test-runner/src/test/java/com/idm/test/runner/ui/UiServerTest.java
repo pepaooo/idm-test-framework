@@ -1,5 +1,6 @@
 package com.idm.test.runner.ui;
 
+import com.idm.test.runner.ui.UiHttp.Response;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeAll;
@@ -8,8 +9,6 @@ import org.junit.jupiter.api.Test;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
 import java.io.PrintStream;
 import java.net.Inet4Address;
 import java.net.InetAddress;
@@ -17,10 +16,7 @@ import java.net.InetSocketAddress;
 import java.net.NetworkInterface;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
 import java.util.Collections;
-import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
@@ -226,7 +222,7 @@ class UiServerTest {
         Response health = get("/api/health", Map.of("Cookie", cookie()));
         assertThat(health.status()).isEqualTo(200);
         assertThat(health.header("Content-Type")).startsWith("application/json");
-        assertThat(health.body()).matches("\\{\"version\":\"[^\"]+\"}");
+        assertThat(health.body()).matches("\\{\"version\":\"[^\"]+\",\"git\":(true|false)}");
     }
 
     // --- command ------------------------------------------------------------------------------
@@ -247,18 +243,12 @@ class UiServerTest {
 
     // --- helpers ------------------------------------------------------------------------------
 
-    private record Response(int status, Map<String, String> headers, String body) {
-        String header(String name) {
-            return headers.get(name.toLowerCase(Locale.ROOT));
-        }
-    }
-
     private static String cookieName() {
         return "idmtest_token_" + server.port();
     }
 
     private static String cookie() {
-        return cookieName() + "=" + server.token();
+        return UiHttp.cookie(server);
     }
 
     private static Response get(String path, Map<String, String> headers) throws IOException {
@@ -272,45 +262,7 @@ class UiServerTest {
 
     private static Response request(String method, String path, String host, Map<String, String> headers,
                                     int port) throws IOException {
-        try (Socket socket = new Socket("127.0.0.1", port)) {
-            socket.setSoTimeout(10_000);
-            StringBuilder head = new StringBuilder(method + " " + path + " HTTP/1.1\r\nHost: " + host + "\r\n");
-            headers.forEach((name, value) -> head.append(name).append(": ").append(value).append("\r\n"));
-            head.append("Connection: close\r\n\r\n");
-            OutputStream out = socket.getOutputStream();
-            out.write(head.toString().getBytes(StandardCharsets.ISO_8859_1));
-            out.flush();
-            InputStream in = socket.getInputStream();
-            String raw = new String(in.readAllBytes(), StandardCharsets.UTF_8);
-            int split = raw.indexOf("\r\n\r\n");
-            List<String> lines = new ArrayList<>(List.of(raw.substring(0, split).split("\r\n")));
-            int status = Integer.parseInt(lines.removeFirst().split(" ")[1]);
-            Map<String, String> parsed = new LinkedHashMap<>();
-            for (String line : lines) {
-                int colon = line.indexOf(':');
-                parsed.putIfAbsent(line.substring(0, colon).trim().toLowerCase(Locale.ROOT),
-                        line.substring(colon + 1).trim());
-            }
-            String body = raw.substring(split + 4);
-            if ("chunked".equalsIgnoreCase(parsed.get("transfer-encoding"))) {
-                body = unchunk(body);
-            }
-            return new Response(status, parsed, body);
-        }
-    }
-
-    private static String unchunk(String body) {
-        StringBuilder result = new StringBuilder();
-        int at = 0;
-        while (true) {
-            int end = body.indexOf("\r\n", at);
-            int size = Integer.parseInt(body.substring(at, end).trim(), 16);
-            if (size == 0) {
-                return result.toString();
-            }
-            result.append(body, end + 2, end + 2 + size);
-            at = end + 2 + size + 2;
-        }
+        return UiHttp.request(method, path, host, headers, null, port);
     }
 
     private static InetAddress nonLoopbackAddress() throws IOException {

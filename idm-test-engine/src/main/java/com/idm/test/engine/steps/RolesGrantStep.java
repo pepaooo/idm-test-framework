@@ -57,7 +57,7 @@ public final class RolesGrantStep implements StepType {
         Object reason = params.get("reason");
 
         if (roles.isEmpty()) {
-            return StepOutcome.failure(Message.of("step.roles.grant.noRoles", user));
+            return StepOutcome.finalFailure(Message.of("step.roles.grant.noRoles", user));
         }
 
         OperationResult<RequestRolesAssignmentResponse> result = connector.assignRoles(

@@ -526,4 +526,14 @@ class SoapStepsTest {
                 "user", USER_DN, "roles", List.of(ROLE_DN)), false);
         assertThat(notConfigured.kind()).isEqualTo(com.idm.test.engine.spi.FailureKind.SETUP);
     }
+
+    @Test
+    @DisplayName("Failure kinds: roles.grant without roles is a final setup problem")
+    void testNoRolesKind() {
+        StepOutcome outcome = new RolesGrantStep(roleConnector).execute(Map.of(
+                "user", USER_DN, "roles", List.of()), false);
+        assertThat(outcome.success()).isFalse();
+        assertThat(outcome.isFinal()).isTrue();
+        assertThat(outcome.kind()).isEqualTo(com.idm.test.engine.spi.FailureKind.SETUP);
+    }
 }

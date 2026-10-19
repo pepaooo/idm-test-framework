@@ -451,4 +451,27 @@ class MultiDatabaseConnectorTest {
         assertThat(result.getData().get()).hasSize(1);
         assertThat(result.getData().get().get(0).get("USERNAME")).isEqualTo("john.doe");
     }
+
+    @Test
+    @DisplayName("Refused credentials, an unreachable or slow database are told apart from the database's own answers")
+    void testErrorTypes() {
+        assertThat(MultiDatabaseConnector.errorType(new org.springframework.jdbc.CannotGetJdbcConnectionException(
+                "no connection", new java.sql.SQLException("password authentication failed", "28P01"))))
+                .isEqualTo(ErrorType.AUTHENTICATION_ERROR);
+        assertThat(MultiDatabaseConnector.errorType(new org.springframework.jdbc.CannotGetJdbcConnectionException(
+                "no connection", new java.sql.SQLException("connection refused", "08001"))))
+                .isEqualTo(ErrorType.NETWORK_ERROR);
+        assertThat(MultiDatabaseConnector.errorType(new org.springframework.jdbc.CannotGetJdbcConnectionException(
+                "pool", new java.sql.SQLTransientConnectionException("Connection is not available"))))
+                .isEqualTo(ErrorType.NETWORK_ERROR);
+        assertThat(MultiDatabaseConnector.errorType(new org.springframework.jdbc.CannotGetJdbcConnectionException(
+                "no connection", new java.sql.SQLException("io", new java.net.ConnectException("Connection refused")))))
+                .isEqualTo(ErrorType.NETWORK_ERROR);
+        assertThat(MultiDatabaseConnector.errorType(new org.springframework.dao.QueryTimeoutException(
+                "slow", new java.sql.SQLException("io", new java.net.SocketTimeoutException("Read timed out")))))
+                .isEqualTo(ErrorType.TIMEOUT);
+        assertThat(MultiDatabaseConnector.errorType(new org.springframework.jdbc.BadSqlGrammarException(
+                "query", "SELECT x", new java.sql.SQLException("no such table", "42S02"))))
+                .isEqualTo(ErrorType.DATABASE_ERROR);
+    }
 }

@@ -1011,4 +1011,27 @@ class LdapStepsTest {
                 "dn", "cn=anyone,ou=users", "attributes", Map.of("sn", "y")), false);
         assertThat(refusedUpdate.kind()).as(refusedUpdate.message()).isEqualTo(FailureKind.SETUP);
     }
+
+    @Test
+    @DisplayName("Failure kinds: malformed ldap.create and ldap.update parameters are final setup problems")
+    void testMalformedKinds() {
+        StepOutcome noAttributes = new LdapUpdateStep(directories).execute(Map.of(
+                "dn", "cn=kind.shape,ou=users", "attributes", Map.of()), false);
+        assertThat(noAttributes.success()).isFalse();
+        assertThat(noAttributes.isFinal()).isTrue();
+        assertThat(noAttributes.kind()).isEqualTo(com.idm.test.engine.spi.FailureKind.SETUP);
+
+        java.util.List<Object> withNull = new java.util.ArrayList<>();
+        withNull.add(null);
+        StepOutcome badUpdateList = new LdapUpdateStep(directories).execute(Map.of(
+                "dn", "cn=kind.shape,ou=users", "attributes", Map.of("mail", withNull)), false);
+        assertThat(badUpdateList.success()).isFalse();
+        assertThat(badUpdateList.kind()).as(badUpdateList.message()).isEqualTo(com.idm.test.engine.spi.FailureKind.SETUP);
+
+        StepOutcome badCreateList = new LdapCreateStep(directories).execute(Map.of(
+                "dn", "cn=kind.shape,ou=users",
+                "attributes", Map.of("cn", "kind.shape", "sn", "S", "mail", withNull)), false);
+        assertThat(badCreateList.success()).isFalse();
+        assertThat(badCreateList.kind()).as(badCreateList.message()).isEqualTo(com.idm.test.engine.spi.FailureKind.SETUP);
+    }
 }

@@ -60,7 +60,7 @@ public final class LdapCreateStep implements StepType {
 
         Message listProblem = LdapLists.problem("ldap.create", where, attributes, false);
         if (listProblem != null) {
-            return StepOutcome.failure(listProblem);
+            return StepOutcome.finalFailure(listProblem);
         }
 
         LdapEvidence evidence = LdapEvidence.written(LdapTarget.requested(params), dn, "create", attributes);

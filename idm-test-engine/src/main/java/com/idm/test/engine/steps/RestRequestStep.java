@@ -55,7 +55,7 @@ public final class RestRequestStep implements StepType {
         if (params.containsKey("body") && params.containsKey("bodyFrom")) {
             // They mean the same thing, so supplying both says nothing about which was
             // intended. Guessing would make the scenario's behaviour depend on our ordering.
-            return StepOutcome.failure(Message.of("step.rest.request.bothBodies"));
+            return StepOutcome.finalFailure(Message.of("step.rest.request.bothBodies"));
         }
 
         RestTargets.Resolution resolution = RestTargets.resolveBaseUrl("rest.request", target, properties);

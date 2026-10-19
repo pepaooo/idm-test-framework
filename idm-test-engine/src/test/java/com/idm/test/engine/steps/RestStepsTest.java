@@ -670,4 +670,29 @@ class RestStepsTest {
                 Map.of("target", "nope", "method", "GET", "path", "/"), false);
         assertThat(unknown.kind()).isEqualTo(com.idm.test.engine.spi.FailureKind.SETUP);
     }
+
+    @Test
+    @DisplayName("Failure kinds: both body forms is a malformed step, a final setup problem; a TLS failure is setup")
+    void testMalformedAndTlsKinds() {
+        StepOutcome both = new RestRequestStep(CONNECTOR, PROPERTIES, RestAuthenticator.withoutOAuth()).execute(Map.of(
+                "target", "idm", "method", "POST", "path", "/u", "body", Map.of(), "bodyFrom", Map.of()), false);
+        assertThat(both.success()).isFalse();
+        assertThat(both.isFinal()).isTrue();
+        assertThat(both.kind()).isEqualTo(com.idm.test.engine.spi.FailureKind.SETUP);
+
+        WireMockServer tls = new WireMockServer(WireMockConfiguration.options().dynamicPort().dynamicHttpsPort());
+        tls.start();
+        try {
+            RestProperties secure = new RestProperties();
+            RestProperties.RestApiConfig config = new RestProperties.RestApiConfig();
+            config.setBaseUrl("https://localhost:" + tls.httpsPort());
+            secure.getRest().put("idm", config);
+            StepOutcome untrusted = new RestRequestStep(CONNECTOR, secure, RestAuthenticator.withoutOAuth()).execute(
+                    Map.of("target", "idm", "method", "GET", "path", "/users/1"), false);
+            assertThat(untrusted.success()).isFalse();
+            assertThat(untrusted.kind()).as(untrusted.message()).isEqualTo(com.idm.test.engine.spi.FailureKind.SETUP);
+        } finally {
+            tls.stop();
+        }
+    }
 }

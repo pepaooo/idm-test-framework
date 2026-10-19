@@ -470,4 +470,23 @@ class HttpStepsTest {
         assertThat(refused.success()).isFalse();
         assertThat(refused.kind()).as(refused.message()).isEqualTo(com.idm.test.engine.spi.FailureKind.SETUP);
     }
+
+    @Test
+    @DisplayName("Failure kinds: a TLS failure (an untrusted certificate) is a setup problem")
+    void testTlsKind() {
+        WireMockServer tls = new WireMockServer(WireMockConfiguration.options().dynamicPort().dynamicHttpsPort());
+        tls.start();
+        try {
+            RestProperties secure = new RestProperties();
+            RestProperties.RestApiConfig config = new RestProperties.RestApiConfig();
+            config.setBaseUrl("https://localhost:" + tls.httpsPort());
+            secure.getRest().put("mock", config);
+            StepOutcome untrusted = new HttpRequestStep(CONNECTOR, secure, RestAuthenticator.withoutOAuth())
+                    .execute(params("target", "mock", "method", "GET", "path", "/x"), true);
+            assertThat(untrusted.success()).isFalse();
+            assertThat(untrusted.kind()).as(untrusted.message()).isEqualTo(com.idm.test.engine.spi.FailureKind.SETUP);
+        } finally {
+            tls.stop();
+        }
+    }
 }

@@ -523,4 +523,21 @@ class DbStepsTest {
                 "database", "no-such-db", "query", "SELECT 1", "expect", Map.of("rowCount", 1)), false);
         assertThat(unknownVerify.kind()).isEqualTo(com.idm.test.engine.spi.FailureKind.SETUP);
     }
+
+    @Test
+    @DisplayName("Failure kinds: a database on a closed port is a setup problem")
+    void testUnreachableDatabaseKind() {
+        MultiDatabaseConnector closed = new MultiDatabaseConnector(Map.of(DB, new JdbcTemplate(
+                new DriverManagerDataSource("jdbc:h2:tcp://localhost:1/mem:nowhere", "sa", ""))));
+
+        StepOutcome execute = new DbExecuteStep(closed).execute(Map.of(
+                "database", DB, "statement", "DELETE FROM sap_users"), false);
+        assertThat(execute.success()).isFalse();
+        assertThat(execute.kind()).as(execute.message()).isEqualTo(com.idm.test.engine.spi.FailureKind.SETUP);
+
+        StepOutcome verify = new DbVerifyStep(closed).execute(Map.of(
+                "database", DB, "query", "SELECT 1", "expect", Map.of("rowCount", 1)), false);
+        assertThat(verify.success()).isFalse();
+        assertThat(verify.kind()).as(verify.message()).isEqualTo(com.idm.test.engine.spi.FailureKind.SETUP);
+    }
 }

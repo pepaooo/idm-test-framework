@@ -647,8 +647,8 @@ public class IdmRestConnector {
     }
 
     /**
-     * Determines the ErrorType: by exception type anywhere in the cause chain first (connect
-     * and timeout failures), then by message for the status errors {@link #get} and friends
+     * Determines the ErrorType: by exception type anywhere in the cause chain first (connect,
+     * TLS and timeout failures), then by message for the status errors {@link #get} and friends
      * raise.
      *
      * @param e the exception
@@ -656,7 +656,8 @@ public class IdmRestConnector {
      */
     private ErrorType determineErrorType(Exception e) {
         for (Throwable t = e; t != null; t = t.getCause()) {
-            if (isConnectFailure(t)) {
+            // A TLS failure (handshake, untrusted certificate) means we never reached the service.
+            if (isConnectFailure(t) || t instanceof javax.net.ssl.SSLException) {
                 return ErrorType.NETWORK_ERROR;
             }
             if (isTimeout(t)) {

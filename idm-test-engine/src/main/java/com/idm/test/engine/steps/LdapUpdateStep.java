@@ -57,12 +57,12 @@ public final class LdapUpdateStep implements StepType {
         Map<String, Object> attributes = (Map<String, Object>) params.get("attributes");
 
         if (attributes == null || attributes.isEmpty()) {
-            return StepOutcome.failure(Message.of("step.ldap.update.noAttributes", where));
+            return StepOutcome.finalFailure(Message.of("step.ldap.update.noAttributes", where));
         }
 
         Message listProblem = LdapLists.problem("ldap.update", where, attributes, true);
         if (listProblem != null) {
-            return StepOutcome.failure(listProblem);
+            return StepOutcome.finalFailure(listProblem);
         }
 
         LdapEvidence evidence = LdapEvidence.written(LdapTarget.requested(params), dn, "update", attributes);

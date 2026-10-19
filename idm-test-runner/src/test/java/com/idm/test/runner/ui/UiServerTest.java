@@ -87,7 +87,7 @@ class UiServerTest {
     void testWrongToken() throws Exception {
         String wrong = "0".repeat(64);
         assertThat(get("/?token=" + wrong, Map.of()).status()).isEqualTo(403);
-        assertThat(get("/", Map.of("Cookie", "idmtest_token=" + wrong)).status()).isEqualTo(403);
+        assertThat(get("/", Map.of("Cookie", cookieName() + "=" + wrong)).status()).isEqualTo(403);
         assertThat(get("/?token=", Map.of()).status()).isEqualTo(403);
     }
 
@@ -98,12 +98,15 @@ class UiServerTest {
         assertThat(first.status()).isEqualTo(302);
         assertThat(first.header("Location")).isIn("/", "http://127.0.0.1:" + server.port() + "/");
         String cookie = first.header("Set-Cookie");
-        assertThat(cookie).startsWith("idmtest_token=" + server.token() + ";")
+        assertThat(cookie).startsWith(cookieName() + "=" + server.token() + ";")
                 .containsIgnoringCase("HttpOnly").containsIgnoringCase("SameSite=Strict").contains("Path=/");
 
-        Response page = get("/", Map.of("Cookie", "idmtest_token=" + server.token()));
+        Response page = get("/", Map.of("Cookie", cookie()));
         assertThat(page.status()).isEqualTo(200);
         assertThat(page.body()).contains("<title>idmtest</title>");
+        assertThat(get("/", Map.of("Cookie", "idmtest_token=" + server.token())).status())
+                .as("the cookie of no port, or of another port, is not this workbench's").isEqualTo(403);
+        assertThat(get("/", Map.of("Cookie", "idmtest_token_1=" + server.token())).status()).isEqualTo(403);
     }
 
     @Test
@@ -119,7 +122,7 @@ class UiServerTest {
     @Test
     @DisplayName("Should refuse another Host, even with the token")
     void testForeignHost() throws Exception {
-        String cookie = "idmtest_token=" + server.token();
+        String cookie = cookie();
         assertThat(request("GET", "/", "evil.example", Map.of("Cookie", cookie)).status()).isEqualTo(403);
         assertThat(request("GET", "/?token=" + server.token(), "evil.example:" + server.port(), Map.of())
                 .status()).isEqualTo(403);
@@ -131,7 +134,7 @@ class UiServerTest {
     @Test
     @DisplayName("Should refuse a foreign Origin, even with the token")
     void testForeignOrigin() throws Exception {
-        String cookie = "idmtest_token=" + server.token();
+        String cookie = cookie();
         Response foreign = request("POST", "/api/health", "127.0.0.1:" + server.port(),
                 Map.of("Cookie", cookie, "Origin", "http://evil.example", "Content-Length", "0"));
         assertThat(foreign.status()).isEqualTo(403);
@@ -144,12 +147,83 @@ class UiServerTest {
                 Map.of("Cookie", cookie, "Origin", "http://localhost:" + server.port())).status()).isEqualTo(200);
     }
 
+    @Test
+    @DisplayName("Should refuse a request the browser marks as coming from another site")
+    void testSecFetchSite() throws Exception {
+        assertThat(get("/api/health", Map.of("Cookie", cookie(), "Sec-Fetch-Site", "same-site")).status())
+                .isEqualTo(403);
+        assertThat(get("/api/health", Map.of("Cookie", cookie(), "Sec-Fetch-Site", "cross-site")).status())
+                .isEqualTo(403);
+        assertThat(get("/api/health", Map.of("Cookie", cookie(), "Sec-Fetch-Site", "same-origin")).status())
+                .isEqualTo(200);
+        assertThat(get("/?token=" + server.token(), Map.of("Sec-Fetch-Site", "none")).status()).isEqualTo(302);
+    }
+
+    @Test
+    @DisplayName("A served page may not be framed or content-sniffed")
+    void testSecurityHeaders() throws Exception {
+        for (String path : new String[] {"/", "/api/health"}) {
+            Response page = get(path, Map.of("Cookie", cookie()));
+            assertThat(page.status()).isEqualTo(200);
+            assertThat(page.header("X-Frame-Options")).isEqualTo("DENY");
+            assertThat(page.header("Content-Security-Policy")).isEqualTo("frame-ancestors 'none'");
+            assertThat(page.header("X-Content-Type-Options")).isEqualTo("nosniff");
+        }
+    }
+
+    @Test
+    @DisplayName("Config locations from outside (system properties, like environment variables) are ignored")
+    void testConfigLocationPinned() throws Exception {
+        java.nio.file.Path extra = java.nio.file.Files.createTempFile("ui-extra", ".yml");
+        java.nio.file.Files.writeString(extra, "server:\n  servlet:\n    context-path: /moved\n");
+        System.setProperty("spring.config.location", "optional:file:" + extra);
+        System.setProperty("spring.config.additional-location", "optional:file:" + extra);
+        try (UiServer other = UiCommand.start(0, Locale.ENGLISH, null)) {
+            Response health = request("GET", "/api/health", "127.0.0.1:" + other.port(),
+                    Map.of("Cookie", "idmtest_token_" + other.port() + "=" + other.token()), other.port());
+            assertThat(health.status()).isEqualTo(200);
+        } finally {
+            System.clearProperty("spring.config.location");
+            System.clearProperty("spring.config.additional-location");
+            java.nio.file.Files.deleteIfExists(extra);
+        }
+    }
+
+    @Test
+    @DisplayName("idmtest ui on a port in use says so on stderr and exits 2")
+    void testPortInUse() throws Exception {
+        try (java.net.ServerSocket taken = new java.net.ServerSocket()) {
+            taken.bind(new InetSocketAddress("127.0.0.1", 0));
+            ByteArrayOutputStream outBytes = new ByteArrayOutputStream();
+            ByteArrayOutputStream errBytes = new ByteArrayOutputStream();
+            int exit = UiCommand.run(com.idm.test.runner.CommandLine.parse("ui", "--port",
+                            String.valueOf(taken.getLocalPort())),
+                    new PrintStream(outBytes, true, StandardCharsets.UTF_8),
+                    new PrintStream(errBytes, true, StandardCharsets.UTF_8));
+            assertThat(exit).isEqualTo(com.idm.test.runner.ExitCodes.CANNOT_START);
+            assertThat(errBytes.toString(StandardCharsets.UTF_8)).startsWith("cannot start the workbench: ")
+                    .contains(String.valueOf(taken.getLocalPort()));
+            assertThat(outBytes.toString(StandardCharsets.UTF_8)).doesNotContain("token=");
+        }
+    }
+
+    @Test
+    @DisplayName("The session knows whether --workspace was given")
+    void testSessionWorkspace() throws Exception {
+        java.nio.file.Path ws = java.nio.file.Path.of("/some/ws");
+        try (UiServer other = UiCommand.start(0, Locale.ENGLISH, ws)) {
+            assertThat(other.session().workspace()).isEqualTo(ws);
+            assertThat(other.session().toString()).doesNotContain(other.token());
+        }
+        assertThat(server.session().workspace()).isNull();
+    }
+
     // --- api ----------------------------------------------------------------------------------
 
     @Test
     @DisplayName("GET /api/health answers the runner version")
     void testHealth() throws Exception {
-        Response health = get("/api/health", Map.of("Cookie", "idmtest_token=" + server.token()));
+        Response health = get("/api/health", Map.of("Cookie", cookie()));
         assertThat(health.status()).isEqualTo(200);
         assertThat(health.header("Content-Type")).startsWith("application/json");
         assertThat(health.body()).matches("\\{\"version\":\"[^\"]+\"}");
@@ -179,13 +253,26 @@ class UiServerTest {
         }
     }
 
+    private static String cookieName() {
+        return "idmtest_token_" + server.port();
+    }
+
+    private static String cookie() {
+        return cookieName() + "=" + server.token();
+    }
+
     private static Response get(String path, Map<String, String> headers) throws IOException {
         return request("GET", path, "127.0.0.1:" + server.port(), headers);
     }
 
     private static Response request(String method, String path, String host, Map<String, String> headers)
             throws IOException {
-        try (Socket socket = new Socket("127.0.0.1", server.port())) {
+        return request(method, path, host, headers, server.port());
+    }
+
+    private static Response request(String method, String path, String host, Map<String, String> headers,
+                                    int port) throws IOException {
+        try (Socket socket = new Socket("127.0.0.1", port)) {
             socket.setSoTimeout(10_000);
             StringBuilder head = new StringBuilder(method + " " + path + " HTTP/1.1\r\nHost: " + host + "\r\n");
             headers.forEach((name, value) -> head.append(name).append(": ").append(value).append("\r\n"));

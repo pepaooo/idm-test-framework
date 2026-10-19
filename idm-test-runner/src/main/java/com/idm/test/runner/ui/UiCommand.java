@@ -8,16 +8,17 @@ import com.idm.test.runner.ExitCodes;
 import org.springframework.boot.Banner;
 import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.builder.SpringApplicationBuilder;
+import org.springframework.boot.web.server.PortInUseException;
 import org.springframework.boot.web.server.context.WebServerApplicationContext;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.event.ContextClosedEvent;
 
 import java.io.PrintStream;
 import java.net.URI;
+import java.nio.file.Path;
 import java.security.SecureRandom;
 import java.util.HexFormat;
 import java.util.Locale;
-import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 
 /**
@@ -44,7 +45,8 @@ public final class UiCommand {
         CountDownLatch closed = new CountDownLatch(1);
         UiServer server;
         try {
-            server = start(line.port() != null ? line.port() : 0, locale, closed::countDown);
+            server = start(line.port() != null ? line.port() : 0, locale,
+                    line.workspaceGiven() ? line.workspace() : null, closed::countDown);
         } catch (RuntimeException e) {
             err.println(Messages.render(Message.of("runner.ui.startFailed", describe(e)), locale));
             if (line.verbose()) {
@@ -63,33 +65,42 @@ public final class UiCommand {
         return ExitCodes.OK;
     }
 
-    /** Starts the workbench on {@code port} (0: a free one) of {@code 127.0.0.1}. */
+    /** Starts the workbench on {@code port} (0: a free one) of {@code 127.0.0.1}, with the start page. */
     public static UiServer start(int port, Locale locale) {
-        return start(port, locale, () -> {
+        return start(port, locale, null);
+    }
+
+    /** As {@link #start(int, Locale)}, opening {@code workspace} unless it is null. */
+    public static UiServer start(int port, Locale locale, Path workspace) {
+        return start(port, locale, workspace, () -> {
         });
     }
 
-    static UiServer start(int port, Locale locale, Runnable onClosed) {
+    static UiServer start(int port, Locale locale, Path workspace, Runnable onClosed) {
         String token = newToken();
-        UiSession session = new UiSession(token, locale);
+        UiSession session = new UiSession(token, locale, workspace);
         ConfigurableApplicationContext context = new SpringApplicationBuilder(UiServerConfig.class)
                 .web(WebApplicationType.SERVLET)
                 .bannerMode(Banner.Mode.OFF)
                 .logStartupInfo(false)
-                // Only the runner's built-in application.yml: no ./application.yml or ./config/ of the current folder.
-                .properties(Map.of("spring.config.location", "optional:classpath:/"))
                 .initializers(started -> started.getBeanFactory().registerSingleton("uiSession", session))
                 .listeners(event -> {
                     if (event instanceof ContextClosedEvent) {
                         onClosed.run();
                     }
                 })
-                // Command-line arguments beat every other source, the built-in "web-application-type: none" included.
+                // Command-line arguments beat every other source: the built-in "web-application-type: none",
+                // and SPRING_CONFIG_LOCATION / SPRING_CONFIG_ADDITIONAL_LOCATION. Only the runner's built-in
+                // application.yml is read: no ./application.yml or ./config/ of the current folder.
                 .run("--spring.main.web-application-type=servlet",
+                        "--spring.config.location=optional:classpath:/",
+                        "--spring.config.additional-location=",
+                        // the console gets one line from runner.ui.startFailed, not Spring's failure report
+                        "--logging.level.org.springframework.boot.diagnostics=OFF",
                         "--server.address=127.0.0.1",
                         "--server.port=" + port);
         int bound = ((WebServerApplicationContext) context).getWebServer().getPort();
-        return new UiServer(bound, token, context::close);
+        return new UiServer(bound, token, context::close, session);
     }
 
     static void printStarted(PrintStream out, int port, String token, Locale locale) {
@@ -107,10 +118,19 @@ public final class UiCommand {
         return HexFormat.of().formatHex(bytes);
     }
 
-    /** The deepest cause's message: the part of a start-up failure that names the problem (a port in use). */
+    /**
+     * What names the problem of a start-up failure: a port in use says which port; otherwise the
+     * deepest cause's first line.
+     */
     private static String describe(Throwable e) {
         Throwable root = e;
-        while (root.getCause() != null && root.getCause() != root) {
+        while (true) {
+            if (root instanceof PortInUseException) {
+                return root.getMessage();
+            }
+            if (root.getCause() == null || root.getCause() == root) {
+                break;
+            }
             root = root.getCause();
         }
         String message = root.getMessage();

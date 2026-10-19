@@ -58,6 +58,18 @@ class CommandLineTest {
     }
 
     @Test
+    @DisplayName("Should record whether --workspace was given, keeping the current folder as the default")
+    void testWorkspaceGiven() {
+        assertThat(CommandLine.parse("ui", "--workspace", "/w").workspaceGiven()).isTrue();
+        CommandLine none = CommandLine.parse("ui");
+        assertThat(none.workspaceGiven()).isFalse();
+        assertThat(none.workspace()).isEqualTo(Path.of("").toAbsolutePath());
+        assertThat(CommandLine.parse("run").workspaceGiven()).isFalse();
+        assertThat(CommandLine.parse("run").workspace()).isEqualTo(Path.of("").toAbsolutePath());
+        assertThat(CommandLine.parse("validate", "--workspace", "x").workspaceGiven()).isTrue();
+    }
+
+    @Test
     @DisplayName("Should reject a --port that is not a port number, and --port outside ui")
     void testBadPort() {
         assertThatThrownBy(() -> CommandLine.parse("ui", "--port", "abc")).isInstanceOf(UsageException.class)
@@ -66,6 +78,9 @@ class CommandLineTest {
                 .hasMessage("option '--port' needs a port number from 0 to 65535, not '65536'");
         assertThatThrownBy(() -> CommandLine.parse("ui", "--port", "-1")).isInstanceOf(UsageException.class)
                 .hasMessage("option '--port' needs a port number from 0 to 65535, not '-1'");
+        assertThatThrownBy(() -> CommandLine.parse("ui", "--port", "80")).isInstanceOf(UsageException.class)
+                .hasMessage("option '--port' cannot be 80: browsers leave port 80 out of the address, "
+                        + "and the workbench needs it there; choose another port");
         assertThatThrownBy(() -> CommandLine.parse("run", "--port", "8123")).isInstanceOf(UsageException.class)
                 .hasMessage("unknown option '--port'");
     }

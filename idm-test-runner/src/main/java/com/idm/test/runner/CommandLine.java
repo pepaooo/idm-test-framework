@@ -8,22 +8,23 @@ import java.util.Iterator;
 /**
  * The parsed {@code idmtest} command line. {@code --help}/{@code -h} and {@code --version} become
  * the commands {@code help} and {@code version}; no arguments at all is {@code help}. {@code port}
- * is {@code ui}'s {@code --port}, null when not given.
+ * is {@code ui}'s {@code --port}, null when not given. {@code workspace} is the current folder when
+ * {@code --workspace} is not given; {@code workspaceGiven} tells the two apart.
  */
 public record CommandLine(String command, Path workspace, String profile, String scenario, String locale,
-                          boolean verbose, Path initTarget, Integer port) {
+                          boolean verbose, Path initTarget, Integer port, boolean workspaceGiven) {
 
     public static CommandLine parse(String... args) {
         if (args.length == 0) {
-            return of("help", null, null, null, null, false, null, null);
+            return of("help", null, null, null, null, false, null, null, false);
         }
         String first = args[0];
         switch (first) {
             case "--help", "-h", "help" -> {
-                return of("help", null, null, null, null, false, null, null);
+                return of("help", null, null, null, null, false, null, null, false);
             }
             case "--version" -> {
-                return of("version", null, null, null, null, false, null, null);
+                return of("version", null, null, null, null, false, null, null, false);
             }
             case "init", "validate", "run", "ui" -> {
             }
@@ -44,7 +45,7 @@ public record CommandLine(String command, Path workspace, String profile, String
             switch (arg) {
                 case "--workspace" -> workspace = Path.of(value(arg, rest)).toAbsolutePath().normalize();
                 case "--help", "-h" -> {
-                    return of("help", null, null, null, null, false, null, null);
+                    return of("help", null, null, null, null, false, null, null, false);
                 }
                 case "--profile" -> profile = value(arg, rest);
                 case "--scenario" -> scenario = value(arg, rest);
@@ -65,13 +66,17 @@ public record CommandLine(String command, Path workspace, String profile, String
                 }
             }
         }
-        return of(first, workspace, profile, scenario, locale, verbose, initTarget, port);
+        return of(first, workspace, profile, scenario, locale, verbose, initTarget, port, workspace != null);
     }
 
-    /** {@code value} as a TCP port, 0 to 65535 (0: any free port). */
+    /** {@code value} as a TCP port, 0 to 65535 (0: any free port) but not 80. */
     private static int port(String value) {
         try {
             int port = Integer.parseInt(value);
+            if (port == 80) {
+                // http://127.0.0.1:80/ becomes http://127.0.0.1/, a Host the token filter refuses
+                throw new UsageException(Message.of("runner.cli.port80"));
+            }
             if (port >= 0 && port <= 65535) {
                 return port;
             }
@@ -93,8 +98,9 @@ public record CommandLine(String command, Path workspace, String profile, String
     }
 
     private static CommandLine of(String command, Path workspace, String profile, String scenario,
-                                  String locale, boolean verbose, Path initTarget, Integer port) {
+                                  String locale, boolean verbose, Path initTarget, Integer port,
+                                  boolean workspaceGiven) {
         return new CommandLine(command, workspace != null ? workspace : Path.of("").toAbsolutePath(),
-                profile, scenario, locale, verbose, initTarget, port);
+                profile, scenario, locale, verbose, initTarget, port, workspaceGiven);
     }
 }

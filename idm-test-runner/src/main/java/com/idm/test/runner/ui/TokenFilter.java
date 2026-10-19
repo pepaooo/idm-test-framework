@@ -17,14 +17,17 @@ import java.util.List;
 
 /**
  * The workbench's only door. A request passes when its {@code Host} is {@code 127.0.0.1:<port>} or
- * {@code localhost:<port>}, its {@code Origin} (when it has one) is {@code http://} one of those, and
- * it carries the session token: in the {@code idmtest_token} cookie, or once in {@code ?token=}, which
- * sets the cookie ({@code HttpOnly}, {@code SameSite=Strict}) and redirects to the same address
- * without the token. Everything else is 403. Tokens are compared in constant time and never logged.
+ * {@code localhost:<port>}, its {@code Origin} (when it has one) is {@code http://} one of those, its
+ * {@code Sec-Fetch-Site} (when it has one) is {@code same-origin} or {@code none}, and it carries the
+ * session token: in the {@code idmtest_token_<port>} cookie (one per port, so two workbenches do not
+ * replace each other's), or once in {@code ?token=}, which sets the cookie ({@code HttpOnly},
+ * {@code SameSite=Strict}) and redirects to the same address without the token. Everything else is
+ * 403. A response that passes may not be framed or content-sniffed. Tokens are compared in constant
+ * time and never logged.
  */
 final class TokenFilter extends OncePerRequestFilter {
 
-    static final String COOKIE = "idmtest_token";
+    static final String COOKIE_PREFIX = "idmtest_token_";
     private static final String PARAMETER = "token";
 
     private final byte[] token;
@@ -37,10 +40,12 @@ final class TokenFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {
         int port = request.getLocalPort();
-        if (!isLocal(request.getHeader("Host"), port, "") || !originAllowed(request.getHeader("Origin"), port)) {
+        if (!isLocal(request.getHeader("Host"), port, "") || !originAllowed(request.getHeader("Origin"), port)
+                || !fetchSiteAllowed(request.getHeader("Sec-Fetch-Site"))) {
             forbid(response);
             return;
         }
+        String cookieName = COOKIE_PREFIX + port;
         Query query = Query.of(request.getQueryString());
         if (!query.tokens().isEmpty()) {
             if (!query.tokens().stream().allMatch(this::matches)) {
@@ -48,17 +53,20 @@ final class TokenFilter extends OncePerRequestFilter {
                 return;
             }
             response.setStatus(HttpServletResponse.SC_FOUND);
-            response.setHeader("Set-Cookie", ResponseCookie.from(COOKIE, new String(token, StandardCharsets.UTF_8))
+            response.setHeader("Set-Cookie", ResponseCookie.from(cookieName, new String(token, StandardCharsets.UTF_8))
                     .path("/").httpOnly(true).sameSite("Strict").build().toString());
             response.setHeader("Location", location(request.getRequestURI(), query.rest()));
             response.setHeader("Cache-Control", "no-store");
             response.setHeader("Referrer-Policy", "no-referrer");
             return;
         }
-        if (!cookieMatches(request.getCookies())) {
+        if (!cookieMatches(request.getCookies(), cookieName)) {
             forbid(response);
             return;
         }
+        response.setHeader("X-Frame-Options", "DENY");
+        response.setHeader("Content-Security-Policy", "frame-ancestors 'none'");
+        response.setHeader("X-Content-Type-Options", "nosniff");
         chain.doFilter(request, response);
     }
 
@@ -70,13 +78,18 @@ final class TokenFilter extends OncePerRequestFilter {
         return origin == null || isLocal(origin, port, "http://");
     }
 
-    private boolean cookieMatches(Cookie[] cookies) {
+    /** A browser's own word for where the request comes from: only this origin, or the user (typed, bookmark). */
+    private static boolean fetchSiteAllowed(String site) {
+        return site == null || site.equals("same-origin") || site.equals("none");
+    }
+
+    private boolean cookieMatches(Cookie[] cookies, String cookieName) {
         if (cookies == null) {
             return false;
         }
         boolean found = false;
         for (Cookie cookie : cookies) {
-            if (COOKIE.equals(cookie.getName()) && matches(cookie.getValue())) {
+            if (cookieName.equals(cookie.getName()) && matches(cookie.getValue())) {
                 found = true;
             }
         }

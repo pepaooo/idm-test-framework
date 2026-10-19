@@ -32,7 +32,7 @@ import java.util.List;
  * Spring Boot re-initialises Logback when it starts, which removes every appender, so
  * {@link #listener()} attaches the run's appenders again right after.
  */
-final class RunLog implements AutoCloseable {
+public final class RunLog implements AutoCloseable {
 
     static final String APPENDER_NAME = "IDMTEST_RUN_LOG";
     static final String CONSOLE_NAME = "IDMTEST_RUN_CONSOLE";
@@ -52,14 +52,14 @@ final class RunLog implements AutoCloseable {
     }
 
     /** Starts logging to {@code file}; with {@code verbose}, the console echoes the (masked) log. */
-    static RunLog start(Path file, boolean verbose, SecretMask mask) {
+    public static RunLog start(Path file, boolean verbose, SecretMask mask) {
         RunLog log = new RunLog(file, verbose, mask);
         log.attach();
         return log;
     }
 
     /** Re-attaches the run's appenders once Spring Boot has configured logging. */
-    ApplicationListener<ApplicationEnvironmentPreparedEvent> listener() {
+    public ApplicationListener<ApplicationEnvironmentPreparedEvent> listener() {
         // A class, not a lambda, so Spring can see the event type and calls it for this event only.
         return new ApplicationListener<>() {
             @Override

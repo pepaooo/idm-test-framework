@@ -36,7 +36,7 @@ import java.util.Set;
  * are left alone: replacing a one- or two-character value everywhere would garble unrelated text
  * (every {@code 1} in a message), and so short a value is no credential worth hiding.
  */
-final class SecretMask {
+public final class SecretMask {
 
     static final int MIN_LENGTH = 4;
     static final String MASK = "****";
@@ -63,7 +63,7 @@ final class SecretMask {
      * environment variable or a system property of the same name wins, as in Spring) and the file's
      * own value, plus every environment variable whose name looks secret ({@link Secrets#isSecret}).
      */
-    static SecretMask of(Map<String, String> secretsEnv, Map<String, String> environment) {
+    public static SecretMask of(Map<String, String> secretsEnv, Map<String, String> environment) {
         // The run's layers in Spring's order, highest first; secrets.env sits just below the environment.
         MutablePropertySources sources = new MutablePropertySources();
         sources.addLast(new PropertiesPropertySource(StandardEnvironment.SYSTEM_PROPERTIES_PROPERTY_SOURCE_NAME,
@@ -86,7 +86,7 @@ final class SecretMask {
         return new SecretMask(values);
     }
 
-    String apply(String text) {
+    public String apply(String text) {
         if (text == null) {
             return null;
         }
@@ -98,7 +98,7 @@ final class SecretMask {
     }
 
     /** The stack trace of {@code e}, masked. */
-    String stackTrace(Throwable e) {
+    public String stackTrace(Throwable e) {
         StringWriter trace = new StringWriter();
         e.printStackTrace(new PrintWriter(trace));
         return apply(trace.toString());
@@ -109,7 +109,7 @@ final class SecretMask {
      * and cleanup entry's message, arguments, description, resolved parameters and evidence, each
      * waiting-history message, each check's name, expected and found text, and the entries a stop skipped. Names and step types stay as they are.
      */
-    ScenarioResult result(ScenarioResult result) {
+    public ScenarioResult result(ScenarioResult result) {
         if (values.isEmpty() || result == null) {
             return result;
         }
@@ -123,7 +123,7 @@ final class SecretMask {
     }
 
     /** {@code run} with its endpoint URLs masked. */
-    RunInfo runInfo(RunInfo run) {
+    public RunInfo runInfo(RunInfo run) {
         if (values.isEmpty() || run == null) {
             return run;
         }
@@ -133,7 +133,13 @@ final class SecretMask {
                 run.locale());
     }
 
-    private StepResult step(StepResult step) {
+    /** {@code message} with its arguments masked, at any depth; null stays null. */
+    public Message message(Message message) {
+        return message == null ? null : new Message(message.key(), list(message.args()));
+    }
+
+    /** {@code step} with every text in it masked, as in {@link #result}. */
+    public StepResult step(StepResult step) {
         return new StepResult(step.index(), step.type(), map(step.resolvedParams()), step.success(),
                 step.durationMillis(), apply(step.message()), step.attempts(), step.waitedMillis(),
                 apply(step.description()), evidence(step.evidence()), step.messageKey(), list(step.messageArgs()),
@@ -154,7 +160,8 @@ final class SecretMask {
                 .toList();
     }
 
-    private CleanupResult cleanup(CleanupResult entry) {
+    /** {@code entry} with every text in it masked, as in {@link #result}. */
+    public CleanupResult cleanup(CleanupResult entry) {
         return new CleanupResult(entry.index(), entry.type(), map(entry.resolvedParams()), entry.status(),
                 entry.durationMillis(), apply(entry.message()), apply(entry.description()), entry.messageKey(),
                 list(entry.messageArgs()), entry.failureKind());

@@ -45,7 +45,7 @@ public final class DriverLoader {
      * {@code parent}; {@link Drivers#close()} deregisters them and closes the class loader. A jar
      * whose driver cannot be loaded is logged and skipped, and the others are still registered.
      */
-    static Drivers open(Path driversFolder, ClassLoader parent) {
+    public static Drivers open(Path driversFolder, ClassLoader parent) {
         List<Path> jars = jars(driversFolder);
         if (jars.isEmpty()) {
             return new Drivers(jars, null, List.of());
@@ -128,7 +128,7 @@ public final class DriverLoader {
      * The jars of {@code loaderPath} (the {@code loader.path} system property: comma-separated
      * folders or jars) that exist; a folder contributes its {@code *.jar} files, sorted by name.
      */
-    static List<Path> installJars(String loaderPath) {
+    public static List<Path> installJars(String loaderPath) {
         List<Path> jars = new ArrayList<>();
         if (loaderPath == null || loaderPath.isBlank()) {
             return jars;
@@ -184,9 +184,9 @@ public final class DriverLoader {
      * The drivers of one folder: the jars, their class loader (null when there were none) and the
      * delegating drivers registered for them.
      */
-    record Drivers(List<Path> jars, ClassLoader loader, List<Driver> registered) implements AutoCloseable {
+    public record Drivers(List<Path> jars, ClassLoader loader, List<Driver> registered) implements AutoCloseable {
 
-        Drivers {
+        public Drivers {
             jars = List.copyOf(jars);
             registered = List.copyOf(registered);
         }

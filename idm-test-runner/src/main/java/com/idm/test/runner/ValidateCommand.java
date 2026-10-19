@@ -50,7 +50,7 @@ public final class ValidateCommand {
     }
 
     /** The scenarios {@code glob} selects; an invalid glob or no match is a {@link UsageException}. */
-    static List<String> select(DirectoryScenarioSource source, String glob) throws IOException {
+    public static List<String> select(DirectoryScenarioSource source, String glob) throws IOException {
         List<String> names;
         try {
             names = ScenarioGlob.select(source.names(), glob);

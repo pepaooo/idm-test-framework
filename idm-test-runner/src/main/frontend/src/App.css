@@ -133,12 +133,3 @@ select {
 .link:hover {
   color: var(--text);
 }
-
-.workspace {
-  padding: 24px 26px;
-}
-
-.workspace h1 {
-  font-size: 18px;
-  margin: 0 0 6px;
-}

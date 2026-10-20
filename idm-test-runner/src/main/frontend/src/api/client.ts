@@ -7,12 +7,15 @@ import { currentLanguage, t } from '../i18n';
 export class ApiProblem extends Error {
   readonly status: number;
   readonly key: string;
+  /** The whole error body (e.g. a 409's `currentVersion`). */
+  readonly data: unknown;
 
-  constructor(status: number, key: string, message: string) {
+  constructor(status: number, key: string, message: string, data?: unknown) {
     super(message);
     this.name = 'ApiProblem';
     this.status = status;
     this.key = key;
+    this.data = data;
   }
 }
 
@@ -40,7 +43,8 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     Accept: 'application/json',
     'Accept-Language': currentLanguage(),
   };
-  if (body !== undefined) {
+  const multipart = typeof FormData !== 'undefined' && body instanceof FormData;
+  if (body !== undefined && !multipart) {
     headers['Content-Type'] = 'application/json';
   }
   let response: Response;
@@ -49,7 +53,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
       method,
       credentials: 'same-origin',
       headers,
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: body === undefined ? undefined : multipart ? (body as FormData) : JSON.stringify(body),
     });
   } catch {
     throw new ApiProblem(0, 'ui.network', t('ui.error.network'));
@@ -63,7 +67,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   }
   if (!response.ok) {
     if (isServerMessage(data)) {
-      throw new ApiProblem(response.status, data.key, data.message);
+      throw new ApiProblem(response.status, data.key, data.message, data);
     }
     throw new ApiProblem(response.status, 'ui.unexpected', t('ui.error.status', { status: response.status }));
   }
@@ -106,6 +110,8 @@ export const api = {
   post: <T>(path: string, body?: unknown) => request<T>('POST', path, body ?? {}),
   put: <T>(path: string, body?: unknown) => request<T>('PUT', path, body ?? {}),
   del: <T = void>(path: string) => request<T>('DELETE', path),
+  /** A multipart POST (the browser sets the boundary). */
+  upload: <T>(path: string, form: FormData) => request<T>('POST', path, form),
   events,
 };
 

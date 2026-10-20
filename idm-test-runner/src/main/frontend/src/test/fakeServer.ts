@@ -15,7 +15,7 @@ export interface Answer {
   body?: unknown;
 }
 
-type Route = (request: SentRequest) => Answer | undefined;
+type Route = (request: SentRequest) => Answer | undefined | Promise<Answer | undefined>;
 
 /**
  * Stands in for the workbench's HTTP API (the other side of `fetch`): routes are matched by
@@ -34,14 +34,14 @@ export function fakeServer(routes: Record<string, Answer | Route>) {
     const request: SentRequest = {
       method,
       url,
-      body: typeof init?.body === 'string' ? JSON.parse(init.body) : undefined,
+      body: typeof init?.body === 'string' ? JSON.parse(init.body) : init?.body instanceof FormData ? init.body : undefined,
       headers,
       credentials: init?.credentials,
     };
     sent.push(request);
     const route = routes[`${method} ${url.split('?')[0]}`];
     const answer: Answer =
-      (typeof route === 'function' ? route(request) : route) ?? {
+      (typeof route === 'function' ? await route(request) : route) ?? {
         status: 404,
         body: { key: 'ui.request.notFound', message: 'Not found' },
       };

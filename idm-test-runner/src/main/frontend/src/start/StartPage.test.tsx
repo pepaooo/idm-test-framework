@@ -275,7 +275,9 @@ describe('App', () => {
     render(<App />);
     const open = await screen.findByRole('form', { name: 'Open a workspace' });
     await userEvent.type(within(open).getByLabelText('Folder'), '/home/ana/ws{Enter}');
-    expect(await screen.findByRole('heading', { name: 'Workspace ws open' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'ws' })).toBeInTheDocument();
+    expect(screen.getByRole('navigation', { name: 'Workspace files' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Profile')).toHaveValue('lab');
     expect(screen.queryByRole('heading', { name: 'Recent workspaces' })).not.toBeInTheDocument();
   });
 
@@ -285,7 +287,7 @@ describe('App', () => {
       'POST /api/workspaces/open': { body: { path: '/home/ana/lab-tests', profiles: [] } },
     });
     render(<App />);
-    expect(await screen.findByRole('heading', { name: 'Workspace lab-tests open' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'lab-tests' })).toBeInTheDocument();
     expect(server.calls()).not.toContain('GET /api/workspaces/recent');
   });
 

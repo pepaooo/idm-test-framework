@@ -1,5 +1,6 @@
 import { createContext, useContext } from 'react';
 import type { OpenWorkspace } from '../api/client';
+import type { LabState, LabView } from '../lab/types';
 
 /**
  * What the workbench offers the panels inside it (the run panel of Task 14, the lab chip of
@@ -26,6 +27,19 @@ export interface WorkbenchApi {
   markLines(path: string, fromLine: number, toLine: number): Promise<void>;
   /** Reloads the file tree (e.g. after a run, for the last-result badges). */
   refreshTree(): Promise<void>;
+  /**
+   * The lab's readiness for the current profile (Task 13): `missing` (with `missingSystemId`) blocks
+   * a run with `message`; `untested` and `ready` do not. Kept current: read again on a profile
+   * switch, after the lab panel saves or tests, when it opens, and when config/, scenarios/ or
+   * secrets.env change on disk.
+   */
+  labState(): LabState;
+  /** The lab as last read (systems with their fields and status, no secret values), or null. */
+  lab: LabView | null;
+  /** Opens the lab panel, on `systemId`'s tab when given (e.g. the missing system). */
+  openLab(systemId?: string): void;
+  /** Reads the lab again now. */
+  refreshLab(): Promise<void>;
 }
 
 export const WorkbenchContext = createContext<WorkbenchApi | null>(null);

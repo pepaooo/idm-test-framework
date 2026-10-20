@@ -10,6 +10,9 @@ import { isDirty, WorkbenchStore } from './store';
 import { openDrafts } from './drafts';
 import { createTabLock, type LockState, type TabLock } from './tabLock';
 import { TopBar } from './TopBar';
+import { LabChip } from '../lab/LabChip';
+import { deriveLabState } from '../lab/labState';
+import { LabStore } from '../lab/labStore';
 import type { TreeNode } from './types';
 import './Workbench.css';
 
@@ -21,7 +24,7 @@ interface Props {
   lockWait?: number;
   /** The right-hand run panel (Task 14); a placeholder until then. */
   runPanel?: ReactNode;
-  /** The lab chip in the top bar (Task 13). */
+  /** The lab chip in the top bar; the lab chip and panel when not given. */
   lab?: ReactNode;
   /** The Run split button in the top bar (Task 14). */
   run?: ReactNode;
@@ -52,6 +55,14 @@ export function Workbench({ workspace, warning, lockWait = 300, runPanel, lab, r
   const [treeError, setTreeError] = useState<string | null>(null);
   const [profile, setProfile] = useState<string | null>(workspace.profiles[0] ?? null);
   const [showWarning, setShowWarning] = useState(Boolean(warning));
+  const labStore = useMemo(() => new LabStore(), [workspace.path]);
+  const labView = useSyncExternalStore(labStore.subscribe, labStore.getState);
+
+  useEffect(() => {
+    void labStore.setProfile(profile);
+  }, [labStore, profile]);
+
+  useEffect(() => () => labStore.dispose(), [labStore]);
 
   const refreshTree = useCallback(async () => {
     try {
@@ -110,8 +121,9 @@ export function Workbench({ workspace, warning, lockWait = 300, runPanel, lab, r
       if (event.type === 'changed' || event.type === 'created') {
         void store.fileChanged(event.path);
       }
+      labStore.fileEvent(event.path);
     });
-  }, [store, refreshTree]);
+  }, [store, refreshTree, labStore]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -177,8 +189,12 @@ export function Workbench({ workspace, warning, lockWait = 300, runPanel, lab, r
       saveActive: () => store.save(),
       markLines: (path, fromLine, toLine) => store.markLines(path, fromLine, toLine),
       refreshTree,
+      labState: () => deriveLabState(labView.view, labView.error, profile !== null),
+      lab: labView.view,
+      openLab: (systemId) => labStore.openPanel(systemId),
+      refreshLab: () => labStore.reload(),
     }),
-    [workspace, profile, state.active, state.readOnly, store, refreshTree],
+    [workspace, profile, state.active, state.readOnly, store, refreshTree, labStore, labView],
   );
 
   const closeTab = (path: string) => {
@@ -205,7 +221,7 @@ export function Workbench({ workspace, warning, lockWait = 300, runPanel, lab, r
           canSave={!state.readOnly && active !== null && isDirty(active)}
           saving={active?.saving ?? false}
           onSave={() => void store.save().catch(() => undefined)}
-          lab={lab}
+          lab={lab === undefined ? <LabChip store={labStore} /> : lab}
           run={run}
         />
         {lockState === 'readOnly' && (

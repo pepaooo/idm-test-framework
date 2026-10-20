@@ -47,6 +47,7 @@ export function Workbench({ workspace, warning, lockWait = 300, runPanel, lab, r
   const state = useSyncExternalStore(store.subscribe, store.getState);
   const [lock, setLock] = useState<TabLock | null>(null);
   const [lockState, setLockState] = useState<LockState>('probing');
+  const [takingOver, setTakingOver] = useState(false);
   const [tree, setTree] = useState<TreeNode | null>(null);
   const [treeError, setTreeError] = useState<string | null>(null);
   const [profile, setProfile] = useState<string | null>(workspace.profiles[0] ?? null);
@@ -78,7 +79,8 @@ export function Workbench({ workspace, warning, lockWait = 300, runPanel, lab, r
         store.setReadOnly(true);
         await store.lastFlush;
       },
-      hasUnkeptEdits: () => store.hasUnkeptEdits(),
+      // asked by a tab about to take over: drafts are written first, so the answer includes failed writes
+      hasUnkeptEdits: () => store.checkUnkeptEdits(),
     });
     const sync = () => {
       setLockState(created.state());
@@ -135,7 +137,8 @@ export function Workbench({ workspace, warning, lockWait = 300, runPanel, lab, r
       // running when a reloading document unloads (a put issued in pagehide is lost), while a put
       // issued in beforeunload, over the already-open connection, commits. pagehide still flushes
       // for the cases without beforeunload (back/forward cache, mobile tab discards).
-      void store.flushNow();
+      // not final: the user may cancel leaving, and a draft still due must stay due
+      void store.flushNow(false);
       // edits that cannot be kept as a draft (a plain-text password, unchecked text) would be lost
       if (store.hasUnkeptEdits()) {
         event.preventDefault();
@@ -210,7 +213,20 @@ export function Workbench({ workspace, warning, lockWait = 300, runPanel, lab, r
             <Badge status="warn" />
             <strong>{t('ui.lock.banner')}</strong>
             <span className="muted">{t('ui.lock.hint')}</span>
-            <button type="button" className="secondary" onClick={() => void lock?.takeOver(() => window.confirm(t('ui.lock.confirmUnsaved')))}>
+            <button
+              type="button"
+              className="secondary"
+              disabled={takingOver}
+              onClick={() => {
+                if (!lock || takingOver) {
+                  return;
+                }
+                setTakingOver(true);
+                void lock
+                  .takeOver((certain) => window.confirm(t(certain ? 'ui.lock.confirmUnsaved' : 'ui.lock.confirmMaybe')))
+                  .finally(() => setTakingOver(false));
+              }}
+            >
               {t('ui.lock.takeOver')}
             </button>
           </div>

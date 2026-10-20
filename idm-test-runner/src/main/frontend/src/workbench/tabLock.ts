@@ -7,7 +7,9 @@
  *   which makes the newcomer `readOnly`. Hearing no holder within `wait` (~300 ms) the tab takes the
  *   lock; tabs probing at the same time tie-break on their ids (the smallest wins).
  * - `takeOver(confirm)` first asks the holder (`query` → `status`) whether it has edits it could not
- *   keep as drafts (`hasUnkeptEdits`); if so, `confirm()` decides whether to go on. Then it asks the
+ *   keep as drafts (`hasUnkeptEdits`, which may write them first); if so — or if no answer comes
+ *   within `yieldTimeout`, so it is unknown — `confirm(certain)` decides whether to go on. One
+ *   take-over at a time: a second call while one is under way gets the same promise. Then it asks the
  *   holder to yield. The holder answers `yielding` at once and, from then on,
  *   never claims the lock again (no `held` to newcomers or rivals); it keeps its drafts (`onYield`),
  *   turns read-only and says `yielded`. The taker holds the lock only after `yielded` — so it reads
@@ -23,7 +25,8 @@ export interface TabLock {
   state(): LockState;
   subscribe(listener: () => void): () => void;
   /** Resolves true once this tab holds the lock, false when `confirm` said no. */
-  takeOver(confirm?: () => boolean | Promise<boolean>): Promise<boolean>;
+  /** `confirm(true)`: the holder has edits it could not keep; `confirm(false)`: it did not say. */
+  takeOver(confirm?: (certain: boolean) => boolean | Promise<boolean>): Promise<boolean>;
   close(): void;
 }
 
@@ -37,7 +40,7 @@ export interface TabLockOptions {
   /** Runs in the holder before it yields to a tab taking over (e.g. writes pending drafts). */
   onYield?: () => Promise<void>;
   /** In the holder: whether it has edits that giving up the lock would leave only in this tab. */
-  hasUnkeptEdits?: () => boolean;
+  hasUnkeptEdits?: () => boolean | Promise<boolean>;
 }
 
 type Kind = 'hello' | 'held' | 'query' | 'status' | 'takeover' | 'yielding' | 'yielded' | 'released';
@@ -79,6 +82,7 @@ export function createTabLock(workspace: string, options: TabLockOptions = {}): 
   let taking = false;
   let since = 0;
   let statusAnswer: ((unsaved: boolean) => void) | null = null;
+  let pendingTakeOver: Promise<boolean> | null = null;
   let closed = false;
 
   const set = (next: LockState) => {
@@ -91,7 +95,7 @@ export function createTabLock(workspace: string, options: TabLockOptions = {}): 
     }
   };
 
-  const post = (type: Kind, to?: string) => {
+  const post = (type: Kind, to?: string, unsaved?: boolean) => {
     try {
       channel?.postMessage({
         ws: workspace,
@@ -99,7 +103,7 @@ export function createTabLock(workspace: string, options: TabLockOptions = {}): 
         type,
         to,
         since: type === 'held' ? since : undefined,
-        unsaved: type === 'status' || type === 'yielding' ? Boolean(options.hasUnkeptEdits?.()) : undefined,
+        unsaved,
       } satisfies LockMessage);
     } catch {
       // closed channel: nothing to tell
@@ -187,7 +191,13 @@ export function createTabLock(workspace: string, options: TabLockOptions = {}): 
         break;
       case 'query':
         if (current === 'holder' && !yielding) {
-          post('status', message.from);
+          let unsaved = true; // when unsure, say so: the other tab then asks its user
+          try {
+            unsaved = Boolean(await options.hasUnkeptEdits?.());
+          } catch {
+            // keep "true"
+          }
+          post('status', message.from, unsaved);
         }
         break;
       case 'status':
@@ -226,6 +236,54 @@ export function createTabLock(workspace: string, options: TabLockOptions = {}): 
     }
   };
 
+  const takeOverNow = async (confirm?: (certain: boolean) => boolean | Promise<boolean>): Promise<boolean> => {
+    stopTimer();
+    // does the holder have edits that would stay only in its tab? no answer: unknown (maybe gone,
+    // maybe busy) — then ask too
+    const unsaved = await new Promise<boolean | null>((resolve) => {
+      const timeout = setTimeout(() => {
+        statusAnswer = null;
+        resolve(null);
+      }, yieldTimeout);
+      statusAnswer = (answer) => {
+        clearTimeout(timeout);
+        statusAnswer = null;
+        resolve(answer);
+      };
+      post('query');
+    });
+    if (unsaved !== false && confirm && !(await confirm(unsaved === true))) {
+      return false;
+    }
+    if (closed) {
+      return false;
+    }
+    await new Promise<void>((resolve) => {
+      let fallback: ReturnType<typeof setTimeout>;
+      const done = () => {
+        clearTimeout(fallback);
+        yielded = null;
+        answered = null;
+        taking = false;
+        if (!closed) {
+          set('holder');
+          post('held');
+        }
+        resolve();
+      };
+      // nobody answers within yieldTimeout: the holder is gone; once it answers, wait for it
+      fallback = setTimeout(done, yieldTimeout);
+      answered = () => {
+        clearTimeout(fallback);
+        fallback = setTimeout(done, yieldWait);
+      };
+      yielded = done;
+      taking = true;
+      post('takeover');
+    });
+    return !closed;
+  };
+
   if (typeof BroadcastChannel === 'undefined') {
     current = 'holder';
   } else {
@@ -252,55 +310,18 @@ export function createTabLock(workspace: string, options: TabLockOptions = {}): 
         listeners.delete(listener);
       };
     },
-    async takeOver(confirm?: () => boolean | Promise<boolean>) {
+    takeOver(confirm?: (certain: boolean) => boolean | Promise<boolean>) {
       if (current === 'holder' || !channel) {
-        return true;
+        return Promise.resolve(true);
       }
-      stopTimer();
-      // does the holder have edits that would stay only in its tab? (no answer: it is gone)
-      const unsaved = await new Promise<boolean>((resolve) => {
-        const timeout = setTimeout(() => {
-          statusAnswer = null;
-          resolve(false);
-        }, yieldTimeout);
-        statusAnswer = (answer) => {
-          clearTimeout(timeout);
-          statusAnswer = null;
-          resolve(answer);
-        };
-        post('query');
-      });
-      if (unsaved && confirm && !(await confirm())) {
-        return false;
+      if (!pendingTakeOver) {
+        pendingTakeOver = takeOverNow(confirm).finally(() => {
+          pendingTakeOver = null;
+        });
       }
-      if (closed) {
-        return false;
-      }
-      await new Promise<void>((resolve) => {
-        let fallback: ReturnType<typeof setTimeout>;
-        const done = () => {
-          clearTimeout(fallback);
-          yielded = null;
-          answered = null;
-          taking = false;
-          if (!closed) {
-            set('holder');
-            post('held');
-          }
-          resolve();
-        };
-        // nobody answers within yieldTimeout: the holder is gone; once it answers, wait for it
-        fallback = setTimeout(done, yieldTimeout);
-        answered = () => {
-          clearTimeout(fallback);
-          fallback = setTimeout(done, yieldWait);
-        };
-        yielded = done;
-        taking = true;
-        post('takeover');
-      });
-      return !closed;
+      return pendingTakeOver;
     },
+
     close() {
       if (closed) {
         return;

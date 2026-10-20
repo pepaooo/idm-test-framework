@@ -325,6 +325,101 @@ describe('Workbench editor', () => {
     }
   });
 
+  it.each([
+    ['IndexedDB is missing', 'missing'],
+    ['the draft write aborts', 'abort'],
+  ])('take over when %s: asks first, and the edits stay in the yielding tab', async (_why, how) => {
+    workbenchServer({ files: FILES });
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const original = FakeObjectStore.prototype.put;
+    const put = vi.spyOn(FakeObjectStore.prototype, 'put');
+    if (how === 'abort') {
+      put.mockImplementation(function (this: IDBObjectStore, ...args: Parameters<IDBObjectStore['put']>) {
+        const request = original.apply(this, args);
+        this.transaction.abort();
+        return request;
+      });
+    }
+    const saved = globalThis.indexedDB;
+    try {
+      if (how === 'missing') {
+        // @ts-expect-error simulating a browser without IndexedDB (a private window)
+        delete globalThis.indexedDB;
+      }
+      const a = renderWorkbench();
+      await userEvent.click(await within(a.container).findByRole('button', { name: 'a.yaml' }));
+      const editorA = await within(a.container).findByLabelText(`Edit ${A}`);
+      await waitFor(() => expect(editorA).not.toHaveAttribute('readonly'));
+      fireEvent.change(editorA, { target: { value: 'name: X\n' } });
+      await new Promise((resolve) => setTimeout(resolve, 500)); // checked: a draft would be fine
+
+      const b = render(<Workbench workspace={WORKSPACE} lockWait={10} />);
+      await userEvent.click(await within(b.container).findByRole('button', { name: 'Take over' }));
+      await waitFor(() =>
+        expect(confirm).toHaveBeenCalledWith('The other tab has edits that could not be kept as a draft. Take over anyway?'),
+      );
+      expect(await within(a.container).findByText('This workspace is open in another tab')).toBeInTheDocument();
+      expect(editorA).toHaveValue('name: X\n');
+      expect(editorA).toHaveAttribute('readonly');
+      expect(
+        within(a.container).getByText(
+          'Your unsaved edits to this file could not be kept as a draft: they are only in this tab. Take over to go on editing them.',
+        ),
+      ).toBeInTheDocument();
+    } finally {
+      globalThis.indexedDB = saved;
+      put.mockRestore();
+      confirm.mockRestore();
+    }
+  });
+
+  it('after another tab changed the drafts, this tab does not trust what it wrote before', async () => {
+    workbenchServer({ files: FILES });
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    try {
+      const a = renderWorkbench();
+      await userEvent.click(await within(a.container).findByRole('button', { name: 'a.yaml' }));
+      const editorA = await within(a.container).findByLabelText(`Edit ${A}`);
+      await waitFor(() => expect(editorA).not.toHaveAttribute('readonly'));
+      fireEvent.change(editorA, { target: { value: 'name: X\n' } });
+      await waitFor(async () => expect((await readDraft(WORKSPACE.path, A))?.content).toBe('name: X\n'), { timeout: 2500 });
+
+      // B takes over and puts the text back as on disk: its draft is removed
+      const b = render(<Workbench workspace={WORKSPACE} lockWait={10} />);
+      await userEvent.click(await within(b.container).findByRole('button', { name: 'Take over' }));
+      const editorB = await within(b.container).findByLabelText(`Edit ${A}`);
+      await waitFor(() => expect(editorB).toHaveValue('name: X\n'));
+      await waitFor(() => expect(editorB).not.toHaveAttribute('readonly'));
+      fireEvent.change(editorB, { target: { value: 'name: A\n' } });
+      await waitFor(async () => expect(await readDraft(WORKSPACE.path, A)).toBeNull(), { timeout: 2500 });
+
+      // A takes back and types X again: the same text it once wrote, but that draft is gone now
+      await userEvent.click(within(a.container).getByRole('button', { name: 'Take over' }));
+      await waitFor(() => expect(editorA).not.toHaveAttribute('readonly'));
+      fireEvent.change(editorA, { target: { value: 'name: X\n' } });
+      await new Promise((resolve) => setTimeout(resolve, 500)); // checked, draft not yet due
+
+      await userEvent.click(within(b.container).getByRole('button', { name: 'Take over' }));
+      await waitFor(() => expect(editorB).toHaveValue('name: X\n'));
+      expect((await readDraft(WORKSPACE.path, A))?.content).toBe('name: X\n');
+    } finally {
+      confirm.mockRestore();
+    }
+  });
+
+  it('a leave prompt the user cancels does not cancel a draft that is still due', async () => {
+    workbenchServer({ files: FILES });
+    renderWorkbench();
+    const editor = await openA();
+    fireEvent.change(editor, { target: { value: 'name: still here\n' } });
+    window.dispatchEvent(new Event('beforeunload', { cancelable: true })); // before the check: nothing to keep yet
+    expect(await readDraft(WORKSPACE.path, A)).toBeNull();
+    // the user stayed: once the check answers and the delay passes, the draft is written as usual
+    await waitFor(async () => expect((await readDraft(WORKSPACE.path, A))?.content).toBe('name: still here\n'), {
+      timeout: 2500,
+    });
+  });
+
   it('take over and back, with edits on both sides: nothing is lost and the newest edits win', async () => {
     const server = workbenchServer({ files: FILES });
     const a = renderWorkbench();

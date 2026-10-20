@@ -145,49 +145,67 @@ export class WorkbenchStore {
   /**
    * Read-only (another tab holds the workspace, or this page is going away). First every tab's
    * edits are written as drafts: with the drafts connection open (it is opened with the workspace)
-   * the puts are issued before this returns, which is what lets it work inside `pagehide`. Then the
-   * tabs whose text is now kept go back to the disk text — the holder works from the drafts — and
-   * the others (text that could not be kept) stay as they are, read-only, unsaved and `unkept`.
-   * Editable again: drafts are restored (see restoreDrafts).
+   * the puts are issued before this returns, which is what lets it work in an unload handler. A tab
+   * whose edits are already committed as its draft goes back to the disk text at once — the holder
+   * works from the drafts. Every other tab with edits stays as it is, read-only, unsaved and
+   * `unkept`, until {@link lastFlush} settles: then the tabs whose write committed go back to the
+   * disk text too, and the rest (nothing could be kept: a plain-text password, unchecked text,
+   * IndexedDB missing or failing) keep their edits here. Editable again: see restoreDrafts.
    */
   setReadOnly(readOnly: boolean): void {
     const was = this.state.readOnly;
     if (was === readOnly) {
       return;
     }
-    if (readOnly) {
-      this.lastFlush = this.flushNow();
-      this.state.tabs.forEach((tab) => this.clearTimers(tab.path));
-      const now = Date.now();
-      const tabs = this.state.tabs.map((tab) => {
-        if (!tab.loaded || (!isDirty(tab) && !tab.conflict)) {
-          return tab;
-        }
-        if (!this.isKept(tab)) {
-          return { ...tab, unkept: true, unkeptAt: tab.unkept ? tab.unkeptAt : now };
-        }
-        const disk = tab.conflict?.diskContent ?? null;
-        return {
-          ...tab,
-          content: disk ?? tab.diskContent,
-          diskContent: disk ?? tab.diskContent,
-          version: disk !== null && tab.conflict ? tab.conflict.diskVersion : tab.version,
-          conflict: null,
-          validated: null,
-          problems: [],
-          plainSecret: false,
-        };
-      });
-      const reset = tabs.filter((tab, i) => tab !== this.state.tabs[i] && !tab.unkept).map((tab) => tab.path);
-      this.set({ tabs, readOnly });
-      reset.forEach((path) => void this.validate(path));
+    if (!readOnly) {
+      this.set({ readOnly });
+      void this.restoreDrafts();
       return;
     }
-    this.set({ readOnly });
-    void this.restoreDrafts();
+    const flushed = this.flushNow();
+    this.state.tabs.forEach((tab) => this.clearTimers(tab.path));
+    const now = Date.now();
+    const tabs = this.state.tabs.map((tab) => {
+      if (!tab.loaded || (!isDirty(tab) && !tab.conflict)) {
+        return tab;
+      }
+      return this.isKept(tab) ? this.backToDisk(tab) : { ...tab, unkept: true, unkeptAt: tab.unkept ? tab.unkeptAt : now };
+    });
+    const reset = tabs.filter((tab, i) => tab !== this.state.tabs[i] && !tab.unkept).map((tab) => tab.path);
+    this.set({ tabs, readOnly });
+    reset.forEach((path) => void this.validate(path));
+    this.lastFlush = flushed.then(() => {
+      if (!this.state.readOnly) {
+        return;
+      }
+      const committed = this.state.tabs.filter((tab) => tab.unkept && this.isKept(tab));
+      if (committed.length === 0) {
+        return;
+      }
+      const paths = new Set(committed.map((tab) => tab.path));
+      this.set({ tabs: this.state.tabs.map((tab) => (paths.has(tab.path) ? this.backToDisk(tab) : tab)) });
+      paths.forEach((path) => void this.validate(path));
+    });
   }
 
-  /** Whether the tab's text is safe outside this tab: saved, or written as its draft. */
+  /** The tab with its edits set aside (they are its committed draft): the disk text. */
+  private backToDisk(tab: Doc): Doc {
+    const disk = tab.conflict?.diskContent ?? null;
+    return {
+      ...tab,
+      content: disk ?? tab.diskContent,
+      diskContent: disk ?? tab.diskContent,
+      version: disk !== null && tab.conflict ? tab.conflict.diskVersion : tab.version,
+      conflict: null,
+      validated: null,
+      problems: [],
+      plainSecret: false,
+      unkept: false,
+      unkeptAt: 0,
+    };
+  }
+
+  /** Whether the tab's text is safe outside this tab: saved, or committed as its draft. */
   private isKept(doc: Doc): boolean {
     return !isDirty(doc) || this.drafted.get(doc.path) === doc.content;
   }
@@ -201,8 +219,9 @@ export class WorkbenchStore {
   }
 
   /**
-   * Whether some tab has edits that a flush could not keep (or already could not): asked by a tab
-   * about to take over, and before the page unloads.
+   * Whether some tab has edits that no draft could keep (a plain-text password, unchecked text) or
+   * that were already left in this tab: checked before the page unloads, where waiting is not
+   * possible. See {@link checkUnkeptEdits} for the full answer.
    */
   hasUnkeptEdits(): boolean {
     return this.state.tabs.some(
@@ -210,14 +229,28 @@ export class WorkbenchStore {
     );
   }
 
-  private persist(path: string, content: string, baseVersion: string): Promise<void> {
-    this.drafted.set(path, content);
-    return writeDraft(this.workspace, path, { content, baseVersion, savedAt: Date.now() });
+  /**
+   * Asked by a tab about to take over: writes the drafts, then says whether any tab's edits are
+   * still not committed as a draft (including when IndexedDB is missing or the write failed).
+   */
+  async checkUnkeptEdits(): Promise<boolean> {
+    await this.flushNow(false);
+    return this.state.tabs.some((doc) => doc.loaded && (doc.unkept || !this.isKept(doc)));
   }
 
-  private unpersist(path: string): Promise<void> {
+  /** Writes a draft; the text counts as kept only once the write has committed. */
+  private async persist(path: string, content: string, baseVersion: string): Promise<void> {
+    const ok = await writeDraft(this.workspace, path, { content, baseVersion, savedAt: Date.now() });
+    if (ok) {
+      this.drafted.set(path, content);
+    } else if (this.drafted.get(path) === content) {
+      this.drafted.delete(path);
+    }
+  }
+
+  private async unpersist(path: string): Promise<void> {
     this.drafted.delete(path);
-    return deleteDraft(this.workspace, path);
+    await deleteDraft(this.workspace, path);
   }
 
   /** The draft writes started when this tab last became read-only. */
@@ -325,25 +358,26 @@ export class WorkbenchStore {
     const gained = new Map(this.state.tabs.map((tab) => [tab.path, tab.content]));
     const untouched = (path: string) => this.doc(path)?.content === gained.get(path);
     const paths = await listDrafts(this.workspace);
+    // what this tab believes is stored may be stale: another tab may have changed or removed drafts
+    this.drafted.clear();
     for (const path of paths) {
       if (this.state.readOnly) {
         return;
       }
       await this.opening.get(path); // a tab still loading (perhaps read while read-only)
+      const draft = await readDraft(this.workspace, path);
+      if (draft) {
+        this.drafted.set(path, draft.content);
+      }
       const doc = this.doc(path);
       if (!doc) {
         await this.open(path, !this.state.active);
         continue;
       }
-      if (!doc.loaded || !gained.has(path) || !untouched(path)) {
-        continue;
+      if (!draft || !doc.loaded || !gained.has(path) || !untouched(path) || this.state.readOnly) {
+        continue; // typed since the lock came back: those edits stay
       }
-      const draft = await readDraft(this.workspace, path);
-      const now = this.doc(path);
-      if (!draft || !now || !untouched(path) || this.state.readOnly) {
-        continue;
-      }
-      if (now.unkept && draft.savedAt <= now.unkeptAt) {
+      if (doc.unkept && draft.savedAt <= doc.unkeptAt) {
         continue; // this tab's own edits are newer than the draft
       }
       await this.applyDraft(path, draft);
@@ -484,15 +518,19 @@ export class WorkbenchStore {
    * last checked one); text not checked yet, or holding a plain-text password, is not written —
    * {@link isKept} then says the tab's edits are not safe outside it.
    */
-  flushNow(): Promise<void> {
+  flushNow(final = true): Promise<void> {
     if (this.state.readOnly) {
       return Promise.resolve();
     }
     const writes: Promise<void>[] = [];
     for (const doc of this.state.tabs) {
-      clearTimeout(this.draftTimers.get(doc.path));
-      this.draftTimers.delete(doc.path);
-      this.draftWanted.delete(doc.path);
+      if (final) {
+        // the tab is letting go: nothing is left to do later. Otherwise (beforeunload the user may
+        // cancel, a take-over question) a draft still due — e.g. once the check answers — stays due.
+        clearTimeout(this.draftTimers.get(doc.path));
+        this.draftTimers.delete(doc.path);
+        this.draftWanted.delete(doc.path);
+      }
       if (!doc.loaded) {
         continue;
       }

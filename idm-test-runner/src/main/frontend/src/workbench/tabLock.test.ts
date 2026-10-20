@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { waitFor } from '@testing-library/react';
 import { createTabLock, type TabLock } from './tabLock';
 
@@ -112,6 +112,42 @@ describe('tabLock', () => {
     await new Promise((resolve) => setTimeout(resolve, WAIT * 2));
     expect(first.state()).toBe('holder');
     expect(changes).not.toContain('readOnly');
+  });
+
+  it('when the holder does not answer whether it has unkept edits in time, the taker still asks', async () => {
+    const first = createTabLock(WS, {
+      wait: WAIT,
+      hasUnkeptEdits: () => new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 200)),
+    });
+    open.push(first);
+    await waitFor(() => expect(first.state()).toBe('holder'));
+    const second = createTabLock(WS, { wait: WAIT, yieldTimeout: 40 });
+    open.push(second);
+    await waitFor(() => expect(second.state()).toBe('readOnly'));
+
+    const confirm = vi.fn(() => false);
+    expect(await second.takeOver(confirm)).toBe(false);
+    expect(confirm).toHaveBeenCalledWith(false); // unknown, not "no edits"
+    expect(first.state()).toBe('holder');
+    expect(second.state()).toBe('readOnly');
+  });
+
+  it('one take-over at a time: a second click while one is under way asks nothing more', async () => {
+    const first = createTabLock(WS, { wait: WAIT, hasUnkeptEdits: () => true });
+    open.push(first);
+    await waitFor(() => expect(first.state()).toBe('holder'));
+    const second = tab();
+    await waitFor(() => expect(second.state()).toBe('readOnly'));
+
+    const confirm = vi.fn(() => true);
+    const one = second.takeOver(confirm);
+    const two = second.takeOver(confirm);
+    expect(two).toBe(one);
+    expect(await one).toBe(true);
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(confirm).toHaveBeenCalledWith(true);
+    expect(second.state()).toBe('holder');
+    await waitFor(() => expect(first.state()).toBe('readOnly'));
   });
 
   it('turns read-only before it says released on pagehide, so its listeners keep edits while it holds', async () => {

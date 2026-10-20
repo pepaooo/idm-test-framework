@@ -42,7 +42,11 @@ afterEach(() => {
 
 describe('Hand-over between tabs', () => {
   it('says yielded only after the drafts are committed, and refuses edits once the hand-over starts', async () => {
-    workbenchServer({ files: FILES });
+    // X2's check answers only after the test: X2 stays unchecked through the hand-over
+    workbenchServer({
+      files: FILES,
+      validate: (_path, content) => (content.includes('X2') ? new Promise((resolve) => setTimeout(() => resolve([]), 5000)) : []),
+    });
     vi.spyOn(window, 'confirm').mockReturnValue(true);
     const { a, editor: editorA } = await holderWithFileOpen();
     fireEvent.change(editorA, { target: { value: 'name: X1\n' } });

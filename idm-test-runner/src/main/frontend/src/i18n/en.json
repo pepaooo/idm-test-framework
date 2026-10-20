@@ -101,5 +101,6 @@
   "ui.disk.unreadable": "The file on disk could not be read, so it cannot be loaded or compared yet.",
   "ui.disk.retry": "Try again",
   "ui.editor.unkept": "Your unsaved edits to this file could not be kept as a draft: they are only in this tab. Take over to go on editing them.",
-  "ui.lock.confirmUnsaved": "The other tab has edits that could not be kept as a draft. Take over anyway?"
+  "ui.lock.confirmUnsaved": "The other tab has edits that could not be kept as a draft. Take over anyway?",
+  "ui.lock.confirmMaybe": "The other tab did not say whether it has edits that could not be kept as a draft. Take over anyway?"
 }

@@ -114,35 +114,43 @@ export function openDrafts(): Promise<void> {
   return connect().then(() => undefined);
 }
 
-function run<T>(db: IDBDatabase, mode: IDBTransactionMode, work: (store: IDBObjectStore) => IDBRequest<T>): Promise<T | null> {
+/** A transaction's outcome: `ok` only once it committed; `value` is the request's result. */
+interface Outcome<T> {
+  ok: boolean;
+  value: T | null;
+}
+
+const FAILED: Outcome<never> = { ok: false, value: null };
+
+function run<T>(db: IDBDatabase, mode: IDBTransactionMode, work: (store: IDBObjectStore) => IDBRequest<T>): Promise<Outcome<T>> {
   try {
     const tx = db.transaction(STORE, mode);
     const request = work(tx.objectStore(STORE));
-    return new Promise<T | null>((resolve) => {
-      let result: T | null = null;
+    return new Promise<Outcome<T>>((resolve) => {
+      let value: T | null = null;
       request.onsuccess = () => {
-        result = request.result;
+        value = request.result;
       };
-      tx.oncomplete = () => resolve(result);
-      tx.onerror = () => resolve(null);
-      tx.onabort = () => resolve(null);
+      tx.oncomplete = () => resolve({ ok: true, value });
+      tx.onerror = () => resolve(FAILED);
+      tx.onabort = () => resolve(FAILED);
     });
   } catch {
     forget(db);
-    return Promise.resolve(null);
+    return Promise.resolve(FAILED);
   }
 }
 
 /**
- * Runs `work` in one transaction and resolves with its result once committed; null on any failure.
+ * Runs `work` in one transaction; resolves once it committed (`ok`) or failed — never rejects.
  * With the connection already open the request is issued before this returns.
  */
-function inStore<T>(mode: IDBTransactionMode, work: (store: IDBObjectStore) => IDBRequest<T>): Promise<T | null> {
+function inStore<T>(mode: IDBTransactionMode, work: (store: IDBObjectStore) => IDBRequest<T>): Promise<Outcome<T>> {
   const db = openNow();
   if (db) {
     return run(db, mode, work);
   }
-  return connect().then((opened) => (opened ? run(opened, mode, work) : null));
+  return connect().then((opened) => (opened ? run(opened, mode, work) : FAILED));
 }
 
 function isDraft(value: unknown): value is Draft {
@@ -157,17 +165,19 @@ function isDraft(value: unknown): value is Draft {
 }
 
 export async function readDraft(workspace: string, path: string): Promise<Draft | null> {
-  const value = await inStore<unknown>('readonly', (store) => store.get(draftKey(workspace, path)));
+  const { value } = await inStore<unknown>('readonly', (store) => store.get(draftKey(workspace, path)));
   return isDraft(value) ? value : null;
 }
 
-export async function writeDraft(workspace: string, path: string, draft: Draft): Promise<void> {
+/** Writes the draft; resolves true once it is committed, false when it could not be (no IndexedDB, abort). */
+export async function writeDraft(workspace: string, path: string, draft: Draft): Promise<boolean> {
   const value: Draft = { content: draft.content, baseVersion: draft.baseVersion, savedAt: draft.savedAt };
-  await inStore('readwrite', (store) => store.put(value, draftKey(workspace, path)));
+  return (await inStore('readwrite', (store) => store.put(value, draftKey(workspace, path)))).ok;
 }
 
-export async function deleteDraft(workspace: string, path: string): Promise<void> {
-  await inStore('readwrite', (store) => store.delete(draftKey(workspace, path)));
+/** Removes the draft; resolves true once that is committed. */
+export async function deleteDraft(workspace: string, path: string): Promise<boolean> {
+  return (await inStore('readwrite', (store) => store.delete(draftKey(workspace, path)))).ok;
 }
 
 /** The workspace-relative paths that have a draft in `workspace`, sorted. */
@@ -179,7 +189,7 @@ export async function listDrafts(workspace: string): Promise<string[]> {
   } catch {
     return [];
   }
-  const keys = await inStore<IDBValidKey[]>('readonly', (store) => store.getAllKeys(range));
+  const { value: keys } = await inStore<IDBValidKey[]>('readonly', (store) => store.getAllKeys(range));
   return (keys ?? [])
     .filter((key): key is string => typeof key === 'string' && key.startsWith(prefix))
     .map((key) => key.substring(prefix.length))

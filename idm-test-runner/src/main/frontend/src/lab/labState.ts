@@ -31,6 +31,11 @@ export function deriveLabState(view: LabView | null, error: string | null, hasPr
   if (!view) {
     return { state: 'untested', message: t(error !== null ? 'ui.lab.chip.unreadable' : 'ui.lab.chip.checking') };
   }
+  const state = fromView(view);
+  return error !== null ? { ...state, error } : state;
+}
+
+function fromView(view: LabView): LabState {
   const systems = countedSystems(view);
   const missing = systems.find((system) => system.status === 'missing');
   if (missing) {

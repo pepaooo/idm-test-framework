@@ -46,13 +46,15 @@ export function LabChip({ store }: { store: LabStore }) {
         type="button"
         className={`pill lab-chip lab-chip-${known ? state.state : 'unknown'}${lab.open ? ' open' : ''}`}
         aria-label={state.message}
+        title={state.error}
         aria-expanded={lab.open}
         aria-controls={lab.open ? 'lab-panel' : undefined}
         aria-haspopup="dialog"
         disabled={profile === null}
         onClick={toggle}
       >
-        {known && <Badge status={BADGE[state.state]} />}
+        {/* the last reload failed: ! (the state is the last good one), unless something is missing */}
+        {known && <Badge status={state.error && state.state !== 'missing' ? 'warn' : BADGE[state.state]} />}
         {!known && lab.error !== null && <Badge status="error" />}
         <span>{state.message}</span>
         <span aria-hidden="true">{lab.open ? ' ▴' : ' ▾'}</span>

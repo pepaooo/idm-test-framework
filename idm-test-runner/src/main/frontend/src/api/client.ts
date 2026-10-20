@@ -86,10 +86,20 @@ export function withQuery(path: string, params: Record<string, string | undefine
 /**
  * Server-Sent Events from `path`: `onEvent(name, data)` for each event of `names` (and unnamed
  * ones as "message"), with `data` parsed as JSON when it is JSON. The browser reconnects by itself
- * (sending Last-Event-ID). Returns the function that closes the stream.
+ * (sending Last-Event-ID); `onError(closed)` hears each connection error, `closed` true when the
+ * browser gave up (e.g. the server answered 204: nothing to send). Returns the function that closes
+ * the stream.
  */
-function events(path: string, onEvent: (name: string, data: unknown) => void, names: readonly string[] = []): () => void {
+function events(
+  path: string,
+  onEvent: (name: string, data: unknown) => void,
+  names: readonly string[] = [],
+  onError?: (closed: boolean) => void,
+): () => void {
   const source = new EventSource(path);
+  if (onError) {
+    source.addEventListener('error', () => onError(source.readyState === 2));
+  }
   const handle = (name: string) => (event: MessageEvent<string>) => {
     let data: unknown = event.data;
     try {

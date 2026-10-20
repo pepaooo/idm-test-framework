@@ -1,6 +1,7 @@
 import { createContext, useContext } from 'react';
 import type { OpenWorkspace } from '../api/client';
 import type { LabState, LabView } from '../lab/types';
+import type { TreeNode } from './types';
 
 /**
  * What the workbench offers the panels inside it (the run panel of Task 14, the lab chip of
@@ -27,9 +28,16 @@ export interface WorkbenchApi {
   markLines(path: string, fromLine: number, toLine: number): Promise<void>;
   /** Reloads the file tree (e.g. after a run, for the last-result badges). */
   refreshTree(): Promise<void>;
+  /** The file tree as last read (scenarios with their last result), or null before it is read. */
+  tree: TreeNode | null;
+  /** The text an open tab shows now (unsaved edits included), or undefined when it is not open. */
+  textOf(path: string): string | undefined;
+  /** Moves the cursor of `path`'s tab to `line` (1-based) and makes it active. */
+  focus(path: string, line: number): void;
   /**
    * The lab's readiness for the current profile (Task 13): `missing` (with `missingSystemId`) blocks
-   * a run with `message`; `untested` and `ready` do not. Kept current: read again on a profile
+   * a run with `message`; `untested` and `ready` do not. `error` is set while the last reload of
+   * the lab failed (the state is then the last good one). Kept current: read again on a profile
    * switch, after the lab panel saves or tests, when it opens, and when config/, scenarios/ or
    * secrets.env change on disk.
    */

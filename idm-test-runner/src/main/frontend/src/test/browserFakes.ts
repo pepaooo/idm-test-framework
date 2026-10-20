@@ -66,6 +66,8 @@ export class FakeEventSource {
   readonly url: string;
   private listeners = new Map<string, Set<(event: MessageEvent<string>) => void>>();
   closed = false;
+  /** 0 connecting, 1 open, 2 closed (as EventSource). */
+  readyState = 1;
 
   constructor(url: string) {
     this.url = url;
@@ -85,7 +87,16 @@ export class FakeEventSource {
 
   close(): void {
     this.closed = true;
+    this.readyState = 2;
     sources.delete(this);
+  }
+
+  /** A connection error; `final` as when the server answered 204 (the browser does not reconnect). */
+  fail(final: boolean): void {
+    if (final) {
+      this.readyState = 2;
+    }
+    this.listeners.get('error')?.forEach((listener) => listener(new MessageEvent<string>('error')));
   }
 
   emit(type: string, data: unknown): void {
@@ -101,6 +112,20 @@ export function emitServerEvent(url: string, data: unknown): void {
       source.emit('message', data);
     }
   }
+}
+
+/** Sends a named SSE event to every open stream at `url`. */
+export function emitNamedEvent(url: string, name: string, data: unknown): void {
+  for (const source of [...sources]) {
+    if (source.url === url) {
+      source.emit(name, data);
+    }
+  }
+}
+
+/** The open streams at `url`. */
+export function eventStreams(url: string): FakeEventSource[] {
+  return [...sources].filter((source) => source.url === url);
 }
 
 export function openEventStreams(): string[] {

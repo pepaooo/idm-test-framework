@@ -15,6 +15,8 @@ interface Props {
   active: string | null;
   dirty: ReadonlySet<string>;
   readOnly: boolean;
+  /** The scenario the current run is running, marked as running. */
+  running?: string | null;
   onOpen(path: string): void;
   onAdded(added: string[]): void;
 }
@@ -29,7 +31,7 @@ const startsOpen = (path: string) => path === 'scenarios' || path.startsWith('sc
  * secrets.env locked and never opened. "Add files" and dropping .yaml/.yml files on the tree copy
  * them into scenarios/ through `POST /api/files/add`.
  */
-export function FileTree({ tree, active, dirty, readOnly, onOpen, onAdded }: Props) {
+export function FileTree({ tree, active, dirty, readOnly, running = null, onOpen, onAdded }: Props) {
   const [toggled, setToggled] = useState<ReadonlySet<string>>(new Set());
   const [messages, setMessages] = useState<{ text: string; problem: boolean }[]>([]);
   const [dropping, setDropping] = useState(false);
@@ -125,7 +127,12 @@ export function FileTree({ tree, active, dirty, readOnly, onOpen, onAdded }: Pro
               {' ●'}
             </span>
           )}
-          {result && (
+          {node.path === running && (
+            <span className="tree-badge run-spin" role="img" aria-label={t('ui.run.state.running')}>
+              ◌
+            </span>
+          )}
+          {result && node.path !== running && (
             <span className="tree-badge">
               <Badge status={RESULT_BADGE[result]} label={t(`ui.tree.lastResult.${result}`)} />
             </span>

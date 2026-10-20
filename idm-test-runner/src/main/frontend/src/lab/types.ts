@@ -37,4 +37,6 @@ export interface LabState {
   state: 'ready' | 'untested' | 'missing';
   missingSystemId?: string;
   message: string;
+  /** Why the last reload failed, while the state shown is the last good one; absent otherwise. */
+  error?: string;
 }

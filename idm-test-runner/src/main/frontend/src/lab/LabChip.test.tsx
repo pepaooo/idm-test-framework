@@ -112,6 +112,34 @@ describe('Lab chip', () => {
     expect(labState().state).toBe('untested');
   });
 
+  it('a failed reload keeps the last good state, sets labState().error and shows ! on the chip', async () => {
+    let fail = false;
+    workbenchServer({
+      files: { 'scenarios/a.yaml': 'name: A\n' },
+      routes: {
+        'GET /api/lab': () =>
+          fail
+            ? { status: 500, body: { key: 'runner.ui.lab.settingsUnreadable', message: 'the lab settings could not be read: bad.yml' } }
+            : { body: { systems: [directory('ready')] } },
+      },
+    });
+    render(<Workbench workspace={WORKSPACE} lockWait={10} runPanel={<LabProbe />} />);
+    await waitFor(() => expect(labState()).toEqual({ state: 'ready', message: 'Lab ready' }));
+    expect(within(chip()).getByRole('img')).toHaveClass('badge-ok');
+    fail = true;
+    emitServerEvent('/api/files/events', { type: 'changed', path: 'config/application-lab.yml' });
+    await waitFor(() =>
+      expect(labState()).toEqual({ state: 'ready', message: 'Lab ready', error: 'the lab settings could not be read: bad.yml' }),
+    );
+    expect(chip()).toHaveTextContent('Lab ready');
+    expect(within(chip()).getByRole('img')).toHaveClass('badge-warn');
+    expect(within(chip()).getByRole('img')).toHaveTextContent('!');
+    fail = false;
+    emitServerEvent('/api/files/events', { type: 'changed', path: 'config/application-lab.yml' });
+    await waitFor(() => expect(labState()).toEqual({ state: 'ready', message: 'Lab ready' }));
+    expect(within(chip()).getByRole('img')).toHaveClass('badge-ok');
+  });
+
   it('speaks Spanish', async () => {
     setLanguage('es', false);
     start({ lab: { systems: [directory('ready'), rest('untested')] } });

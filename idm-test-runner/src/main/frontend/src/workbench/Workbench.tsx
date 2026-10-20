@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { api, ApiProblem, type OpenWorkspace, type ServerMessage } from '../api/client';
 import { Badge } from '../components/Badge';
 import { t } from '../i18n';
@@ -13,6 +13,9 @@ import { TopBar } from './TopBar';
 import { LabChip } from '../lab/LabChip';
 import { deriveLabState } from '../lab/labState';
 import { LabStore } from '../lab/labStore';
+import { RunButton } from '../run/RunButton';
+import { RunPanel } from '../run/RunPanel';
+import { readScenarioFile, RunStore } from '../run/runStore';
 import type { TreeNode } from './types';
 import './Workbench.css';
 
@@ -22,11 +25,11 @@ interface Props {
   warning?: ServerMessage;
   /** How long a new tab listens for another tab holding the workspace (ms). */
   lockWait?: number;
-  /** The right-hand run panel (Task 14); a placeholder until then. */
+  /** The right-hand run panel; the live run panel when not given. */
   runPanel?: ReactNode;
   /** The lab chip in the top bar; the lab chip and panel when not given. */
   lab?: ReactNode;
-  /** The Run split button in the top bar (Task 14). */
+  /** The Run split button in the top bar; Run and its menu when not given. */
   run?: ReactNode;
 }
 
@@ -35,7 +38,7 @@ interface FileEvent {
   path: string;
 }
 
-/** Stands in for the run panel until Task 14. */
+/** What the run panel says before any run. */
 export function RunPanelSlot() {
   return <p className="muted run-placeholder">{t('ui.run.placeholder')}</p>;
 }
@@ -76,6 +79,20 @@ export function Workbench({ workspace, warning, lockWait = 300, runPanel, lab, r
   useEffect(() => {
     void refreshTree();
   }, [refreshTree]);
+
+  // the run of this workspace: Run in the top bar and the run panel share it
+  const refreshTreeRef = useRef(refreshTree);
+  refreshTreeRef.current = refreshTree;
+  const runStore = useMemo(
+    () => new RunStore({ refreshTree: () => void refreshTreeRef.current(), readScenario: readScenarioFile }),
+    [workspace.path],
+  );
+  const runState = useSyncExternalStore(runStore.subscribe, runStore.getState);
+  useEffect(() => {
+    runStore.connect(); // the current or last run
+    return () => runStore.dispose();
+  }, [runStore]);
+  const runningPath = runState.scenarios.find((s) => s.state === 'running')?.name;
 
   // leaving the workspace: keep pending drafts, then stop the timers
   useEffect(() => () => void store.flushNow().finally(() => store.dispose()), [store]);
@@ -189,12 +206,15 @@ export function Workbench({ workspace, warning, lockWait = 300, runPanel, lab, r
       saveActive: () => store.save(),
       markLines: (path, fromLine, toLine) => store.markLines(path, fromLine, toLine),
       refreshTree,
+      tree,
+      textOf: (path) => store.doc(path)?.content,
+      focus: (path, line) => store.focus(path, line),
       labState: () => deriveLabState(labView.view, labView.error, profile !== null),
       lab: labView.view,
       openLab: (systemId) => labStore.openPanel(systemId),
       refreshLab: () => labStore.reload(),
     }),
-    [workspace, profile, state.active, state.readOnly, store, refreshTree, labStore, labView],
+    [workspace, profile, state.active, state.readOnly, state.tabs, store, refreshTree, tree, labStore, labView],
   );
 
   const closeTab = (path: string) => {
@@ -228,7 +248,7 @@ export function Workbench({ workspace, warning, lockWait = 300, runPanel, lab, r
           saving={active?.saving ?? false}
           onSave={() => void store.save().catch(() => undefined)}
           lab={lab === undefined ? <LabChip store={labStore} /> : lab}
-          run={run}
+          run={run === undefined ? <RunButton store={runStore} /> : run}
         />
         {lockState === 'readOnly' && (
           <div className="lock-banner" role="status">
@@ -273,6 +293,7 @@ export function Workbench({ workspace, warning, lockWait = 300, runPanel, lab, r
               active={state.active}
               dirty={dirty}
               readOnly={state.readOnly}
+              running={runningPath ? `scenarios/${runningPath}` : null}
               onOpen={(path) => void store.open(path)}
               onAdded={() => void refreshTree()}
             />
@@ -293,7 +314,7 @@ export function Workbench({ workspace, warning, lockWait = 300, runPanel, lab, r
             <div className="pane-head">
               <span id="run-title">{t('ui.run.title')}</span>
             </div>
-            {runPanel ?? <RunPanelSlot />}
+            {runPanel === undefined ? <RunPanel store={runStore} /> : runPanel}
           </aside>
         </div>
       </div>

@@ -106,6 +106,10 @@ public final class UiCommand {
                         // the console gets one line from runner.ui.startFailed, not Spring's failure report
                         "--logging.level.org.springframework.boot.diagnostics=OFF",
                         "--server.address=127.0.0.1",
+                        // Add files: each file's 2 MB limit is the files API's own (with the file's name);
+                        // this caps one request
+                        "--spring.servlet.multipart.max-file-size=-1",
+                        "--spring.servlet.multipart.max-request-size=64MB",
                         "--server.port=" + port);
         int bound = ((WebServerApplicationContext) context).getWebServer().getPort();
         return new UiServer(bound, token, context::close, session);

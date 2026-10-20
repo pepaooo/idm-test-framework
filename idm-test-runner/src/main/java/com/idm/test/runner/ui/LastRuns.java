@@ -17,8 +17,11 @@ import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -50,6 +53,75 @@ public final class LastRuns {
 
     /** The run whose {@code results.json} was written last, or empty when the workspace never ran. */
     public static Optional<LastRun> newest(Path workspace) {
+        for (Path file : resultFiles(workspace)) {
+            Optional<LastRun> run = read(file, workspace);
+            if (run.isPresent()) {
+                return run;
+            }
+        }
+        return Optional.empty();
+    }
+
+    /** How a scenario ended in a run: as {@link LastRun} counts it. */
+    public enum Outcome {
+        PASSED("passed"), FINDING("finding"), SETUP("setup");
+
+        private final String json;
+
+        Outcome(String json) {
+            this.json = json;
+        }
+
+        /** {@code passed}, {@code finding} or {@code setup}. */
+        public String json() {
+            return json;
+        }
+    }
+
+    /**
+     * Each of the {@code wanted} scenarios' outcome in the newest results file that ran it, by source
+     * name (the path under {@code scenarios/}, with {@code /}): a run of one scenario does not hide the
+     * others'. Results files are read newest first, and no more once every wanted scenario has one.
+     */
+    public static Map<String, Outcome> lastOutcomes(Path workspace, Set<String> wanted) {
+        Map<String, Outcome> outcomes = new HashMap<>();
+        for (Path file : resultFiles(workspace)) {
+            if (outcomes.size() == wanted.size()) {
+                break;
+            }
+            scenarios(file).ifPresent(list -> list.forEach(s -> {
+                if (s.sourceName() != null && wanted.contains(s.sourceName())) {
+                    outcomes.putIfAbsent(s.sourceName(), s.outcome());
+                }
+            }));
+        }
+        return outcomes;
+    }
+
+    /** The run of one {@code results.json}, or empty when it cannot be read as one. */
+    public static Optional<LastRun> read(Path resultsJson, Path workspace) {
+        return scenarios(resultsJson).map(list -> {
+            int passed = 0;
+            int findings = 0;
+            int setup = 0;
+            for (ScenarioOutcome scenario : list) {
+                switch (scenario.outcome()) {
+                    case PASSED -> passed++;
+                    case FINDING -> findings++;
+                    case SETUP -> setup++;
+                }
+            }
+            String runId = resultsJson.getParent().getFileName().toString();
+            return new LastRun(runId, modified(resultsJson).toInstant().toString(),
+                    profile(runId, workspace), passed, findings, setup);
+        });
+    }
+
+    private record ScenarioOutcome(String sourceName, Outcome outcome) {
+    }
+
+    /** Every {@code reports/*}{@code /results.json}, the last written first; empty when there are none. */
+    private static List<Path> resultFiles(Path workspace) {
         List<Path> files = new ArrayList<>();
         try (DirectoryStream<Path> runs = Files.newDirectoryStream(workspace.resolve("reports"))) {
             for (Path run : runs) {
@@ -59,41 +131,27 @@ public final class LastRuns {
                 }
             }
         } catch (IOException | UncheckedIOException | SecurityException e) {
-            return Optional.empty();
+            return List.of();
         }
         files.sort(Comparator.comparing(LastRuns::modified).reversed());
-        for (Path file : files) {
-            Optional<LastRun> run = read(file, workspace);
-            if (run.isPresent()) {
-                return run;
-            }
-        }
-        return Optional.empty();
+        return files;
     }
 
-    /** The run of one {@code results.json}, or empty when it cannot be read as one. */
-    public static Optional<LastRun> read(Path resultsJson, Path workspace) {
+    /** The scenarios of one results file with their outcomes, or empty when it is not a results file. */
+    private static Optional<List<ScenarioOutcome>> scenarios(Path resultsJson) {
         try {
             JsonNode root = JSON.readTree(Files.readAllBytes(resultsJson));
             if (root == null || !root.isArray()) {
                 return Optional.empty();
             }
-            int passed = 0;
-            int findings = 0;
-            int setup = 0;
+            List<ScenarioOutcome> list = new ArrayList<>();
             for (JsonNode scenario : root) {
                 ScenarioResult result = outline(scenario);
-                if (result.success()) {
-                    passed++;
-                } else if (result.failureKind() == FailureKind.FINDING) {
-                    findings++;
-                } else {
-                    setup++;
-                }
+                Outcome outcome = result.success() ? Outcome.PASSED
+                        : result.failureKind() == FailureKind.FINDING ? Outcome.FINDING : Outcome.SETUP;
+                list.add(new ScenarioOutcome(result.sourceName(), outcome));
             }
-            String runId = resultsJson.getParent().getFileName().toString();
-            return Optional.of(new LastRun(runId, modified(resultsJson).toInstant().toString(),
-                    profile(runId, workspace), passed, findings, setup));
+            return Optional.of(list);
         } catch (IOException | JacksonException | IllegalArgumentException | SecurityException e) {
             return Optional.empty();
         }

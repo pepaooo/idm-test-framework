@@ -15,6 +15,7 @@ import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.WebRequest;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 
 import java.util.Locale;
@@ -66,6 +67,16 @@ class ApiErrors extends ResponseEntityExceptionHandler {
         out.putAll(headers);
         out.setContentType(MediaType.APPLICATION_JSON);
         return ResponseEntity.status(statusCode).headers(out).body(ApiError.Body.of(message, locale));
+    }
+
+    /** A multipart request over its total limit (each file's own limit is the files API's). */
+    @Override
+    protected ResponseEntity<Object> handleMaxUploadSizeExceededException(MaxUploadSizeExceededException ex,
+                                                                         HttpHeaders headers, HttpStatusCode status,
+                                                                         WebRequest request) {
+        return ResponseEntity.status(HttpStatus.CONTENT_TOO_LARGE).contentType(MediaType.APPLICATION_JSON)
+                .body(ApiError.Body.of(Message.of("runner.ui.file.uploadTooLarge"),
+                        locale(request.getHeader("Accept-Language"))));
     }
 
     private static String reason(Exception ex, HttpStatusCode statusCode) {

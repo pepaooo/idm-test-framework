@@ -6,7 +6,9 @@
  * - A new tab says `hello` and is `probing` (read-only, no banner yet). The holder answers `held`,
  *   which makes the newcomer `readOnly`. Hearing no holder within `wait` (~300 ms) the tab takes the
  *   lock; tabs probing at the same time tie-break on their ids (the smallest wins).
- * - `takeOver()` asks the holder to yield. The holder answers `yielding` at once and, from then on,
+ * - `takeOver(confirm)` first asks the holder (`query` → `status`) whether it has edits it could not
+ *   keep as drafts (`hasUnkeptEdits`); if so, `confirm()` decides whether to go on. Then it asks the
+ *   holder to yield. The holder answers `yielding` at once and, from then on,
  *   never claims the lock again (no `held` to newcomers or rivals); it keeps its drafts (`onYield`),
  *   turns read-only and says `yielded`. The taker holds the lock only after `yielded` — so it reads
  *   the drafts after they are written — waiting up to `yieldWait` once the holder has answered, or
@@ -20,7 +22,8 @@ export type LockState = 'probing' | 'holder' | 'readOnly';
 export interface TabLock {
   state(): LockState;
   subscribe(listener: () => void): () => void;
-  takeOver(): Promise<void>;
+  /** Resolves true once this tab holds the lock, false when `confirm` said no. */
+  takeOver(confirm?: () => boolean | Promise<boolean>): Promise<boolean>;
   close(): void;
 }
 
@@ -33,9 +36,11 @@ export interface TabLockOptions {
   id?: string;
   /** Runs in the holder before it yields to a tab taking over (e.g. writes pending drafts). */
   onYield?: () => Promise<void>;
+  /** In the holder: whether it has edits that giving up the lock would leave only in this tab. */
+  hasUnkeptEdits?: () => boolean;
 }
 
-type Kind = 'hello' | 'held' | 'takeover' | 'yielding' | 'yielded' | 'released';
+type Kind = 'hello' | 'held' | 'query' | 'status' | 'takeover' | 'yielding' | 'yielded' | 'released';
 
 interface LockMessage {
   ws: string;
@@ -44,6 +49,8 @@ interface LockMessage {
   to?: string;
   /** With `held`: when the sender took the lock (the longer-standing holder wins a split). */
   since?: number;
+  /** With `status` and `yielding`: the holder has edits it could not keep as drafts. */
+  unsaved?: boolean;
 }
 
 export const CHANNEL = 'idmtest-workspace';
@@ -71,6 +78,7 @@ export function createTabLock(workspace: string, options: TabLockOptions = {}): 
   let yielding = false;
   let taking = false;
   let since = 0;
+  let statusAnswer: ((unsaved: boolean) => void) | null = null;
   let closed = false;
 
   const set = (next: LockState) => {
@@ -85,7 +93,14 @@ export function createTabLock(workspace: string, options: TabLockOptions = {}): 
 
   const post = (type: Kind, to?: string) => {
     try {
-      channel?.postMessage({ ws: workspace, from: id, type, to, since: type === 'held' ? since : undefined } satisfies LockMessage);
+      channel?.postMessage({
+        ws: workspace,
+        from: id,
+        type,
+        to,
+        since: type === 'held' ? since : undefined,
+        unsaved: type === 'status' || type === 'yielding' ? Boolean(options.hasUnkeptEdits?.()) : undefined,
+      } satisfies LockMessage);
     } catch {
       // closed channel: nothing to tell
     }
@@ -170,6 +185,16 @@ export function createTabLock(workspace: string, options: TabLockOptions = {}): 
           set('readOnly');
         }
         break;
+      case 'query':
+        if (current === 'holder' && !yielding) {
+          post('status', message.from);
+        }
+        break;
+      case 'status':
+        if (message.to === id) {
+          statusAnswer?.(Boolean(message.unsaved));
+        }
+        break;
       case 'yielding':
         if (message.to === id) {
           answered?.();
@@ -227,12 +252,31 @@ export function createTabLock(workspace: string, options: TabLockOptions = {}): 
         listeners.delete(listener);
       };
     },
-    takeOver() {
+    async takeOver(confirm?: () => boolean | Promise<boolean>) {
       if (current === 'holder' || !channel) {
-        return Promise.resolve();
+        return true;
       }
       stopTimer();
-      return new Promise<void>((resolve) => {
+      // does the holder have edits that would stay only in its tab? (no answer: it is gone)
+      const unsaved = await new Promise<boolean>((resolve) => {
+        const timeout = setTimeout(() => {
+          statusAnswer = null;
+          resolve(false);
+        }, yieldTimeout);
+        statusAnswer = (answer) => {
+          clearTimeout(timeout);
+          statusAnswer = null;
+          resolve(answer);
+        };
+        post('query');
+      });
+      if (unsaved && confirm && !(await confirm())) {
+        return false;
+      }
+      if (closed) {
+        return false;
+      }
+      await new Promise<void>((resolve) => {
         let fallback: ReturnType<typeof setTimeout>;
         const done = () => {
           clearTimeout(fallback);
@@ -255,6 +299,7 @@ export function createTabLock(workspace: string, options: TabLockOptions = {}): 
         taking = true;
         post('takeover');
       });
+      return !closed;
     },
     close() {
       if (closed) {

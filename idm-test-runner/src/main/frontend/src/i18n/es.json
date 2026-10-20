@@ -99,5 +99,7 @@
   "ui.run.title": "Ejecución",
   "ui.run.placeholder": "Aquí se muestra la ejecución actual o la última, paso a paso.",
   "ui.disk.unreadable": "No se pudo leer el archivo del disco, así que aún no se puede cargar ni comparar.",
-  "ui.disk.retry": "Reintentar"
+  "ui.disk.retry": "Reintentar",
+  "ui.editor.unkept": "Los cambios sin guardar de este archivo no se pudieron conservar como borrador: solo están en esta pestaña. Tome el control para seguir editándolos.",
+  "ui.lock.confirmUnsaved": "La otra pestaña tiene cambios que no se pudieron conservar como borrador. ¿Tomar el control de todos modos?"
 }

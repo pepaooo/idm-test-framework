@@ -7,6 +7,7 @@ import { EditorPane } from './EditorPane';
 import { FileTree } from './FileTree';
 import { WorkbenchContext, type WorkbenchApi } from './context';
 import { isDirty, WorkbenchStore } from './store';
+import { openDrafts } from './drafts';
 import { createTabLock, type LockState, type TabLock } from './tabLock';
 import { TopBar } from './TopBar';
 import type { TreeNode } from './types';
@@ -68,7 +69,17 @@ export function Workbench({ workspace, warning, lockWait = 300, runPanel, lab, r
   useEffect(() => () => void store.flushNow().finally(() => store.dispose()), [store]);
 
   useEffect(() => {
-    const created = createTabLock(workspace.path, { wait: lockWait, onYield: () => store.flushNow() });
+    void openDrafts(); // the drafts connection is open before any pagehide needs it
+    const created = createTabLock(workspace.path, {
+      wait: lockWait,
+      // turn read-only here (drafts written, kept tabs reset) and say `yielded` only once the
+      // writes are committed, so the tab taking over reads them
+      onYield: async () => {
+        store.setReadOnly(true);
+        await store.lastFlush;
+      },
+      hasUnkeptEdits: () => store.hasUnkeptEdits(),
+    });
     const sync = () => {
       setLockState(created.state());
       store.setReadOnly(created.state() !== 'holder');
@@ -120,8 +131,13 @@ export function Workbench({ workspace, warning, lockWait = 300, runPanel, lab, r
       }
     };
     const onBeforeUnload = (event: BeforeUnloadEvent) => {
-      // edits that cannot be kept as a draft (a plain-text password) would be lost: ask first
-      if (store.getState().tabs.some((doc) => isDirty(doc) && doc.plainSecret)) {
+      // Write the drafts here, not only in pagehide: Chromium drops IndexedDB transactions still
+      // running when a reloading document unloads (a put issued in pagehide is lost), while a put
+      // issued in beforeunload, over the already-open connection, commits. pagehide still flushes
+      // for the cases without beforeunload (back/forward cache, mobile tab discards).
+      void store.flushNow();
+      // edits that cannot be kept as a draft (a plain-text password, unchecked text) would be lost
+      if (store.hasUnkeptEdits()) {
         event.preventDefault();
       }
     };
@@ -194,7 +210,7 @@ export function Workbench({ workspace, warning, lockWait = 300, runPanel, lab, r
             <Badge status="warn" />
             <strong>{t('ui.lock.banner')}</strong>
             <span className="muted">{t('ui.lock.hint')}</span>
-            <button type="button" className="secondary" onClick={() => void lock?.takeOver()}>
+            <button type="button" className="secondary" onClick={() => void lock?.takeOver(() => window.confirm(t('ui.lock.confirmUnsaved')))}>
               {t('ui.lock.takeOver')}
             </button>
           </div>

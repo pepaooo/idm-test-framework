@@ -63,6 +63,11 @@ export function EditorPane({ tabs, active, readOnly, onActivate, onClose, onChan
             <Badge status="error" /> {doc.error}
           </p>
         )}
+        {doc?.unkept && (
+          <p role="status" className="notice editor-notice">
+            <Badge status="warn" /> {t('ui.editor.unkept')}
+          </p>
+        )}
         {doc?.plainSecret && (
           <p role="status" className="notice editor-notice">
             <Badge status="warn" /> {t('ui.editor.plainSecret')}

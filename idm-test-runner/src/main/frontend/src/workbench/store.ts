@@ -29,6 +29,13 @@ export interface Doc {
   focus: EditorFocus | null;
   error: string | null;
   saving: boolean;
+  /**
+   * The tab gave up the lock with edits that could not be kept as a draft (a plain-text password,
+   * no answer from the check, or text not checked yet): they stay here, read-only and unsaved, and
+   * become editable again when this tab holds the workspace again. `unkeptAt` is when.
+   */
+  unkept: boolean;
+  unkeptAt: number;
 }
 
 export interface State {
@@ -93,6 +100,8 @@ export class WorkbenchStore {
   private readonly saves = new Map<string, Promise<void>>();
   private readonly opening = new Map<string, Promise<void>>();
   private nonce = 0;
+  /** The text last written as each file's draft by this tab (absent: none known). */
+  private readonly drafted = new Map<string, string>();
 
   constructor(workspace: string, options: StoreOptions = {}) {
     this.workspace = workspace;
@@ -134,10 +143,12 @@ export class WorkbenchStore {
   }
 
   /**
-   * Read-only (another tab holds the workspace, or this page is going away): first keeps every
-   * tab's edits as drafts — the writes start synchronously, so this works inside `pagehide` — then
-   * puts the tabs back to the disk text, so in-memory edits never outlive the lock (the holder works
-   * from the drafts). Editable again: the stored drafts win over what the tabs show.
+   * Read-only (another tab holds the workspace, or this page is going away). First every tab's
+   * edits are written as drafts: with the drafts connection open (it is opened with the workspace)
+   * the puts are issued before this returns, which is what lets it work inside `pagehide`. Then the
+   * tabs whose text is now kept go back to the disk text — the holder works from the drafts — and
+   * the others (text that could not be kept) stay as they are, read-only, unsaved and `unkept`.
+   * Editable again: drafts are restored (see restoreDrafts).
    */
   setReadOnly(readOnly: boolean): void {
     const was = this.state.readOnly;
@@ -146,10 +157,14 @@ export class WorkbenchStore {
     }
     if (readOnly) {
       this.lastFlush = this.flushNow();
-      [...this.state.tabs.map((tab) => tab.path)].forEach((path) => this.clearTimers(path));
+      this.state.tabs.forEach((tab) => this.clearTimers(tab.path));
+      const now = Date.now();
       const tabs = this.state.tabs.map((tab) => {
         if (!tab.loaded || (!isDirty(tab) && !tab.conflict)) {
           return tab;
+        }
+        if (!this.isKept(tab)) {
+          return { ...tab, unkept: true, unkeptAt: tab.unkept ? tab.unkeptAt : now };
         }
         const disk = tab.conflict?.diskContent ?? null;
         return {
@@ -163,13 +178,46 @@ export class WorkbenchStore {
           plainSecret: false,
         };
       });
-      const reset = tabs.filter((tab, i) => tab !== this.state.tabs[i]).map((tab) => tab.path);
+      const reset = tabs.filter((tab, i) => tab !== this.state.tabs[i] && !tab.unkept).map((tab) => tab.path);
       this.set({ tabs, readOnly });
       reset.forEach((path) => void this.validate(path));
       return;
     }
     this.set({ readOnly });
     void this.restoreDrafts();
+  }
+
+  /** Whether the tab's text is safe outside this tab: saved, or written as its draft. */
+  private isKept(doc: Doc): boolean {
+    return !isDirty(doc) || this.drafted.get(doc.path) === doc.content;
+  }
+
+  /** The text of `doc` that may be written as a draft: checked and clean (null: none). */
+  private draftable(doc: Doc): string | null {
+    if (!isValidatable(doc.path)) {
+      return doc.content;
+    }
+    return doc.plainSecret ? null : doc.validated;
+  }
+
+  /**
+   * Whether some tab has edits that a flush could not keep (or already could not): asked by a tab
+   * about to take over, and before the page unloads.
+   */
+  hasUnkeptEdits(): boolean {
+    return this.state.tabs.some(
+      (doc) => doc.loaded && (doc.unkept || (isDirty(doc) && this.draftable(doc) !== doc.content)),
+    );
+  }
+
+  private persist(path: string, content: string, baseVersion: string): Promise<void> {
+    this.drafted.set(path, content);
+    return writeDraft(this.workspace, path, { content, baseVersion, savedAt: Date.now() });
+  }
+
+  private unpersist(path: string): Promise<void> {
+    this.drafted.delete(path);
+    return deleteDraft(this.workspace, path);
   }
 
   /** The draft writes started when this tab last became read-only. */
@@ -206,6 +254,8 @@ export class WorkbenchStore {
       focus: null,
       error: null,
       saving: false,
+      unkept: false,
+      unkeptAt: 0,
     };
     this.set({ tabs: [...this.state.tabs, placeholder], active: activate || !this.state.active ? path : this.state.active });
     const loading = this.load(path).finally(() => this.opening.delete(path));
@@ -239,9 +289,9 @@ export class WorkbenchStore {
   }
 
   /**
-   * A draft over the loaded file — it wins over what the tab shows: same base → the edits, marked
-   * unsaved; another base → the choice (the tab keeps the draft's base version, so a save is refused
-   * until the user chooses).
+   * A draft over the loaded file: same base → the edits, marked unsaved; another base → the choice
+   * (the tab keeps the draft's base version, so a save is refused until the user chooses). A draft
+   * equal to the disk text is just removed; the tab is left as it is.
    */
   private async applyDraft(path: string, draft: Draft): Promise<void> {
     const doc = this.doc(path);
@@ -249,10 +299,10 @@ export class WorkbenchStore {
       return;
     }
     if (draft.content === doc.diskContent) {
-      this.update(path, (current) => ({ content: current.diskContent, conflict: null, validated: null }));
-      await deleteDraft(this.workspace, path);
+      await this.unpersist(path);
       return;
     }
+    this.drafted.set(path, draft.content);
     this.update(path, (current) =>
       draft.baseVersion === current.version
         ? { content: draft.content, conflict: null, validated: null }
@@ -265,8 +315,15 @@ export class WorkbenchStore {
     );
   }
 
-  /** Opens every file of this workspace with a draft (after a reload, or after taking over). */
+  /**
+   * After a reload or after (re)gaining the lock: opens every file of this workspace with a draft
+   * and puts the drafts in open tabs — except where the user has typed since the lock was gained
+   * (those edits stay), and where the tab kept edits of its own (`unkept`) that are newer than the
+   * draft. Then the kept edits become editable again.
+   */
   async restoreDrafts(): Promise<void> {
+    const gained = new Map(this.state.tabs.map((tab) => [tab.path, tab.content]));
+    const untouched = (path: string) => this.doc(path)?.content === gained.get(path);
     const paths = await listDrafts(this.workspace);
     for (const path of paths) {
       if (this.state.readOnly) {
@@ -276,13 +333,24 @@ export class WorkbenchStore {
       const doc = this.doc(path);
       if (!doc) {
         await this.open(path, !this.state.active);
-      } else if (doc.loaded) {
-        const draft = await readDraft(this.workspace, path);
-        if (draft) {
-          await this.applyDraft(path, draft);
-          void this.validate(path);
-        }
+        continue;
       }
+      if (!doc.loaded || !gained.has(path) || !untouched(path)) {
+        continue;
+      }
+      const draft = await readDraft(this.workspace, path);
+      const now = this.doc(path);
+      if (!draft || !now || !untouched(path) || this.state.readOnly) {
+        continue;
+      }
+      if (now.unkept && draft.savedAt <= now.unkeptAt) {
+        continue; // this tab's own edits are newer than the draft
+      }
+      await this.applyDraft(path, draft);
+      void this.validate(path);
+    }
+    if (!this.state.readOnly && this.state.tabs.some((tab) => tab.unkept)) {
+      this.set({ tabs: this.state.tabs.map((tab) => (tab.unkept ? { ...tab, unkept: false, unkeptAt: 0 } : tab)) });
     }
   }
 
@@ -294,7 +362,7 @@ export class WorkbenchStore {
     }
     this.clearTimers(path);
     if (discard) {
-      void deleteDraft(this.workspace, path);
+      void this.unpersist(path);
     }
     const tabs = this.state.tabs.filter((tab) => tab.path !== path);
     const active =
@@ -368,7 +436,7 @@ export class WorkbenchStore {
       clearTimeout(this.draftTimers.get(path));
       this.draftTimers.delete(path);
       this.draftWanted.delete(path);
-      await deleteDraft(this.workspace, path);
+      await this.unpersist(path);
     } else if (this.draftWanted.has(path)) {
       await this.writeDraftNow(path);
     }
@@ -393,7 +461,7 @@ export class WorkbenchStore {
     }
     if (!isDirty(doc)) {
       this.draftWanted.delete(path);
-      await deleteDraft(this.workspace, path);
+      await this.unpersist(path);
       return;
     }
     if (doc.validated !== doc.content) {
@@ -402,18 +470,19 @@ export class WorkbenchStore {
     }
     this.draftWanted.delete(path);
     if (doc.plainSecret) {
-      await deleteDraft(this.workspace, path);
+      await this.unpersist(path);
       return;
     }
-    await writeDraft(this.workspace, path, { content: doc.content, baseVersion: doc.version, savedAt: Date.now() });
+    await this.persist(path, doc.content, doc.version);
   }
 
   /**
-   * Keeps every tab's edits as drafts now (the page is going away, or another tab takes over). All
-   * writes start before this returns — `pagehide` gives no time to await — and the promise says
-   * when they are done. A tab's newest text that a check found clean is kept: its current text when
-   * that was checked, else the last checked one (text not yet checked may hold a plain password).
-   * Read-only tabs have nothing to keep.
+   * Keeps every tab's edits as drafts now (the page is going away, or this tab gives up the lock).
+   * With the drafts connection open, every put/delete is issued before this returns — `pagehide`
+   * gives no time to await — and the promise says when they are committed. What is written is the
+   * tab's newest text that a check found clean (its current text when that was checked, else the
+   * last checked one); text not checked yet, or holding a plain-text password, is not written —
+   * {@link isKept} then says the tab's edits are not safe outside it.
    */
   flushNow(): Promise<void> {
     if (this.state.readOnly) {
@@ -421,22 +490,23 @@ export class WorkbenchStore {
     }
     const writes: Promise<void>[] = [];
     for (const doc of this.state.tabs) {
-      const pending = this.draftTimers.has(doc.path) || this.draftWanted.has(doc.path);
       clearTimeout(this.draftTimers.get(doc.path));
       this.draftTimers.delete(doc.path);
       this.draftWanted.delete(doc.path);
-      if (!doc.loaded || !pending) {
+      if (!doc.loaded) {
         continue;
       }
       if (!isDirty(doc)) {
-        writes.push(deleteDraft(this.workspace, doc.path));
+        if (this.drafted.has(doc.path)) {
+          writes.push(this.unpersist(doc.path));
+        }
         continue;
       }
-      const safe = isValidatable(doc.path) ? doc.validated : doc.content;
+      const text = this.draftable(doc);
       if (doc.plainSecret && isValidatable(doc.path)) {
-        writes.push(deleteDraft(this.workspace, doc.path));
-      } else if (safe !== null && safe !== doc.diskContent) {
-        writes.push(writeDraft(this.workspace, doc.path, { content: safe, baseVersion: doc.version, savedAt: Date.now() }));
+        writes.push(this.unpersist(doc.path));
+      } else if (text !== null && text !== doc.diskContent && this.drafted.get(doc.path) !== text) {
+        writes.push(this.persist(doc.path, text, doc.version));
       }
     }
     return Promise.all(writes).then(() => undefined);
@@ -479,7 +549,7 @@ export class WorkbenchStore {
         clearTimeout(this.draftTimers.get(path));
         this.draftTimers.delete(path);
         this.draftWanted.delete(path);
-        await deleteDraft(this.workspace, path);
+        await this.unpersist(path);
       }
     } catch (e) {
       if (e instanceof ApiProblem && e.status === 409) {
@@ -551,7 +621,7 @@ export class WorkbenchStore {
       error: null,
       validated: null,
     }));
-    await deleteDraft(this.workspace, path);
+    await this.unpersist(path);
     void this.validate(path);
   }
 
@@ -573,12 +643,15 @@ export class WorkbenchStore {
     if (!now || disk.version === now.version) {
       return; // our own save, or nothing new
     }
-    if (now.conflict && !this.state.readOnly) {
+    if (now.unkept) {
+      // edits only this tab has: never replaced; the choice is offered once it holds the lock again
+      this.update(path, () => ({ conflict: { diskContent: disk.content, diskVersion: disk.version } }));
+    } else if (now.conflict && !this.state.readOnly) {
       this.update(path, () => ({ conflict: { diskContent: disk.content, diskVersion: disk.version } }));
     } else if (disk.content === now.diskContent && !now.conflict) {
       this.update(path, () => ({ version: disk.version }));
     } else if (!isDirty(now) || this.state.readOnly) {
-      // no edits here (a read-only tab never has any: they are the holder's drafts): reload quietly
+      // no edits here (a read-only tab's edits are the holder's drafts): reload quietly
       this.update(path, () => ({
         content: disk.content,
         diskContent: disk.content,

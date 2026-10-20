@@ -44,7 +44,7 @@ class ValidationControllerTest {
 
     /** The warning in a scenario: its ${…} reaches fixtures and bindings only, never the environment. */
     private static final String SCENARIO_TEXT =
-            "a password is written in plain text — use a generated fixture such as ${user.userId}";
+            "a password is written in plain text — declare a fixture and reference it with ${…} instead";
     private static final String SETTINGS_TEXT =
             "a password is written in plain text — use ${IDM_TEST_…} and put the value in secrets.env";
 
@@ -160,7 +160,7 @@ class ValidationControllerTest {
 
         Response spanish = validate("scenarios/x.yaml", yaml, Map.of("Accept-Language", "es"));
         assertThat(problems(spanish).getFirst().get("message").asString())
-                .contains("contraseña").contains("${user.userId}").doesNotContain("secrets.env");
+                .contains("contraseña").contains("fixture").contains("${…}").doesNotContain("secrets.env");
         assertThat(problems(spanish).getFirst().get("key").asString()).isEqualTo("ui.lint.plainSecret");
     }
 

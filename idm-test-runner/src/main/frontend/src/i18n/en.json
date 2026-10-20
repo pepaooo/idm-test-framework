@@ -168,5 +168,6 @@
   "ui.lab.field.scope": "Scope",
   "ui.lab.field.roleServiceUrl": "Role service URL",
   "ui.lab.field.resourceServiceUrl": "Resource service URL",
-  "ui.lab.add.title": "New system"
+  "ui.lab.add.title": "New system",
+  "ui.lab.confirmProfile": "Switch the profile? What you typed in the lab panel and did not save is lost."
 }

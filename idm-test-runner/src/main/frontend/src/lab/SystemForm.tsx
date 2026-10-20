@@ -52,10 +52,32 @@ export function SystemForm({ system, existingIds, profile, readOnly, hidden, lab
   const [result, setResult] = useState<TestResult | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const secretInputs = useRef(new Map<string, HTMLInputElement>());
+  /** One stable ref callback per secret: an input that goes (e.g. Use OAuth turned off) no longer counts as typed. */
+  const secretRefs = useRef(new Map<string, (input: HTMLInputElement | null) => void>());
+  const secretRef = (key: string) => {
+    let callback = secretRefs.current.get(key);
+    if (!callback) {
+      callback = (input) => {
+        if (input) {
+          secretInputs.current.set(key, input);
+          return;
+        }
+        secretInputs.current.delete(key);
+        setTyped((before) => {
+          if (!before.has(key)) return before;
+          const next = new Set(before);
+          next.delete(key);
+          return next;
+        });
+      };
+      secretRefs.current.set(key, callback);
+    }
+    return callback;
+  };
   const focusNext = useRef<string | null>(null);
 
   const adding = system === null;
-  const fields = system ? system.fields : templateFields(kind);
+  const fields = system ? system.fields : templateFields(kind, (key) => edits[key] ?? '');
   const original = (field: LabField) => (field.secret ? '' : (field.value ?? ''));
   const current = (field: LabField) => edits[field.key] ?? original(field);
   // busy: nothing typed while a save or test is out (it would be emptied when that finishes)
@@ -77,7 +99,8 @@ export function SystemForm({ system, existingIds, profile, readOnly, hidden, lab
     const secrets: Record<string, string> = {};
     for (const field of shown) {
       const input = secretInputs.current.get(field.key);
-      if (field.secret && input && input.value !== '' && editable(field)) {
+      // only what the user typed (an input event set the flag), never a value the browser filled in
+      if (field.secret && input && typed.has(field.key) && input.value !== '' && editable(field)) {
         secrets[field.key] = input.value;
       }
     }
@@ -173,7 +196,16 @@ export function SystemForm({ system, existingIds, profile, readOnly, hidden, lab
       {adding && (
         <div className="lab-form">
           <label htmlFor={`${uid}-kind`}>{t('ui.lab.add.kind')}</label>
-          <select id={`${uid}-kind`} value={kind} disabled={readOnly} onChange={(event) => setKind(event.target.value as Kind)}>
+          <select id={`${uid}-kind`} value={kind} disabled={readOnly} onChange={(event) => {
+              // a new kind is a new form: nothing typed for the old one carries over
+              setKind(event.target.value as Kind);
+              setEdits({});
+              setChanging(new Set());
+              setTyped(new Set());
+              setCleared(new Set());
+              setResult(null);
+              setSaveError(null);
+            }}>
             <option value="ldap">{t('ui.lab.kind.ldap')}</option>
             <option value="database">{t('ui.lab.kind.database')}</option>
             <option value="rest">{t('ui.lab.kind.rest')}</option>
@@ -236,7 +268,7 @@ export function SystemForm({ system, existingIds, profile, readOnly, hidden, lab
           );
           if (field.key === 'use-oauth') {
             return (
-              <div key={field.key} className="lab-row">
+              <div key={`${kind}:${field.key}`} className="lab-row">
                 {label}
                 <div className="lab-cell">
                   <input
@@ -257,27 +289,22 @@ export function SystemForm({ system, existingIds, profile, readOnly, hidden, lab
           if (field.secret) {
             const locked = !editable(field) || (hasSavedSecret(field) && !changing.has(field.key)) || field.state === 'environment';
             return (
-              <div key={field.key} className="lab-row">
+              <div key={`${kind}:${field.key}`} className="lab-row">
                 {label}
                 <div className="lab-cell">
                   <div className="lab-secret">
                     <input
                       id={id}
                       type="password"
-                      autoComplete="off"
+                      // "off" is ignored for passwords; this asks the browser not to fill in a saved one
+                      autoComplete="new-password"
                       spellCheck={false}
                       defaultValue=""
                       readOnly={locked}
                       required={field.required}
                       placeholder={field.state === 'not set' || changing.has(field.key) ? '' : DOTS}
                       aria-describedby={describedBy}
-                      ref={(input) => {
-                        if (input) {
-                          secretInputs.current.set(field.key, input);
-                        } else {
-                          secretInputs.current.delete(field.key);
-                        }
-                      }}
+                      ref={secretRef(field.key)}
                       onInput={(event) => {
                         const has = (event.target as HTMLInputElement).value !== '';
                         setTyped((before) => {
@@ -333,7 +360,7 @@ export function SystemForm({ system, existingIds, profile, readOnly, hidden, lab
             );
           }
           return (
-            <div key={field.key} className="lab-row">
+            <div key={`${kind}:${field.key}`} className="lab-row">
               {label}
               <div className="lab-cell">
                 <input

@@ -3,9 +3,9 @@ import type { LabView } from './types';
 
 export interface LabStoreState {
   profile: string | null;
-  /** The lab as last read for `profile` (null before the first answer, or after a failed read). */
+  /** The lab as last read for `profile` (null before its first good answer). */
   view: LabView | null;
-  /** Why the last read failed (the server's message), else null. */
+  /** Why the last read failed (the server's message), else null; `view` then stays the last good one. */
   error: string | null;
   /** Whether the lab panel is open, and the tab it shows. */
   open: boolean;
@@ -26,6 +26,17 @@ export class LabStore {
   /** Answers older than the newest request are dropped (e.g. after a profile switch). */
   private sequence = 0;
   private timer: ReturnType<typeof setTimeout> | null = null;
+  /** Whether the open panel has typing not saved (a flag only). */
+  private unsaved = false;
+
+  setUnsaved(unsaved: boolean) {
+    this.unsaved = unsaved;
+  }
+
+  /** True while the open panel holds typing that a profile switch would lose. */
+  hasUnsaved(): boolean {
+    return this.state.open && this.unsaved;
+  }
 
   readonly subscribe = (listener: () => void) => {
     this.listeners.add(listener);
@@ -63,7 +74,8 @@ export class LabStore {
       }
     } catch (e) {
       if (ticket === this.sequence) {
-        this.set({ view: null, error: e instanceof ApiProblem ? e.message : String(e) });
+        // keep the last good view: the panel's forms (and what is typed in them) stay
+        this.set({ error: e instanceof ApiProblem ? e.message : String(e) });
       }
     }
   }
@@ -97,6 +109,7 @@ export class LabStore {
   }
 
   closePanel() {
+    this.unsaved = false;
     this.set({ open: false });
   }
 

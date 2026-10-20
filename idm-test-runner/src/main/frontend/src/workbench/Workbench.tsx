@@ -216,7 +216,13 @@ export function Workbench({ workspace, warning, lockWait = 300, runPanel, lab, r
           path={workspace.path}
           profiles={workspace.profiles}
           profile={profile}
-          onProfile={setProfile}
+          onProfile={(next) => {
+            // the lab panel's typing belongs to the profile it was typed for
+            if (labStore.hasUnsaved() && !window.confirm(t('ui.lab.confirmProfile'))) {
+              return;
+            }
+            setProfile(next);
+          }}
           unsaved={dirty.size}
           canSave={!state.readOnly && active !== null && isDirty(active)}
           saving={active?.saving ?? false}

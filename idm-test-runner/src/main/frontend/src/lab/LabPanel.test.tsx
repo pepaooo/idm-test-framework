@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { Workbench } from '../workbench/Workbench';
 import { setLanguage } from '../i18n';
 import { WORKSPACE, workbenchServer } from '../test/workbenchServer';
+import { emitServerEvent } from '../test/browserFakes';
 import { directory, hrDatabase, labRoutes, rest, type LabRoutesOptions } from '../test/labServer';
 import type { Answer } from '../test/fakeServer';
 import type { LabSystem, LabView } from './types';
@@ -280,5 +281,107 @@ describe('Lab panel', () => {
     const panel = await screen.findByRole('dialog', { name: /Conexión al lab/ });
     expect(within(panel).getByRole('button', { name: 'Probar la conexión' })).toBeInTheDocument();
     expect(within(panel).getByText('desde application.yml')).toBeInTheDocument();
+  });
+
+  describe('fix round 1', () => {
+    it('a failed reload keeps the forms and what was typed, with the reason above them', async () => {
+      let fail = false;
+      workbenchServer({
+        files: {},
+        routes: {
+          ...labRoutes({ views: { lab: { systems: [directory('ready')] } } }),
+          'GET /api/lab': () =>
+            fail
+              ? { status: 400, body: { key: 'runner.ui.lab.settingsUnreadable', message: 'the lab settings could not be read: bad.yml' } }
+              : { body: { systems: [directory('ready')] } },
+        },
+      });
+      render(<Workbench workspace={WORKSPACE} lockWait={10} />);
+      const panel = await openPanel();
+      const form = within(panel).getByRole('tabpanel');
+      await userEvent.type(within(form).getByLabelText(/^Base DN/), ',o=kept');
+      fail = true;
+      emitServerEvent('/api/files/events', { type: 'changed', path: 'config/application-lab.yml' });
+      expect(await within(panel).findByRole('alert')).toHaveTextContent('the lab settings could not be read: bad.yml');
+      expect(within(panel).getByLabelText(/^Base DN/)).toHaveValue('o=data,o=kept');
+    });
+
+    it('switching profile with unsaved typing in the panel asks first', async () => {
+      const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+      const { server } = start({ views: { lab: { systems: [directory('ready')] }, uat: { systems: [directory('untested')] } } });
+      const form = within(await openPanel()).getByRole('tabpanel');
+      await userEvent.type(within(form).getByLabelText(/^Base DN/), ',o=kept');
+      await userEvent.selectOptions(screen.getByLabelText('Profile'), 'uat');
+      expect(confirm).toHaveBeenCalledWith('Switch the profile? What you typed in the lab panel and did not save is lost.');
+      expect(screen.getByLabelText('Profile')).toHaveValue('lab');
+      expect(within(screen.getByRole('tabpanel')).getByLabelText(/^Base DN/)).toHaveValue('o=data,o=kept');
+      expect(server.calls()).not.toContain('GET /api/lab?profile=uat');
+      confirm.mockReturnValue(true);
+      await userEvent.selectOptions(screen.getByLabelText('Profile'), 'uat');
+      await waitFor(() => expect(server.calls()).toContain('GET /api/lab?profile=uat'));
+      expect(screen.getByLabelText('Profile')).toHaveValue('uat');
+    });
+
+    it('a secret input filled without the user typing (browser autofill) is never sent', async () => {
+      const { server } = start({ systems: [directory('untested')] });
+      const form = within(await openPanel()).getByRole('tabpanel');
+      await userEvent.click(within(form).getByRole('button', { name: 'Change Password' }));
+      const password = within(form).getByLabelText(/^Password/) as HTMLInputElement;
+      expect(password).toHaveAttribute('autocomplete', 'new-password');
+      password.value = 'fake-autofilled-value'; // no input event
+      await userEvent.click(within(form).getByRole('button', { name: 'Test connection' }));
+      await waitFor(() => expect(tests(server)).toHaveLength(1));
+      expect(tests(server)[0].body).toEqual({ systemId: 'ldap', profile: 'lab', values: {}, secrets: {} });
+      expect(within(form).getByRole('button', { name: 'Save' })).toBeDisabled();
+    });
+
+    it('+ add marks what the server will need: the URL, and a password once a user is given', async () => {
+      start({ systems: [directory('ready')] });
+      const panel = await openPanel();
+      await userEvent.click(within(panel).getByRole('button', { name: '+ add' }));
+      const form = within(panel).getByRole('tabpanel');
+      await userEvent.selectOptions(within(form).getByLabelText('Kind'), 'database');
+      expect(within(form).getByLabelText(/^JDBC URL/)).toBeRequired();
+      expect(within(form).getByLabelText(/^Password/)).not.toBeRequired();
+      expect(within(form).getAllByText('needed')).toHaveLength(1);
+      await userEvent.type(within(form).getByLabelText(/^Username/), 'hr_reader');
+      expect(within(form).getByLabelText(/^Password/)).toBeRequired();
+      expect(within(form).getAllByText('needed')).toHaveLength(2);
+      await userEvent.selectOptions(within(form).getByLabelText('Kind'), 'rest');
+      expect(within(form).getByLabelText(/^Base URL/)).toBeRequired();
+      await userEvent.click(within(form).getByLabelText(/^Use OAuth/));
+      expect(within(form).getByLabelText(/^Client ID/)).toBeRequired();
+      expect(within(form).getByLabelText(/^Client secret/)).toBeRequired();
+    });
+
+    it('turning Use OAuth off drops the typed client secret: the form is no longer dirty', async () => {
+      start();
+      const form = await selectTab(await openPanel(), /IdM REST/);
+      const oauth = within(form).getByLabelText(/^Use OAuth/);
+      await userEvent.click(oauth);
+      await userEvent.type(within(form).getByLabelText(/^Client secret/), TYPED);
+      await userEvent.click(oauth);
+      expect(within(form).queryByLabelText(/^Client secret/)).not.toBeInTheDocument();
+      expect(within(form).getByRole('button', { name: 'Save' })).toBeDisabled();
+    });
+
+    it('changing the kind in + add starts that kind\'s form empty', async () => {
+      let saved: unknown;
+      start({ systems: [directory('ready')], onSave: (_p, body) => ((saved = body), { body: { systems: [directory('ready')] } }) });
+      const panel = await openPanel();
+      await userEvent.click(within(panel).getByRole('button', { name: '+ add' }));
+      const form = within(panel).getByRole('tabpanel');
+      await userEvent.selectOptions(within(form).getByLabelText('Kind'), 'database');
+      await userEvent.type(within(form).getByLabelText(/^Name/), 'crm');
+      await userEvent.type(within(form).getByLabelText(/^Username/), 'crm_user');
+      await userEvent.type(within(form).getByLabelText(/^Password/), TYPED);
+      await userEvent.selectOptions(within(form).getByLabelText('Kind'), 'rest');
+      expect(within(form).getByLabelText(/^Username/)).toHaveValue('');
+      expect(within(form).getByLabelText(/^Password/)).toHaveValue('');
+      expect(within(form).getByRole('button', { name: 'Save' })).toBeDisabled();
+      await userEvent.type(within(form).getByLabelText(/^Base URL/), 'https://crm.lab');
+      await userEvent.click(within(form).getByRole('button', { name: 'Save' }));
+      await waitFor(() => expect(saved).toEqual({ systemId: 'rest:crm', values: { 'base-url': 'https://crm.lab' }, secrets: {} }));
+    });
   });
 });

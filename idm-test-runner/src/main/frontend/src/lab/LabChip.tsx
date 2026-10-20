@@ -21,7 +21,8 @@ export function LabChip({ store }: { store: LabStore }) {
   const panelDirty = useRef(false);
   const onDirtyChange = useCallback((dirty: boolean) => {
     panelDirty.current = dirty;
-  }, []);
+    store.setUnsaved(dirty);
+  }, [store]);
   const state = labState();
   const known = lab.view !== null;
 

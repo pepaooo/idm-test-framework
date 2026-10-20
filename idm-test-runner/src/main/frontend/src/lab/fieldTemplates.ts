@@ -40,13 +40,49 @@ const TEMPLATES: Record<Kind, [key: string, label: string, secret?: boolean][]> 
   ],
 };
 
-export function templateFields(kind: Kind): LabField[] {
+/**
+ * The fields a new system needs, as LabSettings.required decides them for a configured one: its
+ * URL; with a user (bind DN, username), the password; with Use OAuth on, the OAuth client, its id,
+ * secret and token URL instead. SOAP needs the role service URL (the resource service URL only once
+ * a scenario uses resources, which a new system has none of).
+ */
+export function requiredForNew(kind: Kind, valueOf: (key: string) => string): Set<string> {
+  const filled = (key: string) => valueOf(key).trim() !== '';
+  const required = new Set<string>();
+  switch (kind) {
+    case 'ldap':
+      required.add('url');
+      if (filled('user-dn')) required.add('password');
+      break;
+    case 'database':
+      required.add('jdbc-url');
+      if (filled('username')) required.add('password');
+      break;
+    case 'rest':
+      required.add('base-url');
+      if (valueOf('use-oauth').trim().toLowerCase() === 'true') {
+        ['oauth-client-name', 'client-id', 'client-secret', 'token-uri'].forEach((key) => required.add(key));
+      } else if (filled('username')) {
+        required.add('password');
+      }
+      break;
+    case 'soap':
+      required.add('url');
+      if (filled('username')) required.add('password');
+      break;
+  }
+  return required;
+}
+
+/** The form of a new system of `kind`, with `valueOf` the plain values typed so far. */
+export function templateFields(kind: Kind, valueOf: (key: string) => string = () => ''): LabField[] {
+  const required = requiredForNew(kind, valueOf);
   return TEMPLATES[kind].map(([key, label, secret = false]) => ({
     key,
     label: t(label),
     value: null,
     secret,
-    required: false,
+    required: required.has(key),
     state: 'not set',
   }));
 }

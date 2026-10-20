@@ -23,7 +23,7 @@ class PlainSecretLintTest {
     @Test
     @DisplayName("A literal under a secret-looking key is a warning on its line, at the value")
     void testLiteralIsFlagged() {
-        List<Problem> problems = PlainSecretLint.check(SCENARIO.formatted("Fake-Value-1"));
+        List<Problem> problems = PlainSecretLint.check(SCENARIO.formatted("Fake-Value-1"), PlainSecretLint.FileKind.SCENARIO);
 
         assertThat(problems).hasSize(1);
         Problem problem = problems.getFirst();
@@ -31,19 +31,19 @@ class PlainSecretLintTest {
         assertThat(problem.line()).isEqualTo(7);
         assertThat(problem.column()).isEqualTo(23);
         assertThat(problem.key()).isEqualTo("ui.lint.plainSecret");
-        assertThat(problem.message().key()).isEqualTo("runner.ui.lint.plainSecret");
+        assertThat(problem.message().key()).isEqualTo("runner.ui.lint.plainSecretScenario");
         assertThat(problem.message().args()).isEmpty();
     }
 
     @Test
     @DisplayName("A ${…} reference, a js:{ } expression, an empty value or a non-secret key is not flagged")
     void testReferencesAreFine() {
-        assertThat(PlainSecretLint.check(SCENARIO.formatted("${IDM_TEST_PW}"))).isEmpty();
-        assertThat(PlainSecretLint.check(SCENARIO.formatted("\"${IDM_TEST_PW}\""))).isEmpty();
-        assertThat(PlainSecretLint.check(SCENARIO.formatted("js:{ fixtures.pw }"))).isEmpty();
-        assertThat(PlainSecretLint.check(SCENARIO.formatted("\"\""))).isEmpty();
-        assertThat(PlainSecretLint.check(SCENARIO.formatted(""))).isEmpty();
-        assertThat(PlainSecretLint.check("name: x\ndescription: not a secret\n")).isEmpty();
+        assertThat(PlainSecretLint.check(SCENARIO.formatted("${IDM_TEST_PW}"), PlainSecretLint.FileKind.SCENARIO)).isEmpty();
+        assertThat(PlainSecretLint.check(SCENARIO.formatted("\"${IDM_TEST_PW}\""), PlainSecretLint.FileKind.SCENARIO)).isEmpty();
+        assertThat(PlainSecretLint.check(SCENARIO.formatted("js:{ fixtures.pw }"), PlainSecretLint.FileKind.SCENARIO)).isEmpty();
+        assertThat(PlainSecretLint.check(SCENARIO.formatted("\"\""), PlainSecretLint.FileKind.SCENARIO)).isEmpty();
+        assertThat(PlainSecretLint.check(SCENARIO.formatted(""), PlainSecretLint.FileKind.SCENARIO)).isEmpty();
+        assertThat(PlainSecretLint.check("name: x\ndescription: not a secret\n", PlainSecretLint.FileKind.SCENARIO)).isEmpty();
     }
 
     @Test
@@ -61,10 +61,11 @@ class PlainSecretLintTest {
                 url: ldap://localhost:389
                 """;
 
-        List<Problem> problems = PlainSecretLint.check(config);
+        List<Problem> problems = PlainSecretLint.check(config, PlainSecretLint.FileKind.SETTINGS);
 
         assertThat(problems).extracting(Problem::line).containsExactly(3, 4, 7);
         assertThat(problems).allMatch(p -> p.key().equals("ui.lint.plainSecret"));
+        assertThat(problems).allMatch(p -> p.message().key().equals("runner.ui.lint.plainSecret"));
     }
 
     @Test
@@ -72,9 +73,9 @@ class PlainSecretLintTest {
     void testBrokenYaml() {
         String broken = "password: fake-one\nlist: [unclosed\n  token: fake-two\n";
 
-        assertThat(PlainSecretLint.check(broken)).extracting(Problem::line).containsExactly(1);
-        assertThat(PlainSecretLint.check("")).isEmpty();
-        assertThat(PlainSecretLint.check("\t: :")).isEmpty();
+        assertThat(PlainSecretLint.check(broken, PlainSecretLint.FileKind.SCENARIO)).extracting(Problem::line).containsExactly(1);
+        assertThat(PlainSecretLint.check("", PlainSecretLint.FileKind.SCENARIO)).isEmpty();
+        assertThat(PlainSecretLint.check("\t: :", PlainSecretLint.FileKind.SCENARIO)).isEmpty();
     }
 
     @Test

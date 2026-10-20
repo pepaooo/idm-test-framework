@@ -70,7 +70,8 @@ class ValidationController {
             String sourceName = request.path().substring(SCENARIOS.length() + 1);
             ScenarioProblems.check(content, sourceName, validator).ifPresent(problems::add);
         }
-        problems.addAll(PlainSecretLint.check(content));
+        problems.addAll(PlainSecretLint.check(content,
+                kind == Kind.SCENARIO ? PlainSecretLint.FileKind.SCENARIO : PlainSecretLint.FileKind.SETTINGS));
         problems.sort(Comparator.comparingInt(Problem::line).thenComparingInt(Problem::column)
                 .thenComparing(Problem::severity));
 

@@ -24,12 +24,17 @@ import java.util.regex.Pattern;
  * {@code js:{ … }} expression, an empty value and a boolean are not flagged. Reads the YAML as a
  * token stream, so a file broken further down is still checked up to the error; never throws.
  * <p>
- * The warning's text is fixed ({@code runner.ui.lint.plainSecret}): it never contains the value.
+ * The warning's text is fixed and never contains the value. It depends on the file, because the
+ * advice differs: a settings file can take {@code ${IDM_TEST_…}} from {@code secrets.env}
+ * ({@code runner.ui.lint.plainSecret}), while a scenario's {@code ${…}} reaches only its fixtures
+ * and bindings ({@code runner.ui.lint.plainSecretScenario}). The {@code key} is
+ * {@value #KEY} for both.
  */
 public final class PlainSecretLint {
 
     public static final String KEY = "ui.lint.plainSecret";
-    private static final Message MESSAGE = Message.of("runner.ui.lint.plainSecret");
+    private static final Message SETTINGS_MESSAGE = Message.of("runner.ui.lint.plainSecret");
+    private static final Message SCENARIO_MESSAGE = Message.of("runner.ui.lint.plainSecretScenario");
     private static final YAMLMapper YAML = YAMLMapper.builder().build();
 
     /** {@code key: value} on one line, possibly a list item, for {@link #literals} when the parser gives up. */
@@ -38,13 +43,22 @@ public final class PlainSecretLint {
     private PlainSecretLint() {
     }
 
-    /** One warning per plain-text secret, in file order. */
-    public static List<Problem> check(String yaml) {
+    /** Which advice the warning gives. */
+    public enum FileKind {
+        /** A {@code scenarios/} file. */
+        SCENARIO,
+        /** A {@code config/*.yml} file. */
+        SETTINGS
+    }
+
+    /** One warning per plain-text secret, in file order, with the advice for {@code kind}. */
+    public static List<Problem> check(String yaml, FileKind kind) {
+        Message message = kind == FileKind.SCENARIO ? SCENARIO_MESSAGE : SETTINGS_MESSAGE;
         List<Problem> problems = new ArrayList<>();
         scan(yaml, (value, location) -> {
             if (isLiteral(value)) {
                 problems.add(new Problem(Problem.Severity.WARNING, Math.max(1, location.getLineNr()),
-                        Math.max(1, location.getColumnNr()), KEY, MESSAGE));
+                        Math.max(1, location.getColumnNr()), KEY, message));
             }
         });
         return problems;

@@ -42,6 +42,12 @@ class ValidationControllerTest {
     /** An obviously fake value that must never come back in a response. */
     private static final String FAKE = "Fake-Secret-123";
 
+    /** The warning in a scenario: its ${…} reaches fixtures and bindings only, never the environment. */
+    private static final String SCENARIO_TEXT =
+            "a password is written in plain text — use a generated fixture such as ${user.userId}";
+    private static final String SETTINGS_TEXT =
+            "a password is written in plain text — use ${IDM_TEST_…} and put the value in secrets.env";
+
     @TempDir
     static Path temp;
     private static Path workspace;
@@ -149,12 +155,13 @@ class ValidationControllerTest {
         assertThat(problems.getFirst().get("line").asInt()).isEqualTo(7);
         assertThat(problems.getFirst().get("key").asString()).isEqualTo("ui.lint.plainSecret");
         assertThat(problems.getFirst().get("message").asString())
-                .isEqualTo("a password is written in plain text — use ${IDM_TEST_…} and put the value in secrets.env");
+                .isEqualTo(SCENARIO_TEXT);
         assertThat(response.body()).doesNotContain(FAKE);
 
         Response spanish = validate("scenarios/x.yaml", yaml, Map.of("Accept-Language", "es"));
         assertThat(problems(spanish).getFirst().get("message").asString())
-                .contains("contraseña").contains("${IDM_TEST_…}").contains("secrets.env");
+                .contains("contraseña").contains("${user.userId}").doesNotContain("secrets.env");
+        assertThat(problems(spanish).getFirst().get("key").asString()).isEqualTo("ui.lint.plainSecret");
     }
 
     @Test
@@ -227,7 +234,12 @@ class ValidationControllerTest {
         assertThat(problems).hasSize(1);
         assertThat(problems.getFirst().get("severity").asString()).isEqualTo("warning");
         assertThat(problems.getFirst().get("line").asInt()).isEqualTo(4);
+        assertThat(problems.getFirst().get("key").asString()).isEqualTo("ui.lint.plainSecret");
+        assertThat(problems.getFirst().get("message").asString()).isEqualTo(SETTINGS_TEXT);
         assertThat(response.body()).doesNotContain(FAKE);
+        assertThat(problems(validate("config/application-lab.yml", yaml, Map.of("Accept-Language", "es")))
+                .getFirst().get("message").asString())
+                .contains("contraseña").contains("${IDM_TEST_…}").contains("secrets.env");
         assertThat(problems(validate("config/application-lab.yml", "idm:\n  test: {}\n"))).isEmpty();
     }
 

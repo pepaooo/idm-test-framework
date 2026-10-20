@@ -5,6 +5,7 @@ import com.idm.test.engine.i18n.ReportLocale;
 import com.idm.test.engine.spi.Message;
 import com.idm.test.runner.CommandLine;
 import com.idm.test.runner.ExitCodes;
+import com.idm.test.runner.ui.lab.LabSettings;
 import org.springframework.boot.Banner;
 import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.builder.SpringApplicationBuilder;
@@ -19,6 +20,7 @@ import java.nio.file.Path;
 import java.security.SecureRandom;
 import java.util.HexFormat;
 import java.util.Locale;
+import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 
 /**
@@ -76,14 +78,29 @@ public final class UiCommand {
         });
     }
 
+    /**
+     * As {@link #start(int, Locale, Path)}, with {@code environment} standing for the process's
+     * environment variables where the lab panel reads them (tests: no real variable is consulted).
+     */
+    public static UiServer start(int port, Locale locale, Path workspace, Map<String, String> environment) {
+        return start(port, locale, workspace, () -> {
+        }, new GitTool(), environment);
+    }
+
     static UiServer start(int port, Locale locale, Path workspace, Runnable onClosed) {
         return start(port, locale, workspace, onClosed, new GitTool());
     }
 
     /** As {@link #start(int, Locale, Path)}, with {@code git} for the workbench to run (tests). */
     static UiServer start(int port, Locale locale, Path workspace, Runnable onClosed, GitTool git) {
+        return start(port, locale, workspace, onClosed, git, System.getenv());
+    }
+
+    private static UiServer start(int port, Locale locale, Path workspace, Runnable onClosed, GitTool git,
+                                  Map<String, String> environment) {
         String token = newToken();
         UiSession session = new UiSession(token, locale, workspace);
+        LabSettings lab = new LabSettings(environment);
         ConfigurableApplicationContext context = new SpringApplicationBuilder(UiServerConfig.class)
                 .web(WebApplicationType.SERVLET)
                 .bannerMode(Banner.Mode.OFF)
@@ -91,6 +108,7 @@ public final class UiCommand {
                 .initializers(started -> {
                     started.getBeanFactory().registerSingleton("uiSession", session);
                     started.getBeanFactory().registerSingleton("gitTool", git);
+                    started.getBeanFactory().registerSingleton("labSettings", lab);
                 })
                 .listeners(event -> {
                     if (event instanceof ContextClosedEvent) {

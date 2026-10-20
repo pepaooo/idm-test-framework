@@ -17,6 +17,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.PosixFileAttributeView;
+import java.nio.file.attribute.PosixFilePermission;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
@@ -292,12 +293,26 @@ public final class WorkspaceFiles {
 
     /** Writes {@code bytes} to a temp file next to {@code file}, with its permissions, and moves it over it. */
     private static void replace(Path file, byte[] bytes) throws IOException {
+        writeAtomically(file, bytes, null);
+    }
+
+    /**
+     * Writes {@code bytes} to a temp file next to {@code file} and moves it over it (atomically where
+     * the file system can). An existing file's permissions are kept; a new file gets
+     * {@code newFilePermissions} where the file system has POSIX permissions (null: the temp file's
+     * own, owner-only). The temp file is removed when anything fails. The caller serializes writers,
+     * e.g. with {@link #locked}.
+     */
+    public static void writeAtomically(Path file, byte[] bytes, Set<PosixFilePermission> newFilePermissions)
+            throws IOException {
         Path folder = file.getParent();
         Path temp = Files.createTempFile(folder, "." + file.getFileName() + ".", ".tmp");
         try {
-            PosixFileAttributeView posix = Files.getFileAttributeView(file, PosixFileAttributeView.class);
-            if (posix != null) {
-                Files.setPosixFilePermissions(temp, posix.readAttributes().permissions());
+            PosixFileAttributeView posix = Files.getFileAttributeView(temp, PosixFileAttributeView.class);
+            if (posix != null && Files.exists(file)) {
+                Files.setPosixFilePermissions(temp, Files.getPosixFilePermissions(file));
+            } else if (posix != null && newFilePermissions != null) {
+                Files.setPosixFilePermissions(temp, newFilePermissions);
             }
             Files.write(temp, bytes, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE);
             try {
@@ -308,6 +323,31 @@ public final class WorkspaceFiles {
         } finally {
             Files.deleteIfExists(temp);
         }
+    }
+
+    /**
+     * Runs {@code action} holding the lock that saves of {@code file} take, so a write by another
+     * part of the workbench (the lab panel) and an editor save of the same file wait in turn.
+     */
+    public static <T> T locked(Path file, IoAction<T> action) throws IOException {
+        Path folder = file.toAbsolutePath().getParent();
+        Path real = Files.exists(folder) ? folder.toRealPath().resolve(file.getFileName().toString()) : file;
+        if (Files.exists(real)) {
+            real = real.toRealPath();
+        }
+        ReentrantLock lock = LOCKS.computeIfAbsent(real.toString(), k -> new ReentrantLock());
+        lock.lock();
+        try {
+            return action.run();
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /** What {@link #locked} runs. */
+    @FunctionalInterface
+    public interface IoAction<T> {
+        T run() throws IOException;
     }
 
     // --- add ------------------------------------------------------------------------------------

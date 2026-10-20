@@ -49,6 +49,11 @@ public final class SecretMask {
 
     private final List<String> values;
 
+    /** A mask for exactly these values (the workbench's, for text about a file being edited). */
+    public static SecretMask ofValues(Collection<String> values) {
+        return new SecretMask(values);
+    }
+
     SecretMask(Collection<String> values) {
         // Longest first, so a value that contains another is replaced whole.
         this.values = values.stream()

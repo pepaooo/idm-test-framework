@@ -20,8 +20,10 @@ import java.io.OutputStream;
 import java.io.PrintStream;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -30,6 +32,8 @@ import java.util.Map;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assumptions.assumeFalse;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /** The lab settings API over HTTP, against a running workbench. Every credential here is fake. */
 @DisplayName("Workbench lab settings API")
@@ -419,6 +423,48 @@ class LabControllerTest {
         assertThat(JSON.readTree(saved.body()).get("key").asString()).isEqualTo("ui.lab.cannotEdit");
         assertThat(Files.exists(ws.resolve("secrets.env"))).isFalse();
         assertThat(snapshot(ws)).isEqualTo(before);
+    }
+
+    @Test
+    @DisplayName("A secrets.env that links outside the workspace is refused; nothing is written anywhere")
+    void testSecretsEnvLinkedOutside() throws IOException {
+        Path ws = openWorkspace(server);
+        Path outside = temp.resolve("outside.env");
+        String outsideText = "# not the workspace's\nIDM_TEST_OTHER=fake-outside-14\n";
+        Files.writeString(outside, outsideText);
+        Files.createSymbolicLink(ws.resolve("secrets.env"), outside);
+        List<String> before = snapshot(ws);
+
+        Response saved = put(server, "lab", "ldap", Map.of("url", "ldap://lab.test:389"),
+                Map.of("password", "fake-lab-password-15"));
+
+        assertThat(saved.status()).isEqualTo(400);
+        assertThat(JSON.readTree(saved.body()).get("key").asString()).isEqualTo("ui.lab.cannotEdit");
+        assertThat(saved.body()).doesNotContain("fake-");
+        assertThat(Files.readString(outside)).isEqualTo(outsideText);
+        assertThat(snapshot(ws)).isEqualTo(before);
+    }
+
+    @Test
+    @DisplayName("Another profile file that cannot be read counts as using the name: the profile gets its own")
+    void testUnreadableOtherProfile() throws IOException {
+        assumeTrue(FileSystems.getDefault().supportedFileAttributeViews().contains("posix"));
+        Path ws = openWorkspace(server);
+        Path other = ws.resolve("config/application-uat.yml");
+        Files.writeString(other, "idm:\n  test:\n    ldap:\n      password: ${IDM_TEST_LDAP_PASSWORD}\n");
+        Files.setPosixFilePermissions(other, PosixFilePermissions.fromString("---------"));
+        try {
+            assumeFalse(Files.isReadable(other), "running as a user who reads every file (root)");
+
+            Response saved = put(server, "lab", "ldap", Map.of(), Map.of("password", "fake-lab-password-16"));
+
+            assertThat(saved.status()).as(saved.body()).isEqualTo(200);
+            assertThat(Files.readString(ws.resolve("config/application-lab.yml")))
+                    .contains("password: ${IDM_TEST_LAB_LDAP_PASSWORD}");
+            assertThat(SecretsEnv.read(ws.resolve("secrets.env"))).containsOnlyKeys("IDM_TEST_LAB_LDAP_PASSWORD");
+        } finally {
+            Files.setPosixFilePermissions(other, PosixFilePermissions.fromString("rw-r--r--"));
+        }
     }
 
     @Test

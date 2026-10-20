@@ -570,12 +570,20 @@ public final class LabSettings {
         Path profileFile = snapshot.workspace().profileFile(profile);
         String shown = "config/" + profileFile.getFileName();
         // dry run first, so a profile file that cannot be edited stops the save before secrets.env changes
+        Path secretsFile = snapshot.workspace().secretsFile();
         try {
             Path sharedFile = snapshot.workspace().config().resolve(ProfileYamlEditor.SHARED_FILE);
             Path target = real(profileFile);
             if (target.getFileName().toString().equalsIgnoreCase(ProfileYamlEditor.SHARED_FILE)
                     || Files.exists(sharedFile) && Files.exists(profileFile) && Files.isSameFile(profileFile, sharedFile)) {
                 throw ApiError.badRequest("runner.ui.lab.cannotEdit", shown, ProfileYamlEditor.SHARED_FILE);
+            }
+            Path realRoot = root.toRealPath();
+            if (!inside(target, realRoot)) {
+                throw ApiError.badRequest("runner.ui.lab.cannotEdit", shown, "outside the workspace");
+            }
+            if (!env.isEmpty() && !inside(real(secretsFile), realRoot)) {
+                throw ApiError.badRequest("runner.ui.lab.cannotEdit", "secrets.env", "outside the workspace");
             }
         } catch (IOException e) {
             throw ApiError.badRequest("runner.ui.lab.cannotEdit", shown, e.getClass().getSimpleName());
@@ -590,7 +598,7 @@ public final class LabSettings {
         }
         try {
             if (!env.isEmpty()) {
-                SecretsEnvEditor.set(real(snapshot.workspace().secretsFile()), env);
+                SecretsEnvEditor.set(real(secretsFile), env);
             }
             if (!yaml.isEmpty() || !Files.exists(profileFile)) {
                 ProfileYamlEditor.setAll(real(profileFile), yaml);
@@ -601,6 +609,24 @@ public final class LabSettings {
             throw new ApiError(HttpStatus.INTERNAL_SERVER_ERROR, Message.of("runner.ui.file.writeFailed",
                     shown, e.getClass().getSimpleName()));
         }
+    }
+
+    /**
+     * Whether {@code target} (a real path, or a path whose last part does not exist yet) is inside
+     * {@code realRoot}: its folder resolved to its real location, so a link anywhere on the way counts.
+     */
+    private static boolean inside(Path target, Path realRoot) throws IOException {
+        Path folder = target.toAbsolutePath().getParent();
+        Path realFolder = Files.exists(folder) ? folder.toRealPath() : null;
+        if (realFolder == null) {
+            // a folder still to be made (config/): its nearest existing parent decides
+            Path existing = folder;
+            while (existing != null && !Files.exists(existing)) {
+                existing = existing.getParent();
+            }
+            return existing != null && existing.toRealPath().startsWith(realRoot);
+        }
+        return realFolder.resolve(target.getFileName().toString()).startsWith(realRoot);
     }
 
     /** Where a file really is (a symbolic link followed), so a save replaces the file and not the link. */
@@ -635,11 +661,12 @@ public final class LabSettings {
         if (name == null) {
             name = RealEnvironmentGuards.variableFor(property);
         }
-        if (inherited || usedElsewhere(snapshot, name, taken)) {
+        if (inherited || usedElsewhere(snapshot, name, taken, true)) {
             String rest = name.startsWith("IDM_TEST_") ? name.substring("IDM_TEST_".length()) : name;
             String base = "IDM_TEST_" + snapshot.profile().toUpperCase(Locale.ROOT).replaceAll("[^A-Z0-9]", "_") + "_" + rest;
             name = base;
-            for (int n = 2; usedElsewhere(snapshot, name, taken); n++) {
+            // a profile-scoped name is this profile's own: only a file that can be read and names it takes it
+            for (int n = 2; usedElsewhere(snapshot, name, taken, false); n++) {
                 name = base + "_" + n;
             }
         }
@@ -652,7 +679,8 @@ public final class LabSettings {
      * (an empty line, such as the copied example's, holds nothing to lose), a reference from another
      * {@code config/*.yml}, or another secret of this save.
      */
-    private static boolean usedElsewhere(Snapshot snapshot, String name, Set<String> taken) {
+    private static boolean usedElsewhere(Snapshot snapshot, String name, Set<String> taken,
+                                         boolean unreadableMeansUsed) {
         if (taken.contains(name)) {
             return true;
         }
@@ -660,21 +688,35 @@ public final class LabSettings {
         if (value != null && !value.isEmpty()) {
             return true;
         }
+        Path config = snapshot.workspace().config();
+        if (!Files.exists(config)) {
+            return false;
+        }
         Path current = snapshot.workspace().profileFile(snapshot.profile());
-        try (var files = Files.list(snapshot.workspace().config())) {
-            for (Path file : files.toList()) {
-                String fileName = file.getFileName().toString();
-                if (file.equals(current) || !fileName.endsWith(".yml") && !fileName.endsWith(".yaml")
-                        || !Files.isRegularFile(file)) {
-                    continue;
-                }
+        List<Path> files;
+        try (var listing = Files.list(config)) {
+            files = listing.toList();
+        } catch (IOException | UncheckedIOException e) {
+            // fail closed: without the other profiles' files no name can be known to be free
+            throw ApiError.badRequest("runner.ui.lab.settingsUnreadable", "config/");
+        }
+        for (Path file : files) {
+            String fileName = file.getFileName().toString();
+            if (file.equals(current) || !fileName.endsWith(".yml") && !fileName.endsWith(".yaml")
+                    || !Files.isRegularFile(file)) {
+                continue;
+            }
+            try {
                 String text = Files.readString(file, StandardCharsets.UTF_8);
                 if (text.contains("${" + name + "}") || text.contains("${" + name + ":")) {
                     return true;
                 }
+            } catch (IOException | UncheckedIOException e) {
+                // unreadable or not UTF-8 (MalformedInputException): it may use the name
+                if (unreadableMeansUsed) {
+                    return true;
+                }
             }
-        } catch (IOException | UncheckedIOException e) {
-            return false;
         }
         return false;
     }

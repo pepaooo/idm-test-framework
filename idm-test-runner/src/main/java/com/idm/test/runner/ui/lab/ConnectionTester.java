@@ -58,6 +58,9 @@ import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.regex.Pattern;
 
 /**
  * The lab panel's Test connection: an LDAP bind with the bind DN; a database connection and its
@@ -77,9 +80,20 @@ public final class ConnectionTester implements AutoCloseable {
     /** The most one test takes. */
     public static final Duration TIMEOUT = Duration.ofSeconds(10);
     private static final int MAX_PARALLEL = 4;
+    /** How many tests that went past {@link #TIMEOUT} may still hold a thread before new tests wait. */
+    private static final int MAX_ABANDONED = 4;
 
+    /** How long a test is waited for. */
+    private final Duration limit;
+    /** The connect, read and query timeouts each probe gives its client (the same as {@link #limit} in production). */
     private final Duration timeout;
+    private final int parallel;
+    private final int abandonedLimit;
     private final ThreadPoolExecutor executor;
+    /** Tests running and waited for. */
+    private final AtomicInteger running = new AtomicInteger();
+    /** Tests no longer waited for whose thread has not come back yet. */
+    private final AtomicInteger abandoned = new AtomicInteger();
 
     /** The outcome of a test: whether it connected, what to show, and how long it took. */
     public record Result(boolean ok, String message, long millis) {
@@ -102,8 +116,21 @@ public final class ConnectionTester implements AutoCloseable {
 
     /** A tester whose tests end after {@code timeout} (tests use a short one). */
     ConnectionTester(Duration timeout) {
+        this(timeout, timeout, MAX_PARALLEL, MAX_ABANDONED);
+    }
+
+    /**
+     * A tester that waits {@code limit} for a test whose clients get {@code timeout}; at most
+     * {@code parallel} tests run at once, and while {@code abandonedLimit} tests that went past the limit
+     * still hold their thread, new tests are answered "busy" instead of piling up threads.
+     */
+    ConnectionTester(Duration limit, Duration timeout, int parallel, int abandonedLimit) {
+        this.limit = limit;
         this.timeout = timeout;
-        this.executor = new ThreadPoolExecutor(0, MAX_PARALLEL, 30, TimeUnit.SECONDS, new SynchronousQueue<>(),
+        this.parallel = parallel;
+        this.abandonedLimit = abandonedLimit;
+        this.executor = new ThreadPoolExecutor(0, parallel + abandonedLimit, 30, TimeUnit.SECONDS,
+                new SynchronousQueue<>(),
                 runnable -> {
                     Thread thread = new Thread(runnable, "idmtest-lab-test");
                     thread.setDaemon(true);
@@ -126,25 +153,71 @@ public final class ConnectionTester implements AutoCloseable {
         } catch (RealEnvironmentGuards.Refusal refusal) {
             return new Result(false, mask.apply(refusal.getMessage()), millis(start));
         }
+        int stillWaiting = abandoned.get();
+        if (stillWaiting >= abandonedLimit) {
+            return result(Outcome.failed("runner.ui.lab.busyWaiting", String.valueOf(stillWaiting)), locale, mask, start);
+        }
+        if (running.incrementAndGet() > parallel) {
+            running.decrementAndGet();
+            return result(Outcome.failed("runner.ui.lab.busy"), locale, mask, start);
+        }
+        // 0 running, 1 done, 2 abandoned: whoever moves it first decides who counts the abandoned thread
+        AtomicInteger state = new AtomicInteger();
+        AtomicReference<Thread> worker = new AtomicReference<>();
         Future<Outcome> future;
         try {
-            future = executor.submit(() -> probe(system, properties, drivers));
+            // never cancelled (a task cancelled before it starts would never count its thread back):
+            // giving up interrupts the worker instead
+            future = executor.submit(() -> {
+                worker.set(Thread.currentThread());
+                try {
+                    return probe(system, properties, drivers);
+                } finally {
+                    synchronized (worker) {
+                        worker.set(null);
+                    }
+                    if (!state.compareAndSet(0, 1)) {
+                        abandoned.decrementAndGet();
+                    }
+                }
+            });
         } catch (RejectedExecutionException e) {
+            running.decrementAndGet();
             return result(Outcome.failed("runner.ui.lab.busy"), locale, mask, start);
         }
         try {
-            return result(future.get(timeout.toMillis(), TimeUnit.MILLISECONDS), locale, mask, start);
+            return result(future.get(limit.toMillis(), TimeUnit.MILLISECONDS), locale, mask, start);
         } catch (TimeoutException e) {
-            future.cancel(true);
+            abandon(state, worker);
             return result(timedOut(system, properties), locale, mask, start);
         } catch (ExecutionException e) {
             Throwable cause = e.getCause() == null ? e : e.getCause();
             return result(Outcome.failed("runner.ui.lab.failed", describe(cause)), locale, mask, start);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            future.cancel(true);
+            abandon(state, worker);
             return result(timedOut(system, properties), locale, mask, start);
+        } finally {
+            running.decrementAndGet();
         }
+    }
+
+    /** Stops waiting for a test: interrupts it, and counts its thread until it comes back. */
+    private void abandon(AtomicInteger state, AtomicReference<Thread> worker) {
+        if (state.compareAndSet(0, 2)) {
+            abandoned.incrementAndGet();
+        }
+        synchronized (worker) {
+            Thread thread = worker.get();
+            if (thread != null) {
+                thread.interrupt();
+            }
+        }
+    }
+
+    /** How many tests went past the limit and still hold a thread. */
+    int abandonedThreads() {
+        return abandoned.get();
     }
 
     @Override
@@ -161,7 +234,7 @@ public final class ConnectionTester implements AutoCloseable {
     }
 
     private Outcome timedOut(LabSettings.SystemRef system, Map<String, String> properties) {
-        return Outcome.failed("runner.ui.lab.timeout", endpoint(system, properties), String.valueOf(timeout.toSeconds()));
+        return Outcome.failed("runner.ui.lab.timeout", endpoint(system, properties), String.valueOf(limit.toSeconds()));
     }
 
     // --- the guards' checks ---------------------------------------------------------------------
@@ -275,7 +348,12 @@ public final class ConnectionTester implements AutoCloseable {
         }
     }
 
-    private Outcome database(String url, String username, String password, String driverClass, Path driversFolder) {
+    private Outcome database(String givenUrl, String username, String password, String driverClass,
+                             Path driversFolder) {
+        String url = withoutTimeouts(givenUrl);
+        if (url == null) {
+            return Outcome.failed("runner.ui.lab.urlTimeout");
+        }
         ClassLoader parent = Thread.currentThread().getContextClassLoader();
         try (DriverLoader.Drivers drivers = DriverLoader.open(driversFolder, parent)) {
             ClassLoader loader = drivers.loader() != null ? drivers.loader() : parent;
@@ -351,6 +429,44 @@ public final class ConnectionTester implements AutoCloseable {
             properties.setProperty("socketTimeout", String.valueOf(millis));
         }
         return properties;
+    }
+
+    /**
+     * {@code url} without the timeout settings it carries for the drivers {@link #timeouts} sets them for
+     * (those drivers prefer the URL's to ours, so a URL's own {@code connectTimeout=0} would let a test
+     * hang): PostgreSQL, MySQL and MariaDB {@code ?key=value&…} parameters and SQL Server
+     * {@code ;key=value} settings whose name contains {@code timeout} are removed. Null when a timeout is
+     * still named afterwards (an Oracle descriptor's {@code CONNECT_TIMEOUT}, a MySQL address's own
+     * settings), so the test refuses rather than run unbounded. Other URLs are returned as they are.
+     */
+    static String withoutTimeouts(String url) {
+        String lower = url.toLowerCase(Locale.ROOT);
+        String result;
+        if (lower.startsWith("jdbc:postgresql:") || lower.startsWith("jdbc:mysql:") || lower.startsWith("jdbc:mariadb:")) {
+            int query = url.indexOf('?');
+            result = query < 0 ? url : url.substring(0, query) + kept(url.substring(query + 1), "&", "?");
+        } else if (lower.startsWith("jdbc:sqlserver:")) {
+            int first = url.indexOf(';');
+            result = first < 0 ? url : url.substring(0, first) + kept(url.substring(first + 1), ";", ";");
+        } else if (lower.startsWith("jdbc:oracle:")) {
+            result = url;
+        } else {
+            return url;
+        }
+        return result.toLowerCase(Locale.ROOT).contains("timeout") ? null : result;
+    }
+
+    /** The {@code separator}-joined settings of {@code settings} whose name has no "timeout", after {@code lead}. */
+    private static String kept(String settings, String separator, String lead) {
+        java.util.List<String> keep = new java.util.ArrayList<>();
+        for (String setting : settings.split(Pattern.quote(separator), -1)) {
+            int eq = setting.indexOf('=');
+            String name = (eq < 0 ? setting : setting.substring(0, eq)).toLowerCase(Locale.ROOT);
+            if (!setting.isEmpty() && !name.contains("timeout")) {
+                keep.add(setting);
+            }
+        }
+        return keep.isEmpty() ? "" : lead + String.join(separator, keep);
     }
 
     /** How many tests are running on the pool now (tests check a timed-out one lets go of its thread). */

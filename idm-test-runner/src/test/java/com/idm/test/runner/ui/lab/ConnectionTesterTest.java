@@ -201,7 +201,7 @@ class ConnectionTesterTest {
     }
 
     @Test
-    @DisplayName("Database: a host that accepts but never answers ends at the timeout and frees its thread")
+    @DisplayName("Database: a host that never answers ends at the timeout and frees its thread, whatever the URL's own timeouts")
     void testDatabaseSilentHost() throws Exception {
         try (ServerSocket silent = new ServerSocket(0, 5, InetAddress.getLoopbackAddress());
              ConnectionTester quick = new ConnectionTester(Duration.ofSeconds(1))) {
@@ -217,7 +217,8 @@ class ConnectionTesterTest {
             });
             long start = System.nanoTime();
             ConnectionTester.Result result = quick.test(LabSettings.SystemRef.parse("database:hr"),
-                    props("idm.test.databases.hr.jdbc-url", "jdbc:postgresql://127.0.0.1:" + silent.getLocalPort() + "/hr",
+                    props("idm.test.databases.hr.jdbc-url", "jdbc:postgresql://127.0.0.1:" + silent.getLocalPort()
+                                    + "/hr?connectTimeout=0&socketTimeout=0&loginTimeout=0",
                             "idm.test.databases.hr.username", "tester", "idm.test.databases.hr.password", HTTP_PASSWORD),
                     temp, Locale.ENGLISH, mask());
 
@@ -229,6 +230,83 @@ class ConnectionTesterTest {
                 Thread.sleep(100);
             }
             assertThat(quick.busyThreads()).as("the driver's own timeouts let the pool thread go").isZero();
+            silent.close();
+            acceptor.join(2_000);
+            for (Socket socket : accepted) {
+                socket.close();
+            }
+        }
+    }
+
+    @Test
+    @DisplayName("A JDBC URL's own timeouts are removed for the drivers given ours, or the test is refused")
+    void testUrlTimeoutsRemoved() {
+        assertThat(ConnectionTester.withoutTimeouts("jdbc:postgresql://db.test/hr?connectTimeout=0&ssl=true&socketTimeout=0"))
+                .isEqualTo("jdbc:postgresql://db.test/hr?ssl=true");
+        assertThat(ConnectionTester.withoutTimeouts("jdbc:postgresql://db.test/hr?LOGINTIMEOUT=0"))
+                .isEqualTo("jdbc:postgresql://db.test/hr");
+        assertThat(ConnectionTester.withoutTimeouts("jdbc:mysql://db.test/hr?connectTimeout=0&useSSL=true"))
+                .isEqualTo("jdbc:mysql://db.test/hr?useSSL=true");
+        assertThat(ConnectionTester.withoutTimeouts("jdbc:mariadb://db.test/hr?socketTimeout=0"))
+                .isEqualTo("jdbc:mariadb://db.test/hr");
+        assertThat(ConnectionTester.withoutTimeouts("jdbc:sqlserver://db.test;databaseName=hr;loginTimeout=0;socketTimeout=0"))
+                .isEqualTo("jdbc:sqlserver://db.test;databaseName=hr");
+        assertThat(ConnectionTester.withoutTimeouts("jdbc:mysql://address=(host=db.test)(connectTimeout=0)/hr")).isNull();
+        assertThat(ConnectionTester.withoutTimeouts(
+                "jdbc:oracle:thin:@(DESCRIPTION=(CONNECT_TIMEOUT=0)(ADDRESS=(HOST=db.test)(PORT=1521)))")).isNull();
+        assertThat(ConnectionTester.withoutTimeouts("jdbc:oracle:thin:@db.test:1521/HR")).isEqualTo("jdbc:oracle:thin:@db.test:1521/HR");
+        assertThat(ConnectionTester.withoutTimeouts("jdbc:h2:file:/tmp/x")).isEqualTo("jdbc:h2:file:/tmp/x");
+    }
+
+    @Test
+    @DisplayName("A refused URL timeout is a failed test with its own message")
+    void testUrlTimeoutRefused() {
+        ConnectionTester.Result result = test("database:hr", props("idm.test.databases.hr.jdbc-url",
+                "jdbc:oracle:thin:@(DESCRIPTION=(CONNECT_TIMEOUT=0)(ADDRESS=(HOST=127.0.0.1)(PORT=1)))"));
+
+        assertThat(result.ok()).isFalse();
+        assertThat(result.message()).startsWith("the JDBC URL sets a timeout of its own");
+    }
+
+    @Test
+    @DisplayName("Tests that outlive the limit are counted; while they hold their threads new tests are told so, then served again")
+    void testAbandonedThreadsBounded() throws Exception {
+        try (ServerSocket silent = new ServerSocket(0, 5, InetAddress.getLoopbackAddress());
+             ConnectionTester small = new ConnectionTester(Duration.ofMillis(500), Duration.ofSeconds(3), 1, 1)) {
+            List<Socket> accepted = new ArrayList<>();
+            Thread acceptor = Thread.ofVirtual().start(() -> {
+                try {
+                    while (true) {
+                        accepted.add(silent.accept());
+                    }
+                } catch (IOException e) {
+                    // closed
+                }
+            });
+            Map<String, String> silentLdap = props("idm.test.ldap.url", "ldap://127.0.0.1:" + silent.getLocalPort(),
+                    "idm.test.ldap.user-dn", BIND_DN, "idm.test.ldap.password", BIND_PASSWORD);
+            Map<String, String> goodLdap = props("idm.test.ldap.url", ldap.getUrl(),
+                    "idm.test.ldap.user-dn", BIND_DN, "idm.test.ldap.password", BIND_PASSWORD);
+
+            ConnectionTester.Result first = small.test(LabSettings.SystemRef.parse("ldap"), silentLdap, temp,
+                    Locale.ENGLISH, mask());
+            assertThat(first.ok()).isFalse();
+            assertThat(first.message()).startsWith("no answer");
+            assertThat(small.abandonedThreads()).isEqualTo(1);
+
+            ConnectionTester.Result second = small.test(LabSettings.SystemRef.parse("ldap"), goodLdap, temp,
+                    Locale.ENGLISH, mask());
+            assertThat(second.ok()).isFalse();
+            assertThat(second.message()).startsWith("1 earlier connection tests are still waiting");
+
+            long deadline = System.nanoTime() + Duration.ofSeconds(8).toNanos();
+            while (small.abandonedThreads() > 0 && System.nanoTime() < deadline) {
+                Thread.sleep(100);
+            }
+            assertThat(small.abandonedThreads()).isZero();
+            ConnectionTester.Result third = small.test(LabSettings.SystemRef.parse("ldap"), goodLdap, temp,
+                    Locale.ENGLISH, mask());
+            assertThat(third.ok()).as(third.message()).isTrue();
             silent.close();
             acceptor.join(2_000);
             for (Socket socket : accepted) {

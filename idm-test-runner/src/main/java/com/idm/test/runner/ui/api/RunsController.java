@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -46,6 +47,8 @@ import java.util.regex.Pattern;
  *       problem. {@code locale} ({@code en}, {@code es}) is the run's language, the UI's by default.</li>
  *   <li>{@code GET /api/runs/current/events}: Server-Sent Events of the current or most recent run —
  *       those so far, then the new ones; the stream ends after the run's last event; 204 before any run.
+ *       Events have ids {@code <run>:<index>}; with {@code Last-Event-ID} of the same run the stream
+ *       resumes after that event, and is 204 when the run has ended and nothing is newer.
  *       {@code runStarted}, {@code scenarioStarted}, {@code stepStarted}, {@code attempt},
  *       {@code stepFinished} (the masked step result as in {@code results.json}), {@code scenarioFinished}
  *       {@code {result, failureLine}}, {@code warning} and {@code refused} {@code {key, message}},
@@ -99,8 +102,8 @@ class RunsController {
     }
 
     @GetMapping(value = "/api/runs/current/events", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    ResponseEntity<SseEmitter> events() {
-        SseEmitter emitter = runs.subscribe();
+    ResponseEntity<SseEmitter> events(@RequestHeader(value = "Last-Event-ID", required = false) String lastEventId) {
+        SseEmitter emitter = runs.subscribe(lastEventId);
         if (emitter == null) {
             return ResponseEntity.noContent().build();
         }
@@ -140,10 +143,9 @@ class RunsController {
                     // The report's own script runs in a sandbox: not with the workbench's origin and cookie.
                     .header("Content-Security-Policy", "sandbox allow-scripts; frame-ancestors 'none'")
                     .body(Files.readAllBytes(file));
-        } catch (NoSuchFileException e) {
-            throw notFound();
         } catch (IOException e) {
-            throw new UncheckedIOException(e);
+            // missing, unreadable (access denied), a loop of links: no report to serve
+            throw notFound();
         }
     }
 

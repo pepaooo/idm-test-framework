@@ -17,6 +17,7 @@ import tools.jackson.databind.json.JsonMapper;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.time.Clock;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -26,6 +27,7 @@ import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
 
@@ -65,7 +67,9 @@ public final class RunSessions {
     private final Runner runner;
     private final Map<String, String> environmentOverride;
     private final AtomicReference<Run> active = new AtomicReference<>();
+    private final AtomicLong sequence = new AtomicLong();
     private volatile Run latest;
+    private volatile Runnable afterRun = () -> { };
 
     /**
      * @param environmentOverride stands in for the process's environment variables in every run when not
@@ -76,10 +80,21 @@ public final class RunSessions {
         this.environmentOverride = environmentOverride == null ? null : Map.copyOf(environmentOverride);
     }
 
-    /** The workbench's: {@link RunService} on the system clock, its run log off the console. */
+    /**
+     * The workbench's: {@link RunService} on the system clock, its run log off the console, the
+     * workbench's own loggers held quiet whatever the run's profile sets ({@link UiLogging#quiet}).
+     */
     public static RunSessions withRunService(Map<String, String> environmentOverride) {
-        RunService service = new RunService();
+        RunService service = new RunService(Clock.systemDefaultZone(), false, UiLogging::quiet);
         return new RunSessions(service::run, environmentOverride);
+    }
+
+    /**
+     * {@code action} runs on the run's thread after each run, before the slot is given back (the
+     * workbench sets its logging up again there).
+     */
+    public void afterEachRun(Runnable action) {
+        afterRun = action;
     }
 
     /** Another run is active. */
@@ -97,7 +112,7 @@ public final class RunSessions {
      * @throws BusyException when a run is active
      */
     public String start(Path workspace, String profile, List<String> scenarios, Locale locale) {
-        Run run = new Run(locale);
+        Run run = new Run(sequence.incrementAndGet(), locale);
         if (!active.compareAndSet(null, run)) {
             throw new BusyException();
         }
@@ -127,6 +142,11 @@ public final class RunSessions {
             Message reason = Message.of("runner.ui.run.crashed", e.getClass().getSimpleName());
             run.add("refused", new Refused(reason.key(), Messages.render(reason, run.locale)));
         } finally {
+            try {
+                afterRun.run();
+            } catch (RuntimeException e) {
+                LOG.warn("After the run, the workbench could not set its logging up again: {}", e.getClass().getName());
+            }
             active.compareAndSet(run, null);
             run.finish();
         }
@@ -159,15 +179,22 @@ public final class RunSessions {
 
     /**
      * A subscriber of the current or most recent run: its events so far, then the new ones; completed
-     * after the run's last event. Null when the workbench has not run anything yet.
+     * after the run's last event. Event ids are {@code <run>:<index>}; with {@code lastEventId} (a
+     * reconnecting browser's {@code Last-Event-ID}) of this run, it starts after that event. Null —
+     * nothing to send, ever — when the workbench has not run anything yet, or when {@code lastEventId}
+     * is the ended run's last event.
      */
-    public SseEmitter subscribe() {
+    public SseEmitter subscribe(String lastEventId) {
         Run run = latest;
         if (run == null) {
             return null;
         }
+        int from = run.resumeAfter(lastEventId);
+        if (from < 0) {
+            return null;
+        }
         SseEmitter emitter = new SseEmitter(0L);
-        Subscriber subscriber = new Subscriber(run, emitter);
+        Subscriber subscriber = new Subscriber(run, emitter, from);
         emitter.onCompletion(subscriber::close);
         emitter.onTimeout(subscriber::close);
         emitter.onError(e -> subscriber.close());
@@ -229,6 +256,7 @@ public final class RunSessions {
     /** One run: its stop flag, id and events. */
     static final class Run implements RunEvents {
 
+        final long sequence;
         final AtomicBoolean stop = new AtomicBoolean();
         final CountDownLatch idKnown = new CountDownLatch(1);
         final Locale locale;
@@ -236,8 +264,34 @@ public final class RunSessions {
         private final List<Event> events = new ArrayList<>();
         private boolean finished;
 
-        Run(Locale locale) {
+        Run(long sequence, Locale locale) {
+            this.sequence = sequence;
             this.locale = locale;
+        }
+
+        /** The id a subscriber sees for the event at {@code index}. */
+        String id(int index) {
+            return sequence + ":" + index;
+        }
+
+        /**
+         * Where a subscriber whose last event was {@code lastEventId} starts: after it when it is one of
+         * this run's events, else at the start; -1 when the run has ended and nothing is newer.
+         */
+        synchronized int resumeAfter(String lastEventId) {
+            int from = 0;
+            String prefix = sequence + ":";
+            if (lastEventId != null && lastEventId.startsWith(prefix)) {
+                try {
+                    int index = Integer.parseInt(lastEventId.substring(prefix.length()));
+                    if (index >= 0 && index < events.size()) {
+                        from = index + 1;
+                    }
+                } catch (NumberFormatException e) {
+                    // not an id of ours: from the start
+                }
+            }
+            return finished && from > 0 && from >= events.size() ? -1 : from;
         }
 
         void add(String name, Object data) {
@@ -339,9 +393,12 @@ public final class RunSessions {
         private final SseEmitter emitter;
         private volatile boolean closed;
 
-        Subscriber(Run run, SseEmitter emitter) {
+        private final int from;
+
+        Subscriber(Run run, SseEmitter emitter, int from) {
             this.run = run;
             this.emitter = emitter;
+            this.from = from;
         }
 
         void close() {
@@ -350,13 +407,13 @@ public final class RunSessions {
         }
 
         void send() {
-            int next = 0;
+            int next = from;
             long lastSent = System.nanoTime();
             try {
                 while (!closed) {
                     Run.Batch batch = run.await(next, HEARTBEAT.toMillis());
                     for (Event event : batch.events()) {
-                        emitter.send(SseEmitter.event().id(String.valueOf(next)).name(event.name()).data(event.json()));
+                        emitter.send(SseEmitter.event().id(run.id(next)).name(event.name()).data(event.json()));
                         next++;
                         lastSent = System.nanoTime();
                     }

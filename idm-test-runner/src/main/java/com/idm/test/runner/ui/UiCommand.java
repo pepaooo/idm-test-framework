@@ -132,6 +132,10 @@ public final class UiCommand {
                         "--spring.servlet.multipart.max-file-size=-1",
                         "--spring.servlet.multipart.max-request-size=64MB",
                         "--server.port=" + port);
+        // The workbench's own request handling never logs below INFO, whatever the environment says;
+        // after each run (whose Spring start reconfigures the JVM's logging) its logging is set up again.
+        UiLogging.quiet();
+        runs.afterEachRun(() -> UiLogging.restore(context.getEnvironment()));
         int bound = ((WebServerApplicationContext) context).getWebServer().getPort();
         return new UiServer(bound, token, context::close, session);
     }

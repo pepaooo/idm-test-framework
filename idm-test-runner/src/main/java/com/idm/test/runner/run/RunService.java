@@ -50,8 +50,10 @@ import com.idm.test.wiring.StepRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.WebApplicationType;
+import org.springframework.boot.context.event.ApplicationEnvironmentPreparedEvent;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.boot.context.properties.bind.Binder;
+import org.springframework.context.ApplicationListener;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.core.env.Environment;
 import org.springframework.core.env.StandardEnvironment;
@@ -93,6 +95,7 @@ public final class RunService {
 
     private final Clock clock;
     private final boolean verbose;
+    private final Runnable afterLoggingConfigured;
 
     /** A service on the system clock whose run log stays off the console. */
     public RunService() {
@@ -104,8 +107,17 @@ public final class RunService {
      * @param verbose whether the console echoes the (masked) run log, as {@code --verbose} does
      */
     public RunService(Clock clock, boolean verbose) {
+        this(clock, verbose, () -> { });
+    }
+
+    /**
+     * @param afterLoggingConfigured runs each time a run's Spring start has applied the profile's logging
+     *                               settings (the workbench holds its own loggers quiet there)
+     */
+    public RunService(Clock clock, boolean verbose, Runnable afterLoggingConfigured) {
         this.clock = clock;
         this.verbose = verbose;
+        this.afterLoggingConfigured = afterLoggingConfigured;
     }
 
     /**
@@ -178,6 +190,19 @@ public final class RunService {
                 thread.setContextClassLoader(previousLoader);
             }
         }
+    }
+
+    /**
+     * {@link #afterLoggingConfigured} once Spring Boot has configured logging for a run: a class, not a
+     * lambda, so Spring sees the event type; unordered, so it comes after Boot's own logging listener.
+     */
+    private ApplicationListener<ApplicationEnvironmentPreparedEvent> afterLogging() {
+        return new ApplicationListener<>() {
+            @Override
+            public void onApplicationEvent(ApplicationEnvironmentPreparedEvent event) {
+                afterLoggingConfigured.run();
+            }
+        };
     }
 
     /** A refusal before the run has a folder. */
@@ -276,7 +301,7 @@ public final class RunService {
                         .registerShutdownHook(false)
                         .properties(RunnerSettings.defaultProperties(workspace))
                         .initializers(new SecretsInitializer(secrets))
-                        .listeners(runLog.listener());
+                        .listeners(runLog.listener(), afterLogging());
                 if (fakeEnvironment != null) {
                     builder.initializers(started -> started.getEnvironment().getPropertySources().replace(
                             StandardEnvironment.SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME,

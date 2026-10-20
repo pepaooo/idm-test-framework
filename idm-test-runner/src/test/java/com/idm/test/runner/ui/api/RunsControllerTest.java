@@ -1,6 +1,8 @@
 package com.idm.test.runner.ui.api;
 
 import com.idm.test.runner.LabFixture;
+import com.idm.test.runner.ui.RunEventStream;
+import com.idm.test.runner.ui.RunEventStream.Sse;
 import com.idm.test.runner.ui.UiCommand;
 import com.idm.test.runner.ui.UiHttp;
 import com.idm.test.runner.ui.UiHttp.Response;
@@ -9,28 +11,22 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.DisabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.io.IOException;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
@@ -43,7 +39,11 @@ import static com.idm.test.runner.LabFixture.REST_PASSWORD;
 import static com.idm.test.runner.LabFixture.WRONG_SN;
 import static com.idm.test.runner.LabFixture.corpusScenario;
 import static com.idm.test.runner.LabFixture.scenario;
+import static com.idm.test.runner.ui.RunEventStream.END;
+import static com.idm.test.runner.ui.RunEventStream.names;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
+import static org.junit.jupiter.api.Assumptions.assumeFalse;
 
 /**
  * The runs API over HTTP, against a running workbench and the run tests' lab (embedded LDAP, file
@@ -56,14 +56,12 @@ class RunsControllerTest {
 
     private static final JsonMapper JSON = JsonMapper.builder().build();
     private static final String TENANT_SECRET = "Zq9xRunsProbe";
-    private static final Duration END = Duration.ofSeconds(120);
 
     @TempDir
     static Path home;
     private static String realHome;
     private static UiServer server;
     private static LabFixture lab;
-    private static final HttpClient HTTP = HttpClient.newHttpClient();
 
     @TempDir
     Path temp;
@@ -121,102 +119,12 @@ class RunsControllerTest {
         return JSON.readTree(response.body()).get("key").asString();
     }
 
-    /** One Server-Sent Event: its name, its data as JSON, and the data as sent. */
-    record Sse(String name, JsonNode data, String raw) {
-    }
-
-    /** The run events stream, read on its own thread into a queue, until the stream ends. */
-    private static final class EventStream implements AutoCloseable {
-
-        private static final Sse END_OF_STREAM = new Sse("", null, "");
-        private final BlockingQueue<Sse> queue = new LinkedBlockingQueue<>();
-        private final CompletableFuture<HttpResponse<java.util.stream.Stream<String>>> response;
-        final List<Sse> seen = new ArrayList<>();
-
-        EventStream() {
-            HttpRequest request = HttpRequest.newBuilder(URI.create(
-                            "http://127.0.0.1:" + server.port() + "/api/runs/current/events"))
-                    .header("Cookie", UiHttp.cookie(server)).GET().build();
-            response = HTTP.sendAsync(request, HttpResponse.BodyHandlers.ofLines());
-            response.thenAccept(r -> {
-                String name = null;
-                StringBuilder data = new StringBuilder();
-                try (java.util.stream.Stream<String> lines = r.body()) {
-                    for (String line : (Iterable<String>) lines::iterator) {
-                        if (line.isEmpty()) {
-                            if (name != null) {
-                                queue.add(new Sse(name, JSON.readTree(data.toString()), data.toString()));
-                            }
-                            name = null;
-                            data.setLength(0);
-                        } else if (line.startsWith("event:")) {
-                            name = line.substring("event:".length()).strip();
-                        } else if (line.startsWith("data:")) {
-                            data.append(line.substring("data:".length()));
-                        }
-                    }
-                } catch (RuntimeException e) {
-                    // the stream was closed
-                } finally {
-                    queue.add(END_OF_STREAM);
-                }
-            }).exceptionally(e -> {
-                queue.add(END_OF_STREAM);
-                return null;
-            });
-        }
-
-        /** The next event, or null at the end of the stream; fails after {@code within}. */
-        Sse next(Duration within) throws InterruptedException {
-            Sse event = queue.poll(within.toMillis(), TimeUnit.MILLISECONDS);
-            assertThat(event).as("an event within " + within + "; seen " + names(seen)).isNotNull();
-            if (event == END_OF_STREAM) {
-                queue.add(END_OF_STREAM);
-                return null;
-            }
-            seen.add(event);
-            return event;
-        }
-
-        /** Reads until the event {@code name}, which it returns. */
-        Sse until(String name) throws InterruptedException {
-            long deadline = System.nanoTime() + END.toNanos();
-            while (true) {
-                Sse event = next(Duration.ofNanos(Math.max(1, deadline - System.nanoTime())));
-                assertThat(event).as("the event " + name + "; seen " + names(seen)).isNotNull();
-                if (event.name().equals(name)) {
-                    return event;
-                }
-            }
-        }
-
-        /** Every event to the end of the stream, those read before included. */
-        List<Sse> all() throws InterruptedException {
-            long deadline = System.nanoTime() + END.toNanos();
-            while (next(Duration.ofNanos(Math.max(1, deadline - System.nanoTime()))) != null) {
-                // reading
-            }
-            return seen;
-        }
-
-        @Override
-        public void close() {
-            response.cancel(true);
-        }
-    }
-
-    private static List<String> names(List<Sse> events) {
-        return events.stream().map(Sse::name).toList();
-    }
-
     private static List<Sse> named(List<Sse> events, String name) {
         return events.stream().filter(e -> e.name().equals(name)).toList();
     }
 
     private static List<Sse> runToEnd() throws InterruptedException {
-        try (EventStream stream = new EventStream()) {
-            return stream.all();
-        }
+        return RunEventStream.toEnd(server);
     }
 
     private static void results(Path ws, String runId, Instant at, String json) throws IOException {
@@ -311,7 +219,7 @@ class RunsControllerTest {
                 "a run is already going; wait for it to end or stop it");
 
         List<Sse> events;
-        try (EventStream stream = new EventStream()) {
+        try (RunEventStream stream = new RunEventStream(server)) {
             stream.until("attempt");
             Response stopped = post("/api/runs/current/stop", null);
             assertThat(stopped.status()).as(stopped.body()).isEqualTo(202);
@@ -334,7 +242,7 @@ class RunsControllerTest {
 
         startRun(Map.of("profile", "lab", "scenarios", "all"));
         List<Sse> events;
-        try (EventStream stream = new EventStream()) {
+        try (RunEventStream stream = new RunEventStream(server)) {
             stream.until("attempt");
             Response stop = post("/api/runs/current/stop", null);
             assertThat(stop.status()).as(stop.body()).isEqualTo(202);
@@ -418,7 +326,7 @@ class RunsControllerTest {
         scenario(ws, "wrong-sn.yaml", WRONG_SN);
 
         String runId = startRun(Map.of("profile", "lab"));
-        try (EventStream stream = new EventStream()) {
+        try (RunEventStream stream = new RunEventStream(server)) {
             stream.until("scenarioStarted");
         }
         List<Sse> events = runToEnd();
@@ -556,6 +464,53 @@ class RunsControllerTest {
     }
 
     @Test
+    @DisplayName("Should resume after Last-Event-ID, and answer 204 when the run ended and nothing is newer")
+    void testResumeFromLastEventId() throws Exception {
+        Path ws = workspace();
+        corpusScenario(ws, "provisioning-user-to-ldap.yaml");
+
+        startRun(Map.of("profile", "lab"));
+        List<Sse> events = runToEnd();
+        assertThat(events).hasSizeGreaterThan(4);
+        assertThat(events).extracting(Sse::id).doesNotContainNull().doesNotHaveDuplicates();
+
+        try (RunEventStream resumed = new RunEventStream(server, events.get(2).id())) {
+            assertThat(resumed.all()).extracting(Sse::id, Sse::name).containsExactlyElementsOf(
+                    events.subList(3, events.size()).stream()
+                            .map(e -> tuple(e.id(), e.name())).toList());
+        }
+        try (RunEventStream done = new RunEventStream(server, events.getLast().id())) {
+            assertThat(done.status()).isEqualTo(204);
+            assertThat(done.all()).isEmpty();
+        }
+        // an id of another run, or none we wrote: the run from its start
+        for (String other : List.of("999999:3", "garbage")) {
+            try (RunEventStream fresh = new RunEventStream(server, other)) {
+                assertThat(names(fresh.all())).as(other).isEqualTo(names(events));
+            }
+        }
+    }
+
+    @Test
+    @DisabledOnOs(OS.WINDOWS)
+    @DisplayName("Should answer 404, not 500, for a report it cannot read")
+    void testUnreadableReportIs404() throws Exception {
+        assumeFalse("root".equals(System.getProperty("user.name")),
+                "root reads any file");
+        Path ws = workspace();
+        Path folder = Files.createDirectories(ws.resolve("reports").resolve("20261019-101534-lab"));
+        Files.writeString(folder.resolve("report.html"), "<html>locked</html>");
+        Files.setPosixFilePermissions(folder, PosixFilePermissions.fromString("---------"));
+        try {
+            Response locked = UiHttp.get(server, "/reports/20261019-101534-lab/report.html");
+            assertThat(locked.status()).as(locked.body()).isEqualTo(404);
+            assertThat(key(locked)).isEqualTo("ui.request.notFound");
+        } finally {
+            Files.setPosixFilePermissions(folder, PosixFilePermissions.fromString("rwx------"));
+        }
+    }
+
+    @Test
     @DisplayName("Should keep GETs free of side effects: history and events write nothing")
     void testGetsWriteNothing() throws Exception {
         Path ws = workspace();
@@ -564,7 +519,7 @@ class RunsControllerTest {
             before = files.map(Path::toString).sorted().toList();
         }
         UiHttp.get(server, "/api/runs/history");
-        try (EventStream stream = new EventStream()) {
+        try (RunEventStream stream = new RunEventStream(server)) {
             // the previous test's run, or 204: either way nothing starts
             stream.next(END);
         }

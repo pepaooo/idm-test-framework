@@ -300,6 +300,7 @@ public final class ConnectionTester implements AutoCloseable {
             if (password != null && !password.isEmpty()) {
                 info.setProperty("password", password);
             }
+            info.putAll(timeouts(url));
             String query = url.toLowerCase(Locale.ROOT).startsWith("jdbc:oracle:") ? "SELECT 1 FROM DUAL" : "SELECT 1";
             try (Connection connection = driver.connect(url, info)) {
                 if (connection == null) {
@@ -321,6 +322,40 @@ public final class ConnectionTester implements AutoCloseable {
             }
             return Outcome.failed("runner.ui.lab.failed", e.getMessage());
         }
+    }
+
+    /**
+     * Connect and read timeouts for the drivers that take them as connection properties, so a host that
+     * never answers cannot keep a pool thread past the test's time (JDBC connects do not stop when the
+     * thread is interrupted). Only for drivers known to accept them: H2, for one, refuses unknown settings.
+     * {@code DriverManager.setLoginTimeout} is left alone: it is global to the JVM, and the test calls the
+     * driver directly.
+     */
+    Properties timeouts(String url) {
+        String lower = url.toLowerCase(Locale.ROOT);
+        long millis = Math.max(1000, timeout.toMillis());
+        String seconds = String.valueOf(Math.max(1, timeout.toSeconds()));
+        Properties properties = new Properties();
+        if (lower.startsWith("jdbc:postgresql:")) {
+            properties.setProperty("loginTimeout", seconds);
+            properties.setProperty("connectTimeout", seconds);
+            properties.setProperty("socketTimeout", seconds);
+        } else if (lower.startsWith("jdbc:sqlserver:")) {
+            properties.setProperty("loginTimeout", seconds);
+            properties.setProperty("socketTimeout", String.valueOf(millis));
+        } else if (lower.startsWith("jdbc:oracle:")) {
+            properties.setProperty("oracle.net.CONNECT_TIMEOUT", String.valueOf(millis));
+            properties.setProperty("oracle.jdbc.ReadTimeout", String.valueOf(millis));
+        } else if (lower.startsWith("jdbc:mysql:") || lower.startsWith("jdbc:mariadb:")) {
+            properties.setProperty("connectTimeout", String.valueOf(millis));
+            properties.setProperty("socketTimeout", String.valueOf(millis));
+        }
+        return properties;
+    }
+
+    /** How many tests are running on the pool now (tests check a timed-out one lets go of its thread). */
+    int busyThreads() {
+        return executor.getActiveCount();
     }
 
     private Outcome oauth(String target, String client, Map<String, String> properties) {

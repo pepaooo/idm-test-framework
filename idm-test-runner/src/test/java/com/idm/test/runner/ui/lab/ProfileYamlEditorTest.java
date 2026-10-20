@@ -119,6 +119,25 @@ class ProfileYamlEditorTest {
     }
 
     @Test
+    @DisplayName("Tabs before a trailing comment stay; a tab after the colon, which YAML refuses, is not touched")
+    void testTabs() {
+        String text = "idm:\n  test:\n    ldap:\n      url: ldap://old.test:389\t# the old one\n"
+                + "      base-dn: o=data \t # the base\n";
+
+        String edited = ProfileYamlEditor.edit(text, "idm.test.ldap.url", "ldap://new.test:389");
+
+        assertThat(edited).isEqualTo("idm:\n  test:\n    ldap:\n      url: ldap://new.test:389\t# the old one\n"
+                + "      base-dn: o=data \t # the base\n");
+        assertThat(ProfileYamlEditor.flatten(edited)).containsEntry("idm.test.ldap.url", "ldap://new.test:389")
+                .containsEntry("idm.test.ldap.base-dn", "o=data");
+
+        // SnakeYAML, and so Spring and idmtest run, cannot read a tab after the colon: refused, not rewritten
+        assertThatThrownBy(() -> ProfileYamlEditor.edit("idm:\n  test:\n    ldap:\n      url:\tldap://old.test:389\n",
+                "idm.test.ldap.url", "ldap://new.test:389"))
+                .isInstanceOf(ProfileYamlEditor.CannotEditException.class).hasMessageContaining("not valid YAML");
+    }
+
+    @Test
     @DisplayName("Missing parents are created at the file's indentation, after the block's last line")
     void testMissingParentsCreated() {
         String text = "idm:\n    test:\n        soap:\n            url: https://soap.test/role\n# end\n";

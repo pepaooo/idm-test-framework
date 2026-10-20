@@ -201,6 +201,53 @@ class ConnectionTesterTest {
     }
 
     @Test
+    @DisplayName("Database: a host that accepts but never answers ends at the timeout and frees its thread")
+    void testDatabaseSilentHost() throws Exception {
+        try (ServerSocket silent = new ServerSocket(0, 5, InetAddress.getLoopbackAddress());
+             ConnectionTester quick = new ConnectionTester(Duration.ofSeconds(1))) {
+            List<Socket> accepted = new ArrayList<>();
+            Thread acceptor = Thread.ofVirtual().start(() -> {
+                try {
+                    while (true) {
+                        accepted.add(silent.accept());
+                    }
+                } catch (IOException e) {
+                    // closed
+                }
+            });
+            long start = System.nanoTime();
+            ConnectionTester.Result result = quick.test(LabSettings.SystemRef.parse("database:hr"),
+                    props("idm.test.databases.hr.jdbc-url", "jdbc:postgresql://127.0.0.1:" + silent.getLocalPort() + "/hr",
+                            "idm.test.databases.hr.username", "tester", "idm.test.databases.hr.password", HTTP_PASSWORD),
+                    temp, Locale.ENGLISH, mask());
+
+            assertThat(result.ok()).isFalse();
+            assertThat(Duration.ofNanos(System.nanoTime() - start).toMillis()).isLessThan(5_000);
+            assertNoSecret(result);
+            long deadline = System.nanoTime() + Duration.ofSeconds(8).toNanos();
+            while (quick.busyThreads() > 0 && System.nanoTime() < deadline) {
+                Thread.sleep(100);
+            }
+            assertThat(quick.busyThreads()).as("the driver's own timeouts let the pool thread go").isZero();
+            silent.close();
+            acceptor.join(2_000);
+            for (Socket socket : accepted) {
+                socket.close();
+            }
+        }
+    }
+
+    @Test
+    @DisplayName("Driver timeouts go only to drivers known to take them")
+    void testDriverTimeouts() {
+        assertThat(tester.timeouts("jdbc:postgresql://db.test/hr")).containsKeys("loginTimeout", "connectTimeout",
+                "socketTimeout");
+        assertThat(tester.timeouts("jdbc:oracle:thin:@db.test:1521/HR")).containsKey("oracle.net.CONNECT_TIMEOUT");
+        assertThat(tester.timeouts("jdbc:sqlserver://db.test")).containsKey("loginTimeout");
+        assertThat(tester.timeouts("jdbc:h2:file:/tmp/x")).isEmpty();
+    }
+
+    @Test
     @DisplayName("Database: an in-memory URL is refused by the guards")
     void testDatabaseInMemoryRefused() {
         ConnectionTester.Result result = test("database:hr", props("idm.test.databases.hr.jdbc-url", "jdbc:h2:mem:x"));

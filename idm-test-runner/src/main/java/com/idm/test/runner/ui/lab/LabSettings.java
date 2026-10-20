@@ -525,7 +525,8 @@ public final class LabSettings {
      * Saves {@code values} (plain fields) into the profile file and {@code secrets} into {@code secrets.env},
      * each secret referenced from the profile file as {@code ${NAME}}: the name the profile file, the shared
      * file or the template line already uses, else the property's environment variable name
-     * ({@code IDM_TEST_DATABASES_HR_PASSWORD}). Everything is checked before anything is written.
+     * ({@code IDM_TEST_DATABASES_HR_PASSWORD}) — or a profile-scoped name when another profile already
+     * uses that one (see {@link #secretName}). Everything is checked before anything is written.
      */
     public void save(Path root, String profile, String systemId, Map<String, String> values, Map<String, String> secrets) {
         SystemRef ref = system(systemId);
@@ -555,7 +556,7 @@ public final class LabSettings {
                 yaml.put(property, nullToEmpty(plain.get(spec.key())));
                 continue;
             }
-            String name = secretName(snapshot, property, yaml);
+            String name = secretName(snapshot, property, yaml, env.keySet());
             env.put(name, nullToEmpty(secret.get(spec.key())));
         }
         if (oauthWritten) {
@@ -569,6 +570,16 @@ public final class LabSettings {
         Path profileFile = snapshot.workspace().profileFile(profile);
         String shown = "config/" + profileFile.getFileName();
         // dry run first, so a profile file that cannot be edited stops the save before secrets.env changes
+        try {
+            Path sharedFile = snapshot.workspace().config().resolve(ProfileYamlEditor.SHARED_FILE);
+            Path target = real(profileFile);
+            if (target.getFileName().toString().equalsIgnoreCase(ProfileYamlEditor.SHARED_FILE)
+                    || Files.exists(sharedFile) && Files.exists(profileFile) && Files.isSameFile(profileFile, sharedFile)) {
+                throw ApiError.badRequest("runner.ui.lab.cannotEdit", shown, ProfileYamlEditor.SHARED_FILE);
+            }
+        } catch (IOException e) {
+            throw ApiError.badRequest("runner.ui.lab.cannotEdit", shown, e.getClass().getSimpleName());
+        }
         try {
             String text = snapshot.profileText();
             for (Map.Entry<String, String> entry : yaml.entrySet()) {
@@ -584,7 +595,7 @@ public final class LabSettings {
             if (!yaml.isEmpty() || !Files.exists(profileFile)) {
                 ProfileYamlEditor.setAll(real(profileFile), yaml);
             }
-        } catch (ProfileYamlEditor.CannotEditException e) {
+        } catch (ProfileYamlEditor.CannotEditException | IllegalArgumentException e) {
             throw ApiError.badRequest("runner.ui.lab.cannotEdit", shown, e.getMessage());
         } catch (IOException e) {
             throw new ApiError(HttpStatus.INTERNAL_SERVER_ERROR, Message.of("runner.ui.file.writeFailed",
@@ -599,26 +610,73 @@ public final class LabSettings {
 
     /**
      * The {@code secrets.env} name for a secret property, adding to {@code yaml} the reference to it when
-     * the profile file does not already make one.
+     * the profile file does not already make one. {@code secrets.env} is one file for every profile, so
+     * a name the current profile file does not itself reference is only taken when nothing else uses it:
+     * a name inherited from {@code application.yml}, one {@code secrets.env} already holds a value for, or
+     * one another profile file refers to becomes the profile's own name, {@code IDM_TEST_<PROFILE>_<rest>}
+     * (with {@code _2}, {@code _3}, … appended while that is taken too), and the override goes into the
+     * current profile file only.
      */
-    private static String secretName(Snapshot snapshot, String property, Map<String, String> yaml) {
+    private static String secretName(Snapshot snapshot, String property, Map<String, String> yaml,
+                                     Set<String> taken) {
         String inProfile = ProfileYamlEditor.get(snapshot.profileFlat(), property);
         String name = reference(inProfile);
         if (name != null) {
             return name;
         }
+        boolean inherited = false;
         if (inProfile == null) {
             name = reference(ProfileYamlEditor.get(snapshot.sharedFlat(), property));
-            if (name != null) {
-                return name;
+            inherited = name != null;
+            if (name == null) {
+                name = reference(ProfileYamlEditor.commentedValue(snapshot.profileText(), property));
             }
-            name = reference(ProfileYamlEditor.commentedValue(snapshot.profileText(), property));
         }
         if (name == null) {
             name = RealEnvironmentGuards.variableFor(property);
         }
+        if (inherited || usedElsewhere(snapshot, name, taken)) {
+            String rest = name.startsWith("IDM_TEST_") ? name.substring("IDM_TEST_".length()) : name;
+            String base = "IDM_TEST_" + snapshot.profile().toUpperCase(Locale.ROOT).replaceAll("[^A-Z0-9]", "_") + "_" + rest;
+            name = base;
+            for (int n = 2; usedElsewhere(snapshot, name, taken); n++) {
+                name = base + "_" + n;
+            }
+        }
         yaml.put(property, "${" + name + "}");
         return name;
+    }
+
+    /**
+     * Whether {@code name} is in use outside the current profile file: a value in {@code secrets.env}
+     * (an empty line, such as the copied example's, holds nothing to lose), a reference from another
+     * {@code config/*.yml}, or another secret of this save.
+     */
+    private static boolean usedElsewhere(Snapshot snapshot, String name, Set<String> taken) {
+        if (taken.contains(name)) {
+            return true;
+        }
+        String value = snapshot.secrets().get(name);
+        if (value != null && !value.isEmpty()) {
+            return true;
+        }
+        Path current = snapshot.workspace().profileFile(snapshot.profile());
+        try (var files = Files.list(snapshot.workspace().config())) {
+            for (Path file : files.toList()) {
+                String fileName = file.getFileName().toString();
+                if (file.equals(current) || !fileName.endsWith(".yml") && !fileName.endsWith(".yaml")
+                        || !Files.isRegularFile(file)) {
+                    continue;
+                }
+                String text = Files.readString(file, StandardCharsets.UTF_8);
+                if (text.contains("${" + name + "}") || text.contains("${" + name + ":")) {
+                    return true;
+                }
+            }
+        } catch (IOException | UncheckedIOException e) {
+            return false;
+        }
+        return false;
     }
 
     private static String reference(String raw) {
@@ -662,11 +720,30 @@ public final class LabSettings {
                 throw ApiError.badRequest("runner.ui.lab.lineBreak", entry.getKey());
             }
         }
+        checkValues(plain, secret);
         for (Map.Entry<String, String> entry : all) {
             Resolved r = resolved.get(entry.getKey());
             if (ENVIRONMENT.equals(r.state())) {
                 throw ApiError.badRequest("runner.ui.lab.fromEnvironment", entry.getKey(), variableOf(snapshot, ref, entry.getKey()));
             }
+        }
+    }
+
+    /**
+     * Refuses a value with {@code ${} (the workbench writes the references itself, and a typed one would
+     * read another setting or secret) and an OAuth client name that cannot be a key of the settings.
+     */
+    private static void checkValues(Map<String, String> plain, Map<String, String> secret) {
+        List<Map.Entry<String, String>> all = new ArrayList<>(plain.entrySet());
+        all.addAll(secret.entrySet());
+        for (Map.Entry<String, String> entry : all) {
+            if (entry.getValue() != null && entry.getValue().contains("${")) {
+                throw ApiError.badRequest("runner.ui.lab.reference", entry.getKey());
+            }
+        }
+        String client = plain.get("oauth-client-name");
+        if (client != null && !client.isEmpty() && !NAME.matcher(client).matches()) {
+            throw ApiError.badRequest("runner.ui.lab.badClientName", client);
         }
     }
 
@@ -720,6 +797,7 @@ public final class LabSettings {
             }
         }
 
+        checkValues(plain, secret);
         Map<String, String> effective = new LinkedHashMap<>();
         for (FieldSpec spec : ref.fields()) {
             Resolved r = resolved.get(spec.key());

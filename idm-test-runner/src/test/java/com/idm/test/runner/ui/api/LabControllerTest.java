@@ -330,6 +330,98 @@ class LabControllerTest {
     }
 
     @Test
+    @DisplayName("Two profiles save their LDAP passwords independently, under different names")
+    void testProfilesKeepTheirOwnSecrets() throws IOException {
+        Path ws = openWorkspace(server);
+        String labPassword = "fake-lab-password-8";
+        String uatPassword = "fake-uat-password-9";
+
+        assertThat(put(server, "lab", "ldap", Map.of("url", "ldap://lab.test:389"), Map.of("password", labPassword))
+                .status()).isEqualTo(200);
+        assertThat(put(server, "uat", "ldap", Map.of("url", "ldap://uat.test:389"), Map.of("password", uatPassword))
+                .status()).isEqualTo(200);
+
+        String labProfile = Files.readString(ws.resolve("config/application-lab.yml"));
+        String uatProfile = Files.readString(ws.resolve("config/application-uat.yml"));
+        assertThat(labProfile).contains("password: ${IDM_TEST_LDAP_PASSWORD}");
+        assertThat(uatProfile).contains("password: ${IDM_TEST_UAT_LDAP_PASSWORD}");
+        Map<String, String> secrets = SecretsEnv.read(ws.resolve("secrets.env"));
+        // compared without printing the values
+        assertThat(labPassword.equals(secrets.get("IDM_TEST_LDAP_PASSWORD"))).isTrue();
+        assertThat(uatPassword.equals(secrets.get("IDM_TEST_UAT_LDAP_PASSWORD"))).isTrue();
+
+        // saving again in each profile keeps using its own name
+        put(server, "uat", "ldap", Map.of(), Map.of("password", "fake-uat-password-10"));
+        Map<String, String> again = SecretsEnv.read(ws.resolve("secrets.env"));
+        assertThat(labPassword.equals(again.get("IDM_TEST_LDAP_PASSWORD"))).isTrue();
+        assertThat("fake-uat-password-10".equals(again.get("IDM_TEST_UAT_LDAP_PASSWORD"))).isTrue();
+        assertThat(again).hasSize(2);
+    }
+
+    @Test
+    @DisplayName("A secret inherited from application.yml's ${X} is overridden in the profile file; X is left alone")
+    void testInheritedSecretOverridden() throws IOException {
+        Path ws = openWorkspace(server);
+        String sharedText = "idm:\n  test:\n    ldap:\n      url: ldap://shared.test:389\n"
+                + "      password: ${IDM_TEST_SHARED_LDAP}\n";
+        Files.writeString(ws.resolve("config/application.yml"), sharedText);
+        Files.writeString(ws.resolve("secrets.env"), "IDM_TEST_SHARED_LDAP=fake-shared-password-11\n");
+
+        Response saved = put(server, "lab", "ldap", Map.of(), Map.of("password", "fake-lab-password-12"));
+
+        assertThat(saved.status()).as(saved.body()).isEqualTo(200);
+        assertThat(Files.readString(ws.resolve("config/application.yml"))).isEqualTo(sharedText);
+        assertThat(Files.readString(ws.resolve("config/application-lab.yml")))
+                .contains("password: ${IDM_TEST_LAB_SHARED_LDAP}");
+        Map<String, String> secrets = SecretsEnv.read(ws.resolve("secrets.env"));
+        assertThat("fake-shared-password-11".equals(secrets.get("IDM_TEST_SHARED_LDAP"))).isTrue();
+        assertThat("fake-lab-password-12".equals(secrets.get("IDM_TEST_LAB_SHARED_LDAP"))).isTrue();
+    }
+
+    @Test
+    @DisplayName("A value with ${ and a malformed OAuth client name are refused; nothing is written")
+    void testReferencesAndClientNameRefused() throws IOException {
+        Path ws = openWorkspace(server);
+        List<String> before = snapshot(ws);
+
+        Response plain = put(server, "lab", "ldap", Map.of("url", "${IDM_TEST_OTHER}"), Map.of());
+        Response secret = put(server, "lab", "ldap", Map.of(), Map.of("password", "fake-${IDM_TEST_OTHER}"));
+        Response client = put(server, "lab", "rest:idm", Map.of("use-oauth", "true", "oauth-client-name", "a.b"), Map.of());
+        Response tested = UiHttp.send(server, "POST", "/api/lab/test", JSON.writeValueAsString(
+                Map.of("systemId", "ldap", "profile", "lab", "values", Map.of("url", "${IDM_TEST_OTHER}"),
+                        "secrets", Map.of())));
+
+        assertThat(JSON.readTree(plain.body()).get("key").asString()).isEqualTo("ui.lab.reference");
+        assertThat(JSON.readTree(secret.body()).get("key").asString()).isEqualTo("ui.lab.reference");
+        assertThat(secret.body()).doesNotContain("fake-");
+        assertThat(JSON.readTree(client.body()).get("key").asString()).isEqualTo("ui.lab.badClientName");
+        assertThat(tested.status()).isEqualTo(400);
+        assertThat(plain.status()).isEqualTo(400);
+        assertThat(client.status()).isEqualTo(400);
+        assertThat(snapshot(ws)).isEqualTo(before);
+    }
+
+    @Test
+    @DisplayName("A profile file that links to application.yml is refused before secrets.env changes")
+    void testProfileLinkedToApplicationYml() throws IOException {
+        Path ws = openWorkspace(server);
+        Path shared = ws.resolve("config/application.yml");
+        Files.writeString(shared, "idm:\n  test:\n    ldap:\n      url: ldap://shared.test:389\n");
+        Path profile = ws.resolve("config/application-lab.yml");
+        Files.delete(profile);
+        Files.createSymbolicLink(profile, Path.of("application.yml"));
+        List<String> before = snapshot(ws);
+
+        Response saved = put(server, "lab", "ldap", Map.of("user-dn", "cn=tester,o=data"),
+                Map.of("password", "fake-lab-password-13"));
+
+        assertThat(saved.status()).isEqualTo(400);
+        assertThat(JSON.readTree(saved.body()).get("key").asString()).isEqualTo("ui.lab.cannotEdit");
+        assertThat(Files.exists(ws.resolve("secrets.env"))).isFalse();
+        assertThat(snapshot(ws)).isEqualTo(before);
+    }
+
+    @Test
     @DisplayName("A profile file that is not valid YAML is reported, not overwritten")
     void testBrokenProfileFile() throws IOException {
         Path ws = openWorkspace(server);

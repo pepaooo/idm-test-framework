@@ -15,6 +15,12 @@
     <name>IdM Test Runner</name>
     <description>The idmtest command line: init, validate and run YAML scenarios from a workspace folder</description>
 
+    <properties>
+        <frontend-maven-plugin.version>2.0.2</frontend-maven-plugin.version>
+        <!-- Node LTS (Krypton) for building the front end only; end users need no Node -->
+        <node.version>v24.21.0</node.version>
+    </properties>
+
     <dependencies>
         <dependency>
             <groupId>com.idm.test</groupId>
@@ -96,6 +102,58 @@
             </resource>
         </resources>
         <plugins>
+            <!-- The workbench front end (src/main/frontend): Node goes into target/, the app into
+                 target/classes/static/ before the Java tests run, so the jar and the ZIPs serve it -->
+            <plugin>
+                <groupId>com.github.eirslett</groupId>
+                <artifactId>frontend-maven-plugin</artifactId>
+                <version>${frontend-maven-plugin.version}</version>
+                <configuration>
+                    <nodeVersion>${node.version}</nodeVersion>
+                    <installDirectory>${project.build.directory}</installDirectory>
+                    <workingDirectory>${project.basedir}/src/main/frontend</workingDirectory>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>install-node</id>
+                        <phase>generate-resources</phase>
+                        <goals>
+                            <goal>install-node-and-npm</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <id>npm-ci</id>
+                        <phase>generate-resources</phase>
+                        <goals>
+                            <goal>npm</goal>
+                        </goals>
+                        <configuration>
+                            <arguments>ci --ignore-scripts --no-audit --no-fund</arguments>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>npm-build</id>
+                        <phase>process-resources</phase>
+                        <goals>
+                            <goal>npm</goal>
+                        </goals>
+                        <configuration>
+                            <arguments>run build</arguments>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <!-- bound to the test phase: -DskipTests skips it -->
+                        <id>npm-test</id>
+                        <phase>test</phase>
+                        <goals>
+                            <goal>npm</goal>
+                        </goals>
+                        <configuration>
+                            <arguments>test</arguments>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>

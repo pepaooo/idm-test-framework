@@ -217,12 +217,46 @@ class UiServerTest {
     // --- api ----------------------------------------------------------------------------------
 
     @Test
-    @DisplayName("GET /api/health answers the runner version")
+    @DisplayName("GET /api/health answers the runner version, git, the UI's language and no workspace")
     void testHealth() throws Exception {
         Response health = get("/api/health", Map.of("Cookie", cookie()));
         assertThat(health.status()).isEqualTo(200);
         assertThat(health.header("Content-Type")).startsWith("application/json");
-        assertThat(health.body()).matches("\\{\"version\":\"[^\"]+\",\"git\":(true|false)}");
+        assertThat(health.body())
+                .matches("\\{\"version\":\"[^\"]+\",\"git\":(true|false),\"locale\":\"en\",\"workspace\":null}");
+    }
+
+    @Test
+    @DisplayName("GET /api/health answers --locale and the --workspace the page opens straight into")
+    void testHealthLocaleAndWorkspace() throws Exception {
+        java.nio.file.Path ws = java.nio.file.Path.of("/some/ws").toAbsolutePath();
+        try (UiServer other = UiCommand.start(0, Locale.of("es"), ws)) {
+            Response health = request("GET", "/api/health", "127.0.0.1:" + other.port(),
+                    Map.of("Cookie", UiHttp.cookie(other)), other.port());
+            assertThat(health.status()).isEqualTo(200);
+            assertThat(health.body()).contains("\"locale\":\"es\"")
+                    .contains("\"workspace\":" + tools.jackson.databind.json.JsonMapper.builder().build()
+                            .writeValueAsString(ws.toString()));
+        }
+    }
+
+    // --- front end ----------------------------------------------------------------------------
+
+    @Test
+    @DisplayName("/ serves the built workbench app, not a placeholder")
+    void testServesBuiltApp() throws Exception {
+        Response page = get("/", Map.of("Cookie", cookie()));
+        assertThat(page.status()).isEqualTo(200);
+        assertThat(page.header("Content-Type")).startsWith("text/html");
+        assertThat(page.body()).contains("<title>idmtest</title>", "<div id=\"root\"></div>")
+                .containsPattern("<script type=\"module\" crossorigin src=\"/assets/index-[^\"]+\\.js\"></script>")
+                .doesNotContain("Placeholder", "/src/main.tsx");
+        java.util.regex.Matcher script = java.util.regex.Pattern.compile("src=\"(/assets/index-[^\"]+\\.js)\"")
+                .matcher(page.body());
+        assertThat(script.find()).isTrue();
+        Response bundle = get(script.group(1), Map.of("Cookie", cookie()));
+        assertThat(bundle.status()).isEqualTo(200);
+        assertThat(bundle.header("Content-Type")).contains("javascript");
     }
 
     // --- command ------------------------------------------------------------------------------

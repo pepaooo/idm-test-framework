@@ -49,9 +49,11 @@ import com.idm.test.wiring.ScenarioNeeds;
 import com.idm.test.wiring.StepRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.SpringApplication;
 import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.context.event.ApplicationEnvironmentPreparedEvent;
 import org.springframework.boot.builder.SpringApplicationBuilder;
+import org.springframework.boot.context.logging.LoggingApplicationListener;
 import org.springframework.boot.context.properties.bind.Binder;
 import org.springframework.context.ApplicationListener;
 import org.springframework.context.ConfigurableApplicationContext;
@@ -72,6 +74,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
 
 /**
  * Runs a workspace's scenarios against the systems of a profile, telling a {@link RunEvents} as it
@@ -95,7 +98,8 @@ public final class RunService {
 
     private final Clock clock;
     private final boolean verbose;
-    private final Runnable afterLoggingConfigured;
+    /** Applies a run's logging settings in a process that has its own logging (the workbench); null for Spring Boot's. */
+    private final Consumer<Environment> hostLogging;
 
     /** A service on the system clock whose run log stays off the console. */
     public RunService() {
@@ -107,17 +111,19 @@ public final class RunService {
      * @param verbose whether the console echoes the (masked) run log, as {@code --verbose} does
      */
     public RunService(Clock clock, boolean verbose) {
-        this(clock, verbose, () -> { });
+        this(clock, verbose, null);
     }
 
     /**
-     * @param afterLoggingConfigured runs each time a run's Spring start has applied the profile's logging
-     *                               settings (the workbench holds its own loggers quiet there)
+     * @param hostLogging when not null, a run does not let Spring Boot initialise logging — that resets
+     *                    the process's Logback, under a host such as the workbench serving requests —
+     *                    and this applies the run's logging settings instead, from the run's environment,
+     *                    once it is prepared; null (the CLI) leaves logging to Spring Boot
      */
-    public RunService(Clock clock, boolean verbose, Runnable afterLoggingConfigured) {
+    public RunService(Clock clock, boolean verbose, Consumer<Environment> hostLogging) {
         this.clock = clock;
         this.verbose = verbose;
-        this.afterLoggingConfigured = afterLoggingConfigured;
+        this.hostLogging = hostLogging;
     }
 
     /**
@@ -193,14 +199,14 @@ public final class RunService {
     }
 
     /**
-     * {@link #afterLoggingConfigured} once Spring Boot has configured logging for a run: a class, not a
-     * lambda, so Spring sees the event type; unordered, so it comes after Boot's own logging listener.
+     * Hands the run's prepared environment to {@link #hostLogging}: a class, not a lambda, so Spring sees
+     * the event type.
      */
-    private ApplicationListener<ApplicationEnvironmentPreparedEvent> afterLogging() {
+    private ApplicationListener<ApplicationEnvironmentPreparedEvent> hostLoggingListener() {
         return new ApplicationListener<>() {
             @Override
             public void onApplicationEvent(ApplicationEnvironmentPreparedEvent event) {
-                afterLoggingConfigured.run();
+                hostLogging.accept(event.getEnvironment());
             }
         };
     }
@@ -301,7 +307,14 @@ public final class RunService {
                         .registerShutdownHook(false)
                         .properties(RunnerSettings.defaultProperties(workspace))
                         .initializers(new SecretsInitializer(secrets))
-                        .listeners(runLog.listener(), afterLogging());
+                        .listeners(runLog.listener());
+                if (hostLogging != null) {
+                    SpringApplication application = builder.application();
+                    List<ApplicationListener<?>> listeners = new ArrayList<>(application.getListeners());
+                    listeners.removeIf(LoggingApplicationListener.class::isInstance);
+                    listeners.add(hostLoggingListener());
+                    application.setListeners(listeners);
+                }
                 if (fakeEnvironment != null) {
                     builder.initializers(started -> started.getEnvironment().getPropertySources().replace(
                             StandardEnvironment.SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME,

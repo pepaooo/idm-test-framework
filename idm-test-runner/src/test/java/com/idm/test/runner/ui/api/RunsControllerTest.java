@@ -484,7 +484,11 @@ class RunsControllerTest {
             assertThat(done.all()).isEmpty();
         }
         // an id of another run, or none we wrote: the run from its start
-        for (String other : List.of("999999:3", "garbage")) {
+        // the same run and event numbers from an earlier workbench process: not this run's events
+        String id = events.get(2).id();
+        assertThat(id).matches("[0-9a-f]{16}\\.\\d+:2");
+        String otherProcess = (id.startsWith("0") ? "1" : "0") + id.substring(1);
+        for (String other : List.of(otherProcess, id.substring(id.indexOf('.') + 1), "999999:3", "garbage")) {
             try (RunEventStream fresh = new RunEventStream(server, other)) {
                 assertThat(names(fresh.all())).as(other).isEqualTo(names(events));
             }

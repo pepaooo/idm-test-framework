@@ -79,6 +79,27 @@ class RunSessionsTest {
     }
 
     @Test
+    @DisplayName("Should give the slot back and end the run for its subscribers when the after-run step throws an Error")
+    void testAfterRunError() throws Exception {
+        RunSessions sessions = new RunSessions((request, events, stop) -> {
+            events.runFolder("20261019-101530-lab");
+            return new RunOutcome("20261019-101530-lab", null, 0, 0, 0, 0, false, 0);
+        }, Map.of());
+        sessions.afterEachRun(() -> {
+            throw new Error("after-run broke");
+        });
+
+        sessions.start(ws, "lab", List.of(), Locale.ENGLISH);
+        waitIdle(sessions);
+
+        assertThat(sessions.latestFinished()).isTrue();
+        // the slot is free: the next run is not refused as busy
+        sessions.start(ws, "lab", List.of(), Locale.ENGLISH);
+        waitIdle(sessions);
+        assertThat(sessions.latestFinished()).isTrue();
+    }
+
+    @Test
     @DisplayName("Should keep at most 10 000 events, past that only the scenarios' and the run's")
     void testEventsBounded() throws Exception {
         RunSessions sessions = new RunSessions((request, events, stop) -> {

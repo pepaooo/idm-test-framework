@@ -17,9 +17,11 @@ import tools.jackson.databind.json.JsonMapper;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -68,6 +70,8 @@ public final class RunSessions {
     private final Map<String, String> environmentOverride;
     private final AtomicReference<Run> active = new AtomicReference<>();
     private final AtomicLong sequence = new AtomicLong();
+    /** Random per workbench process: an event id of an earlier process never matches this one's. */
+    private final String epoch = HexFormat.of().toHexDigits(new SecureRandom().nextLong());
     private volatile Run latest;
     private volatile Runnable afterRun = () -> { };
 
@@ -81,12 +85,15 @@ public final class RunSessions {
     }
 
     /**
-     * The workbench's: {@link RunService} on the system clock, its run log off the console, the
-     * workbench's own loggers held quiet whatever the run's profile sets ({@link UiLogging#quiet}).
+     * The workbench's: {@link RunService} on the system clock, its run log off the console, the run's
+     * logging levels applied by {@code logging} rather than by a Spring Boot logging initialisation
+     * (see {@link UiLogging}), and put back after each run.
      */
-    public static RunSessions withRunService(Map<String, String> environmentOverride) {
-        RunService service = new RunService(Clock.systemDefaultZone(), false, UiLogging::quiet);
-        return new RunSessions(service::run, environmentOverride);
+    public static RunSessions withRunService(Map<String, String> environmentOverride, UiLogging logging) {
+        RunService service = new RunService(Clock.systemDefaultZone(), false, logging::applyRunLevels);
+        RunSessions sessions = new RunSessions(service::run, environmentOverride);
+        sessions.afterEachRun(logging::restore);
+        return sessions;
     }
 
     /**
@@ -112,7 +119,7 @@ public final class RunSessions {
      * @throws BusyException when a run is active
      */
     public String start(Path workspace, String profile, List<String> scenarios, Locale locale) {
-        Run run = new Run(sequence.incrementAndGet(), locale);
+        Run run = new Run(epoch + "." + sequence.incrementAndGet(), locale);
         if (!active.compareAndSet(null, run)) {
             throw new BusyException();
         }
@@ -145,10 +152,12 @@ public final class RunSessions {
             try {
                 afterRun.run();
             } catch (RuntimeException e) {
-                LOG.warn("After the run, the workbench could not set its logging up again: {}", e.getClass().getName());
+                LOG.warn("After the run, the workbench could not put its logging back: {}", e.getClass().getName());
+            } finally {
+                // even when the after-run step throws an Error: the slot is free and subscribers are let go
+                active.compareAndSet(run, null);
+                run.finish();
             }
-            active.compareAndSet(run, null);
-            run.finish();
         }
     }
 
@@ -179,7 +188,7 @@ public final class RunSessions {
 
     /**
      * A subscriber of the current or most recent run: its events so far, then the new ones; completed
-     * after the run's last event. Event ids are {@code <run>:<index>}; with {@code lastEventId} (a
+     * after the run's last event. Event ids are {@code <process>.<run>:<index>} (the process part random, so ids of an earlier workbench never match); with {@code lastEventId} (a
      * reconnecting browser's {@code Last-Event-ID}) of this run, it starts after that event. Null —
      * nothing to send, ever — when the workbench has not run anything yet, or when {@code lastEventId}
      * is the ended run's last event.
@@ -200,6 +209,17 @@ public final class RunSessions {
         emitter.onError(e -> subscriber.close());
         Thread.ofVirtual().name("idmtest-ui-run-events").start(subscriber::send);
         return emitter;
+    }
+
+    /** Whether the current or most recent run has ended for its subscribers (tests). */
+    boolean latestFinished() {
+        Run run = latest;
+        if (run == null) {
+            return false;
+        }
+        synchronized (run) {
+            return run.finished;
+        }
     }
 
     /** The events kept of the current or most recent run (tests). */
@@ -256,7 +276,8 @@ public final class RunSessions {
     /** One run: its stop flag, id and events. */
     static final class Run implements RunEvents {
 
-        final long sequence;
+        /** {@code <process epoch>.<run number>}: the prefix of this run's event ids. */
+        final String sequence;
         final AtomicBoolean stop = new AtomicBoolean();
         final CountDownLatch idKnown = new CountDownLatch(1);
         final Locale locale;
@@ -264,7 +285,7 @@ public final class RunSessions {
         private final List<Event> events = new ArrayList<>();
         private boolean finished;
 
-        Run(long sequence, Locale locale) {
+        Run(String sequence, Locale locale) {
             this.sequence = sequence;
             this.locale = locale;
         }

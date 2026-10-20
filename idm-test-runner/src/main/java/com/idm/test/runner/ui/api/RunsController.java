@@ -47,7 +47,7 @@ import java.util.regex.Pattern;
  *       problem. {@code locale} ({@code en}, {@code es}) is the run's language, the UI's by default.</li>
  *   <li>{@code GET /api/runs/current/events}: Server-Sent Events of the current or most recent run —
  *       those so far, then the new ones; the stream ends after the run's last event; 204 before any run.
- *       Events have ids {@code <run>:<index>}; with {@code Last-Event-ID} of the same run the stream
+ *       Events have ids {@code <process>.<run>:<index>}; with {@code Last-Event-ID} of the same run and process the stream
  *       resumes after that event, and is 204 when the run has ended and nothing is newer.
  *       {@code runStarted}, {@code scenarioStarted}, {@code stepStarted}, {@code attempt},
  *       {@code stepFinished} (the masked step result as in {@code results.json}), {@code scenarioFinished}

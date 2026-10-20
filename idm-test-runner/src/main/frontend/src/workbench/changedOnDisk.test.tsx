@@ -153,6 +153,52 @@ describe('Changed on disk', () => {
     expect(editor).toHaveValue('name: saved and more\n');
   });
 
+  it('when the file cannot be read back after a 409, Load and Compare wait for a retry (never an empty file)', async () => {
+    const server = workbenchServer({ files: { [A]: 'name: A\n' } });
+    render(<Workbench workspace={WORKSPACE} lockWait={10} />);
+    const editor = await openA();
+    fireEvent.change(editor, { target: { value: 'name: mine\n' } });
+    server.changeOnDisk(A, 'name: theirs\n');
+    server.failNextReads(1);
+    await userEvent.keyboard('{Control>}s{/Control}');
+
+    const dialog = await screen.findByRole('dialog', { name: 'a.yaml changed on disk' });
+    expect(within(dialog).getByText(/could not be read/)).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'Load from disk' })).toBeDisabled();
+    expect(within(dialog).getByRole('button', { name: 'Compare' })).toBeDisabled();
+    expect(within(dialog).getByRole('button', { name: 'Keep mine' })).toBeEnabled();
+
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Try again' }));
+    await waitFor(() => expect(within(dialog).getByRole('button', { name: 'Load from disk' })).toBeEnabled());
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Compare' }));
+    expect(await within(dialog).findByLabelText('disk side')).toHaveTextContent('name: theirs');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Load from disk' }));
+    await waitFor(() => expect(editor).toHaveValue('name: theirs\n'));
+  });
+
+  it('a read-only tab never shows the choice: it reloads, and Take over stays usable', async () => {
+    const server = workbenchServer({ files: { [A]: 'name: A\n' } });
+    const a = render(<Workbench workspace={WORKSPACE} lockWait={10} />);
+    await userEvent.click(await within(a.container).findByRole('button', { name: 'a.yaml' }));
+    const editorA = await within(a.container).findByLabelText(`Edit ${A}`);
+    await waitFor(() => expect(editorA).not.toHaveAttribute('readonly'));
+    fireEvent.change(editorA, { target: { value: 'name: X\n' } });
+    await new Promise((resolve) => setTimeout(resolve, 500));
+
+    const b = render(<Workbench workspace={WORKSPACE} lockWait={10} />);
+    await userEvent.click(await within(b.container).findByRole('button', { name: 'Take over' }));
+    const editorB = await within(b.container).findByLabelText(`Edit ${A}`);
+    await waitFor(() => expect(editorB).toHaveValue('name: X\n'));
+    await waitFor(() => expect(within(b.container).getByRole('button', { name: 'Save' })).toBeEnabled());
+    await userEvent.click(within(b.container).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(server.disk.get(A)!.content).toBe('name: X\n'));
+
+    act(() => emitServerEvent(EVENTS, { type: 'changed', path: A }));
+    await waitFor(() => expect(editorA).toHaveValue('name: X\n'));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(within(a.container).getByRole('button', { name: 'Take over' })).toBeEnabled();
+  });
+
   it('a draft made over an older version of the file opens the choice instead of using either', async () => {
     const server = workbenchServer({ files: { [A]: 'name: A\n' } });
     server.changeOnDisk(A, 'name: changed meanwhile\n'); // now v2

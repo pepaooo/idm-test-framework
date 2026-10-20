@@ -65,10 +65,10 @@ export function Workbench({ workspace, warning, lockWait = 300, runPanel, lab, r
   }, [refreshTree]);
 
   // leaving the workspace: keep pending drafts, then stop the timers
-  useEffect(() => () => void store.flushDrafts().finally(() => store.dispose()), [store]);
+  useEffect(() => () => void store.flushNow().finally(() => store.dispose()), [store]);
 
   useEffect(() => {
-    const created = createTabLock(workspace.path, { wait: lockWait, onYield: () => store.flushDrafts() });
+    const created = createTabLock(workspace.path, { wait: lockWait, onYield: () => store.flushNow() });
     const sync = () => {
       setLockState(created.state());
       store.setReadOnly(created.state() !== 'holder');
@@ -107,7 +107,18 @@ export function Workbench({ workspace, warning, lockWait = 300, runPanel, lab, r
         void store.save().catch(() => undefined); // the reason shows in the tab or the dialog
       }
     };
-    const onPageHide = () => void store.flushDrafts();
+    // the lock flushes as it lets go (store.setReadOnly); this covers a page without BroadcastChannel
+    const onPageHide = () => void store.flushNow();
+    // a file dropped anywhere but the tree must not make the browser open it and leave the page
+    const onDrag = (event: DragEvent) => {
+      // the tree accepts files itself (it has already called preventDefault): leave those alone
+      if (!event.defaultPrevented && Array.from(event.dataTransfer?.types ?? []).includes('Files')) {
+        event.preventDefault();
+        if (event.type === 'dragover' && event.dataTransfer) {
+          event.dataTransfer.dropEffect = 'none';
+        }
+      }
+    };
     const onBeforeUnload = (event: BeforeUnloadEvent) => {
       // edits that cannot be kept as a draft (a plain-text password) would be lost: ask first
       if (store.getState().tabs.some((doc) => isDirty(doc) && doc.plainSecret)) {
@@ -117,7 +128,11 @@ export function Workbench({ workspace, warning, lockWait = 300, runPanel, lab, r
     window.addEventListener('keydown', onKey);
     window.addEventListener('pagehide', onPageHide);
     window.addEventListener('beforeunload', onBeforeUnload);
+    window.addEventListener('dragover', onDrag);
+    window.addEventListener('drop', onDrag);
     return () => {
+      window.removeEventListener('dragover', onDrag);
+      window.removeEventListener('drop', onDrag);
       window.removeEventListener('keydown', onKey);
       window.removeEventListener('pagehide', onPageHide);
       window.removeEventListener('beforeunload', onBeforeUnload);
@@ -228,14 +243,15 @@ export function Workbench({ workspace, warning, lockWait = 300, runPanel, lab, r
           </aside>
         </div>
       </div>
-      {conflicted?.conflict && (
+      {conflicted?.conflict && !state.readOnly && (
         <ChangedOnDiskDialog
           key={`${conflicted.path}:${conflicted.conflict.diskVersion}`}
           path={conflicted.path}
           mine={conflicted.content}
           disk={conflicted.conflict.diskContent}
           error={conflicted.error}
-          busy={conflicted.saving || state.readOnly}
+          busy={conflicted.saving}
+          onRetry={() => void store.retryDisk(conflicted.path)}
           onKeepMine={() => void store.keepMine(conflicted.path)}
           onLoadFromDisk={() => void store.loadFromDisk(conflicted.path)}
         />

@@ -97,5 +97,7 @@
   "ui.disk.overwrite": "Overwrite",
   "ui.disk.back": "Back",
   "ui.run.title": "Run",
-  "ui.run.placeholder": "The current or last run shows here, step by step."
+  "ui.run.placeholder": "The current or last run shows here, step by step.",
+  "ui.disk.unreadable": "The file on disk could not be read, so it cannot be loaded or compared yet.",
+  "ui.disk.retry": "Try again"
 }

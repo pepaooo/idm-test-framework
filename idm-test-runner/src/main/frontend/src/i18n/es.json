@@ -97,5 +97,7 @@
   "ui.disk.overwrite": "Sobrescribir",
   "ui.disk.back": "Volver",
   "ui.run.title": "Ejecución",
-  "ui.run.placeholder": "Aquí se muestra la ejecución actual o la última, paso a paso."
+  "ui.run.placeholder": "Aquí se muestra la ejecución actual o la última, paso a paso.",
+  "ui.disk.unreadable": "No se pudo leer el archivo del disco, así que aún no se puede cargar ni comparar.",
+  "ui.disk.retry": "Reintentar"
 }

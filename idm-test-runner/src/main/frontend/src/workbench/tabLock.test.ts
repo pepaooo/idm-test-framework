@@ -66,6 +66,63 @@ describe('tabLock', () => {
     expect(order).toEqual(['first kept its drafts', 'take over done']);
   });
 
+  it('a slow yield (longer than the answer timeout) is waited for: one holder, drafts written first', async () => {
+    const order: string[] = [];
+    const first = createTabLock(WS, {
+      wait: WAIT,
+      yieldTimeout: 40,
+      onYield: async () => {
+        await new Promise((resolve) => setTimeout(resolve, 150));
+        order.push('first kept its drafts');
+      },
+    });
+    open.push(first);
+    await waitFor(() => expect(first.state()).toBe('holder'));
+    const second = createTabLock(WS, { wait: WAIT, yieldTimeout: 40 });
+    open.push(second);
+    await waitFor(() => expect(second.state()).toBe('readOnly'));
+
+    const seen: string[] = [];
+    const sample = () => seen.push(`${first.state()}/${second.state()}`);
+    first.subscribe(sample);
+    second.subscribe(sample);
+    const taking = second.takeOver().then(() => order.push('take over done'));
+
+    // a third tab opening during the hand-over is not handed the lock by anyone
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    const third = tab();
+    await taking;
+    expect(order).toEqual(['first kept its drafts', 'take over done']);
+    expect(second.state()).toBe('holder');
+    await waitFor(() => expect(third.state()).toBe('readOnly'));
+    expect(first.state()).toBe('readOnly');
+    expect(seen).not.toContain('holder/holder');
+    await new Promise((resolve) => setTimeout(resolve, WAIT * 3));
+    expect([first.state(), second.state(), third.state()].filter((s) => s === 'holder')).toHaveLength(1);
+  });
+
+  it('a newcomer that claimed before the holder answered gives the lock back to the established holder', async () => {
+    const first = tab(WS, 'z-established'); // a larger id: the id tie-break alone would pick the newcomer
+    await waitFor(() => expect(first.state()).toBe('holder'));
+    const changes: string[] = [];
+    first.subscribe(() => changes.push(first.state()));
+    const hasty = createTabLock(WS, { wait: 0, id: 'a-newcomer' });
+    open.push(hasty);
+    await waitFor(() => expect(hasty.state()).toBe('readOnly'));
+    await new Promise((resolve) => setTimeout(resolve, WAIT * 2));
+    expect(first.state()).toBe('holder');
+    expect(changes).not.toContain('readOnly');
+  });
+
+  it('turns read-only before it says released on pagehide, so its listeners keep edits while it holds', async () => {
+    const first = tab();
+    await waitFor(() => expect(first.state()).toBe('holder'));
+    const states: string[] = [];
+    first.subscribe(() => states.push(first.state()));
+    window.dispatchEvent(new Event('pagehide'));
+    expect(states).toEqual(['probing']); // synchronously, inside pagehide
+  });
+
   it('when the holder tab closes, a read-only tab takes the workspace', async () => {
     const first = tab();
     await waitFor(() => expect(first.state()).toBe('holder'));

@@ -231,6 +231,85 @@ describe('Workbench editor', () => {
     expect(within(second.container).getByLabelText(`Edit ${A}`)).not.toHaveAttribute('readonly');
   });
 
+  it('keeps the edits as a draft when the page goes away (pagehide), before the draft delay', async () => {
+    workbenchServer({ files: FILES });
+    renderWorkbench();
+    const editor = await openA();
+    fireEvent.change(editor, { target: { value: 'name: closing the tab\n' } });
+    await new Promise((resolve) => setTimeout(resolve, 550)); // checked (400 ms), draft not yet due (1 s)
+    expect(await readDraft(WORKSPACE.path, A)).toBeNull();
+
+    window.dispatchEvent(new Event('pagehide'));
+
+    await waitFor(async () =>
+      expect(await readDraft(WORKSPACE.path, A)).toMatchObject({ content: 'name: closing the tab\n', baseVersion: 'v1' }),
+    );
+  });
+
+  it('take over and back, with edits on both sides: nothing is lost and the newest edits win', async () => {
+    const server = workbenchServer({ files: FILES });
+    const a = renderWorkbench();
+    await userEvent.click(await within(a.container).findByRole('button', { name: 'a.yaml' }));
+    const editorA = await within(a.container).findByLabelText(`Edit ${A}`);
+    await waitFor(() => expect(editorA).not.toHaveAttribute('readonly'));
+    fireEvent.change(editorA, { target: { value: 'name: X\n' } });
+    await new Promise((resolve) => setTimeout(resolve, 500)); // X checked
+
+    const b = render(<Workbench workspace={WORKSPACE} lockWait={10} />);
+    await userEvent.click(await within(b.container).findByRole('button', { name: 'Take over' }));
+    // B works from A's draft; A no longer holds edits of its own
+    const editorB = await within(b.container).findByLabelText(`Edit ${A}`);
+    await waitFor(() => expect(editorB).toHaveValue('name: X\n'));
+    await waitFor(() => expect(editorB).not.toHaveAttribute('readonly'));
+    await waitFor(() => expect(editorA).toHaveValue('name: A\n'));
+    expect(editorA).toHaveAttribute('readonly');
+
+    fireEvent.change(editorB, { target: { value: 'name: Y\n' } });
+    await new Promise((resolve) => setTimeout(resolve, 500)); // Y checked, draft not yet due
+
+    await userEvent.click(within(a.container).getByRole('button', { name: 'Take over' }));
+    await waitFor(() => expect(editorA).toHaveValue('name: Y\n'));
+    await waitFor(() => expect(editorA).not.toHaveAttribute('readonly'));
+    await waitFor(() => expect(editorB).toHaveValue('name: A\n'));
+
+    await userEvent.click(within(a.container).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(server.disk.get(A)!.content).toBe('name: Y\n'));
+    expect(server.puts().map((p) => p.body)).toEqual([{ content: 'name: Y\n', version: 'v1' }]);
+  });
+
+  it('never keeps a draft when the check does not answer: it might hold a plain-text password', async () => {
+    workbenchServer({
+      files: FILES,
+      routes: { 'POST /api/validate': { status: 500, body: { key: 'ui.unexpected', message: 'down' } } },
+    });
+    renderWorkbench();
+    const editor = await openA();
+    fireEvent.change(editor, { target: { value: 'name: A\npassword: fake-not-real\n' } });
+    await new Promise((resolve) => setTimeout(resolve, 1300)); // past the check and the draft delay
+    expect(await readDraft(WORKSPACE.path, A)).toBeNull();
+
+    window.dispatchEvent(new Event('pagehide'));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(await readDraft(WORKSPACE.path, A)).toBeNull();
+  });
+
+  it('a file dropped outside the tree, or on the tree of a read-only tab, is not opened by the browser', async () => {
+    const server = workbenchServer({ files: FILES });
+    renderWorkbench();
+    await openA();
+    const files = [new File(['name: x\n'], 'x.yaml')];
+    expect(fireEvent.dragOver(screen.getByLabelText(`Edit ${A}`), { dataTransfer: { files, types: ['Files'] } })).toBe(false);
+    expect(fireEvent.drop(screen.getByLabelText(`Edit ${A}`), { dataTransfer: { files, types: ['Files'] } })).toBe(false);
+    expect(fireEvent.drop(document.body, { dataTransfer: { files, types: ['Files'] } })).toBe(false);
+    expect(server.calls()).not.toContain('POST /api/files/add');
+
+    const second = render(<Workbench workspace={WORKSPACE} lockWait={10} />);
+    await within(second.container).findByText('This workspace is open in another tab');
+    const tree = within(second.container).getByRole('navigation', { name: 'Workspace files' });
+    expect(fireEvent.drop(tree, { dataTransfer: { files, types: ['Files'] } })).toBe(false);
+    expect(server.calls()).not.toContain('POST /api/files/add');
+  });
+
   it('gives the run panel openFile, markLines and saveActive', async () => {
     const server = workbenchServer({ files: FILES });
     let api: ReturnType<typeof useWorkbench> | null = null;

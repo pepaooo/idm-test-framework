@@ -8,9 +8,11 @@ const DiffView = lazy(() => import('./monaco/DiffView'));
 interface Props {
   path: string;
   mine: string;
-  disk: string;
+  /** null: the file on disk could not be read back; Load and Compare wait for a retry. */
+  disk: string | null;
   error: string | null;
   busy: boolean;
+  onRetry(): void;
   onKeepMine(): void;
   onLoadFromDisk(): void;
 }
@@ -20,7 +22,7 @@ interface Props {
  * draft made over an older version). Nothing is overwritten until the user chooses: Keep mine
  * (overwrites the disk, after a confirm), Load from disk (drops the edits), or Compare first.
  */
-export function ChangedOnDiskDialog({ path, mine, disk, error, busy, onKeepMine, onLoadFromDisk }: Props) {
+export function ChangedOnDiskDialog({ path, mine, disk, error, busy, onRetry, onKeepMine, onLoadFromDisk }: Props) {
   const [confirming, setConfirming] = useState(false);
   const [comparing, setComparing] = useState(false);
   const first = useRef<HTMLButtonElement>(null);
@@ -53,6 +55,14 @@ export function ChangedOnDiskDialog({ path, mine, disk, error, busy, onKeepMine,
             <Badge status="error" /> {error}
           </p>
         )}
+        {disk === null && (
+          <p role="alert" className="notice">
+            <Badge status="warn" /> {t('ui.disk.unreadable')}{' '}
+            <button type="button" className="secondary" onClick={onRetry}>
+              {t('ui.disk.retry')}
+            </button>
+          </p>
+        )}
         {confirming ? (
           <div className="disk-confirm">
             <p>
@@ -77,11 +87,17 @@ export function ChangedOnDiskDialog({ path, mine, disk, error, busy, onKeepMine,
           </div>
         ) : (
           <div className="actions">
-            <button ref={first} type="button" className="secondary" onClick={() => setComparing((value) => !value)}>
+            <button
+              ref={first}
+              type="button"
+              className="secondary"
+              disabled={disk === null}
+              onClick={() => setComparing((value) => !value)}
+            >
               {comparing ? t('ui.disk.hideCompare') : t('ui.disk.compare')}
             </button>
             <span className="spacer" />
-            <button type="button" className="secondary" disabled={busy} onClick={onLoadFromDisk}>
+            <button type="button" className="secondary" disabled={busy || disk === null} onClick={onLoadFromDisk}>
               {t('ui.disk.load')}
             </button>
             <button type="button" className="primary" disabled={busy} onClick={() => setConfirming(true)}>
@@ -89,7 +105,7 @@ export function ChangedOnDiskDialog({ path, mine, disk, error, busy, onKeepMine,
             </button>
           </div>
         )}
-        {comparing && (
+        {comparing && disk !== null && (
           <div className="diff">
             <div className="diff-heads">
               <span>{t('ui.disk.onDisk')}</span>

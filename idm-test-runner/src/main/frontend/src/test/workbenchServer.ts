@@ -59,6 +59,7 @@ export interface WorkbenchServerOptions {
  */
 export function workbenchServer({ files, validate, routes = {} }: WorkbenchServerOptions) {
   let counter = 1;
+  let failReads = 0;
   const disk = new Map(Object.entries(files).map(([path, content]) => [path, { content, version: 'v1' }]));
   const server = fakeServer({
     'GET /api/files/tree': () => ({ body: treeOf([...disk.keys(), 'secrets.env']) }),
@@ -66,6 +67,10 @@ export function workbenchServer({ files, validate, routes = {} }: WorkbenchServe
       const path = param(request.url, 'path');
       if (path.endsWith('secrets.env')) {
         return { status: 403, body: { key: 'runner.ui.file.secrets', message: 'secrets.env is not opened' } };
+      }
+      if (failReads > 0) {
+        failReads -= 1;
+        return { status: 500, body: { key: 'runner.ui.file.readFailed', message: `could not read ${path}` } };
       }
       const file = disk.get(path);
       return file
@@ -100,6 +105,10 @@ export function workbenchServer({ files, validate, routes = {} }: WorkbenchServe
     changeOnDisk(path: string, content: string) {
       counter += 1;
       disk.set(path, { content, version: `v${counter}` });
+    },
+    /** The next `count` file reads answer 500. */
+    failNextReads(count: number) {
+      failReads = count;
     },
     puts: () => server.sent.filter((r) => r.method === 'PUT'),
     validations: () => server.sent.filter((r) => r.url === '/api/validate'),

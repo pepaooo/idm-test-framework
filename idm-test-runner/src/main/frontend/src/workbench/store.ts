@@ -3,9 +3,12 @@ import { t } from '../i18n';
 import { deleteDraft, listDrafts, readDraft, writeDraft, type Draft } from './drafts';
 import { isSecretsFile, isValidatable, PLAIN_SECRET, type EditorFocus, type LineMark, type Problem } from './types';
 
-/** The file on disk when it differs from what the tab was loaded from. */
+/**
+ * The file on disk when it differs from what the tab was loaded from. `diskContent` is null when
+ * the file could not be read back (after a 409): then only Keep mine, or a retry, is offered.
+ */
 export interface Conflict {
-  diskContent: string;
+  diskContent: string | null;
   diskVersion: string;
 }
 
@@ -57,6 +60,8 @@ interface FileContent {
 export interface StoreOptions {
   validateDelay?: number;
   draftDelay?: number;
+  /** How soon a validation that got no answer is tried again (ms). */
+  retryDelay?: number;
 }
 
 const filePath = (path: string) => withQuery('/api/files', { path });
@@ -80,6 +85,7 @@ export class WorkbenchStore {
   private readonly listeners = new Set<() => void>();
   private readonly validateDelay: number;
   private readonly draftDelay: number;
+  private readonly retryDelay: number;
   private readonly validateTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly draftTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly draftWanted = new Set<string>();
@@ -92,6 +98,7 @@ export class WorkbenchStore {
     this.workspace = workspace;
     this.validateDelay = options.validateDelay ?? 400;
     this.draftDelay = options.draftDelay ?? 1000;
+    this.retryDelay = options.retryDelay ?? 3000;
   }
 
   subscribe = (listener: () => void): (() => void) => {
@@ -126,20 +133,47 @@ export class WorkbenchStore {
     }
   }
 
+  /**
+   * Read-only (another tab holds the workspace, or this page is going away): first keeps every
+   * tab's edits as drafts — the writes start synchronously, so this works inside `pagehide` — then
+   * puts the tabs back to the disk text, so in-memory edits never outlive the lock (the holder works
+   * from the drafts). Editable again: the stored drafts win over what the tabs show.
+   */
   setReadOnly(readOnly: boolean): void {
     const was = this.state.readOnly;
     if (was === readOnly) {
       return;
     }
     if (readOnly) {
-      this.validateTimers.forEach((timer) => clearTimeout(timer));
-      this.validateTimers.clear();
+      this.lastFlush = this.flushNow();
+      [...this.state.tabs.map((tab) => tab.path)].forEach((path) => this.clearTimers(path));
+      const tabs = this.state.tabs.map((tab) => {
+        if (!tab.loaded || (!isDirty(tab) && !tab.conflict)) {
+          return tab;
+        }
+        const disk = tab.conflict?.diskContent ?? null;
+        return {
+          ...tab,
+          content: disk ?? tab.diskContent,
+          diskContent: disk ?? tab.diskContent,
+          version: disk !== null && tab.conflict ? tab.conflict.diskVersion : tab.version,
+          conflict: null,
+          validated: null,
+          problems: [],
+          plainSecret: false,
+        };
+      });
+      const reset = tabs.filter((tab, i) => tab !== this.state.tabs[i]).map((tab) => tab.path);
+      this.set({ tabs, readOnly });
+      reset.forEach((path) => void this.validate(path));
+      return;
     }
     this.set({ readOnly });
-    if (!readOnly) {
-      void this.restoreDrafts();
-    }
+    void this.restoreDrafts();
   }
+
+  /** The draft writes started when this tab last became read-only. */
+  lastFlush: Promise<void> = Promise.resolve();
 
   activate(path: string): void {
     if (this.doc(path)) {
@@ -204,23 +238,31 @@ export class WorkbenchStore {
     void this.validate(path);
   }
 
-  /** A draft over the loaded file: same base → the edits, marked unsaved; another base → the choice. */
+  /**
+   * A draft over the loaded file — it wins over what the tab shows: same base → the edits, marked
+   * unsaved; another base → the choice (the tab keeps the draft's base version, so a save is refused
+   * until the user chooses).
+   */
   private async applyDraft(path: string, draft: Draft): Promise<void> {
     const doc = this.doc(path);
-    if (!doc || !doc.loaded || isDirty(doc)) {
+    if (!doc || !doc.loaded) {
       return;
     }
     if (draft.content === doc.diskContent) {
+      this.update(path, (current) => ({ content: current.diskContent, conflict: null, validated: null }));
       await deleteDraft(this.workspace, path);
       return;
     }
-    this.update(path, (current) => ({
-      content: draft.content,
-      conflict:
-        draft.baseVersion === current.version
-          ? null
-          : { diskContent: current.diskContent, diskVersion: current.version },
-    }));
+    this.update(path, (current) =>
+      draft.baseVersion === current.version
+        ? { content: draft.content, conflict: null, validated: null }
+        : {
+            content: draft.content,
+            version: draft.baseVersion,
+            conflict: { diskContent: current.diskContent, diskVersion: current.version },
+            validated: null,
+          },
+    );
   }
 
   /** Opens every file of this workspace with a draft (after a reload, or after taking over). */
@@ -234,7 +276,7 @@ export class WorkbenchStore {
       const doc = this.doc(path);
       if (!doc) {
         await this.open(path, !this.state.active);
-      } else if (doc.loaded && !isDirty(doc)) {
+      } else if (doc.loaded) {
         const draft = await readDraft(this.workspace, path);
         if (draft) {
           await this.applyDraft(path, draft);
@@ -270,14 +312,14 @@ export class WorkbenchStore {
     this.scheduleDraft(path);
   }
 
-  private scheduleValidate(path: string) {
+  private scheduleValidate(path: string, delay = this.validateDelay) {
     clearTimeout(this.validateTimers.get(path));
     this.validateTimers.set(
       path,
       setTimeout(() => {
         this.validateTimers.delete(path);
         void this.validate(path);
-      }, this.validateDelay),
+      }, delay),
     );
   }
 
@@ -304,13 +346,16 @@ export class WorkbenchStore {
     if (this.validationSeq.get(path) !== seq || !this.doc(path)) {
       return;
     }
-    if (problems) {
-      const plainSecret = problems.some((problem) => problem.key === PLAIN_SECRET);
-      this.update(path, () => ({ problems, plainSecret, validated: content }));
-    } else {
-      // the check did not answer: keep what was known, so drafts are not held back
-      this.update(path, () => ({ validated: content }));
+    if (!problems) {
+      // the check did not answer: whether this text holds a plain password is unknown, so it is
+      // not kept as a draft until a check says it is clean; try again shortly
+      if (this.doc(path)?.content === content) {
+        this.scheduleValidate(path, this.retryDelay);
+      }
+      return;
     }
+    const plainSecret = problems.some((problem) => problem.key === PLAIN_SECRET);
+    this.update(path, () => ({ problems, plainSecret, validated: content }));
     await this.afterValidation(path);
   }
 
@@ -363,24 +408,38 @@ export class WorkbenchStore {
     await writeDraft(this.workspace, path, { content: doc.content, baseVersion: doc.version, savedAt: Date.now() });
   }
 
-  /** Writes every pending draft now (before yielding to another tab, or when the page goes away). */
-  async flushDrafts(): Promise<void> {
+  /**
+   * Keeps every tab's edits as drafts now (the page is going away, or another tab takes over). All
+   * writes start before this returns — `pagehide` gives no time to await — and the promise says
+   * when they are done. A tab's newest text that a check found clean is kept: its current text when
+   * that was checked, else the last checked one (text not yet checked may hold a plain password).
+   * Read-only tabs have nothing to keep.
+   */
+  flushNow(): Promise<void> {
+    if (this.state.readOnly) {
+      return Promise.resolve();
+    }
+    const writes: Promise<void>[] = [];
     for (const doc of this.state.tabs) {
-      if (!this.draftTimers.has(doc.path) && !this.draftWanted.has(doc.path)) {
-        continue;
-      }
+      const pending = this.draftTimers.has(doc.path) || this.draftWanted.has(doc.path);
       clearTimeout(this.draftTimers.get(doc.path));
       this.draftTimers.delete(doc.path);
-      const current = this.doc(doc.path);
-      if (current && current.validated !== current.content) {
-        clearTimeout(this.validateTimers.get(doc.path));
-        this.validateTimers.delete(doc.path);
-        this.draftWanted.add(doc.path);
-        await this.validate(doc.path);
-      } else {
-        await this.writeDraftNow(doc.path);
+      this.draftWanted.delete(doc.path);
+      if (!doc.loaded || !pending) {
+        continue;
+      }
+      if (!isDirty(doc)) {
+        writes.push(deleteDraft(this.workspace, doc.path));
+        continue;
+      }
+      const safe = isValidatable(doc.path) ? doc.validated : doc.content;
+      if (doc.plainSecret && isValidatable(doc.path)) {
+        writes.push(deleteDraft(this.workspace, doc.path));
+      } else if (safe !== null && safe !== doc.diskContent) {
+        writes.push(writeDraft(this.workspace, doc.path, { content: safe, baseVersion: doc.version, savedAt: Date.now() }));
       }
     }
+    return Promise.all(writes).then(() => undefined);
   }
 
   /** Saves `path` (the active tab by default) over the version last read or saved. */
@@ -433,14 +492,33 @@ export class WorkbenchStore {
     }
   }
 
-  /** What is on disk now (after a 409: the 409's currentVersion when the file cannot be read). */
+  /**
+   * What is on disk now. When it cannot be read (after a 409), the content is unknown (null) and
+   * the version is the 409's currentVersion: Keep mine still works, Load and Compare wait for
+   * {@link retryDisk}.
+   */
   private async readDisk(path: string, conflict?: ApiProblem): Promise<Conflict> {
     try {
       const disk = await api.get<FileContent>(filePath(path));
       return { diskContent: disk.content, diskVersion: disk.version };
     } catch {
       const current = (conflict?.data as { currentVersion?: string } | undefined)?.currentVersion ?? '';
-      return { diskContent: '', diskVersion: current };
+      return { diskContent: null, diskVersion: current };
+    }
+  }
+
+  /** Reads the disk side of a conflict again (it could not be read before). */
+  async retryDisk(path: string): Promise<void> {
+    const doc = this.doc(path);
+    if (!doc?.conflict) {
+      return;
+    }
+    const current = doc.conflict.diskVersion;
+    try {
+      const disk = await api.get<FileContent>(filePath(path));
+      this.update(path, () => ({ conflict: { diskContent: disk.content, diskVersion: disk.version }, error: null }));
+    } catch (e) {
+      this.update(path, () => ({ conflict: { diskContent: null, diskVersion: current }, error: messageOf(e) }));
     }
   }
 
@@ -460,12 +538,19 @@ export class WorkbenchStore {
   /** Load from disk: drops the edits (and their draft) for the file as it is on disk. */
   async loadFromDisk(path: string): Promise<void> {
     const doc = this.doc(path);
-    if (!doc?.conflict) {
+    if (!doc?.conflict || doc.conflict.diskContent === null) {
       return;
     }
     const { diskContent, diskVersion } = doc.conflict;
     this.clearTimers(path);
-    this.update(path, () => ({ content: diskContent, diskContent, version: diskVersion, conflict: null, error: null }));
+    this.update(path, () => ({
+      content: diskContent,
+      diskContent,
+      version: diskVersion,
+      conflict: null,
+      error: null,
+      validated: null,
+    }));
     await deleteDraft(this.workspace, path);
     void this.validate(path);
   }
@@ -488,12 +573,19 @@ export class WorkbenchStore {
     if (!now || disk.version === now.version) {
       return; // our own save, or nothing new
     }
-    if (now.conflict) {
+    if (now.conflict && !this.state.readOnly) {
       this.update(path, () => ({ conflict: { diskContent: disk.content, diskVersion: disk.version } }));
-    } else if (disk.content === now.diskContent) {
+    } else if (disk.content === now.diskContent && !now.conflict) {
       this.update(path, () => ({ version: disk.version }));
-    } else if (!isDirty(now)) {
-      this.update(path, () => ({ content: disk.content, diskContent: disk.content, version: disk.version }));
+    } else if (!isDirty(now) || this.state.readOnly) {
+      // no edits here (a read-only tab never has any: they are the holder's drafts): reload quietly
+      this.update(path, () => ({
+        content: disk.content,
+        diskContent: disk.content,
+        version: disk.version,
+        conflict: null,
+        validated: null,
+      }));
       void this.validate(path);
     } else {
       this.update(path, () => ({ conflict: { diskContent: disk.content, diskVersion: disk.version } }));

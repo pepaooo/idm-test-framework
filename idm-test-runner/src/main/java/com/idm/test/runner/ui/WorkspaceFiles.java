@@ -431,6 +431,22 @@ public final class WorkspaceFiles {
     // --- paths ----------------------------------------------------------------------------------
 
     /**
+     * The part under {@code scenarios/} of the workspace-relative {@code path} — {@code scenarios} itself
+     * gives {@code ""} — after the same checks as every other path ({@link Problem#BAD_PATH}, also for a
+     * path outside {@code scenarios/}). Whether a scenario or folder is there is the caller's to check.
+     */
+    public String underScenarios(String path) {
+        resolve(path);
+        if (path.equals(SCENARIOS)) {
+            return "";
+        }
+        if (!path.startsWith(SCENARIOS + "/")) {
+            throw new FileException(Problem.BAD_PATH, path);
+        }
+        return path.substring(SCENARIOS.length() + 1);
+    }
+
+    /**
      * The real location of the workspace-relative {@code path}: symbolic links of the file and its
      * existing folders resolved, the part that does not exist yet appended as given.
      */

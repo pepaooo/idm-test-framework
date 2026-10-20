@@ -1,24 +1,20 @@
 package com.idm.test.runner.run;
 
-import com.github.tomakehurst.wiremock.WireMockServer;
 import com.idm.test.engine.result.CleanupResult;
 import com.idm.test.engine.result.ScenarioResult;
 import com.idm.test.engine.result.StepResult;
 import com.idm.test.engine.spi.Message;
 import com.idm.test.runner.ExitCodes;
-import com.idm.test.utils.ldap.EmbeddedLdapServer;
+import com.idm.test.runner.LabFixture;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.sql.Connection;
-import java.sql.DriverManager;
-import java.sql.Statement;
+import java.nio.file.StandardOpenOption;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -31,7 +27,13 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
 import static com.github.tomakehurst.wiremock.client.WireMock.okJson;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
-import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.options;
+import static com.idm.test.runner.LabFixture.BAD_STEP;
+import static com.idm.test.runner.LabFixture.DB_PASSWORD;
+import static com.idm.test.runner.LabFixture.LDAP_PASSWORD;
+import static com.idm.test.runner.LabFixture.REST_PASSWORD;
+import static com.idm.test.runner.LabFixture.WRONG_SN;
+import static com.idm.test.runner.LabFixture.corpusScenario;
+import static com.idm.test.runner.LabFixture.scenario;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
@@ -41,123 +43,37 @@ import static org.assertj.core.api.Assertions.assertThat;
 @DisplayName("Run service")
 class RunServiceTest {
 
-    private static final String BASE_DN = "dc=test,dc=com";
-    private static final String BIND_DN = "cn=admin,dc=test,dc=com";
-    private static final String LDAP_PASSWORD = "ldap-pw-7Hq2xV";
-    private static final String REST_PASSWORD = "rest-pw-9Zk4rT";
-    private static final String DB_PASSWORD = "db-pw-3Lm8Qe";
     private static final String TENANT_SECRET = "Zq9xEventProbe";
     private static final Clock CLOCK = Clock.fixed(Instant.parse("2026-10-16T10:15:30Z"), ZoneOffset.UTC);
     private static final String RUN_ID = "20261016-101530-lab";
 
-    private static final String WRONG_SN = """
-            name: Wrong surname
-            fixtures:
-              user:
-                generate: random-user
-            steps:
-              - ldap.create:
-                  dn: "cn=${user.userId},ou=users"
-                  as: createdDn
-                  attributes:
-                    cn: "${user.userId}"
-                    sn: "${user.lastName}"
-              - ldap.verify:
-                  dn: "cn=${user.userId},ou=users"
-                  wait: true
-                  expect:
-                    sn: "Not-${user.lastName}"
-            cleanup:
-              - ldap.delete:
-                  dn: "${createdDn}"
-            """;
-
-    private static final String BAD_STEP = """
-            name: Bad step
-            steps:
-              - no.such.step:
-                  dn: x
-            """;
-
-    private static EmbeddedLdapServer ldap;
-    private static WireMockServer wireMock;
+    private static LabFixture lab;
 
     @TempDir
     Path temp;
 
     @BeforeAll
     static void startSystems() throws Exception {
-        ldap = EmbeddedLdapServer.start(BASE_DN, BIND_DN, LDAP_PASSWORD, 0, "ldap-init.ldif");
-        wireMock = new WireMockServer(options().dynamicPort());
-        wireMock.start();
-        wireMock.stubFor(get(urlEqualTo("/tenant-" + TENANT_SECRET + "/users")).willReturn(okJson("[]")));
+        lab = LabFixture.start();
+        lab.wireMock().stubFor(get(urlEqualTo("/tenant-" + TENANT_SECRET + "/users")).willReturn(okJson("[]")));
     }
 
     @AfterAll
     static void stopSystems() {
-        if (wireMock != null) {
-            wireMock.stop();
-        }
-        if (ldap != null) {
-            ldap.close();
+        if (lab != null) {
+            lab.close();
         }
     }
 
     // --- fixtures -----------------------------------------------------------------------------
 
+    /** The lab's workspace, with the REST target {@code tenant} whose URL carries a secrets.env value. */
     private Path workspace() throws Exception {
-        Path ws = Files.createDirectories(temp.resolve("ws"));
-        Files.createDirectories(ws.resolve("scenarios"));
-        Files.createDirectories(ws.resolve("config"));
-        Files.writeString(ws.resolve("config/application-lab.yml"), """
-                idm:
-                  test:
-                    ldap:
-                      url: %s
-                      base-dn: %s
-                      user-dn: %s
-                      password: ${IDM_TEST_LDAP_PASSWORD}
-                    databases:
-                      test-db:
-                        jdbc-url: %s
-                        username: sa
-                        password: ${IDM_TEST_DB_PASSWORD}
-                    rest:
-                      idm:
-                        base-url: %s
-                        username: runner
-                        password: ${IDM_TEST_REST_PASSWORD}
-                      tenant:
-                        base-url: %s/tenant-${IDM_TEST_TENANT_KEY}
-                    executor:
-                      default-timeout-seconds: 2
-                      default-poll-interval-seconds: 1
-                """.formatted(ldap.getUrl(), BASE_DN, BIND_DN, database(), wireMock.baseUrl(), wireMock.baseUrl()));
-        Files.writeString(ws.resolve("secrets.env"), "IDM_TEST_LDAP_PASSWORD=" + LDAP_PASSWORD
-                + "\nIDM_TEST_REST_PASSWORD=" + REST_PASSWORD + "\nIDM_TEST_DB_PASSWORD=" + DB_PASSWORD
-                + "\nIDM_TEST_TENANT_KEY=" + TENANT_SECRET + "\n");
+        Path ws = lab.workspace(temp.resolve("ws"), LabFixture.database(temp.resolve("db")), null);
+        lab.tenantTarget(ws, "IDM_TEST_TENANT_KEY");
+        Files.writeString(ws.resolve("secrets.env"), "IDM_TEST_TENANT_KEY=" + TENANT_SECRET + "\n",
+                StandardOpenOption.APPEND);
         return ws;
-    }
-
-    private String database() throws Exception {
-        Path dir = Files.createDirectories(temp.resolve("db"));
-        String url = "jdbc:h2:file:" + dir.resolve("lab").toAbsolutePath().toString().replace('\\', '/');
-        try (Connection connection = DriverManager.getConnection(url, "sa", DB_PASSWORD);
-             Statement statement = connection.createStatement()) {
-            statement.execute("CREATE TABLE IF NOT EXISTS users (id INT PRIMARY KEY)");
-        }
-        return url;
-    }
-
-    private static void scenario(Path ws, String name, String content) throws Exception {
-        Files.writeString(ws.resolve("scenarios").resolve(name), content);
-    }
-
-    private static void corpusScenario(Path ws, String name) throws Exception {
-        try (InputStream in = RunServiceTest.class.getResourceAsStream("/scenarios/" + name)) {
-            assertThat(in).isNotNull();
-            Files.copy(in, ws.resolve("scenarios").resolve(name));
-        }
     }
 
     private static RunRequest request(Path ws) {
@@ -172,6 +88,7 @@ class RunServiceTest {
         final List<ScenarioResult> finished = new ArrayList<>();
         RunOutcome outcome;
         Runnable onAttempt = () -> { };
+        Runnable onScenarioFinished = () -> { };
 
         @Override
         public void runStarted(String runId, List<String> scenarios) {
@@ -213,6 +130,7 @@ class RunServiceTest {
             events.add("scenarioFinished " + result.sourceName() + " " + result.success());
             texts.add(result.toString());
             finished.add(result);
+            onScenarioFinished.run();
         }
 
         @Override
@@ -353,6 +271,113 @@ class RunServiceTest {
         assertThat(recorder.events).contains("attempt 0 1");
         assertThat(String.join("\n", recorder.texts.stream().map(String::valueOf).toList())).contains("tenant-****");
         assertNoSecret(recorder);
+    }
+
+    @Test
+    @DisplayName("Should keep every scenario in results.json and report.html when the listener throws at every event")
+    void testThrowingListenerKeepsEveryResult() throws Exception {
+        Path ws = workspace();
+        scenario(ws, "a-bad.yaml", BAD_STEP);
+        corpusScenario(ws, "provisioning-user-to-ldap.yaml");
+        scenario(ws, "wrong-sn.yaml", WRONG_SN);
+        RunEvents throwing = new RunEvents() {
+            @Override
+            public void runFolder(String runId) {
+                throw new IllegalStateException("listener gone");
+            }
+
+            @Override
+            public void runStarted(String runId, List<String> scenarios, Locale locale) {
+                throw new IllegalStateException("listener gone");
+            }
+
+            @Override
+            public void scenarioStarted(String name) {
+                throw new IllegalStateException("listener gone");
+            }
+
+            @Override
+            public void stepStarted(int index, String type, String description) {
+                throw new IllegalStateException("listener gone");
+            }
+
+            @Override
+            public void attempt(int index, int attempt, long elapsedMillis, String message) {
+                throw new IllegalStateException("listener gone");
+            }
+
+            @Override
+            public void stepFinished(StepResult result) {
+                throw new IllegalStateException("listener gone");
+            }
+
+            @Override
+            public void cleanupFinished(CleanupResult result) {
+                throw new IllegalStateException("listener gone");
+            }
+
+            @Override
+            public void scenarioFinished(ScenarioResult result, String failureLine) {
+                throw new IllegalStateException("listener gone");
+            }
+
+            @Override
+            public void runFinished(RunOutcome outcome) {
+                throw new IllegalStateException("listener gone");
+            }
+
+            @Override
+            public void refused(Message reason, String text, String stackTrace) {
+                throw new IllegalStateException("listener gone");
+            }
+
+            @Override
+            public void warning(Message warning, String text) {
+                throw new IllegalStateException("listener gone");
+            }
+        };
+
+        RunOutcome outcome = new RunService(CLOCK, false).run(request(ws), throwing, () -> false);
+
+        assertThat(outcome.exitCode()).isEqualTo(ExitCodes.FAILED);
+        assertThat(outcome.total()).isEqualTo(3);
+        assertThat(outcome.passed()).isEqualTo(1);
+        assertThat(outcome.findings()).isEqualTo(1);
+        assertThat(outcome.setupProblems()).isEqualTo(1);
+        for (String file : List.of("results.json", "report.html")) {
+            assertThat(Files.readString(outcome.folder().resolve(file)))
+                    .contains("a-bad.yaml", "provisioning-user-to-ldap.yaml", "wrong-sn.yaml");
+        }
+    }
+
+    @Test
+    @DisplayName("Should start no more scenarios after a stop between scenarios, each result written before it is told")
+    void testStopBetweenScenarios() throws Exception {
+        Path ws = workspace();
+        corpusScenario(ws, "provisioning-user-to-ldap.yaml");
+        scenario(ws, "wrong-sn.yaml", WRONG_SN);
+        Recorder recorder = new Recorder();
+        AtomicBoolean stop = new AtomicBoolean();
+        List<String> resultsWhenTold = new ArrayList<>();
+        recorder.onScenarioFinished = () -> {
+            try {
+                resultsWhenTold.add(Files.readString(ws.resolve("reports").resolve(RUN_ID).resolve("results.json")));
+            } catch (java.io.IOException e) {
+                resultsWhenTold.add("unreadable: " + e);
+            }
+            stop.set(true);
+        };
+
+        RunOutcome outcome = new RunService(CLOCK, false).run(request(ws), recorder, stop::get);
+
+        assertThat(outcome.stopped()).isTrue();
+        assertThat(outcome.total()).isEqualTo(2);
+        assertThat(outcome.passed()).isEqualTo(1);
+        assertThat(outcome.exitCode()).isEqualTo(ExitCodes.FAILED);
+        assertThat(recorder.events).contains("scenarioFinished provisioning-user-to-ldap.yaml true")
+                .doesNotContain("scenarioStarted wrong-sn.yaml");
+        assertThat(recorder.events.getLast()).isEqualTo("runFinished");
+        assertThat(resultsWhenTold).singleElement().asString().contains("provisioning-user-to-ldap.yaml");
     }
 
     private static void assertNoSecret(Recorder recorder) {

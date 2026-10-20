@@ -17,6 +17,7 @@ import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -98,6 +99,52 @@ public final class LastRuns {
         return outcomes;
     }
 
+    /**
+     * One run in a history.
+     *
+     * @param at      as {@link LastRun#at}
+     * @param profile as {@link LastRun#profile}
+     * @param result  for a scenario's history, its outcome in that run; for the workspace's, the run's
+     *                worst: {@code setup} when a scenario had a setup problem, else {@code finding} when
+     *                one had a finding, else {@code passed}
+     */
+    public record HistoryEntry(String runId, String at, String profile, String result) {
+    }
+
+    /**
+     * The newest {@code limit} runs, newest first: every run, or only those that ran {@code scenario}
+     * (a source name, the path under {@code scenarios/}) when it is not null.
+     */
+    public static List<HistoryEntry> history(Path workspace, String scenario, int limit) {
+        List<HistoryEntry> entries = new ArrayList<>();
+        for (Path file : resultFiles(workspace)) {
+            if (entries.size() >= limit) {
+                break;
+            }
+            Optional<List<ScenarioOutcome>> scenarios = scenarios(file);
+            if (scenarios.isEmpty()) {
+                continue;
+            }
+            String result;
+            if (scenario == null) {
+                Set<Outcome> outcomes = EnumSet.noneOf(Outcome.class);
+                scenarios.get().forEach(s -> outcomes.add(s.outcome()));
+                result = (outcomes.contains(Outcome.SETUP) ? Outcome.SETUP
+                        : outcomes.contains(Outcome.FINDING) ? Outcome.FINDING : Outcome.PASSED).json();
+            } else {
+                result = scenarios.get().stream().filter(s -> scenario.equals(s.sourceName())).findFirst()
+                        .map(s -> s.outcome().json()).orElse(null);
+                if (result == null) {
+                    continue;
+                }
+            }
+            String runId = file.getParent().getFileName().toString();
+            entries.add(new HistoryEntry(runId, modified(file).toInstant().toString(), profile(runId, workspace),
+                    result));
+        }
+        return entries;
+    }
+
     /** The run of one {@code results.json}, or empty when it cannot be read as one. */
     public static Optional<LastRun> read(Path resultsJson, Path workspace) {
         return scenarios(resultsJson).map(list -> {
@@ -133,7 +180,9 @@ public final class LastRuns {
         } catch (IOException | UncheckedIOException | SecurityException e) {
             return List.of();
         }
-        files.sort(Comparator.comparing(LastRuns::modified).reversed());
+        // The last written first; for the same time, the later run id (run ids sort by their start).
+        files.sort(Comparator.comparing(LastRuns::modified)
+                .thenComparing(file -> file.getParent().getFileName().toString()).reversed());
         return files;
     }
 

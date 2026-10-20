@@ -89,7 +89,7 @@ class LabController {
     }
 
     /** A profile name as {@code idmtest run} accepts it, and no more: letters, digits, '-', '_' and '.'. */
-    private static String profile(String profile) {
+    static String profile(String profile) {
         if (profile == null || profile.isBlank() || profile.contains("..")
                 || !profile.matches("[A-Za-z0-9_.-]+")) {
             throw ApiError.badRequest("runner.ui.lab.badProfile", String.valueOf(profile));

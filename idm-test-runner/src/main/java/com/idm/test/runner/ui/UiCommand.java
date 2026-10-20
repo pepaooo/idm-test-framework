@@ -80,7 +80,7 @@ public final class UiCommand {
 
     /**
      * As {@link #start(int, Locale, Path)}, with {@code environment} standing for the process's
-     * environment variables where the lab panel reads them (tests: no real variable is consulted).
+     * environment variables where the lab panel and runs read them (tests: no real variable is consulted).
      */
     public static UiServer start(int port, Locale locale, Path workspace, Map<String, String> environment) {
         return start(port, locale, workspace, () -> {
@@ -93,14 +93,16 @@ public final class UiCommand {
 
     /** As {@link #start(int, Locale, Path)}, with {@code git} for the workbench to run (tests). */
     static UiServer start(int port, Locale locale, Path workspace, Runnable onClosed, GitTool git) {
-        return start(port, locale, workspace, onClosed, git, System.getenv());
+        return start(port, locale, workspace, onClosed, git, null);
     }
 
+    /** @param environmentOverride stands in for the process's environment variables unless null */
     private static UiServer start(int port, Locale locale, Path workspace, Runnable onClosed, GitTool git,
-                                  Map<String, String> environment) {
+                                  Map<String, String> environmentOverride) {
         String token = newToken();
         UiSession session = new UiSession(token, locale, workspace);
-        LabSettings lab = new LabSettings(environment);
+        LabSettings lab = new LabSettings(environmentOverride == null ? System.getenv() : environmentOverride);
+        RunSessions runs = RunSessions.withRunService(environmentOverride);
         ConfigurableApplicationContext context = new SpringApplicationBuilder(UiServerConfig.class)
                 .web(WebApplicationType.SERVLET)
                 .bannerMode(Banner.Mode.OFF)
@@ -109,6 +111,7 @@ public final class UiCommand {
                     started.getBeanFactory().registerSingleton("uiSession", session);
                     started.getBeanFactory().registerSingleton("gitTool", git);
                     started.getBeanFactory().registerSingleton("labSettings", lab);
+                    started.getBeanFactory().registerSingleton("runSessions", runs);
                 })
                 .listeners(event -> {
                     if (event instanceof ContextClosedEvent) {

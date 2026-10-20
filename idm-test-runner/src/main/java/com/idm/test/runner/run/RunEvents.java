@@ -22,6 +22,13 @@ import java.util.Locale;
  */
 public interface RunEvents extends RunListener {
 
+    /**
+     * The run has its folder {@code reports/<runId>/}: the first thing heard of a run that gets one,
+     * before Spring starts (the workbench answers a run request with this id).
+     */
+    default void runFolder(String runId) {
+    }
+
     /** The run is about to run {@code scenarios}, in this order, in the folder {@code runId}. */
     default void runStarted(String runId, List<String> scenarios) {
     }

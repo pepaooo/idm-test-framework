@@ -113,7 +113,9 @@ public final class RunService {
      * during each one. Returns how it ended, which {@link RunEvents#runFinished} also hears when
      * the run got to the end.
      */
-    public RunOutcome run(RunRequest request, RunEvents events, BooleanSupplier stopRequested) {
+    public RunOutcome run(RunRequest request, RunEvents listener, BooleanSupplier stopRequested) {
+        // A listener that throws (a browser gone mid-run) never changes the run or what it writes.
+        RunEvents events = new Guarded(listener);
         Map<String, String> environment = request.environmentOverride();
         Map<String, String> variables = environment == null ? System.getenv() : environment;
         // One language for the run: the request's, then IDM_TEST_LOCALE, then -Didm.test.locale, then
@@ -150,6 +152,7 @@ public final class RunService {
         SecretMask mask = SecretMask.of(secrets, variables);
 
         Path folder = workspace.newRunFolder(request.profile(), clock);
+        events.runFolder(folder.getFileName().toString());
         Context run = new Context(workspace, request, secrets, folder, mask, events, stopRequested, variables);
         try (RunLog runLog = RunLog.start(folder.resolve("run.log"), verbose, mask)) {
             LOG.info("idmtest run: workspace {}, profile {}", workspace.root(), request.profile());
@@ -409,12 +412,13 @@ public final class RunService {
                     result = mask.result(runOne(engine, scenario, name, listener));
                     failureLine = result.success() ? null : mask.apply(result.failureSummary(locale));
                 }
-                events.scenarioFinished(result, failureLine);
                 LOG.info("{} {}", result.success() ? "passed" : "failed", name);
                 tally.count(result);
-                // Each result is masked like the events: the reports are the files people share.
+                // Each result is masked like the events: the reports are the files people share. Written
+                // before the listener hears it, so what it does then cannot keep a result out of them.
                 results.add(result);
                 RunRecorder.write(results, folder.resolve(RESULTS_FILE), folder.resolve(REPORT_FILE), runInfo);
+                events.scenarioFinished(result, failureLine);
                 if (result.stopped()) {
                     tally.stopped = true;
                     break;
@@ -530,6 +534,83 @@ public final class RunService {
             RunOutcome outcome(int exitCode) {
                 return new RunOutcome(runId, folder, total, passed, findings, setupProblems, stopped, exitCode);
             }
+        }
+    }
+
+    /**
+     * Hands every event on to a listener and drops what it throws (logging the exception's class
+     * only: its message could quote a value); the engine does the same for the step events.
+     */
+    private static final class Guarded implements RunEvents {
+
+        private final RunEvents target;
+
+        Guarded(RunEvents target) {
+            this.target = target;
+        }
+
+        private void safely(String event, Runnable call) {
+            try {
+                call.run();
+            } catch (RuntimeException e) {
+                LOG.warn("Run listener {} threw {} at {}; ignored", target.getClass().getName(),
+                        e.getClass().getName(), event);
+            }
+        }
+
+        @Override
+        public void runFolder(String runId) {
+            safely("runFolder", () -> target.runFolder(runId));
+        }
+
+        @Override
+        public void runStarted(String runId, List<String> scenarios, Locale locale) {
+            safely("runStarted", () -> target.runStarted(runId, scenarios, locale));
+        }
+
+        @Override
+        public void scenarioStarted(String name) {
+            safely("scenarioStarted", () -> target.scenarioStarted(name));
+        }
+
+        @Override
+        public void stepStarted(int index, String type, String description) {
+            safely("stepStarted", () -> target.stepStarted(index, type, description));
+        }
+
+        @Override
+        public void attempt(int index, int attempt, long elapsedMillis, String message) {
+            safely("attempt", () -> target.attempt(index, attempt, elapsedMillis, message));
+        }
+
+        @Override
+        public void stepFinished(StepResult result) {
+            safely("stepFinished", () -> target.stepFinished(result));
+        }
+
+        @Override
+        public void cleanupFinished(CleanupResult result) {
+            safely("cleanupFinished", () -> target.cleanupFinished(result));
+        }
+
+        @Override
+        public void scenarioFinished(ScenarioResult result, String failureLine) {
+            safely("scenarioFinished", () -> target.scenarioFinished(result, failureLine));
+        }
+
+        @Override
+        public void runFinished(RunOutcome outcome) {
+            safely("runFinished", () -> target.runFinished(outcome));
+        }
+
+        @Override
+        public void refused(Message reason, String text, String stackTrace) {
+            safely("refused", () -> target.refused(reason, text, stackTrace));
+        }
+
+        @Override
+        public void warning(Message warning, String text) {
+            safely("warning", () -> target.warning(warning, text));
         }
     }
 

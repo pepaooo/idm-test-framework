@@ -298,6 +298,10 @@ Spring Web
     org.springframework:spring-web  version 7.0.9
     Licence: Apache License, Version 2.0  <https://www.apache.org/licenses/LICENSE-2.0>
 
+Spring Web MVC
+    org.springframework:spring-webmvc  version 7.0.9
+    Licence: Apache License, Version 2.0  <https://www.apache.org/licenses/LICENSE-2.0>
+
 spring-boot
     org.springframework.boot:spring-boot  version 4.1.1
     Licence: Apache License, Version 2.0  <https://www.apache.org/licenses/LICENSE-2.0>
@@ -338,12 +342,28 @@ spring-boot-security-oauth2-client
     org.springframework.boot:spring-boot-security-oauth2-client  version 4.1.1
     Licence: Apache License, Version 2.0  <https://www.apache.org/licenses/LICENSE-2.0>
 
+spring-boot-servlet
+    org.springframework.boot:spring-boot-servlet  version 4.1.1
+    Licence: Apache License, Version 2.0  <https://www.apache.org/licenses/LICENSE-2.0>
+
 spring-boot-sql
     org.springframework.boot:spring-boot-sql  version 4.1.1
     Licence: Apache License, Version 2.0  <https://www.apache.org/licenses/LICENSE-2.0>
 
+spring-boot-tomcat
+    org.springframework.boot:spring-boot-tomcat  version 4.1.1
+    Licence: Apache License, Version 2.0  <https://www.apache.org/licenses/LICENSE-2.0>
+
 spring-boot-transaction
     org.springframework.boot:spring-boot-transaction  version 4.1.1
+    Licence: Apache License, Version 2.0  <https://www.apache.org/licenses/LICENSE-2.0>
+
+spring-boot-web-server
+    org.springframework.boot:spring-boot-web-server  version 4.1.1
+    Licence: Apache License, Version 2.0  <https://www.apache.org/licenses/LICENSE-2.0>
+
+spring-boot-webmvc
+    org.springframework.boot:spring-boot-webmvc  version 4.1.1
     Licence: Apache License, Version 2.0  <https://www.apache.org/licenses/LICENSE-2.0>
 
 spring-ldap-core
@@ -381,6 +401,18 @@ spring-security-web
 Stax2 API
     org.codehaus.woodstox:stax2-api  version 4.2.2
     Licence: The BSD 2-Clause License  <http://www.opensource.org/licenses/bsd-license.php>
+
+tomcat-embed-core
+    org.apache.tomcat.embed:tomcat-embed-core  version 11.0.24
+    Licence: Apache License, Version 2.0  <http://www.apache.org/licenses/LICENSE-2.0.txt>
+
+tomcat-embed-el
+    org.apache.tomcat.embed:tomcat-embed-el  version 11.0.24
+    Licence: Apache License, Version 2.0  <http://www.apache.org/licenses/LICENSE-2.0.txt>
+
+tomcat-embed-websocket
+    org.apache.tomcat.embed:tomcat-embed-websocket  version 11.0.24
+    Licence: Apache License, Version 2.0  <http://www.apache.org/licenses/LICENSE-2.0.txt>
 
 TXW2 Runtime
     org.glassfish.jaxb:txw2  version 4.0.9

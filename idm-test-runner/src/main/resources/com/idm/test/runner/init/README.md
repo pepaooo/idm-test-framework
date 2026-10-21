@@ -15,7 +15,12 @@ idmtest validate                     check the scenarios, connecting to nothing
 idmtest validate --profile lab       also check the settings of the lab profile
 idmtest run --profile lab            run the scenarios against the lab systems
 idmtest run --profile lab --scenario 'example*'    run only matching scenarios
+idmtest ui                           open the workbench in the browser (this computer only)
 ```
+
+`idmtest ui` does all of this in one browser screen: edit the scenarios, fill in and test the lab
+settings (it writes `config/application-<profile>.yml` and `secrets.env`), run, and read the findings.
+It prints its address and "Press Ctrl+C to stop"; press Ctrl+C to stop it.
 
 Open `reports/<run-id>/report.html` in a browser to see the result of a run.
 

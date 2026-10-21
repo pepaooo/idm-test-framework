@@ -47,6 +47,18 @@ idmtest run --profile lab
 Common options: `--workspace <dir>`, `--scenario <glob>`, `--locale en|es`, `--verbose` (for `run`).
 `idmtest --help` lists them all.
 
+## The workbench
+
+```bash
+idmtest ui
+```
+
+`ui` opens the workbench in your browser: create or open a workspace, edit scenarios, fill in and test
+the lab settings, run and read the findings, in one screen. It listens on this computer only
+(`127.0.0.1`) and prints its address with a session token, in case the browser does not open. Options:
+`--workspace <dir>` (open that workspace straight away), `--port <n>`, `--locale en|es`. Press Ctrl+C
+in the console to stop it. No Node or other software is needed: the workbench is inside the jar.
+
 Passwords and tokens go in `secrets.env` in the workspace (copy `secrets.env.example`), or in environment
 variables. Do not commit `secrets.env` to Git.
 

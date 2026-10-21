@@ -1,6 +1,8 @@
 # 0007 — An end-user runner, then a local web workbench
 
-**Status:** Accepted direction. Part 1 implemented (ITF-55); Parts 2 and 3 are not started. Each part has its own spec, plan and tickets.
+**Status:** Accepted direction. Part 1 implemented (ITF-55); Part 2 implemented (ITF-56, `idmtest ui`:
+[design](../../specs/2026-10-19-local-workbench-design.md), [guide](../../guides/workbench.md)); Part 3 is not
+started. Each part has its own spec, plan and tickets.
 
 **Recorded:** 2026-10-15, decided with jangulo (ITF-53).
 
@@ -55,6 +57,12 @@ Build it, in three ordered parts. Each part gets its own spec, plan and tickets.
 - Security from the first release: listen on the loopback address only; a random per-session access
   token; secrets shown masked and never written into scenario files or reports (ITF-23).
 - The UI uses the report language setting (ITF-46) and reuses its message catalogs.
+- *As built (ITF-56):* `idmtest ui [--workspace <dir>] [--port <n>] [--locale en|es]` listens on
+  `127.0.0.1` (the `Host` may be `127.0.0.1:<port>` or `localhost:<port>`); the token in the address it
+  opens becomes an `HttpOnly`, `SameSite=Strict` cookie per port. The front end is React, Vite and
+  Monaco with monaco-yaml, built by `frontend-maven-plugin`, which downloads Node itself, so developers
+  need no Node installed. Server messages use the ITF-46 catalogs; the UI's own texts are a front-end
+  catalog in English and Spanish.
 
 ### Part 3 — Collaboration
 
@@ -87,8 +95,9 @@ Build it, in three ordered parts. Each part gets its own spec, plan and tickets.
 
 - Part 1 adds a `main` application module and a workspace contract that later parts depend on; the
   JUnit path is unchanged.
-- Part 2 adds a JavaScript build (npm via `frontend-maven-plugin`) to the Maven build. Developers need
-  Node at build time; end users do not.
+- Part 2 adds a JavaScript build (npm via `frontend-maven-plugin`) to the Maven build. The build
+  downloads Node at build time (into the Maven repository, unpacked into `idm-test-runner/target/`);
+  end users do not need it.
 - The engine stays free of Spring and JUnit (ADR 0003); the runner and the web API are new
   composition points, like the JUnit adapter.
 - A local server that holds lab credentials makes loopback-only binding and a session token

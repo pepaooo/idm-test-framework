@@ -74,6 +74,22 @@ idmtest run --profile lab
 
 See the [runner guide](docs/guides/runner.md) for installing, settings and secrets, reports and drivers.
 
+Or do the whole job in the browser. `idmtest ui` starts the **workbench** on this computer only
+(`127.0.0.1`, behind a session token) and opens it: create or open a workspace, edit scenarios with
+autocomplete and live problems, fill in and test the lab connections, run, and read each failure as
+either a finding (amber: the lab answered, not as expected) or a setup problem (red: unreachable,
+credentials refused, scenario or settings to fix). It saves the same files `idmtest run` reads.
+
+```bash
+idmtest ui
+```
+
+*Screenshot, to be added: the main screen — the file tree with last-result badges on the left, the
+YAML editor with its Problems panel in the middle, and on the right the run panel with an open finding
+(expected vs found, the waiting history, evidence and the scenario's recent runs).*
+
+See the [workbench guide](docs/guides/workbench.md).
+
 ---
 
 ## Quick start
@@ -265,21 +281,21 @@ still leads the failure summary. See
 
 ## What exists today
 
-Verified on 2026-10-17, after ITF-46 (report and message i18n) and ITF-55 (the `idmtest` runner), with `./mvnw -B verify` (0 failures, errors or skips):
+Verified on 2026-10-20, after ITF-56 (the `idmtest ui` workbench), with `./mvnw -B verify` (0 failures or errors; the Java totals below, plus 181 front-end tests run by Vitest in the runner's build):
 
 | Module | Tests |
 |---|---|
-| idm-test-core | 34 |
+| idm-test-core | 37 |
 | idm-test-utils | 51 |
-| idm-test-engine | 589 |
-| idm-connector-ldap | 76 |
-| idm-connector-database | 24 |
-| idm-connector-rest | 66 |
+| idm-test-engine | 645 |
+| idm-connector-ldap | 77 |
+| idm-connector-database | 25 |
+| idm-connector-rest | 67 |
 | idm-connector-soap | 29 |
 | idm-test-wiring | 76 |
 | idm-test-scenarios | 96 |
-| idm-test-runner | 88 |
-| **Total** | **1129** |
+| idm-test-runner | 304 |
+| **Total** | **1407** |
 
 The scenarios module holds the Java workflow tests (provisioning, role assignment, modification,
 deprovisioning and multi-system flows), a corpus of 21 YAML scenarios converted from them, and the
@@ -344,6 +360,7 @@ Organised by how much you should trust it.
 - [Capability baseline](docs/architecture/capabilities.md) — implemented capabilities, planned work, and verification evidence
 - [Scenario authoring](docs/guides/scenario-authoring.md) — YAML and Java examples
 - [Running scenarios with `idmtest`](docs/guides/runner.md) — install, workspace, settings, reports
+- [The workbench](docs/guides/workbench.md) — `idmtest ui`: editing, the lab panel, runs, findings
 - [Architecture decisions](docs/architecture/decisions/README.md) — design choices and their rationale
 - Team presentation — [PowerPoint](docs/presentations/project-introduction.pptx), [PDF](docs/presentations/project-introduction.pdf), and [speaker notes](docs/presentations/project-introduction.md)
 

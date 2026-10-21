@@ -10,7 +10,8 @@ suite needs nothing else: no Docker, no external services.
 ```
 
 This starts an embedded UnboundID directory and a WireMock server on ephemeral ports, creates an
-H2 schema, and runs every module's tests: 1129 on 2026-10-17. Every test runs; none is skipped
+H2 schema, and runs every module's tests: 1407 Java tests on 2026-10-20, plus the workbench's
+181 front-end tests. Every test runs; none is skipped
 for a missing service. A connector the context cannot build fails the context, so a broken
 environment is red, never quietly green.
 
@@ -170,6 +171,51 @@ built; the default build and `./mvnw test` never run `jlink`.
 Nothing is published as a GitHub Release: to hand the ZIPs to users, download them from the run and
 attach them to a release, or share them another way. The launcher scripts are not signed; macOS users
 remove the quarantine flag once, as the [runner guide](../guides/runner.md) explains.
+
+## The workbench front end
+
+The workbench that `idmtest ui` serves is a React and TypeScript app in
+`idm-test-runner/src/main/frontend/`, built with Vite. You do not need Node installed: Maven's
+`frontend-maven-plugin` provides it.
+
+- **The first build downloads Node** (v24, about 50 MB) once into the local Maven repository
+  (`~/.m2/repository/com/github/eirslett/node/`) and unpacks it into `idm-test-runner/target/node/`
+  (again after each `clean`). The build needs network access: nodejs.org for Node (until it is in
+  `~/.m2`) and the npm registry for the packages (unless npm has them cached).
+- **Every build of `idm-test-runner`** then runs `npm ci` (the exact versions in `package-lock.json`,
+  into `src/main/frontend/node_modules/`, which Git ignores) and `npm run build` (type check, then the
+  bundle into `target/classes/static/`, so the jar and the ZIPs carry the app). The `test` phase also
+  runs the front-end tests with `npm test` (Vitest); `-DskipTests` skips them with the Java tests.
+- **End users need no Node**: the built app is inside the runner jar.
+
+To work on the front end without a full Maven build, use the Node that Maven installed. Put it on
+`PATH` (from the repository root):
+
+```bash
+export PATH="$PWD/idm-test-runner/target/node:$PATH"
+```
+
+Go to the front end:
+
+```bash
+cd idm-test-runner/src/main/frontend
+```
+
+Run its tests:
+
+```bash
+npm test
+```
+
+Build it into `idm-test-runner/target/classes/static/`:
+
+```bash
+npm run build
+```
+
+A jar built after that serves the new app, and so does `idmtest ui` started from the IDE with
+`target/classes` on the class path. The Java test `UiServerTest` checks that `/` serves the built
+`index.html`, so run a Maven build (or `npm run build`) before running the Java tests from an IDE.
 
 ## Reading the results
 

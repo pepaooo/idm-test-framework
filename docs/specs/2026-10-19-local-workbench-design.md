@@ -112,6 +112,11 @@ already have one). Connecting to the lab is part of those five minutes.
   secrets.env". A file with such a flagged literal is never stored as a browser draft (the user is told
   unsaved edits to it are not kept across a refresh). `config/*.yml` files can be opened in the editor;
   `secrets.env` cannot.
+  *Decided during implementation (controller ruling, ITF-56 Task 7):* the quoted advice is right only
+  for `config/*.yml`, whose `${…}` reads environment variables and secrets.env. A scenario's `${…}`
+  reaches only its fixtures and bindings, so in a scenario the warning reads "a password is written in
+  plain text — declare a fixture and reference it with `${…}` instead". Both keep the problem key
+  `ui.lint.plainSecret`.
 - **Problems panel** shows `ScenarioValidator` results for the open file as the user types (debounced),
   in red, with line links. The editor offers YAML autocomplete, hover help and inline errors from a
   JSON Schema of the step vocabulary (step types and their parameters, generated from the registered

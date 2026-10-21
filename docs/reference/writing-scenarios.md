@@ -990,10 +990,11 @@ rewritten after every scenario, so an interrupted run still has one.
 - **Header:** the runner, start time, duration, active profiles, the `-Dscenario` filter, and the
   endpoints the selected scenarios use. User names and passwords in URLs are removed, and
   credential-looking URL parameters are shown as `***`.
-- **Summary:** scenarios, passed, failed, time in scenarios (the sum of the scenario durations); Expand all, Collapse all, Only failed.
+- **Summary:** scenarios, passed, failed, findings, setup problems, time in scenarios (the sum of the scenario durations); Expand all, Collapse all, Only failed.
 - **Each scenario:** open when it failed. Each step shows its description, duration (attempts and
   time waited for `wait:` steps), message and parameters; cleanup entries follow with their
-  status. Parameter values under keys containing `password`, `passwd`, `pwd`, `secret`, `token`,
+  status. A failed step or cleanup entry carries a **Finding** (amber) or **Setup problem** (red)
+  badge; see *Findings and setup problems* below. Parameter values under keys containing `password`, `passwd`, `pwd`, `secret`, `token`,
   `authorization`, `credential`, `apikey`, `api_key`, `api-key` or `cookie` (matched anywhere in the
   key, case-insensitive) are shown as `***` in the report; the JSON keeps them as recorded.
   Masking is by parameter name only, so a secret written into a description, a message, or a
@@ -1038,8 +1039,32 @@ Each scenario record has:
 - its source file, status, duration and `description` (null when none)
 - every step: its type, its `description` (null when none), the **resolved** parameters
   (unredacted), success, message, and for a waited step the number of attempts and the time waited
+- on a failed step, `failureKind`: `FINDING` or `SETUP` (absent on a passing step)
+- on a step that waited, `waitHistory`: the attempts whose message changed (the first always), each
+  `{attempt, elapsedMillis, message}`, at most 50, messages cut at 300 characters
+- on `ldap.verify`, `db.verify`, `rest.verify` and `http.verify`, `checks`: one
+  `{name, expected, found, matched}` per comparison, matched ones included; `found` is null when the
+  value was absent, and a check under a secret-looking name shows `••••`
 - every cleanup entry: its type, its `description` (null when none), resolved parameters, status
-  (SUCCEEDED, FAILED or SKIPPED) and message
+  (SUCCEEDED, FAILED or SKIPPED), message, and `failureKind` when it failed
+- when the run was stopped during this scenario (the workbench's Stop): `stopped: true` and
+  `skippedCleanup`, the cleanup entries that did not run, SKIPPED, with the values they would have
+  used
+
+**Findings and setup problems.** Every failure is one or the other:
+- **Finding:** the system answered, but not as the scenario expects: a verify mismatch, an action
+  the system rejected, an HTTP error from the IdM, a SOAP fault. Failed cleanup entries are findings
+  too (something may be left in the lab). A finding is a fact about the lab, not a bug in the
+  scenario.
+- **Setup problem:** the step could not do its job: the system was unreachable (connection refused,
+  timeout before an answer, TLS), the credentials were refused, a parameter was malformed, or an
+  unexpected error happened. Fix the settings or the scenario.
+
+The rule comes from the connector's error type: `NETWORK_ERROR`, `TIMEOUT`,
+`AUTHENTICATION_ERROR` and `CONFIGURATION_ERROR` are setup problems; every other failure is a
+finding. A stopped scenario currently counts as a setup problem (ITF-63). `idmtest run` appends
+` · finding` or ` · setup problem` to a failed scenario's line, and the
+[workbench](../guides/workbench.md) shows findings in amber and setup problems in red.
 
 A failing scenario's summary starts with the file and the step:
 

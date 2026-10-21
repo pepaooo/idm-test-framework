@@ -222,7 +222,10 @@ A jar built after that serves the new app, and so does `idmtest ui` started from
 - Surefire reports: each module's `target/surefire-reports/`.
 - YAML results: `idm-test-scenarios/target/scenario-results.json` for the embedded run, or
   `idm-test-scenarios/target/real-environment-results.json` for container and real-lab runs. Each record has the scenario's status,
-  duration, every step with its resolved parameters, retry attempts, and every `cleanup:` entry.
+  duration, every step with its resolved parameters, retry attempts, and every `cleanup:` entry;
+  a failed step or cleanup entry also has `failureKind` (`FINDING` or `SETUP`), verify steps have
+  `checks` (expected vs found) and waited steps a `waitHistory`. Field list and the finding/setup
+  rule: [writing-scenarios.md, section 9](writing-scenarios.md#9-results).
   Parameters are not redacted; keep secrets in target settings, not in scenario YAML.
 - Each run also writes an HTML report beside its results file, e.g. `idm-test-scenarios/target/real-environment-report.html`; see the authoring reference, section 9.
 - The report is in English unless you ask for Spanish; the setting is read once per run:

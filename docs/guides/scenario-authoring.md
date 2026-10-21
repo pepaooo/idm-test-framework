@@ -130,6 +130,8 @@ example.yaml, step 2 (ldap.verify): ldap.verify failed for cn=example,ou=users: 
 
 For a timed-out assertion, the summary also reports attempts and waited milliseconds. Read the underlying message to distinguish a missing entry, mismatched attribute, or connection error. Invalid files produce failures with no executed steps; a normal step failure stops later steps.
 
+Each failed step is also labelled a **finding** (the system answered, not as expected: look at the lab) or a **setup problem** (unreachable, credentials refused, malformed parameter: fix the settings or the scenario), in the JSON (`failureKind`), the HTML report and the workbench. Verify steps record expected versus found per check (`checks`), and waited steps record how the observed value changed (`waitHistory`). See [Results in the authoring reference](../reference/writing-scenarios.md#9-results).
+
 > **Superseded by ITF-19** (docs/specs/2026-09-24-explicit-cleanup-design.md): steps no longer register undos; teardown is the author's cleanup: block, and a FAILED cleanup entry fails the scenario.
 
 The engine no longer infers teardown. A scenario writes its own top-level `cleanup:` block: a list

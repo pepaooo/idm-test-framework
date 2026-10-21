@@ -213,12 +213,12 @@ public class RestAuthenticator {
     static ErrorType tokenFailureType(Throwable failure) {
         // Timeout check runs first: a SocketTimeoutException wrapped in a ResourceAccessException
         // must classify as TIMEOUT, not NETWORK_ERROR from the second loop below.
-        for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
+        for (Throwable cause : IdmRestConnector.causeChain(failure)) {
             if (cause instanceof HttpTimeoutException || cause instanceof SocketTimeoutException) {
                 return ErrorType.TIMEOUT;
             }
         }
-        for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
+        for (Throwable cause : IdmRestConnector.causeChain(failure)) {
             if (cause instanceof HttpServerErrorException) {
                 return ErrorType.SERVER_ERROR;
             }

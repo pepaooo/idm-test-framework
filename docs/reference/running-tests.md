@@ -214,7 +214,8 @@ npm run build
 ```
 
 A jar built after that serves the new app, and so does `idmtest ui` started from the IDE with
-`target/classes` on the class path. The Java test `UiServerTest` checks that `/` serves the built
+`target/classes` on the class path. Starting the workbench from the IDE, from the jar or with
+`spring-boot:run`: [The workbench, From a clone of the repository](../guides/workbench.md#from-a-clone-of-the-repository-no-zip). The Java test `UiServerTest` checks that `/` serves the built
 `index.html`, so run a Maven build (or `npm run build`) before running the Java tests from an IDE.
 
 ## Reading the results

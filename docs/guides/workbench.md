@@ -42,6 +42,47 @@ When the port is taken, the console says `cannot start the workbench: Port <n> i
 On a machine without a desktop session nothing opens: open the printed address yourself, in a browser
 on the same computer.
 
+### From a clone of the repository (no ZIP)
+
+`idmtest` only launches the runner's main class, `com.idm.test.runner.IdmTest`, with `ui` as its first
+argument. In a clone you can start the same workbench three ways; the options above work in all of them.
+
+**From the IDE.** Create a run configuration for the main class `com.idm.test.runner.IdmTest` in the
+`idm-test-runner` module, with program arguments such as `ui --workspace /path/to/my-tests`. Run or
+debug it like any Java application; the IDE's stop button stops the workbench. The IDE does not build
+the front end, so build it once first (a Maven build of `idm-test-runner`, or `npm run build`; see
+[Running tests](../reference/running-tests.md#the-workbench-front-end)).
+
+**From the built jar.** Build it, front end included (needs Java 25):
+
+```bash
+./mvnw package -pl idm-test-runner -am -DskipTests
+```
+
+Then start the workbench from it:
+
+```bash
+java -jar idm-test-runner/target/idm-test-runner-1.0.0-SNAPSHOT.jar ui --workspace /path/to/my-tests
+```
+
+Extra JDBC drivers go on the class path with `-Dloader.path=<folder>`, as for the jar's other commands.
+
+**Through Maven.** Install the modules once, so the runner's dependencies come from your local
+repository:
+
+```bash
+./mvnw install -DskipTests
+```
+
+Then start it with the Spring Boot plugin:
+
+```bash
+./mvnw -pl idm-test-runner spring-boot:run -Dspring-boot.run.arguments="ui --workspace /path/to/my-tests"
+```
+
+Re-run the install after changing another module. To stop the browser from opening, add
+`-Dspring-boot.run.jvmArguments="-Djava.awt.headless=true"` and open the printed address yourself.
+
 ### Only this computer, only this session
 
 - The workbench listens on `127.0.0.1` only; other machines cannot reach it.

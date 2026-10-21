@@ -2,6 +2,7 @@ package com.idm.test.runner.ui.api;
 
 import com.idm.test.runner.InitCommand;
 import com.idm.test.runner.SecretsEnv;
+import com.idm.test.runner.ui.PlainSecretLint;
 import com.idm.test.runner.ui.UiCommand;
 import com.idm.test.runner.ui.UiHttp;
 import com.idm.test.runner.ui.UiHttp.Response;
@@ -297,6 +298,22 @@ class LabControllerTest {
         JsonNode hr = system(lab(server, "lab"), "database:hr");
         assertThat(hr.get("usedByScenarios").size()).isZero();
         assertThat(field(hr, "password").get("state").asString()).isEqualTo("set");
+    }
+
+    @Test
+    @DisplayName("An OAuth REST system saved by the lab panel gets no plain-text password warning")
+    void testOAuthSaveLintsClean() throws IOException {
+        Path ws = openWorkspace(server);
+
+        Response saved = put(server, "lab", "rest:hr", Map.of("base-url", "https://hr.example.test/api",
+                "use-oauth", "true", "oauth-client-name", "hr", "client-id", "workbench",
+                "token-uri", "https://idp.example.test/oauth/token"), Map.of("client-secret", "fake-client-secret-6"));
+
+        assertThat(saved.status()).as(saved.body()).isEqualTo(200);
+        String written = Files.readString(ws.resolve("config/application-lab.yml"));
+        assertThat(written).contains("authorization-grant-type: client_credentials")
+                .contains("token-uri: https://idp.example.test/oauth/token");
+        assertThat(PlainSecretLint.check(written, PlainSecretLint.FileKind.SETTINGS)).isEmpty();
     }
 
     @Test

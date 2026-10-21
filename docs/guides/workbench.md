@@ -151,7 +151,9 @@ message and **Open the lab panel**, which opens on that system's tab.
   marked unsaved. A draft is deleted when you save, load from disk, or undo back to the saved text.
 - **Plain-text passwords.** The editor shows your files as they are written. A literal value under a
   secret-looking key (`password`, `userPassword`, `secret`, `token`, …) is flagged in Problems as a
-  warning. In a `config/*.yml` file it reads "a password is written in plain text — use
+  warning. Keys that only say how a token is fetched are not secrets and are not flagged:
+  addresses (`token-uri`, any key ending in `-uri` or `-url`) and settings such as
+  `authorization-grant-type` and `client-authentication-method`, which the lab panel writes itself. In a `config/*.yml` file it reads "a password is written in plain text — use
   `${IDM_TEST_…}` and put the value in secrets.env". In a scenario, which cannot read environment
   variables, it reads "a password is written in plain text — declare a fixture and reference it with
   `${…}` instead". A file with such a warning is never kept as a draft: the editor says "Unsaved edits

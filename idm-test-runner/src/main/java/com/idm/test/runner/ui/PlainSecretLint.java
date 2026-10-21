@@ -13,13 +13,15 @@ import java.util.ArrayList;
 import java.util.Deque;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
  * Flags a password written in plain text in a scenario or a {@code config/*.yml} file: a literal
- * value under a secret-looking key (the engine's {@link Secrets} rule, as the reports use), at any
+ * value under a secret-looking key (the engine's {@link Secrets} rule, as the reports use, less the keys
+ * that only say how a secret is fetched: see {@link #isSecretKey}), at any
  * depth, including the items of a list under such a key. A {@code ${…}} reference, a
  * {@code js:{ … }} expression, an empty value and a boolean are not flagged. Reads the YAML as a
  * token stream, so a file broken further down is still checked up to the error; never throws.
@@ -39,6 +41,16 @@ public final class PlainSecretLint {
 
     /** {@code key: value} on one line, possibly a list item, for {@link #literals} when the parser gives up. */
     private static final Pattern LINE = Pattern.compile("^\\s*(?:-\\s+)?[\"']?([^\"'#:{}\\[\\],]+?)[\"']?\\s*:\\s+(.+)$");
+
+    /**
+     * Keys the secret rule matches that hold no secret: how a token is requested and used (Spring
+     * Security's OAuth2 client settings and the like).
+     */
+    private static final Set<String> NOT_SECRET_KEYS = Set.of("authorization-grant-type", "grant-type",
+            "grant_type", "client-authentication-method", "token-type", "token_type", "use-token",
+            "token-name", "token-header", "authorization-header", "credentials-type");
+    /** Endings of keys that name an address (a token endpoint, an authorization URL), not a secret. */
+    private static final List<String> NOT_SECRET_SUFFIXES = List.of("uri", "url");
 
     private PlainSecretLint() {
     }
@@ -75,12 +87,26 @@ public final class PlainSecretLint {
         if (yaml != null) {
             for (String line : yaml.split("\\R")) {
                 Matcher matcher = LINE.matcher(line);
-                if (matcher.matches() && Secrets.isSecret(matcher.group(1).strip())) {
+                if (matcher.matches() && isSecretKey(matcher.group(1).strip())) {
                     addValue(values, unquote(withoutComment(matcher.group(2).strip())));
                 }
             }
         }
         return values;
+    }
+
+    /**
+     * Whether a key holds a secret: the engine's {@link Secrets} rule, except for settings that only
+     * name how a secret is fetched, which the rule's words ({@code token}, {@code authorization},
+     * {@code credential}) would otherwise catch — the lab panel's own OAuth settings among them. A key
+     * is judged by its last dot-separated part, so a flat Spring property is judged as its nested form.
+     */
+    static boolean isSecretKey(String name) {
+        if (!Secrets.isSecret(name)) {
+            return false;
+        }
+        String leaf = name.substring(name.lastIndexOf('.') + 1).strip().toLowerCase(Locale.ROOT);
+        return !(NOT_SECRET_KEYS.contains(leaf) || NOT_SECRET_SUFFIXES.stream().anyMatch(leaf::endsWith));
     }
 
     private static void addValue(Set<String> values, String value) {
@@ -147,7 +173,7 @@ public final class PlainSecretLint {
             while ((token = parser.nextToken()) != null) {
                 boolean inArray = !isArray.isEmpty() && isArray.peek();
                 switch (token) {
-                    case PROPERTY_NAME -> pendingSecret = Secrets.isSecret(parser.currentName());
+                    case PROPERTY_NAME -> pendingSecret = isSecretKey(parser.currentName());
                     case START_OBJECT -> {
                         isArray.push(false);
                         secretItems.push(false);

@@ -69,6 +69,41 @@ class PlainSecretLintTest {
     }
 
     @Test
+    @DisplayName("The lab panel's OAuth settings (grant type, token URI) are not flagged; the client secret is")
+    void testOAuthSettingsAreNotSecrets() {
+        String nested = """
+                spring:
+                  security:
+                    oauth2:
+                      client:
+                        registration:
+                          hr:
+                            client-id: workbench
+                            client-secret: fake-client-secret
+                            authorization-grant-type: client_credentials
+                            client-authentication-method: client_secret_basic
+                        provider:
+                          hr:
+                            token-uri: https://idp.example.test/oauth/token
+                            authorization-uri: https://idp.example.test/oauth/authorize
+                """;
+        String flat = """
+                spring.security.oauth2.client.registration.hr.authorization-grant-type: client_credentials
+                spring.security.oauth2.client.provider.hr.token-uri: https://idp.example.test/oauth/token
+                idm.test.rest.hr.token-url: https://idp.example.test/token
+                """;
+
+        assertThat(PlainSecretLint.check(nested, PlainSecretLint.FileKind.SETTINGS))
+                .extracting(Problem::line).containsExactly(8);
+        assertThat(PlainSecretLint.check(flat, PlainSecretLint.FileKind.SETTINGS)).isEmpty();
+        assertThat(PlainSecretLint.literals(nested + flat)).containsExactly("fake-client-secret");
+        assertThat(PlainSecretLint.isSecretKey("authorization-grant-type")).isFalse();
+        assertThat(PlainSecretLint.isSecretKey("token-uri")).isFalse();
+        assertThat(PlainSecretLint.isSecretKey("access-token")).isTrue();
+        assertThat(PlainSecretLint.isSecretKey("Authorization")).isTrue();
+    }
+
+    @Test
     @DisplayName("Broken YAML: what was read before the error is still checked, and nothing is thrown")
     void testBrokenYaml() {
         String broken = "password: fake-one\nlist: [unclosed\n  token: fake-two\n";

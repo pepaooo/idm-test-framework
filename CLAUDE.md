@@ -47,6 +47,12 @@ This is an **integration testing framework** for Identity Management (IdM) syste
 # Run the YAML corpus against OpenLDAP/PostgreSQL/WireMock containers (optional; needs Docker)
 ./mvnw test -pl idm-test-scenarios -am -Dtest=ContainerScenarios -Dsurefire.failIfNoSpecifiedTests=false
 
+# Build only the runner (and what it needs); also builds and tests the workbench front end
+./mvnw test -pl idm-test-runner -am
+
+# Build the end-user runner ZIP (jlink runtime + launchers)
+./mvnw -Pdist package -pl idm-test-runner -am -DskipTests
+
 # Skip tests during build
 ./mvnw clean install -DskipTests
 
@@ -64,6 +70,27 @@ This is an **integration testing framework** for Identity Management (IdM) syste
 # Tests are automatically discovered and runnable from Test Explorer
 ```
 
+### Workbench front end (`idm-test-runner/src/main/frontend`)
+The first Maven build of `idm-test-runner` downloads Node (~50 MB) into `idm-test-runner/target/node`
+via `frontend-maven-plugin`; every build runs `npm ci`, `npm run build` (into
+`target/classes/static/`) and `npm test` (Vitest). End users need no Node. To iterate without Maven,
+put that Node on `PATH` from the repository root, then run the commands inside the front-end folder:
+
+```bash
+export PATH="$PWD/idm-test-runner/target/node:$PATH"
+```
+
+```bash
+npm test
+```
+
+```bash
+npm run build
+```
+
+`UiServerTest` expects the built `index.html`, so build before running the runner's Java tests from an
+IDE. Details: `docs/reference/running-tests.md`; user guide: `docs/guides/workbench.md`.
+
 ## Project Structure
 
 ```
@@ -77,8 +104,13 @@ idm-test-framework/
 ├── idm-connector-rest/      # IdmRestConnector, RestAuthenticator (basic/OAuth2), JDK HTTP client
 ├── idm-connector-soap/      # Role and Resource service connectors (JAX-WS)
 ├── idm-connector-idm/       # Placeholder, no sources
+├── idm-test-wiring/         # Spring wiring shared by runners: StepRegistry, EngineFactory, ScenarioNeeds,
+│                            # RealEnvironmentGuards, scenario sources, RunRecorder
 ├── idm-test-scenarios/      # Java workflow tests; YAML corpus (scenarios/, scenarios-real/);
 │                            # runners: YamlScenarioTest, ContainerScenarios, RealEnvironmentScenarios
+├── idm-test-runner/         # End-user runner `idmtest` (init/validate/run/ui), run/RunService,
+│                            # ui/ = local web workbench server; src/main/frontend = React+TS+Vite app;
+│                            # `dist` profile builds the jlink ZIPs
 └── docs/                    # reference/, guides/, architecture/, specs/ and plans/ per ticket
 ```
 
@@ -99,7 +131,12 @@ Each connector does ONE thing:
 - **RestAuthenticator**: Authorization header from a REST target's settings (basic, or OAuth2 client credentials via Spring Security)
 - **RoleServiceConnector** / **ResourceServiceConnector**: SOAP clients for the NetIQ Role and Resource services
 
-### 3. Test Scenarios (Explicit Workflows)
+### 3. Runner and Workbench (`idm-test-runner`)
+- **RunService** (`run/`): the one run path shared by `idmtest run` and the workbench (settings, secrets, guards, drivers, masking, `reports/<run-id>/`).
+- **`idmtest ui`** (`ui/`): loopback-only Spring MVC server with a session token (cookie per port, Host/Origin/Sec-Fetch-Site checks); JSON API + SSE for workspaces, files (versioned saves, 409 on stale), validation, lab settings, runs. Every workspace-scoped request carries `X-Idmtest-Workspace`.
+- Rules that bind changes here: no secret value in any response, event, log, report or DOM; saves never overwrite a changed file silently; the engine stays Spring-free.
+
+### 4. Test Scenarios (Explicit Workflows)
 Tests orchestrate their own flows step-by-step:
 ```java
 @Test

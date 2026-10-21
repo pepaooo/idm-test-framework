@@ -152,6 +152,10 @@ class WorkspaceGuardTest {
         // EventSource cannot set headers: the workspace is a query parameter
         assertSwitched(bare("GET", "/api/files/events?workspace=" + UiHttp.encode(x), null));
         assertSwitched(bare("GET", "/api/runs/current/events?workspace=" + UiHttp.encode(x), null));
+        // as a browser's EventSource asks: the refusal is still the JSON error
+        assertSwitched(UiHttp.request("GET", "/api/files/events?workspace=" + UiHttp.encode(x),
+                "127.0.0.1:" + server.port(), Map.of("Cookie", UiHttp.cookie(server), "Accept", "text/event-stream"),
+                null, server.port()));
 
         assertThat(List.of(contents(x), contents(y))).isEqualTo(before);
     }

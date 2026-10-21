@@ -109,6 +109,11 @@ function connect(): Promise<IDBDatabase | null> {
   return connecting;
 }
 
+/** Whether this browser has no IndexedDB at all (a private window, a blocked store): no draft is kept. */
+export function draftsUnavailable(): boolean {
+  return currentFactory() === null;
+}
+
 /** Opens the drafts connection ahead of time (the workbench calls this when a workspace opens). */
 export function openDrafts(): Promise<void> {
   return connect().then(() => undefined);

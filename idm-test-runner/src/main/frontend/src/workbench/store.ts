@@ -1,6 +1,6 @@
 import { api, ApiProblem, withQuery } from '../api/client';
 import { t } from '../i18n';
-import { deleteDraft, listDrafts, readDraft, writeDraft, type Draft } from './drafts';
+import { deleteDraft, draftsUnavailable, listDrafts, readDraft, writeDraft, type Draft } from './drafts';
 import { isSecretsFile, isValidatable, PLAIN_SECRET, type EditorFocus, type LineMark, type Problem } from './types';
 
 /**
@@ -104,6 +104,12 @@ export class WorkbenchStore {
   private readonly wantedMarks = new Map<string, (text: string) => LineMark | null>();
   /** The text last written as each file's draft by this tab (absent: none known). */
   private readonly drafted = new Map<string, string>();
+  /**
+   * A draft write has failed (IndexedDB refused it, or there is none): from then on, for this
+   * page, edits count as kept only once their own write is known to have committed. Never cleared:
+   * one write that succeeds says nothing of the next (a full quota fails only the larger ones).
+   */
+  private draftWritesFailing = false;
 
   constructor(workspace: string, options: StoreOptions = {}) {
     this.workspace = workspace;
@@ -223,11 +229,17 @@ export class WorkbenchStore {
   /**
    * Whether some tab has edits that no draft could keep (a plain-text password, unchecked text) or
    * that were already left in this tab: checked before the page unloads, where waiting is not
-   * possible. See {@link checkUnkeptEdits} for the full answer.
+   * possible. While draft writes fail (or there is no IndexedDB), edits whose draft is not known to
+   * be committed count too. See {@link checkUnkeptEdits} for the full answer.
    */
   hasUnkeptEdits(): boolean {
+    // drafts cannot be relied on: only text whose own write committed is kept (a put issued now may fail too)
+    const failing = this.draftWritesFailing || draftsUnavailable();
     return this.state.tabs.some(
-      (doc) => doc.loaded && (doc.unkept || (isDirty(doc) && this.draftable(doc) !== doc.content)),
+      (doc) =>
+        doc.loaded &&
+        (doc.unkept ||
+          (isDirty(doc) && (this.draftable(doc) !== doc.content || (failing && this.drafted.get(doc.path) !== doc.content)))),
     );
   }
 
@@ -245,8 +257,11 @@ export class WorkbenchStore {
     const ok = await writeDraft(this.workspace, path, { content, baseVersion, savedAt: Date.now() });
     if (ok) {
       this.drafted.set(path, content);
-    } else if (this.drafted.get(path) === content) {
-      this.drafted.delete(path);
+    } else {
+      this.draftWritesFailing = true;
+      if (this.drafted.get(path) === content) {
+        this.drafted.delete(path);
+      }
     }
   }
 

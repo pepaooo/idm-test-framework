@@ -53,14 +53,17 @@ describe('Hand-over between tabs', () => {
     await pause(450); // X1 checked
     fireEvent.change(editorA, { target: { value: 'name: X2\n' } }); // not checked yet
 
-    slow.write = 600;
+    // longer than the take-over's wait for the status answer (yieldTimeout, 1 s): the write the
+    // status question starts is still running when B asks A to yield, so B sees X1 only because A
+    // says `yielded` once its drafts are committed (onYield awaits store.lastFlush)
+    slow.write = 1200;
     const b = render(<Workbench workspace={WORKSPACE} lockWait={10} />);
     await userEvent.click(await within(b.container).findByRole('button', { name: 'Take over' }));
     await waitFor(() => expect(editorA).toHaveAttribute('readonly')); // A has started to yield
     fireEvent.change(editorA, { target: { value: 'name: X3\n' } }); // during the hand-over: refused
 
-    const editorB = await within(b.container).findByLabelText(`Edit ${A}`, undefined, { timeout: 3000 });
-    await waitFor(() => expect(editorB).toHaveValue('name: X1\n'), { timeout: 3000 });
+    const editorB = await within(b.container).findByLabelText(`Edit ${A}`, undefined, { timeout: 4000 });
+    await waitFor(() => expect(editorB).toHaveValue('name: X1\n'), { timeout: 4000 });
     expect((await readDraft(WORKSPACE.path, A))?.content).toBe('name: X1\n');
     // A's unchecked X2 was not lost: it stays in A, read-only and unsaved
     const nowA = within(a.container).getByLabelText(`Edit ${A}`);

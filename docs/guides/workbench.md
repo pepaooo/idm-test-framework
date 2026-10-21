@@ -153,6 +153,9 @@ entries of the Run menu say why when you point at them.
 - **Drafts.** Unsaved edits are kept in the browser (IndexedDB, per workspace and file) about a second
   after you stop typing, once the text has been checked. After a reload or a crash the draft comes back,
   marked unsaved. A draft is deleted when you save, load from disk, or undo back to the saved text.
+  When the browser cannot keep drafts (a private window without IndexedDB, or a draft write that
+  failed, e.g. a full quota), unsaved edits are not kept either, and the browser asks before you
+  leave the page.
 - **Plain-text passwords.** The editor shows your files as they are written. A literal value under a
   secret-looking key (`password`, `userPassword`, `secret`, `token`, …) is flagged in Problems as a
   warning. Keys that only say how a token is fetched are not secrets and are not flagged:

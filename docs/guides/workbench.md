@@ -139,8 +139,12 @@ example) is refused with "the JDBC URL sets a timeout of its own". The saved URL
 
 A system counts as ready once its last test passed with the values it has now; changing a setting, or
 restarting the workbench, makes it "not tested yet" again. ! not tested yet does not stop a run. When
-a system a scenario needs is missing a setting (✕), Run is blocked: the run panel shows the chip's
-message and **Open the lab panel**, which opens on that system's tab.
+a system a scenario you are about to run needs is missing a setting (✕), that run is blocked: the run
+panel shows the message and **Open the lab panel**, which opens on that system's tab. Only the
+scenarios of the run count — the active scenario for **Run**, the folder's for **Run folder**, every
+scenario for **Run all scenarios**, the ones with a finding or a setup problem for **Run only the ones
+that found something** — so a system that only other scenarios use does not stop it; the blocked
+entries of the Run menu say why when you point at them.
 
 ## Edit and save
 

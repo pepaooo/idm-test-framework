@@ -157,7 +157,9 @@ describe('Run button', () => {
     const server = runServer({ lab: { systems: [directory('ready'), hrDatabase('missing')] } });
     render(<Workbench workspace={WORKSPACE} lockWait={10} />);
     await waitFor(() => expect(screen.getByRole('button', { name: 'Lab: HR database needs a password' })).toBeInTheDocument());
-    await openCreate();
+    // hr-sync.yaml is the scenario that uses the HR database
+    await userEvent.click(await screen.findByRole('button', { name: /^hr-sync\.yaml/ }));
+    await waitFor(() => expect((screen.getByLabelText('Edit scenarios/hr-sync.yaml') as HTMLTextAreaElement).value).toContain('name: HR'));
     expect(runButton()).toBeDisabled();
     expect(runButton()).toHaveAttribute('title', 'Run is blocked: Lab: HR database needs a password');
     const run = screen.getByRole('complementary', { name: 'Run' });
@@ -167,6 +169,37 @@ describe('Run button', () => {
     const panel = await screen.findByRole('dialog', { name: /Lab connection/ });
     expect(within(panel).getByRole('tab', { selected: true })).toHaveTextContent('HR database');
     expect(server.runStarts()).toHaveLength(0);
+  });
+
+  it('is not blocked by a missing system the selected scenarios do not use (spec §4.5)', async () => {
+    const ldap = { ...directory('ready'), usedByScenarios: ['users/create-user.yaml', 'users/disable-user.yaml', 'roles-grant.yaml'] };
+    const server = runServer({
+      lab: { systems: [ldap, hrDatabase('missing')] },
+      results: { 'scenarios/users/disable-user.yaml': 'finding', 'scenarios/hr-sync.yaml': 'setup' },
+    });
+    render(<Workbench workspace={WORKSPACE} lockWait={10} />);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Lab: HR database needs a password' })).toBeInTheDocument());
+    await openCreate();
+
+    // create-user.yaml needs only the directory: Run runs it, and the panel says nothing is blocked
+    expect(runButton()).toBeEnabled();
+    expect(screen.queryByText(/Run is blocked/)).not.toBeInTheDocument();
+    await userEvent.click(runButton());
+    await waitFor(() => expect(server.runStarts()).toHaveLength(1));
+    finishRun();
+
+    await userEvent.click(screen.getByRole('button', { name: 'More ways to run' }));
+    // its folder needs only the directory too
+    expect(screen.getByRole('menuitem', { name: /Run folder users\// })).toBeEnabled();
+    // all of them include hr-sync.yaml, and so do the ones that found something (its setup problem)
+    const all = screen.getByRole('menuitem', { name: /Run all scenarios/ });
+    expect(all).toBeDisabled();
+    expect(all).toHaveAttribute('title', 'Run is blocked: Lab: HR database needs a password');
+    expect(screen.getByRole('menuitem', { name: /only the ones that found something/ })).toBeDisabled();
+    fireEvent.keyDown(window, { key: 'Enter', ctrlKey: true, shiftKey: true });
+    await userEvent.click(screen.getByRole('menuitem', { name: /Run folder users\// }));
+    await waitFor(() => expect(server.runStarts()).toHaveLength(2));
+    expect(server.runStarts()[1].body).toMatchObject({ scenarios: { folder: 'scenarios/users' } });
   });
 
   it('a failed lab reload does not block Run but shows a warning line', async () => {

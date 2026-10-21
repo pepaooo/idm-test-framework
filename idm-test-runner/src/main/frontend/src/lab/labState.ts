@@ -35,14 +35,38 @@ export function deriveLabState(view: LabView | null, error: string | null, hasPr
   return error !== null ? { ...state, error } : state;
 }
 
+function missingState(missing: LabSystem): LabState {
+  const field = missingField(missing);
+  const label = field ? inSentence(field.label) : '';
+  const key = /^[aeio]/i.test(label) ? 'ui.lab.chip.missingAn' : 'ui.lab.chip.missing';
+  return { state: 'missing', missingSystemId: missing.id, message: t(key, { system: missing.name, field: label }) };
+}
+
+/**
+ * What blocks a run of `scenarios` (names as under scenarios/, as `usedByScenarios` has them; null:
+ * all of them): the first missing system one of them uses (spec §4.5: "something a selected
+ * scenario needs is absent"), or null. A system no selected scenario uses does not block. When no
+ * scenario is known to use any system, every system counts, as for the chip.
+ */
+export function missingFor(view: LabView | null, scenarios: readonly string[] | null): LabState | null {
+  if (!view) {
+    return null;
+  }
+  const counted = countedSystems(view);
+  const anyUsed = view.systems.some((system) => system.usedByScenarios.length > 0);
+  const needed =
+    scenarios === null || !anyUsed
+      ? counted
+      : counted.filter((system) => system.usedByScenarios.some((name) => scenarios.includes(name)));
+  const missing = needed.find((system) => system.status === 'missing');
+  return missing ? missingState(missing) : null;
+}
+
 function fromView(view: LabView): LabState {
   const systems = countedSystems(view);
   const missing = systems.find((system) => system.status === 'missing');
   if (missing) {
-    const field = missingField(missing);
-    const label = field ? inSentence(field.label) : '';
-    const key = /^[aeio]/i.test(label) ? 'ui.lab.chip.missingAn' : 'ui.lab.chip.missing';
-    return { state: 'missing', missingSystemId: missing.id, message: t(key, { system: missing.name, field: label }) };
+    return missingState(missing);
   }
   const ready = systems.filter((system) => system.status === 'ready').length;
   if (ready === systems.length) {

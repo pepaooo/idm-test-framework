@@ -1,7 +1,9 @@
 import { useEffect, useSyncExternalStore } from 'react';
 import { Badge, type BadgeStatus } from '../components/Badge';
 import { currentLanguage, t, useLanguage } from '../i18n';
+import { missingFor } from '../lab/labState';
 import { useWorkbench } from '../workbench/context';
+import { isScenario, scopeScenarios } from './RunButton';
 import { seconds, timeLabel } from './copyFinding';
 import { stepLines } from './scenarioYaml';
 import { CleanupList, FindingPanel, SetupPanel, StoppedView, stepTitle } from './FindingPanel';
@@ -227,16 +229,22 @@ export function RunPanel({ store }: { store: RunStore }) {
   const busy = run.phase === 'starting' || run.phase === 'running';
   const head = run.phase === 'idle' ? null : headline(run);
   const end = endLine(run);
-  const rerunBlocked = busy || wb.readOnly || wb.profile === null || lab.state === 'missing';
+  // what blocks Run: for the active scenario (Run's own scope), else for all of them
+  const block = missingFor(
+    wb.lab,
+    scopeScenarios(isScenario(wb.activePath) ? { kind: 'scenario', path: wb.activePath } : { kind: 'all' }, wb.tree),
+  );
+  const rerunBlocked =
+    busy || wb.readOnly || wb.profile === null || (selected !== null && missingFor(wb.lab, [selected.name]) !== null);
 
   return (
     <div className="run-panel">
-      {lab.state === 'missing' && (
+      {block?.state === 'missing' && (
         <div className="run-notice run-blocked" role="status">
           <p>
-            <Badge status="missing" /> {t('ui.run.blocked', { message: lab.message })}
+            <Badge status="missing" /> {t('ui.run.blocked', { message: block.message })}
           </p>
-          <button type="button" className="secondary" onClick={() => wb.openLab(lab.missingSystemId)}>
+          <button type="button" className="secondary" onClick={() => wb.openLab(block.missingSystemId)}>
             {t('ui.run.openLab')}
           </button>
         </div>

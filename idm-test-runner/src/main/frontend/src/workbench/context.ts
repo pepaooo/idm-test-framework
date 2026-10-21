@@ -32,6 +32,11 @@ export interface WorkbenchApi {
   tree: TreeNode | null;
   /** The text an open tab shows now (unsaved edits included), or undefined when it is not open. */
   textOf(path: string): string | undefined;
+  /**
+   * Marks lines of `path`, worked out from its text, without opening or activating it: at once
+   * when it is open, else when it is opened later; null clears them.
+   */
+  markWhenOpen(path: string, mark: ((text: string) => { from: number; to: number } | null) | null): void;
   /** Moves the cursor of `path`'s tab to `line` (1-based) and makes it active. */
   focus(path: string, line: number): void;
   /**

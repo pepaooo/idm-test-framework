@@ -165,6 +165,38 @@ describe('Run panel', () => {
     expect(within(panel()).getByText(/2 scenarios: 0 passed, 1 setup problem · stopped/, VISIBLE)).toBeInTheDocument();
   });
 
+  it('scenarios a stopped or refused run never reached read "not run", not "waiting"', async () => {
+    const server = runServer();
+    render(<Workbench workspace={WORKSPACE} lockWait={10} />);
+    await runAll(server);
+    act(() => {
+      emit('runStarted', { runId: RUN_ID, scenarios: NAMES, locale: 'en' });
+      playScenario(passed(NAMES[0]));
+      emit('runFinished', { runId: RUN_ID, total: 5, passed: 1, findings: 0, setupProblems: 0, stopped: true, exitCode: 1, reportUrl: null });
+    });
+    const after = rows();
+    for (const later of after.slice(1)) {
+      expect(later).toHaveTextContent('not run');
+      expect(later).not.toHaveTextContent('waiting');
+      expect(within(later).getByRole('img', { name: 'Not run' })).toBeInTheDocument();
+    }
+  });
+
+  it('a run refused half-way marks the running one a setup problem and the rest "not run"', async () => {
+    const server = runServer();
+    render(<Workbench workspace={WORKSPACE} lockWait={10} />);
+    await runAll(server);
+    act(() => {
+      emit('runStarted', { runId: RUN_ID, scenarios: NAMES.slice(0, 3), locale: 'en' });
+      playScenario(passed(NAMES[0]));
+      emit('scenarioStarted', { name: NAMES[1] });
+      emit('refused', { key: 'runner.run.stopped', message: 'The run stopped: out of memory' });
+    });
+    const [, second, third] = rows();
+    expect(within(second).getByRole('img', { name: 'Setup problem' })).toBeInTheDocument();
+    expect(third).toHaveTextContent('not run');
+  });
+
   it('a failed cleanup entry is amber and says something may be left in the lab', async () => {
     const server = runServer();
     render(<Workbench workspace={WORKSPACE} lockWait={10} />);

@@ -94,6 +94,28 @@ describe('Run button', () => {
     expect(server.runStarts()[1].body).toMatchObject({ scenarios: 'all', onlyFindings: false });
   });
 
+  it('the shortcuts do nothing while the lab panel or the changed-on-disk choice is open', async () => {
+    const server = runServer();
+    render(<Workbench workspace={WORKSPACE} lockWait={10} />);
+    await ready();
+    await openCreate();
+    await userEvent.click(screen.getByRole('button', { name: 'Lab ready' }));
+    const lab = await screen.findByRole('dialog', { name: /Lab connection/ });
+    fireEvent.keyDown(within(lab).getAllByRole('textbox')[0], { key: 'Enter', ctrlKey: true });
+    fireEvent.keyDown(within(lab).getAllByRole('textbox')[0], { key: 'Enter', metaKey: true, shiftKey: true });
+    await userEvent.click(within(lab).getByRole('button', { name: /close/i }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: /Lab connection/ })).not.toBeInTheDocument());
+
+    await userEvent.type(screen.getByLabelText(`Edit ${CREATE}`), '# mine');
+    server.changeOnDisk(CREATE, 'name: Theirs\n');
+    await userEvent.keyboard('{Control>}s{/Control}');
+    expect(await screen.findByRole('dialog')).toHaveAttribute('aria-modal', 'true');
+    fireEvent.keyDown(window, { key: 'Enter', ctrlKey: true });
+    fireEvent.keyDown(window, { key: 'Enter', ctrlKey: true, shiftKey: true });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(server.runStarts()).toHaveLength(0);
+  });
+
   it('the menu offers this scenario, its folder, all and the ones that found something, with counts, by keyboard', async () => {
     const server = runServer({ results: { [CREATE]: 'finding', 'scenarios/hr-sync.yaml': 'setup', 'scenarios/roles-grant.yaml': 'passed' } });
     render(<Workbench workspace={WORKSPACE} lockWait={10} />);

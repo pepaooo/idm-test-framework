@@ -84,8 +84,14 @@ export function Workbench({ workspace, warning, lockWait = 300, runPanel, lab, r
   const refreshTreeRef = useRef(refreshTree);
   refreshTreeRef.current = refreshTree;
   const runStore = useMemo(
-    () => new RunStore({ refreshTree: () => void refreshTreeRef.current(), readScenario: readScenarioFile }),
-    [workspace.path],
+    () =>
+      new RunStore({
+        refreshTree: () => void refreshTreeRef.current(),
+        readScenario: readScenarioFile,
+        // a new run of a scenario: the last run's failed step is no longer marked
+        scenarioStarted: (path) => store.markWhenOpen(path, null),
+      }),
+    [workspace.path, store],
   );
   const runState = useSyncExternalStore(runStore.subscribe, runStore.getState);
   useEffect(() => {
@@ -209,6 +215,7 @@ export function Workbench({ workspace, warning, lockWait = 300, runPanel, lab, r
       tree,
       textOf: (path) => store.doc(path)?.content,
       focus: (path, line) => store.focus(path, line),
+      markWhenOpen: (path, mark) => store.markWhenOpen(path, mark),
       labState: () => deriveLabState(labView.view, labView.error, profile !== null),
       lab: labView.view,
       openLab: (systemId) => labStore.openPanel(systemId),

@@ -15,8 +15,13 @@ const SECRET_PARAM = /pass|pwd|secret|token|key|credential|auth|signature|sessio
  * parameter whose name looks secret (`?password=`, `;password=`, `client_secret`, `apiKey`…).
  */
 export function safeUrl(url: string): string {
-  let out = url.replace(/^(jdbc:oracle:thin:)[^@]*@/i, '$1@');
-  out = out.replace(/^([a-z][a-z0-9+.:-]*:\/\/)[^/@?#;]*@/i, '$1');
+  // up to the LAST @ of the authority: a password may hold a raw "@"
+  let out = url.replace(/^(jdbc:oracle:thin:)[^?;#]*@/i, '$1@');
+  if (/^[a-z][a-z0-9+.:-]*:\/\//i.test(out)) {
+    out = out.replace(/^([a-z][a-z0-9+.:-]*:\/\/)[^/?#;]*@/i, '$1');
+  } else if (!/^jdbc:/i.test(out)) {
+    out = out.replace(/^[^/?#;]*@/, ''); // no scheme: user:password@host…
+  }
   const hash = out.indexOf('#');
   const fragment = hash >= 0 ? out.slice(hash) : '';
   out = hash >= 0 ? out.slice(0, hash) : out;

@@ -16,7 +16,8 @@ export type RunScope =
   | { kind: 'all' }
   | { kind: 'findings' };
 
-export type ScenarioState = 'waiting' | 'running' | 'passed' | 'finding' | 'setup';
+/** `notRun`: the run ended (stopped, refused) before it reached the scenario. */
+export type ScenarioState = 'waiting' | 'running' | 'passed' | 'finding' | 'setup' | 'notRun';
 
 /** One scenario of the run, as the events tell it so far. */
 export interface ScenarioRun {
@@ -93,6 +94,8 @@ export interface RunStoreOptions {
   refreshTree?: () => void;
   /** A scenario's saved text, to count its steps ("step 2 of 4"). */
   readScenario?: (path: string) => Promise<string>;
+  /** A scenario (its workspace-relative path) starts running. */
+  scenarioStarted?: (path: string) => void;
 }
 
 /**
@@ -247,6 +250,7 @@ export class RunStore {
         const scenario = String(event.name);
         this.updateRow(scenario, () => ({ state: 'running', step: null, attempt: null, steps: [], result: null }));
         this.follow(scenario);
+        this.options.scenarioStarted?.(scenarioPath(scenario));
         void this.countSteps(scenario);
         break;
       }
@@ -293,18 +297,37 @@ export class RunStore {
           phase: 'finished',
           refused: typeof event.message === 'string' ? event.message : String(event.key ?? ''),
           stopping: false,
-          scenarios: this.state.scenarios.map((s) => (s.state === 'running' ? { ...s, state: 'setup' as const, step: null } : s)),
+          scenarios: this.endRows('setup'),
         });
         close();
         this.scheduleTree();
         break;
       case 'runFinished':
-        this.set({ phase: 'finished', outcome: event as unknown as RunFinishedEvent, stopping: false, runId: (event.runId as string) ?? this.state.runId });
+        this.set({
+          phase: 'finished',
+          outcome: event as unknown as RunFinishedEvent,
+          stopping: false,
+          runId: (event.runId as string) ?? this.state.runId,
+          scenarios: this.endRows(null),
+        });
         close();
         break;
       default:
         break;
     }
+  }
+
+  /** The rows once the run is over: those it never reached are `notRun`; a running one becomes `running` (or that). */
+  private endRows(running: 'setup' | null): ScenarioRun[] {
+    return this.state.scenarios.map((s) => {
+      if (s.state === 'waiting') {
+        return { ...s, state: 'notRun' as const };
+      }
+      if (s.state === 'running' && running) {
+        return { ...s, state: running, step: null, attempt: null };
+      }
+      return s;
+    });
   }
 
   private updateRunning(patch: (current: ScenarioRun) => Partial<ScenarioRun>) {

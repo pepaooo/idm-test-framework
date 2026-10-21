@@ -115,6 +115,11 @@ describe('safeUrl (a system URL without credentials)', () => {
     ['jdbc:sqlserver://hr.lab;databaseName=hr;user=sa;password=fake-pw', 'jdbc:sqlserver://hr.lab;databaseName=hr;user=sa'],
     ['jdbc:oracle:thin:scott/fake-pw@hr.lab:1521:HR', 'jdbc:oracle:thin:@hr.lab:1521:HR'],
     ['https://idm.lab/api?apiKey=fake#top', 'https://idm.lab/api#top'],
+    // a raw "@" in the password: everything up to the last "@" of the authority goes
+    ['ldaps://admin:p@ss@edir.lab:636', 'ldaps://edir.lab:636'],
+    ['ldaps://admin:p@ss@edir.lab:636/o=data?x=a@b', 'ldaps://edir.lab:636/o=data?x=a@b'],
+    ['user:p@ss@host:636/o=x', 'host:636/o=x'],
+    ['jdbc:oracle:thin:scott/p@ss@hr.lab:1521:HR', 'jdbc:oracle:thin:@hr.lab:1521:HR'],
   ])('%s → %s', (url, safe) => {
     expect(safeUrl(url)).toBe(safe);
   });

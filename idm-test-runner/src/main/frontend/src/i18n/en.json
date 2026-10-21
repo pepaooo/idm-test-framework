@@ -272,7 +272,6 @@
   "ui.run.end.stopped": "stopped",
   "ui.run.openReport": "Open full report",
   "ui.run.scenariosLabel": "Scenarios of the run",
-  "ui.run.steps": "Steps",
   "ui.run.stepsOf": "Steps of {name}",
   "ui.run.noSteps": "No step ran.",
   "ui.run.cleanup": "Cleanup",
@@ -283,5 +282,6 @@
   "ui.run.stopped.title": "Stopped — cleanup did not run",
   "ui.run.stopped.hint": "These cleanup entries did not run, so what they would have removed may be left in the lab:",
   "ui.run.stopped.none": "No cleanup entry was due.",
-  "ui.run.beforeSteps": "The scenario failed before any step ran."
+  "ui.run.row.notRun": "not run",
+  "ui.run.state.notRun": "Not run"
 }

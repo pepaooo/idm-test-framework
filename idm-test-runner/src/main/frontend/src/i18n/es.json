@@ -272,7 +272,6 @@
   "ui.run.end.stopped": "detenida",
   "ui.run.openReport": "Abrir el informe completo",
   "ui.run.scenariosLabel": "Escenarios de la ejecución",
-  "ui.run.steps": "Pasos",
   "ui.run.stepsOf": "Pasos de {name}",
   "ui.run.noSteps": "No se ejecutó ningún paso.",
   "ui.run.cleanup": "Limpieza",
@@ -283,5 +282,6 @@
   "ui.run.stopped.title": "Detenido — la limpieza no se ejecutó",
   "ui.run.stopped.hint": "Estas entradas de limpieza no se ejecutaron, así que lo que habrían eliminado puede seguir en el laboratorio:",
   "ui.run.stopped.none": "No había ninguna entrada de limpieza pendiente.",
-  "ui.run.beforeSteps": "El escenario falló antes de ejecutar ningún paso."
+  "ui.run.row.notRun": "no ejecutado",
+  "ui.run.state.notRun": "No ejecutado"
 }

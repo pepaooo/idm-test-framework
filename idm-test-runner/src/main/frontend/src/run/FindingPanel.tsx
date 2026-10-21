@@ -365,7 +365,7 @@ export function FindingPanel({ scenario, step, runId, profile, reportUrl, canRer
         <button type="button" className="primary" disabled={!canRerun} onClick={onRerun}>
           {t('ui.finding.rerun')}
         </button>
-        <button type="button" className="secondary" onClick={() => void copy()}>
+        <button type="button" className="secondary" disabled={history === null} onClick={() => void copy()}>
           {t('ui.finding.copy')}
         </button>
         {reportUrl && (

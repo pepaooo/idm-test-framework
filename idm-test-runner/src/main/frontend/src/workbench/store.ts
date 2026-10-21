@@ -100,6 +100,8 @@ export class WorkbenchStore {
   private readonly saves = new Map<string, Promise<void>>();
   private readonly opening = new Map<string, Promise<void>>();
   private nonce = 0;
+  /** Lines to mark in a file from its text, kept until cleared: applied now if open, else when it opens. */
+  private readonly wantedMarks = new Map<string, (text: string) => LineMark | null>();
   /** The text last written as each file's draft by this tab (absent: none known). */
   private readonly drafted = new Map<string, string>();
 
@@ -318,7 +320,37 @@ export class WorkbenchStore {
     if (draft) {
       await this.applyDraft(path, draft);
     }
+    this.applyWantedMarks(path);
     void this.validate(path);
+  }
+
+  /**
+   * Marks lines of `path` worked out from its text by `mark` (null: clears them), without opening
+   * or activating it: now when it is open and loaded, and again whenever it is opened later, until
+   * cleared (the failed step of the last run, spec §4.8).
+   */
+  markWhenOpen(path: string, mark: ((text: string) => LineMark | null) | null): void {
+    if (mark === null) {
+      this.wantedMarks.delete(path);
+      if (this.doc(path)?.marks) {
+        this.update(path, () => ({ marks: null }));
+      }
+      return;
+    }
+    this.wantedMarks.set(path, mark);
+    this.applyWantedMarks(path);
+  }
+
+  private applyWantedMarks(path: string) {
+    const mark = this.wantedMarks.get(path);
+    const doc = this.doc(path);
+    if (!mark || !doc?.loaded) {
+      return;
+    }
+    const next = mark(doc.content);
+    if (next?.from !== doc.marks?.from || next?.to !== doc.marks?.to) {
+      this.update(path, () => ({ marks: next }));
+    }
   }
 
   /**

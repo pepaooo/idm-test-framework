@@ -112,6 +112,11 @@ export function RunButton({ store }: { store: RunStore }) {
       if (!(event.metaKey || event.ctrlKey) || event.altKey || event.key !== 'Enter') {
         return;
       }
+      // not while a dialog is open or has focus: the changed-on-disk choice, the lab panel
+      const target = event.target instanceof Element ? event.target : null;
+      if (target?.closest('[role=dialog], [role=alertdialog]') || document.querySelector('[aria-modal="true"]')) {
+        return;
+      }
       // in the capture phase, before the editor turns ⌘↵ into a new line
       event.preventDefault();
       event.stopPropagation();

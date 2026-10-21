@@ -163,6 +163,62 @@ describe('Finding panel', () => {
     expect(editor).toHaveAttribute('data-focus-line', '5');
   });
 
+  it('the editor marks the failed step by itself, also when the file is opened later, and a new run clears it', async () => {
+    const server = runServer();
+    render(<Workbench workspace={WORKSPACE} lockWait={10} />);
+    // the open file is another one: create-user.yaml is neither opened nor activated by the finding
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Lab ready' })).toBeInTheDocument());
+    await userEvent.click(await screen.findByRole('button', { name: /^hr-sync\.yaml/ }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'More ways to run' })).toBeEnabled());
+    await userEvent.click(screen.getByRole('button', { name: 'More ways to run' }));
+    await userEvent.click(await screen.findByRole('menuitem', { name: /Run all scenarios/ }));
+    await waitFor(() => expect(openRunStreams()).toHaveLength(1));
+    act(() => {
+      emit('runStarted', { runId: RUN_ID, scenarios: [NAME], locale: 'en' });
+      playScenario(scenario(NAME, [step(0, 'ldap.create'), findingStep()]));
+    });
+    expect(finding()).toBeInTheDocument();
+    expect(screen.queryByLabelText(`Edit ${CREATE}`)).not.toBeInTheDocument();
+    expect(screen.getByRole('tab', { selected: true })).toHaveTextContent('hr-sync.yaml');
+
+    await userEvent.click(screen.getByRole('button', { name: /^create-user\.yaml/ }));
+    const editor = await screen.findByLabelText(`Edit ${CREATE}`);
+    await waitFor(() => expect(editor).toHaveAttribute('data-marks', '5-8'));
+
+    act(() => emit('runFinished', { runId: RUN_ID, total: 1, passed: 0, findings: 1, setupProblems: 0, stopped: false, exitCode: 1, reportUrl: null }));
+    await userEvent.click(within(finding()).getByRole('button', { name: '↻ Rerun as is' }));
+    await waitFor(() => expect(server.runStarts()).toHaveLength(2));
+    await waitFor(() => expect(openRunStreams()).toHaveLength(1));
+    act(() => {
+      emit('runStarted', { runId: RUN_ID, scenarios: [NAME], locale: 'en' });
+      emit('scenarioStarted', { name: NAME });
+    });
+    await waitFor(() => expect(screen.getByLabelText(`Edit ${CREATE}`)).toHaveAttribute('data-marks', ''));
+  });
+
+  it('a file already open is marked at once; a setup problem marks its step too', async () => {
+    const server = runServer();
+    render(<Workbench workspace={WORKSPACE} lockWait={10} />);
+    await runWith(server, [step(0, 'ldap.create', { success: false, failureKind: 'SETUP', message: 'dn must be a string' })]);
+    await waitFor(() => expect(screen.getByLabelText(`Edit ${CREATE}`)).toHaveAttribute('data-marks', '3-4'));
+  });
+
+  it('Copy finding waits for the recent runs, so the History line is never left out', async () => {
+    let answer: (value: unknown) => void = () => undefined;
+    const server = runServer({
+      routes: { 'GET /api/runs/history': () => new Promise((resolve) => (answer = resolve)) as never },
+    });
+    render(<Workbench workspace={WORKSPACE} lockWait={10} />);
+    await runWith(server, [step(0, 'ldap.create'), findingStep()]);
+    const copy = within(finding()).getByRole('button', { name: 'Copy finding' });
+    expect(copy).toBeDisabled();
+    await act(async () => answer({ body: HISTORY }));
+    await waitFor(() => expect(copy).toBeEnabled());
+    await userEvent.click(copy);
+    await waitFor(() => expect(writeText).toHaveBeenCalled());
+    expect(writeText.mock.calls[0][0]).toMatch(/^History: passed .*; failed today 00:02\.$/m);
+  });
+
   it('a SETUP step shows a red "Setup problem" with a way to the lab panel for a connection problem', async () => {
     const server = runServer();
     render(<Workbench workspace={WORKSPACE} lockWait={10} />);

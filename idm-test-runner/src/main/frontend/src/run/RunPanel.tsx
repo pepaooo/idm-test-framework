@@ -1,8 +1,9 @@
-import { useSyncExternalStore } from 'react';
+import { useEffect, useSyncExternalStore } from 'react';
 import { Badge, type BadgeStatus } from '../components/Badge';
 import { currentLanguage, t, useLanguage } from '../i18n';
 import { useWorkbench } from '../workbench/context';
 import { seconds, timeLabel } from './copyFinding';
+import { stepLines } from './scenarioYaml';
 import { CleanupList, FindingPanel, SetupPanel, StoppedView, stepTitle } from './FindingPanel';
 import type { RunState, RunStore, ScenarioRun } from './runStore';
 import { scenarioPath, type StepResult } from './types';
@@ -22,6 +23,13 @@ function ScenarioMarker({ scenario }: { scenario: ScenarioRun }) {
       </span>
     );
   }
+  if (scenario.state === 'notRun') {
+    return (
+      <span className="run-wait muted" role="img" aria-label={t('ui.run.state.notRun')}>
+        –
+      </span>
+    );
+  }
   if (scenario.state === 'waiting') {
     return (
       <span className="run-wait muted" role="img" aria-label={t('ui.run.state.waiting')}>
@@ -37,6 +45,8 @@ function rowDetail(scenario: ScenarioRun): string {
   switch (scenario.state) {
     case 'waiting':
       return t('ui.run.row.waiting');
+    case 'notRun':
+      return t('ui.run.row.notRun');
     case 'running': {
       if (scenario.step === null) {
         return t('ui.run.row.starting');
@@ -77,7 +87,7 @@ export function headline(run: RunState): string {
     return t('ui.run.head.starting');
   }
   if (run.phase === 'running') {
-    const finished = run.scenarios.filter((s) => s.state !== 'waiting' && s.state !== 'running').length;
+    const finished = run.scenarios.filter((s) => s.state !== 'waiting' && s.state !== 'running' && s.state !== 'notRun').length;
     const running = run.scenarios.some((s) => s.state === 'running') ? 1 : 0;
     const total = run.scenarios.length;
     return total === 1
@@ -130,6 +140,16 @@ function ScenarioDetail({ run, store, scenario, rerunBlocked }: { run: RunState;
   // the step a stop interrupted failed because of the stop, not of the lab or the setup
   const stoppedStep = result?.stopped ? ([...steps].reverse().find((s) => !s.success)?.index ?? null) : null;
   const shown = selected && selected.index !== stoppedStep ? selected : null;
+  // spec §4.8: the editor marks the failed step's lines (when the file is open, now or later);
+  // a new run of the scenario clears them (Workbench, on scenarioStarted)
+  const markIndex = shown && !shown.success && (scenario.state === 'finding' || scenario.state === 'setup') ? shown.index : null;
+  const path = scenarioPath(scenario.name);
+  const { markWhenOpen } = wb;
+  useEffect(() => {
+    if (markIndex !== null) {
+      markWhenOpen(path, (text) => stepLines(text, markIndex));
+    }
+  }, [markWhenOpen, path, markIndex]);
   const rerun = () => {
     if (wb.profile !== null) {
       void store.start({ kind: 'scenario', path: scenarioPath(scenario.name) }, wb.profile, currentLanguage());

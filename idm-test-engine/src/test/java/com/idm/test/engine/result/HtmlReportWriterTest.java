@@ -485,4 +485,48 @@ class HtmlReportWriterTest {
                 .contains("gone (not retried: waiting cannot change this)")
                 .contains("<p class=\"failure\">" + HtmlReportWriter.esc(keyedFailure().failureSummary()) + "</p>");
     }
+
+    private static ScenarioResult withKind(String file, String kind) {
+        return new ScenarioResult(file, file, false, 10,
+                List.of(new StepResult(0, "ldap.verify", Map.of(), false, 5, "went wrong", null, null, null,
+                        null, null, null, kind)),
+                List.of(), null, null);
+    }
+
+    private static ScenarioResult cleanupOnly() {
+        return new ScenarioResult("c.yaml", "c.yaml", false, 10,
+                List.of(new StepResult(0, "ldap.create", Map.of(), true, 5, "created", null, null, null)),
+                List.of(new CleanupResult(0, "ldap.delete", Map.of(), CleanupStatus.FAILED, 1, "could not delete",
+                        null, null, null, "FINDING")),
+                null, null);
+    }
+
+    @Test
+    @DisplayName("A finding and a setup problem are labelled and coloured apart, and counted apart")
+    void testFailureKinds() {
+        String html = render(passed(), withKind("f.yaml", "FINDING"), withKind("s.yaml", "SETUP"), cleanupOnly(),
+                loadFailure());
+
+        assertThat(html).contains("<li class=\"step failed finding\">")
+                .contains("<li class=\"step failed setup\">")
+                .contains("<span class=\"kind finding\">Finding</span>")
+                .contains("<span class=\"kind setup\">Setup problem</span>")
+                .contains("data-tile=\"findings\">2<")
+                .contains("data-tile=\"setup\">2<")
+                .contains(">Findings<").contains(">Setup problems<")
+                .contains("--finding:#e07b25").contains("--finding:#f2994a");
+        assertThat(html.split("<span class=\"kind finding\">Finding</span>", -1))
+                .as("f.yaml's summary and step, c.yaml's summary and cleanup entry").hasSize(5);
+    }
+
+    @Test
+    @DisplayName("The failure kind labels are in Spanish too")
+    void testSpanishFailureKinds() {
+        String html = HtmlReportWriter.render(RUN_ES,
+                List.of(withKind("f.yaml", "FINDING"), withKind("s.yaml", "SETUP")), NOW);
+
+        assertThat(html).contains("<span class=\"kind finding\">Hallazgo</span>")
+                .contains("<span class=\"kind setup\">Problema de configuración</span>")
+                .contains(">Hallazgos<").contains(">Problemas de configuración<");
+    }
 }

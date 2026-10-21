@@ -15,6 +15,12 @@
     <name>IdM Test Runner</name>
     <description>The idmtest command line: init, validate and run YAML scenarios from a workspace folder</description>
 
+    <properties>
+        <frontend-maven-plugin.version>2.0.2</frontend-maven-plugin.version>
+        <!-- Node LTS (Krypton) for building the front end only; end users need no Node -->
+        <node.version>v24.21.0</node.version>
+    </properties>
+
     <dependencies>
         <dependency>
             <groupId>com.idm.test</groupId>
@@ -24,6 +30,12 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter</artifactId>
+        </dependency>
+
+        <!-- idmtest ui: the local workbench, an embedded Tomcat bound to 127.0.0.1 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-webmvc</artifactId>
         </dependency>
 
         <!-- Bundled JDBC drivers; any other goes into <install>/lib/drivers/ or <workspace>/drivers/ -->
@@ -90,6 +102,63 @@
             </resource>
         </resources>
         <plugins>
+            <!-- The workbench front end (src/main/frontend): Node goes into target/, the app into
+                 target/classes/static/ before the Java tests run, so the jar and the ZIPs serve it -->
+            <plugin>
+                <groupId>com.github.eirslett</groupId>
+                <artifactId>frontend-maven-plugin</artifactId>
+                <version>${frontend-maven-plugin.version}</version>
+                <configuration>
+                    <nodeVersion>${node.version}</nodeVersion>
+                    <installDirectory>${project.build.directory}</installDirectory>
+                    <workingDirectory>${project.basedir}/src/main/frontend</workingDirectory>
+                </configuration>
+                <executions>
+                    <execution>
+                        <!-- Eclipse m2e: not run in the IDE (the CLI build makes the front end) -->
+                        <?m2e ignore?>
+                        <id>install-node</id>
+                        <phase>generate-resources</phase>
+                        <goals>
+                            <goal>install-node-and-npm</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <?m2e ignore?>
+                        <id>npm-ci</id>
+                        <phase>generate-resources</phase>
+                        <goals>
+                            <goal>npm</goal>
+                        </goals>
+                        <configuration>
+                            <arguments>ci --ignore-scripts --no-audit --no-fund</arguments>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <?m2e ignore?>
+                        <id>npm-build</id>
+                        <phase>process-resources</phase>
+                        <goals>
+                            <goal>npm</goal>
+                        </goals>
+                        <configuration>
+                            <arguments>run build</arguments>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <!-- bound to the test phase: -DskipTests skips it -->
+                        <?m2e ignore?>
+                        <id>npm-test</id>
+                        <phase>test</phase>
+                        <goals>
+                            <goal>npm</goal>
+                        </goals>
+                        <configuration>
+                            <arguments>test</arguments>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>

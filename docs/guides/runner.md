@@ -9,6 +9,10 @@ and its exit code makes it usable in CI. The design is in the
 To write scenarios, see [Writing scenarios](../reference/writing-scenarios.md). To see every connection
 setting, see the [Configuration guide](../reference/configuration.md).
 
+To do all of this in a browser instead — create a workspace, edit scenarios, fill in the lab settings,
+run and read the findings — start the workbench with `idmtest ui`: see
+[The workbench](workbench.md).
+
 ## Install
 
 Download the ZIP for your system, `idmtest-<version>-<os>-<arch>.zip` (macOS arm64 or x64, Windows x64,
@@ -204,9 +208,14 @@ runs the scenarios in name order:
 
 ```
 ✔ users/create.yaml  2.1 s
-✖ users/disable.yaml  5.3 s — <what failed, in the run's language>
+✖ users/disable.yaml  5.3 s — <what failed, in the run's language> · finding
 2 scenarios: 1 passed, 1 failed · report: reports/20261016-093012-lab/report.html
 ```
+
+A failed scenario ends with `· finding` when the lab answered, just not as the scenario expects, and
+with `· setup problem` when a system could not be reached, refused the credentials, or the scenario or
+settings need fixing. The [workbench guide](workbench.md#read-the-result-findings-and-setup-problems)
+gives the rule.
 
 An invalid scenario file counts as a failed scenario, and the others still run.
 
@@ -235,6 +244,16 @@ Exit codes:
 | `0` | every selected scenario passed (or validated) |
 | `1` | at least one scenario failed or did not validate |
 | `2` | the run could not start: bad option, not a workspace, missing profile, unsupported locale, malformed `secrets.env`, missing driver, a refusal from the checks, no matching scenario |
+
+## The workbench
+
+```bash
+idmtest ui
+```
+
+`ui` starts the local workbench on `127.0.0.1` and opens the browser: the same workspace, settings,
+checks and reports as `run`, in one screen. It takes `--workspace <dir>`, `--port <n>` and
+`--locale en|es`; Ctrl+C stops it. See [The workbench](workbench.md).
 
 ## Results
 

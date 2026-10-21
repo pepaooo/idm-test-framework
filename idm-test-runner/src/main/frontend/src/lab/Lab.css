@@ -1,0 +1,238 @@
+/* The lab chip and the lab panel that drops down under it (mockup "lab connection"). */
+.lab-anchor {
+  position: relative;
+}
+
+.lab-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.lab-chip.open {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.lab-chip-missing {
+  color: var(--text);
+}
+
+.lab-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 20;
+  width: min(600px, calc(100vw - 32px));
+  max-height: calc(100vh - 80px);
+  overflow: auto;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 0 0 var(--radius) var(--radius);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.25);
+}
+
+.lab-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.lab-head h2 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.lab-profile {
+  color: var(--accent);
+}
+
+.lab-close {
+  text-decoration: none;
+  font-size: 14px;
+}
+
+.lab-readonly,
+.lab-error,
+.lab-loading {
+  margin: 10px 14px 0;
+}
+
+.lab-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  border-bottom: 1px solid var(--line);
+}
+
+.lab-tabs [role="tablist"] {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.lab-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.lab-tab:hover {
+  color: var(--text);
+}
+
+.lab-tab.on {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+
+.lab-add:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.lab-used {
+  margin: 10px 14px 0;
+  font-size: 12px;
+}
+
+.lab-form {
+  display: grid;
+  grid-template-columns: minmax(110px, 150px) minmax(0, 1fr);
+  gap: 8px 10px;
+  align-items: start;
+  padding: 10px 14px;
+}
+
+.lab-row {
+  display: contents;
+}
+
+.lab-form label {
+  color: var(--muted);
+  padding-top: 5px;
+}
+
+.lab-form input:not([type="checkbox"]),
+.lab-form select {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 5px 8px;
+  color: var(--text);
+}
+
+.lab-form input[readonly] {
+  color: var(--muted);
+}
+
+.lab-form input[type="checkbox"] {
+  margin: 7px 0 0;
+}
+
+.lab-cell {
+  min-width: 0;
+}
+
+.lab-secret {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.lab-secret input::placeholder {
+  letter-spacing: 2px;
+  color: var(--muted);
+}
+
+.lab-secret .link {
+  white-space: nowrap;
+}
+
+.lab-notes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+}
+
+.lab-notes:empty {
+  display: none;
+}
+
+.lab-note {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.lab-needed,
+.lab-bad {
+  color: var(--error);
+}
+
+.lab-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--line);
+}
+
+.lab-result {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.lab-error {
+  margin: 0 14px 10px;
+}
+
+.lab-where {
+  margin: 0;
+  padding: 8px 14px;
+  background: var(--raised);
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.lab-where code {
+  font-family: var(--mono);
+  color: var(--text);
+}
+
+@media (max-width: 760px) {
+  .lab-anchor {
+    position: static;
+  }
+
+  .lab-panel {
+    position: fixed;
+    top: 56px;
+    left: 16px;
+    right: 16px;
+    width: auto;
+    border-radius: var(--radius);
+  }
+
+  .lab-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .lab-form label {
+    padding-top: 0;
+  }
+}

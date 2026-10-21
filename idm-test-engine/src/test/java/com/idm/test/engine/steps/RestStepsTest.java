@@ -8,6 +8,7 @@ import com.idm.test.connector.rest.client.RestAuthenticator;
 import com.idm.test.connector.rest.config.RestClientConfiguration;
 import com.idm.test.connector.rest.config.RestProperties;
 import com.idm.test.engine.i18n.Messages;
+import com.idm.test.engine.spi.Check;
 import com.idm.test.engine.spi.HttpEvidence;
 import com.idm.test.engine.spi.StepOutcome;
 import org.junit.jupiter.api.AfterAll;
@@ -17,6 +18,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.web.client.RestClient;
 
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -642,5 +644,100 @@ class RestStepsTest {
                 "rest.request hace referencia al destino desconocido 'nope'. Destinos configurados: [broken, idm, slow]");
         assertThat(outcome.message()).isEqualTo(
                 "rest.request names unknown target 'nope'. Configured targets: [broken, idm, slow]");
+    }
+
+    @Test
+    @DisplayName("Failure kinds: an IdM answering 500 is a finding; a refused connection is a setup problem")
+    void testFailureKinds() {
+        stubFor(get(urlEqualTo("/users/jdoe")).willReturn(aResponse().withStatus(500)));
+        StepOutcome answered = new RestVerifyStep(CONNECTOR, PROPERTIES, RestAuthenticator.withoutOAuth()).execute(
+                Map.of("target", "idm", "path", "/users/jdoe", "expect", Map.of("status", 200)), false);
+        assertThat(answered.success()).isFalse();
+        assertThat(answered.kind()).isEqualTo(com.idm.test.engine.spi.FailureKind.FINDING);
+
+        RestProperties dead = new RestProperties();
+        RestProperties.RestApiConfig config = new RestProperties.RestApiConfig();
+        config.setBaseUrl("http://localhost:1");
+        dead.getRest().put("idm", config);
+        StepOutcome refused = new RestRequestStep(CONNECTOR, dead, RestAuthenticator.withoutOAuth()).execute(Map.of(
+                "target", "idm", "method", "GET", "path", "/users/1"), false);
+        assertThat(refused.success()).isFalse();
+        assertThat(refused.kind()).as(refused.message()).isEqualTo(com.idm.test.engine.spi.FailureKind.SETUP);
+
+        StepOutcome refusedVerify = new RestVerifyStep(CONNECTOR, dead, RestAuthenticator.withoutOAuth()).execute(
+                Map.of("target", "idm", "path", "/users/1", "expect", Map.of("status", 200)), false);
+        assertThat(refusedVerify.kind()).as(refusedVerify.message()).isEqualTo(com.idm.test.engine.spi.FailureKind.SETUP);
+
+        StepOutcome unknown = new RestRequestStep(CONNECTOR, PROPERTIES, RestAuthenticator.withoutOAuth()).execute(
+                Map.of("target", "nope", "method", "GET", "path", "/"), false);
+        assertThat(unknown.kind()).isEqualTo(com.idm.test.engine.spi.FailureKind.SETUP);
+    }
+
+    @Test
+    @DisplayName("Failure kinds: both body forms is a malformed step, a final setup problem; a TLS failure is setup")
+    void testMalformedAndTlsKinds() {
+        StepOutcome both = new RestRequestStep(CONNECTOR, PROPERTIES, RestAuthenticator.withoutOAuth()).execute(Map.of(
+                "target", "idm", "method", "POST", "path", "/u", "body", Map.of(), "bodyFrom", Map.of()), false);
+        assertThat(both.success()).isFalse();
+        assertThat(both.isFinal()).isTrue();
+        assertThat(both.kind()).isEqualTo(com.idm.test.engine.spi.FailureKind.SETUP);
+
+        WireMockServer tls = new WireMockServer(WireMockConfiguration.options().dynamicPort().dynamicHttpsPort());
+        tls.start();
+        try {
+            RestProperties secure = new RestProperties();
+            RestProperties.RestApiConfig config = new RestProperties.RestApiConfig();
+            config.setBaseUrl("https://localhost:" + tls.httpsPort());
+            secure.getRest().put("idm", config);
+            StepOutcome untrusted = new RestRequestStep(CONNECTOR, secure, RestAuthenticator.withoutOAuth()).execute(
+                    Map.of("target", "idm", "method", "GET", "path", "/users/1"), false);
+            assertThat(untrusted.success()).isFalse();
+            assertThat(untrusted.kind()).as(untrusted.message()).isEqualTo(com.idm.test.engine.spi.FailureKind.SETUP);
+        } finally {
+            tls.stop();
+        }
+    }
+
+    @Test
+    @DisplayName("rest.verify reports expected and found for the status and each body path")
+    void testVerifyChecks() {
+        stubFor(get(urlEqualTo("/users/jdoe")).willReturn(aResponse()
+                .withStatus(500)
+                .withHeader("Content-Type", "application/json")
+                .withBody("{\"department\":\"Sales\",\"profile\":{\"city\":\"Madrid\"}}")));
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("department", "Engineering");
+        body.put("profile", Map.of("city", "Madrid"));
+        body.put("manager", Map.of("id", 7));
+        Map<String, Object> expect = new LinkedHashMap<>();
+        expect.put("status", 200);
+        expect.put("body", body);
+
+        StepOutcome outcome = new RestVerifyStep(CONNECTOR, PROPERTIES, RestAuthenticator.withoutOAuth()).execute(Map.of(
+                "target", "idm", "path", "/users/jdoe", "expect", expect), false);
+
+        assertThat(outcome.success()).isFalse();
+        assertThat(outcome.message()).contains("200").contains("500");
+        assertThat(outcome.checks()).containsExactly(
+                new Check("status", "200", "500", false),
+                new Check("department", "Engineering", "Sales", false),
+                new Check("profile.city", "Madrid", "Madrid", true),
+                new Check("manager.id", "7", null, false));
+    }
+
+    @Test
+    @DisplayName("rest.verify checks never carry a secret-named field's values")
+    void testVerifyChecksMaskSecrets() {
+        stubFor(get(urlEqualTo("/users/jdoe")).willReturn(aResponse()
+                .withStatus(200)
+                .withHeader("Content-Type", "application/json")
+                .withBody("{\"auth\":{\"token\":\"abcdefgh123456\"}}")));
+
+        StepOutcome outcome = new RestVerifyStep(CONNECTOR, PROPERTIES, RestAuthenticator.withoutOAuth()).execute(Map.of(
+                "target", "idm", "path", "/users/jdoe",
+                "expect", Map.of("body", Map.of("auth", Map.of("token", "zyxwvut987654")))), false);
+
+        assertThat(outcome.success()).isFalse();
+        assertThat(outcome.checks()).containsExactly(new Check("auth.token", "••••", "••••", false));
     }
 }

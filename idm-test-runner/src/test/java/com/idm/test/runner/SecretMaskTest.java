@@ -6,10 +6,12 @@ import com.idm.test.engine.result.JsonResultWriter;
 import com.idm.test.engine.result.RunInfo;
 import com.idm.test.engine.result.ScenarioResult;
 import com.idm.test.engine.result.StepResult;
+import com.idm.test.engine.spi.Check;
 import com.idm.test.engine.spi.HttpEvidence;
 import com.idm.test.engine.spi.LdapEvidence;
 import com.idm.test.engine.spi.Message;
 import com.idm.test.engine.spi.SqlEvidence;
+import com.idm.test.engine.spi.WaitObservation;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -75,16 +77,21 @@ class SecretMaskTest {
         StepResult http = new StepResult(0, "rest.verify", params, false, 5, "failed at " + secret, null, null,
                 "desc " + secret, new HttpEvidence("GET", "http://h/" + secret, Map.of("X-Trace", List.of(secret)),
                         "body " + secret, null, null, Map.of("id", secret), 4, "error " + secret),
-                "step.key", List.of("http://h/" + secret, Message.of("inner", secret, 7)));
+                "step.key", List.of("http://h/" + secret, Message.of("inner", secret, 7)), "SETUP",
+                List.of(new WaitObservation(1, 0, "saw " + secret), new WaitObservation(4, 30, "then " + secret)));
         StepResult sql = new StepResult(1, "db.verify", Map.of(), true, 1, null, null, null, null,
                 SqlEvidence.query("db", "SELECT '" + secret + "'", new Object[] {secret},
                         List.of(Map.of("col", secret))), null, null);
         StepResult ldap = new StepResult(2, "ldap.verify", Map.of(), true, 1, null, null, null, null,
                 LdapEvidence.read(null, "cn=" + secret, Map.of("sn", secret)), null, null);
         CleanupResult cleanup = new CleanupResult(0, "ldap.delete", Map.of("dn", secret), CleanupStatus.FAILED, 1,
-                "cleanup " + secret, "about " + secret, "cleanup.key", List.of(secret));
+                "cleanup " + secret, "about " + secret, "cleanup.key", List.of(secret), "FINDING");
+        CleanupResult skipped = new CleanupResult(0, "ldap.delete", Map.of("dn", "cn=" + secret),
+                CleanupStatus.SKIPPED, 0, "Stopped — cleanup did not run", "Remove cn=" + secret,
+                "engine.run.stopped", List.of(), null);
         ScenarioResult result = new ScenarioResult("s.yaml", "s.yaml", false, 9, List.of(http, sql, ldap),
-                List.of(cleanup), "detail " + secret, "scenario " + secret, "detail.key", List.of(secret));
+                List.of(cleanup), "detail " + secret, "scenario " + secret, "detail.key", List.of(secret),
+                true, List.of(skipped));
 
         ScenarioResult masked = mask.result(result);
         Path json = temp.resolve("results.json");
@@ -93,9 +100,37 @@ class SecretMaskTest {
         String written = Files.readString(json);
         assertThat(written).doesNotContain(secret).contains("****", "s.yaml", "rest.verify", "step.key", "inner");
         assertThat(masked.steps().get(0).resolvedParams()).containsEntry("count", 3);
+        assertThat(masked.steps().get(0).failureKind()).isEqualTo("SETUP");
+        assertThat(masked.cleanup().get(0).failureKind()).isEqualTo("FINDING");
+        assertThat(masked.steps().get(0).waitHistory()).extracting(WaitObservation::message)
+                .containsExactly("saw ****", "then ****");
+        assertThat(masked.steps().get(0).waitHistory()).extracting(WaitObservation::attempt).containsExactly(1, 4);
+        assertThat(masked.stopped()).isTrue();
+        assertThat(masked.skippedCleanup()).singleElement().satisfies(entry -> {
+            assertThat(entry.resolvedParams()).containsEntry("dn", "cn=****");
+            assertThat(entry.description()).isEqualTo("Remove cn=****");
+            assertThat(entry.status()).isEqualTo(CleanupStatus.SKIPPED);
+        });
         assertThat(masked.failureSummary()).doesNotContain(secret);
         assertThat(mask.result(null)).isNull();
         assertThat(new SecretMask(List.of()).result(result)).isSameAs(result);
+    }
+
+    @Test
+    @DisplayName("Should mask each check's name, expected and found text, and keep whether it matched")
+    void testChecks() {
+        String secret = "Zq9xLeak";
+        SecretMask mask = new SecretMask(List.of(secret));
+        StepResult step = new StepResult(0, "http.verify", Map.of(), false, 5, "m", 2, 10L, null, null, null, null,
+                "FINDING", null, List.of(new Check("js:{ response.json.id === '" + secret + "' }", "true",
+                        "error near " + secret, false), new Check("sn", "x" + secret, null, true)));
+        ScenarioResult result = new ScenarioResult("s.yaml", "s.yaml", false, 9, List.of(step), List.of(), null);
+
+        List<Check> checks = mask.result(result).steps().get(0).checks();
+
+        assertThat(checks).containsExactly(
+                new Check("js:{ response.json.id === '****' }", "true", "error near ****", false),
+                new Check("sn", "x****", null, true));
     }
 
     @Test

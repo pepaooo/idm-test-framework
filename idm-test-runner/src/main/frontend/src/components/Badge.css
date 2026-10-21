@@ -1,0 +1,19 @@
+.badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 15px;
+  height: 15px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  vertical-align: -2px;
+  color: var(--on-status);
+}
+.badge-ok { background: var(--ok); }
+.badge-warn { background: var(--warn); color: var(--on-warn); }
+.badge-missing,
+.badge-error { background: var(--error); }
+.badge-finding { background: var(--finding); color: var(--on-finding); }

@@ -55,6 +55,34 @@ public class EdirectoryConnector {
         this.ldapTemplate = ldapTemplate;
     }
 
+    /**
+     * The kind of a failed directory call: a directory that could not be reached (refused, closed,
+     * unknown host) is {@link ErrorType#NETWORK_ERROR}, one that did not answer in time
+     * {@link ErrorType#TIMEOUT}, a rejected bind {@link ErrorType#AUTHENTICATION_ERROR}; anything
+     * the directory itself answered is {@link ErrorType#LDAP_ERROR}.
+     */
+    static ErrorType errorType(Throwable e) {
+        for (Throwable t = e; t != null; t = t.getCause() == t ? null : t.getCause()) {
+            if (t instanceof java.net.SocketTimeoutException) {
+                return ErrorType.TIMEOUT;
+            }
+        }
+        for (Throwable t = e; t != null; t = t.getCause() == t ? null : t.getCause()) {
+            if (t instanceof org.springframework.ldap.AuthenticationException
+                    || t instanceof javax.naming.AuthenticationException) {
+                return ErrorType.AUTHENTICATION_ERROR;
+            }
+            if (t instanceof org.springframework.ldap.CommunicationException
+                    || t instanceof javax.naming.CommunicationException
+                    || t instanceof javax.naming.ServiceUnavailableException
+                    || t instanceof java.net.ConnectException
+                    || t instanceof java.net.UnknownHostException) {
+                return ErrorType.NETWORK_ERROR;
+            }
+        }
+        return ErrorType.LDAP_ERROR;
+    }
+
     private static final String[] DEFAULT_OBJECT_CLASSES = {"top", "person", "organizationalPerson", "inetOrgPerson"};
 
     /** The object classes to write: the author's (one or a list), else the inetOrgPerson chain. */
@@ -147,7 +175,7 @@ public class EdirectoryConnector {
             return OperationResult.<LdapUser>builder()
                     .success(false)
                     .message(createProblem(e).english())
-                    .errorType(ErrorType.LDAP_ERROR)
+                    .errorType(errorType(e))
                     .throwable(e)
                     .build();
         }
@@ -197,7 +225,7 @@ public class EdirectoryConnector {
             return OperationResult.<LdapUser>builder()
                     .success(false)
                     .message("Failed to read user: " + e.getMessage())
-                    .errorType(ErrorType.LDAP_ERROR)
+                    .errorType(errorType(e))
                     .throwable(e)
                     .build();
         }
@@ -242,7 +270,7 @@ public class EdirectoryConnector {
             return OperationResult.<Map<String, Object>>builder()
                     .success(false)
                     .message(readAttributesProblem(dn, e).english())
-                    .errorType(ErrorType.LDAP_ERROR)
+                    .errorType(errorType(e))
                     .throwable(e)
                     .build();
         }
@@ -327,7 +355,7 @@ public class EdirectoryConnector {
             return OperationResult.<Void>builder()
                     .success(false)
                     .message(updateProblem(attributes, e).english())
-                    .errorType(ErrorType.LDAP_ERROR)
+                    .errorType(errorType(e))
                     .throwable(e)
                     .build();
         }
@@ -357,7 +385,7 @@ public class EdirectoryConnector {
         return OperationResult.<Void>builder()
                 .success(false)
                 .message(message)
-                .errorType(ErrorType.LDAP_ERROR)
+                .errorType(errorType(e))
                 // Keeps the explanation, computed from the one read above, so updateProblem never reads again.
                 .throwable(new RefusedUpdateException(problem, e))
                 .build();
@@ -508,7 +536,7 @@ public class EdirectoryConnector {
             return OperationResult.<Void>builder()
                     .success(false)
                     .message("Failed to remove attributes: " + e.getMessage())
-                    .errorType(ErrorType.LDAP_ERROR)
+                    .errorType(errorType(e))
                     .throwable(e)
                     .build();
         }
@@ -540,7 +568,7 @@ public class EdirectoryConnector {
             return OperationResult.<Void>builder()
                     .success(false)
                     .message(deleteProblem(e).english())
-                    .errorType(ErrorType.LDAP_ERROR)
+                    .errorType(errorType(e))
                     .throwable(e)
                     .build();
         }
@@ -581,7 +609,7 @@ public class EdirectoryConnector {
             return OperationResult.<Boolean>builder()
                     .success(false)
                     .message(existsProblem(e).english())
-                    .errorType(ErrorType.LDAP_ERROR)
+                    .errorType(errorType(e))
                     .throwable(e)
                     .build();
         }
@@ -678,7 +706,7 @@ public class EdirectoryConnector {
             return OperationResult.<List<LdapUser>>builder()
                     .success(false)
                     .message("Search failed: " + e.getMessage())
-                    .errorType(ErrorType.LDAP_ERROR)
+                    .errorType(errorType(e))
                     .throwable(e)
                     .build();
         }

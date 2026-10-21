@@ -2,6 +2,7 @@ package com.idm.test.runner;
 
 import com.idm.test.engine.i18n.Messages;
 import com.idm.test.engine.result.HtmlReportWriter;
+import com.idm.test.engine.spi.FailureKind;
 import com.idm.test.engine.spi.Message;
 
 import java.io.PrintStream;
@@ -22,8 +23,17 @@ public final class ConsoleProgress {
         out.println("✔ " + name + "  " + HtmlReportWriter.duration(millis, locale));
     }
 
-    public void failed(String name, long millis, String message) {
-        out.println("✖ " + name + "  " + HtmlReportWriter.duration(millis, locale) + " — " + message);
+    /** @param kind whether the failure is a finding or a setup problem; null adds nothing */
+    public void failed(String name, long millis, String message, FailureKind kind) {
+        out.println("✖ " + name + "  " + HtmlReportWriter.duration(millis, locale) + " — " + message + kind(kind));
+    }
+
+    private String kind(FailureKind kind) {
+        if (kind == null) {
+            return "";
+        }
+        String key = kind == FailureKind.FINDING ? "runner.console.kind.finding" : "runner.console.kind.setup";
+        return Messages.render(Message.of(key), locale);
     }
 
     public void validated(String name) {

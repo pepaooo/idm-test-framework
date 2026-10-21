@@ -4,6 +4,7 @@ import com.idm.test.connector.rest.client.IdmRestConnector;
 import com.idm.test.connector.rest.client.RestAuthenticator;
 import com.idm.test.connector.rest.config.RestProperties;
 import com.idm.test.connector.rest.model.RestResponse;
+import com.idm.test.core.model.ErrorType;
 import com.idm.test.core.model.OperationResult;
 import com.idm.test.engine.spi.Message;
 import com.idm.test.engine.spi.StepOutcome;
@@ -54,7 +55,7 @@ public final class RestRequestStep implements StepType {
         if (params.containsKey("body") && params.containsKey("bodyFrom")) {
             // They mean the same thing, so supplying both says nothing about which was
             // intended. Guessing would make the scenario's behaviour depend on our ordering.
-            return StepOutcome.failure(Message.of("step.rest.request.bothBodies"));
+            return StepOutcome.finalFailure(Message.of("step.rest.request.bothBodies"));
         }
 
         RestTargets.Resolution resolution = RestTargets.resolveBaseUrl("rest.request", target, properties);
@@ -82,7 +83,8 @@ public final class RestRequestStep implements StepType {
 
         if (!result.isSuccess() || result.getData().isEmpty()) {
             return StepOutcome.failure(Message.of("step.rest.request.failed",
-                    url, ConnectorProblems.request(method, url, result))).withEvidence(sent.evidence());
+                    url, ConnectorProblems.request(method, url, result)),
+                    result.getErrorType().orElse(ErrorType.UNKNOWN_ERROR)).withEvidence(sent.evidence());
         }
 
         RestResponse response = result.getData().get();

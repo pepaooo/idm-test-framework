@@ -2,6 +2,7 @@ package com.idm.test.engine.steps;
 
 import com.idm.test.connector.ldap.client.EdirectoryConnector;
 import com.idm.test.connector.ldap.client.LdapDirectories;
+import com.idm.test.core.model.ErrorType;
 import com.idm.test.core.model.OperationResult;
 import com.idm.test.engine.spi.LdapEvidence;
 import com.idm.test.engine.spi.Message;
@@ -56,19 +57,20 @@ public final class LdapUpdateStep implements StepType {
         Map<String, Object> attributes = (Map<String, Object>) params.get("attributes");
 
         if (attributes == null || attributes.isEmpty()) {
-            return StepOutcome.failure(Message.of("step.ldap.update.noAttributes", where));
+            return StepOutcome.finalFailure(Message.of("step.ldap.update.noAttributes", where));
         }
 
         Message listProblem = LdapLists.problem("ldap.update", where, attributes, true);
         if (listProblem != null) {
-            return StepOutcome.failure(listProblem);
+            return StepOutcome.finalFailure(listProblem);
         }
 
         LdapEvidence evidence = LdapEvidence.written(LdapTarget.requested(params), dn, "update", attributes);
         OperationResult<Void> result = connector.update(dn, attributes);
         if (!result.isSuccess()) {
             return StepOutcome.failure(Message.of("step.ldap.update.failed", where,
-                    LdapProblems.failure(result, e -> EdirectoryConnector.updateProblem(attributes, e))))
+                    LdapProblems.failure(result, e -> EdirectoryConnector.updateProblem(attributes, e))),
+                    result.getErrorType().orElse(ErrorType.UNKNOWN_ERROR))
                     .withEvidence(evidence);
         }
 

@@ -1303,4 +1303,362 @@ class ScenarioEngineTest {
         assertThat(Messages.render(cleanup.cleanup().get(0).messageDetail(), ES)).isEqualTo(
                 "la limpieza 'a' lanzó IllegalArgumentException: no se puede resolver ${user.nope} — no hay valor para 'nope'");
     }
+
+    private StepType returning(String name, boolean retryable, StepOutcome outcome) {
+        return new StepType() {
+            public String name() { return name; }
+            public boolean retryable() { return retryable; }
+            public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
+                return outcome;
+            }
+        };
+    }
+
+    @Test
+    @DisplayName("A step's own failure is a finding; a final failure or an unknown type is a setup problem")
+    void testFailureKinds() {
+        ScenarioResult finding = engineWith(failingAction("a")).run(scenario(
+                new StepSpec("a", Map.of())), "t.yaml");
+        assertThat(finding.steps().get(0).failureKind()).isEqualTo("FINDING");
+
+        ScenarioResult setup = engineWith(returning("a", false, StepOutcome.finalFailure("bad param")))
+                .run(scenario(new StepSpec("a", Map.of())), "t.yaml");
+        assertThat(setup.steps().get(0).failureKind()).isEqualTo("SETUP");
+
+        ScenarioResult unknown = engineWith().run(scenario(new StepSpec("nope", Map.of())), "t.yaml");
+        assertThat(unknown.steps().get(0).failureKind()).isEqualTo("SETUP");
+
+        ScenarioResult passed = engineWith(recordingAction("a")).run(scenario(
+                new StepSpec("a", Map.of())), "t.yaml");
+        assertThat(passed.steps().get(0).failureKind()).isNull();
+    }
+
+    @Test
+    @DisplayName("A step that throws is a setup problem, with or without wait")
+    void testThrownIsSetup() {
+        StepType throwing = new StepType() {
+            public String name() { return "boom"; }
+            public boolean retryable() { return true; }
+            public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
+                throw new IllegalStateException("kaput");
+            }
+        };
+
+        ScenarioResult plain = engineWith(throwing).run(scenario(new StepSpec("boom", Map.of())), "t.yaml");
+        assertThat(plain.steps().get(0).failureKind()).isEqualTo("SETUP");
+
+        ScenarioResult waited = engineWith(throwing).run(scenario(new StepSpec("boom",
+                Map.of("wait", Map.of("timeout", "1s", "poll", "1s")))), "t.yaml");
+        assertThat(waited.steps().get(0).success()).isFalse();
+        assertThat(waited.steps().get(0).attempts()).as("the wait ran").isNotNull();
+        assertThat(waited.steps().get(0).failureKind()).isEqualTo("SETUP");
+    }
+
+    @Test
+    @DisplayName("Under wait the last outcome's kind is kept, through both message suffixes")
+    void testWaitKeepsKind() {
+        ScenarioResult unreachable = engineWith(returning("check", true,
+                StepOutcome.failure("connection refused", com.idm.test.core.model.ErrorType.NETWORK_ERROR)))
+                .run(scenario(new StepSpec("check",
+                        Map.of("wait", Map.of("timeout", "1s", "poll", "1s")))), "t.yaml");
+        assertThat(unreachable.steps().get(0).attempts()).as("the wait ran").isNotNull();
+        assertThat(unreachable.steps().get(0).failureKind()).isEqualTo("SETUP");
+
+        ScenarioResult mismatch = engineWith(returning("check", true, StepOutcome.failure("not yet")))
+                .run(scenario(new StepSpec("check",
+                        Map.of("wait", Map.of("timeout", "1s", "poll", "1s")))), "t.yaml");
+        assertThat(mismatch.steps().get(0).failureKind()).isEqualTo("FINDING");
+
+        ScenarioResult terminal = engineWith(returning("check", true, StepOutcome.finalFailure("never")))
+                .run(scenario(new StepSpec("check",
+                        Map.of("wait", Map.of("timeout", "1s", "poll", "1s")))), "t.yaml");
+        assertThat(terminal.steps().get(0).attempts()).as("the wait ran").isEqualTo(1);
+        assertThat(terminal.steps().get(0).failureKind()).isEqualTo("SETUP");
+    }
+
+    @Test
+    @DisplayName("A failing cleanup entry is a finding: something may be left in the lab")
+    void testCleanupFailureIsFinding() {
+        ScenarioResult result = engineWith(recordingAction("a"), returning("undo", false,
+                StepOutcome.failure("unreachable", com.idm.test.core.model.ErrorType.NETWORK_ERROR)))
+                .run(withCleanup(List.of(new StepSpec("a", Map.of())),
+                        new StepSpec("undo", Map.of()),
+                        new StepSpec("undo", Map.of("dn", "${never}")),
+                        new StepSpec("a", Map.of())), "t.yaml");
+
+        assertThat(result.cleanup().get(0).status()).isEqualTo(CleanupStatus.FAILED);
+        assertThat(result.cleanup().get(0).failureKind()).isEqualTo("FINDING");
+        assertThat(result.cleanup().get(1).status()).isEqualTo(CleanupStatus.SKIPPED);
+        assertThat(result.cleanup().get(1).failureKind()).isNull();
+        assertThat(result.cleanup().get(2).failureKind()).isNull();
+    }
+
+    // --- ITF-56: run listener, stop and waiting history ---
+
+    /** An engine that polls fast, so a wait can try many times in a short test. */
+    private static ScenarioEngine fastEngine(Duration timeout, StepType... types) {
+        Map<String, StepType> registry = new java.util.LinkedHashMap<>();
+        for (StepType type : types) {
+            registry.put(type.name(), type);
+        }
+        return new ScenarioEngine(registry, new FixtureFactory(new TestDataGenerator()), new TestExecutor(),
+                timeout, Duration.ofMillis(1), new ExpressionEvaluator());
+    }
+
+    /** Fails with the message {@code messages.apply(call)} (calls from 1) until {@code passOn}, then passes. */
+    private static StepType observing(String name, java.util.function.IntFunction<String> messages, int passOn,
+                                      Runnable onCall) {
+        AtomicInteger calls = new AtomicInteger();
+        return new StepType() {
+            public String name() { return name; }
+            public boolean retryable() { return true; }
+            public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
+                int call = calls.incrementAndGet();
+                onCall.run();
+                return call >= passOn ? StepOutcome.success("arrived") : StepOutcome.failure(messages.apply(call));
+            }
+        };
+    }
+
+    /** Records every listener call as text. */
+    private static class RecordingListener implements com.idm.test.engine.spi.RunListener {
+        final List<String> calls = new java.util.concurrent.CopyOnWriteArrayList<>();
+
+        public void stepStarted(int index, String type, String description) {
+            calls.add("started:" + index + ":" + type + ":" + description);
+        }
+
+        public void attempt(int index, int attempt, long elapsedMillis, String message) {
+            calls.add("attempt:" + index + ":" + attempt + ":" + message);
+        }
+
+        public void stepFinished(StepResult result) {
+            calls.add("finished:" + result.index() + ":" + result.success());
+        }
+
+        public void cleanupFinished(com.idm.test.engine.result.CleanupResult result) {
+            calls.add("cleanup:" + result.index() + ":" + result.status());
+        }
+    }
+
+    @Test
+    @DisplayName("The listener hears each step start and finish in order, and each try under wait")
+    void testListener() {
+        RecordingListener listener = new RecordingListener();
+        ScenarioEngine engine = engineWith(recordingAction("a"), eventuallyPassing("check", 2));
+
+        ScenarioResult result = engine.run(withCleanup(List.of(
+                        new StepSpec("a", Map.of("dn", "x", "description", "Create")),
+                        new StepSpec("check", Map.of("dn", "x", "wait", Boolean.TRUE))),
+                new StepSpec("a", Map.of("dn", "y"))), "t.yaml", listener, () -> false);
+
+        assertThat(result.success()).isTrue();
+        assertThat(listener.calls).containsExactly(
+                "started:0:a:Create", "finished:0:true",
+                "started:1:check:null",
+                "attempt:1:1:not yet", "attempt:1:2:not yet", "attempt:1:3:arrived",
+                "finished:1:true",
+                "cleanup:0:SUCCEEDED");
+        assertThat(result.steps().get(1).attempts()).isEqualTo(3);
+        assertThat(result.stopped()).isFalse();
+        assertThat(result.skippedCleanup()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("Waiting history keeps one entry for a value that never changes, whatever the number of tries")
+    void testWaitHistoryUnchanged() {
+        ScenarioResult result = fastEngine(Duration.ofMillis(300),
+                observing("check", call -> "status=PENDING", Integer.MAX_VALUE, () -> { }))
+                .run(scenario(new StepSpec("check", Map.of("wait", Boolean.TRUE))), "t.yaml");
+
+        StepResult step = result.steps().get(0);
+        assertThat(step.attempts()).isGreaterThan(1);
+        assertThat(step.waitHistory()).hasSize(1);
+        assertThat(step.waitHistory().get(0).attempt()).isEqualTo(1);
+        assertThat(step.waitHistory().get(0).message()).isEqualTo("status=PENDING");
+    }
+
+    @Test
+    @DisplayName("Waiting history records the try on which the value changed")
+    void testWaitHistoryChanged() {
+        ScenarioResult result = fastEngine(Duration.ofMillis(300),
+                observing("check", call -> call < 3 ? "status=PENDING" : "status=LOCKED", Integer.MAX_VALUE, () -> { }))
+                .run(scenario(new StepSpec("check", Map.of("wait", Boolean.TRUE))), "t.yaml");
+
+        List<com.idm.test.engine.spi.WaitObservation> history = result.steps().get(0).waitHistory();
+        assertThat(history).hasSize(2);
+        assertThat(history.get(0).attempt()).isEqualTo(1);
+        assertThat(history.get(1).attempt()).isEqualTo(3);
+        assertThat(history.get(1).message()).isEqualTo("status=LOCKED");
+        assertThat(history.get(1).elapsedMillis()).isGreaterThanOrEqualTo(history.get(0).elapsedMillis());
+    }
+
+    @Test
+    @DisplayName("Waiting history is capped at 50 entries of at most 300 characters; no history without wait")
+    void testWaitHistoryCap() {
+        String longText = "x".repeat(1000);
+        ScenarioResult result = fastEngine(Duration.ofSeconds(30),
+                observing("check", call -> call + longText, 80, () -> { }),
+                recordingAction("a"))
+                .run(scenario(new StepSpec("check", Map.of("wait", Boolean.TRUE)),
+                        new StepSpec("a", Map.of())), "t.yaml");
+
+        StepResult step = result.steps().get(0);
+        assertThat(step.attempts()).isEqualTo(80);
+        assertThat(step.waitHistory()).hasSize(50);
+        assertThat(step.waitHistory()).allSatisfy(entry -> assertThat(entry.message().length()).isLessThanOrEqualTo(300));
+        assertThat(result.steps().get(1).waitHistory()).as("did not wait").isNull();
+    }
+
+    @Test
+    @DisplayName("Stop during a wait ends the step as a setup problem, runs nothing more and skips the cleanup")
+    void testStopDuringWait() {
+        java.util.concurrent.atomic.AtomicBoolean stop = new java.util.concurrent.atomic.AtomicBoolean();
+        AtomicInteger tries = new AtomicInteger();
+        RecordingListener listener = new RecordingListener();
+        StepType create = returning("create", false, StepOutcome.success("created", "cn=ada,ou=users"));
+        StepType check = observing("check", call -> "not yet", Integer.MAX_VALUE, () -> {
+            if (tries.incrementAndGet() == 3) {
+                stop.set(true);
+            }
+        });
+        ScenarioEngine engine = fastEngine(Duration.ofSeconds(30), create, check, recordingAction("a"),
+                recordingAction("undo"));
+
+        ScenarioResult result = engine.run(withCleanup(List.of(
+                        new StepSpec("create", Map.of("as", "createdDn")),
+                        new StepSpec("check", Map.of("wait", Boolean.TRUE)),
+                        new StepSpec("a", Map.of("dn", "later"))),
+                new StepSpec("undo", Map.of("dn", "${createdDn}", "description", "Remove ${createdDn}")),
+                new StepSpec("undo", Map.of("dn", "${never}"))), "t.yaml", listener, stop::get);
+
+        assertThat(result.success()).isFalse();
+        assertThat(result.stopped()).isTrue();
+        assertThat(result.steps()).hasSize(2);
+        StepResult stopped = result.steps().get(1);
+        assertThat(stopped.success()).isFalse();
+        assertThat(stopped.failureKind()).isEqualTo("SETUP");
+        assertThat(stopped.messageKey()).isEqualTo("engine.run.stopped");
+        assertThat(stopped.message()).isEqualTo("Stopped — cleanup did not run");
+        assertThat(Messages.render(stopped.messageDetail(), ES)).isEqualTo("Detenido: la limpieza no se ejecutó");
+        assertThat(stopped.attempts()).isEqualTo(3);
+        assertThat(events).as("later steps and cleanup did not run").isEmpty();
+        assertThat(result.cleanup()).isEmpty();
+        assertThat(result.skippedCleanup()).hasSize(2);
+        assertThat(result.skippedCleanup()).allSatisfy(entry -> {
+            assertThat(entry.status()).isEqualTo(CleanupStatus.SKIPPED);
+            assertThat(entry.messageKey()).isEqualTo("engine.run.stopped");
+            assertThat(entry.failureKind()).isNull();
+        });
+        assertThat(result.skippedCleanup().get(0).resolvedParams()).containsEntry("dn", "cn=ada,ou=users");
+        assertThat(result.skippedCleanup().get(0).description()).isEqualTo("Remove cn=ada,ou=users");
+        assertThat(result.skippedCleanup().get(1).resolvedParams()).as("raw when unresolvable")
+                .containsEntry("dn", "${never}");
+        assertThat(result.failureKind()).isEqualTo(com.idm.test.engine.spi.FailureKind.SETUP);
+        assertThat(listener.calls).contains("finished:1:false").noneMatch(call -> call.startsWith("cleanup:"))
+                .noneMatch(call -> call.startsWith("started:2"));
+    }
+
+    @Test
+    @DisplayName("Stop between steps records the next step as stopped without running it")
+    void testStopBetweenSteps() {
+        ScenarioEngine engine = engineWith(recordingAction("a"), recordingAction("b"));
+
+        ScenarioResult result = engine.run(withCleanup(List.of(
+                        new StepSpec("a", Map.of("dn", "1")),
+                        new StepSpec("b", Map.of("dn", "2"))),
+                new StepSpec("a", Map.of("dn", "undo"))), "t.yaml", com.idm.test.engine.spi.RunListener.NONE,
+                () -> !events.isEmpty());
+
+        assertThat(events).containsExactly("run:a:1");
+        assertThat(result.stopped()).isTrue();
+        assertThat(result.steps()).hasSize(2);
+        assertThat(result.steps().get(1).messageKey()).isEqualTo("engine.run.stopped");
+        assertThat(result.steps().get(1).type()).isEqualTo("b");
+        assertThat(result.skippedCleanup()).hasSize(1);
+        assertThat(result.skippedCleanup().get(0).resolvedParams()).containsEntry("dn", "undo");
+    }
+
+    @Test
+    @DisplayName("Stop after the last step still skips the cleanup and fails the scenario")
+    void testStopBeforeCleanup() {
+        java.util.concurrent.atomic.AtomicBoolean stop = new java.util.concurrent.atomic.AtomicBoolean();
+        RecordingListener listener = new RecordingListener() {
+            @Override
+            public void stepFinished(StepResult result) {
+                super.stepFinished(result);
+                stop.set(true);
+            }
+        };
+        ScenarioResult result = engineWith(recordingAction("a")).run(withCleanup(
+                        List.of(new StepSpec("a", Map.of("dn", "1"))), new StepSpec("a", Map.of("dn", "undo"))),
+                "t.yaml", listener, stop::get);
+
+        assertThat(result.success()).isFalse();
+        assertThat(result.stopped()).isTrue();
+        assertThat(result.steps()).hasSize(1);
+        assertThat(result.cleanup()).isEmpty();
+        assertThat(result.skippedCleanup()).hasSize(1);
+        assertThat(result.failureDetailKey()).isEqualTo("engine.run.stopped");
+        assertThat(result.failureKind()).isEqualTo(com.idm.test.engine.spi.FailureKind.SETUP);
+        assertThat(result.failureSummary()).contains("Stopped — cleanup did not run");
+    }
+
+    @Test
+    @DisplayName("A listener that throws changes nothing: the wait passes, every cleanup entry runs, a result comes back")
+    void testThrowingListener() {
+        com.idm.test.engine.spi.RunListener throwing = new com.idm.test.engine.spi.RunListener() {
+            public void stepStarted(int index, String type, String description) {
+                throw new IllegalStateException("started");
+            }
+
+            public void attempt(int index, int attempt, long elapsedMillis, String message) {
+                throw new IllegalStateException("attempt");
+            }
+
+            public void stepFinished(StepResult result) {
+                throw new IllegalStateException("finished");
+            }
+
+            public void cleanupFinished(com.idm.test.engine.result.CleanupResult result) {
+                throw new IllegalStateException("cleanup");
+            }
+        };
+        ScenarioEngine engine = engineWith(eventuallyPassing("check", 2), recordingAction("undo"));
+
+        ScenarioResult result = engine.run(withCleanup(List.of(
+                        new StepSpec("check", Map.of("wait", Boolean.TRUE))),
+                new StepSpec("undo", Map.of("dn", "1")),
+                new StepSpec("undo", Map.of("dn", "2"))), "t.yaml", throwing, () -> false);
+
+        assertThat(result).isNotNull();
+        assertThat(result.success()).isTrue();
+        assertThat(result.steps().get(0).success()).isTrue();
+        assertThat(result.steps().get(0).attempts()).isEqualTo(3);
+        assertThat(result.cleanup()).extracting(com.idm.test.engine.result.CleanupResult::status)
+                .containsExactly(CleanupStatus.SUCCEEDED, CleanupStatus.SUCCEEDED);
+        assertThat(events).containsExactly("run:undo:1", "run:undo:2");
+    }
+
+    @Test
+    @DisplayName("Stop during a long poll interval is noticed within a fraction of a second")
+    void testStopIsImmediate() {
+        java.util.concurrent.atomic.AtomicLong firstTry = new java.util.concurrent.atomic.AtomicLong();
+        StepType check = observing("check", call -> "not yet", Integer.MAX_VALUE,
+                () -> firstTry.compareAndSet(0, System.currentTimeMillis()));
+        ScenarioEngine engine = new ScenarioEngine(Map.of("check", check),
+                new FixtureFactory(new TestDataGenerator()), new TestExecutor(),
+                Duration.ofSeconds(60), Duration.ofSeconds(5), new ExpressionEvaluator());
+
+        long started = System.currentTimeMillis();
+        ScenarioResult result = engine.run(scenario(new StepSpec("check", Map.of("wait", Boolean.TRUE))), "t.yaml",
+                com.idm.test.engine.spi.RunListener.NONE,
+                () -> firstTry.get() != 0 && System.currentTimeMillis() - firstTry.get() > 100);
+        long elapsed = System.currentTimeMillis() - started;
+
+        assertThat(result.stopped()).isTrue();
+        assertThat(result.steps().get(0).messageKey()).isEqualTo("engine.run.stopped");
+        assertThat(result.steps().get(0).attempts()).isEqualTo(1);
+        assertThat(elapsed).isLessThan(1500);
+    }
 }

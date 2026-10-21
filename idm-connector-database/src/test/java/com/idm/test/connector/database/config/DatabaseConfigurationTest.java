@@ -58,7 +58,8 @@ class DatabaseConfigurationTest {
 
         OperationResult<List<Map<String, Object>>> down = connector.executeQuery("down", "SELECT 1 AS one");
         assertThat(down.isFailure()).isTrue();
-        assertThat(down.getErrorType()).contains(ErrorType.DATABASE_ERROR);
+        // Unreachable: a setup problem, not something the database answered (ITF-56).
+        assertThat(down.getErrorType()).as(down.getMessage()).contains(ErrorType.NETWORK_ERROR);
     }
 
     @Test

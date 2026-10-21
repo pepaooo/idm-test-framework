@@ -6,9 +6,11 @@ import com.idm.test.connector.rest.client.RestAuthenticator;
 import com.idm.test.connector.rest.client.TokenFailureText;
 import com.idm.test.connector.rest.config.RestProperties;
 import com.idm.test.connector.rest.model.TextResponse;
+import com.idm.test.core.model.ErrorType;
 import com.idm.test.core.model.OperationResult;
 import com.idm.test.engine.expr.ExpressionEvaluator.ExpressionException;
 import com.idm.test.engine.i18n.Messages;
+import com.idm.test.engine.spi.Check;
 import com.idm.test.engine.spi.DeferredExpression;
 import com.idm.test.engine.spi.Explained;
 import com.idm.test.engine.spi.Message;
@@ -98,7 +100,8 @@ public final class HttpVerifyStep implements StepType {
                                      OperationResult<TextResponse> result, boolean captureRequested) {
         if (!result.isSuccess() || result.getData().isEmpty()) {
             return StepOutcome.failure(Message.of("step.http.verify.failed",
-                    request.url(), ConnectorProblems.request(request.method(), request.url(), result)));
+                    request.url(), ConnectorProblems.request(request.method(), request.url(), result)),
+                    result.getErrorType().orElse(ErrorType.UNKNOWN_ERROR));
         }
 
         TextResponse response = result.getData().get();
@@ -106,6 +109,10 @@ public final class HttpVerifyStep implements StepType {
         String method = request.method();
         String url = request.url();
         int total = checks.size();
+        // Every check is evaluated, so a finding shows each one; the outcome is the first that
+        // did not pass.
+        List<Check> results = new ArrayList<>();
+        StepOutcome failure = null;
         for (int i = 0; i < total; i++) {
             DeferredExpression check = checks.get(i);
             int number = i + 1;
@@ -119,25 +126,40 @@ public final class HttpVerifyStep implements StepType {
                 String error = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
                 Object reason = e instanceof ExpressionException expression && expression.detail() != null
                         ? masked(expression.detail()) : safe(error);
-                return StepOutcome.failure(Message.of("step.http.verify.checkThrew", method, url, number, total,
-                        reason, response.status(), safe(response.body()), hint));
+                results.add(Check.condition(check.source(),
+                        reason instanceof Message keyed ? Messages.english(keyed) : String.valueOf(reason), false));
+                if (failure == null) {
+                    failure = StepOutcome.failure(Message.of("step.http.verify.checkThrew", method, url, number, total,
+                            reason, response.status(), safe(response.body()), hint));
+                }
+                continue;
             }
             Object value = explained.value();
             if (!(value instanceof Boolean passed)) {
-                return StepOutcome.finalFailure(Message.of("step.http.verify.notBoolean", method, url, number, total,
-                        safe(describe(value))));
+                String described = safe(describe(value));
+                results.add(Check.condition(check.source(), described, false));
+                if (failure == null) {
+                    failure = StepOutcome.finalFailure(Message.of("step.http.verify.notBoolean", method, url, number,
+                            total, described));
+                }
+                continue;
             }
-            if (!passed) {
+            results.add(Check.condition(check.source(), String.valueOf(passed), passed));
+            if (!passed && failure == null) {
                 Object notes = explained.details().isEmpty()
                         ? ""
                         : Message.of("step.http.verify.notes", masked(joined(explained.details())));
-                return StepOutcome.failure(Message.of("step.http.verify.checkFalse", method, url, number, total,
+                failure = StepOutcome.failure(Message.of("step.http.verify.checkFalse", method, url, number, total,
                         check.source(), notes, response.status(), safe(response.body()), hint));
             }
         }
+        if (failure != null) {
+            return failure.withChecks(results);
+        }
 
         Message message = Message.of("step.http.verify.passed", method, url, total, response.status());
-        return captureRequested ? StepOutcome.success(message, bound.response()) : StepOutcome.success(message);
+        return (captureRequested ? StepOutcome.success(message, bound.response()) : StepOutcome.success(message))
+                .withChecks(results);
     }
 
     /** The notes as one message, joined with "; " as they are in English. */

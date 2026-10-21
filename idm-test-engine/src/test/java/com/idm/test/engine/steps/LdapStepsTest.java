@@ -4,6 +4,8 @@ import com.idm.test.connector.ldap.client.EdirectoryConnector;
 import com.idm.test.connector.ldap.client.LdapDirectories;
 import com.idm.test.connector.ldap.model.LdapUser;
 import com.idm.test.core.model.OperationResult;
+import com.idm.test.engine.spi.Check;
+import com.idm.test.engine.spi.FailureKind;
 import com.idm.test.engine.spi.LdapEvidence;
 import com.idm.test.engine.i18n.Messages;
 import com.idm.test.engine.spi.StepOutcome;
@@ -17,6 +19,7 @@ import org.springframework.ldap.core.LdapTemplate;
 import org.springframework.ldap.core.support.LdapContextSource;
 
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -945,5 +948,152 @@ class LdapStepsTest {
                 .isEqualTo("ldap.update falló para " + dn + ": no se puede agregar [" + b + "] a seeAlso: la entrada ya lo tiene");
         verify(counted, times(1)).readAttributes(dn);
         connector.delete(dn);
+    }
+
+    private static LdapDirectories directoryAt(String url, String password) {
+        LdapContextSource contextSource = new LdapContextSource();
+        contextSource.setUrl(url);
+        contextSource.setBase(BASE_DN);
+        contextSource.setUserDn(BIND_DN);
+        contextSource.setPassword(password);
+        contextSource.afterPropertiesSet();
+        return only(new EdirectoryConnector(new LdapTemplate(contextSource)));
+    }
+
+    @Test
+    @DisplayName("Failure kinds: a mismatch or an existing entry is a finding")
+    void testFindingKinds() {
+        String dn = "cn=kind.finding,ou=users";
+        Map<String, Object> attributes = Map.of("cn", "kind.finding", "sn", "Kind", "givenName", "Ada");
+        assertThat(new LdapCreateStep(directories).execute(Map.of("dn", dn, "attributes", attributes), false)
+                .success()).isTrue();
+
+        StepOutcome mismatch = new LdapVerifyStep(directories).execute(Map.of(
+                "dn", dn, "expect", Map.of("givenName", "Grace")), false);
+        assertThat(mismatch.success()).isFalse();
+        assertThat(mismatch.kind()).isEqualTo(FailureKind.FINDING);
+
+        StepOutcome exists = new LdapCreateStep(directories).execute(Map.of("dn", dn, "attributes", attributes), false);
+        assertThat(exists.success()).isFalse();
+        assertThat(exists.kind()).as(exists.message()).isEqualTo(FailureKind.FINDING);
+
+        StepOutcome absent = new LdapVerifyStep(directories).execute(Map.of(
+                "dn", "cn=kind.nobody,ou=users", "expect", Map.of("sn", "x")), false);
+        assertThat(absent.success()).isFalse();
+        assertThat(absent.kind()).isEqualTo(FailureKind.FINDING);
+    }
+
+    @Test
+    @DisplayName("Failure kinds: a closed port or a rejected bind is a setup problem")
+    void testSetupKinds() {
+        LdapDirectories closed = directoryAt("ldap://localhost:1", BIND_PASSWORD);
+        StepOutcome unreachable = new LdapVerifyStep(closed).execute(Map.of(
+                "dn", "cn=anyone,ou=users", "expect", Map.of("sn", "x")), false);
+        assertThat(unreachable.success()).isFalse();
+        assertThat(unreachable.kind()).as(unreachable.message()).isEqualTo(FailureKind.SETUP);
+
+        StepOutcome unreachableCreate = new LdapCreateStep(closed).execute(Map.of(
+                "dn", "cn=anyone,ou=users", "attributes", Map.of("cn", "anyone", "sn", "x")), false);
+        assertThat(unreachableCreate.kind()).as(unreachableCreate.message()).isEqualTo(FailureKind.SETUP);
+
+        LdapDirectories rejected = directoryAt(server.getUrl(), "wrong-fake-password");
+        StepOutcome refused = new LdapVerifyStep(rejected).execute(Map.of(
+                "dn", "cn=anyone,ou=users", "expect", Map.of("sn", "x")), false);
+        assertThat(refused.success()).isFalse();
+        assertThat(refused.kind()).as(refused.message()).isEqualTo(FailureKind.SETUP);
+
+        StepOutcome refusedExists = new LdapVerifyStep(rejected).execute(Map.of(
+                "dn", "cn=anyone,ou=users", "exists", false), false);
+        assertThat(refusedExists.kind()).as(refusedExists.message()).isEqualTo(FailureKind.SETUP);
+
+        StepOutcome refusedDelete = new LdapDeleteStep(rejected).execute(Map.of("dn", "cn=anyone,ou=users"), false);
+        assertThat(refusedDelete.kind()).as(refusedDelete.message()).isEqualTo(FailureKind.SETUP);
+
+        StepOutcome refusedUpdate = new LdapUpdateStep(rejected).execute(Map.of(
+                "dn", "cn=anyone,ou=users", "attributes", Map.of("sn", "y")), false);
+        assertThat(refusedUpdate.kind()).as(refusedUpdate.message()).isEqualTo(FailureKind.SETUP);
+    }
+
+    @Test
+    @DisplayName("Failure kinds: malformed ldap.create and ldap.update parameters are final setup problems")
+    void testMalformedKinds() {
+        StepOutcome noAttributes = new LdapUpdateStep(directories).execute(Map.of(
+                "dn", "cn=kind.shape,ou=users", "attributes", Map.of()), false);
+        assertThat(noAttributes.success()).isFalse();
+        assertThat(noAttributes.isFinal()).isTrue();
+        assertThat(noAttributes.kind()).isEqualTo(com.idm.test.engine.spi.FailureKind.SETUP);
+
+        java.util.List<Object> withNull = new java.util.ArrayList<>();
+        withNull.add(null);
+        StepOutcome badUpdateList = new LdapUpdateStep(directories).execute(Map.of(
+                "dn", "cn=kind.shape,ou=users", "attributes", Map.of("mail", withNull)), false);
+        assertThat(badUpdateList.success()).isFalse();
+        assertThat(badUpdateList.kind()).as(badUpdateList.message()).isEqualTo(com.idm.test.engine.spi.FailureKind.SETUP);
+
+        StepOutcome badCreateList = new LdapCreateStep(directories).execute(Map.of(
+                "dn", "cn=kind.shape,ou=users",
+                "attributes", Map.of("cn", "kind.shape", "sn", "S", "mail", withNull)), false);
+        assertThat(badCreateList.success()).isFalse();
+        assertThat(badCreateList.kind()).as(badCreateList.message()).isEqualTo(com.idm.test.engine.spi.FailureKind.SETUP);
+    }
+
+    @Test
+    @DisplayName("ldap.verify reports expected and found per attribute, null when the attribute is absent")
+    void testVerifyChecks() {
+        EdirectoryConnector mockConnector = mock(EdirectoryConnector.class);
+        when(mockConnector.readAttributes(any())).thenReturn(OperationResult.success(Map.of("sn", "X")));
+        Map<String, Object> expect = new LinkedHashMap<>();
+        expect.put("sn", "X");
+        expect.put("groupMembership", Map.of("contains", "cn=Finance,ou=groups"));
+
+        StepOutcome outcome = new LdapVerifyStep(only(mockConnector)).execute(Map.of(
+                "dn", "cn=x,ou=users", "expect", expect), false);
+
+        assertThat(outcome.success()).isFalse();
+        assertThat(outcome.message()).contains("groupMembership");
+        assertThat(outcome.checks()).containsExactly(
+                new Check("sn", "X", "X", true),
+                new Check("groupMembership", "contains cn=Finance,ou=groups", null, false));
+    }
+
+    @Test
+    @DisplayName("ldap.verify checks render lists and matchers, and cover every attribute when the step passes")
+    void testVerifyChecksRenderValues() {
+        EdirectoryConnector mockConnector = mock(EdirectoryConnector.class);
+        when(mockConnector.readAttributes(any())).thenReturn(OperationResult.success(
+                Map.of("mail", List.of("a@x.test", "b@x.test"), "sn", "X")));
+        Map<String, Object> matcher = new LinkedHashMap<>();
+        matcher.put("contains", List.of("a@x.test", "b@x.test"));
+        matcher.put("count", 2);
+        Map<String, Object> expect = new LinkedHashMap<>();
+        expect.put("mail", matcher);
+        expect.put("sn", List.of("X"));
+
+        StepOutcome outcome = new LdapVerifyStep(only(mockConnector)).execute(Map.of(
+                "dn", "cn=x,ou=users", "expect", expect), false);
+
+        assertThat(outcome.success()).as(outcome.message()).isTrue();
+        assertThat(outcome.checks()).containsExactly(
+                new Check("mail", "contains [a@x.test, b@x.test]; count 2", "[a@x.test, b@x.test]", true),
+                new Check("sn", "[X]", "X", true));
+    }
+
+    @Test
+    @DisplayName("ldap.verify checks never carry a secret attribute's values")
+    void testVerifyChecksMaskSecrets() {
+        EdirectoryConnector mockConnector = mock(EdirectoryConnector.class);
+        when(mockConnector.readAttributes(any())).thenReturn(OperationResult.success(
+                Map.of("secretAnswer", "Actual-Value-1")));
+
+        StepOutcome outcome = new LdapVerifyStep(only(mockConnector)).execute(Map.of(
+                "dn", "cn=x,ou=users", "expect", Map.of("secretAnswer", "Expected-Value-1")), false);
+
+        assertThat(outcome.success()).isFalse();
+        assertThat(outcome.checks()).containsExactly(new Check("secretAnswer", "••••", "••••", false));
+
+        StepOutcome password = new LdapVerifyStep(only(mockConnector)).execute(Map.of(
+                "dn", "cn=x,ou=users", "expect", Map.of("userPassword", "S3cretValue!")), false);
+        assertThat(password.isFinal()).isTrue();
+        assertThat(password.checks()).isEmpty();
     }
 }

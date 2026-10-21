@@ -3,6 +3,7 @@ package com.idm.test.engine.result;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.idm.test.engine.i18n.Messages;
+import com.idm.test.engine.spi.FailureKind;
 import com.idm.test.engine.spi.Message;
 
 import java.util.ArrayList;
@@ -17,12 +18,16 @@ import java.util.Locale;
  * @param durationMillis wall-clock time for the whole scenario, including fixture building
  *                        and cleanup as well as the steps — the step durations will not sum
  *                        to this value
- * @param failureDetail  what went wrong before any step could run (e.g. fixture setup),
- *                        or null when the scenario got at least as far as its first step
+ * @param failureDetail  what went wrong before any step could run (e.g. fixture setup), or that
+ *                        the run was stopped after its steps passed but before its cleanup; null
+ *                        otherwise
  * @param description    the scenario's own top-level description, or null
  * @param failureDetailKey  the key of {@code failureDetail}, so it can be shown in another
  *                          language, or null when it is plain text
  * @param failureDetailArgs the arguments of {@code failureDetailKey}, or null when there is no key
+ * @param stopped        true when the run was stopped while this scenario ran: its cleanup did not run
+ * @param skippedCleanup the cleanup entries a stop skipped, SKIPPED, with the values they would have
+ *                       used; empty unless {@code stopped}
  */
 public record ScenarioResult(
         String name,
@@ -34,12 +39,23 @@ public record ScenarioResult(
         String failureDetail,
         String description,
         @JsonInclude(JsonInclude.Include.NON_NULL) String failureDetailKey,
-        @JsonInclude(JsonInclude.Include.NON_NULL) List<Object> failureDetailArgs) {
+        @JsonInclude(JsonInclude.Include.NON_NULL) List<Object> failureDetailArgs,
+        @JsonInclude(JsonInclude.Include.NON_DEFAULT) boolean stopped,
+        @JsonInclude(JsonInclude.Include.NON_EMPTY) List<CleanupResult> skippedCleanup) {
 
     public ScenarioResult {
         cleanup = cleanup == null ? List.of() : cleanup;
         failureDetailArgs = failureDetailArgs == null
                 ? null : Collections.unmodifiableList(new ArrayList<>(failureDetailArgs));
+        skippedCleanup = skippedCleanup == null ? List.of() : List.copyOf(skippedCleanup);
+    }
+
+    /** A result of a run that was not stopped. */
+    public ScenarioResult(String name, String sourceName, boolean success, long durationMillis,
+                          List<StepResult> steps, List<CleanupResult> cleanup, String failureDetail,
+                          String description, String failureDetailKey, List<Object> failureDetailArgs) {
+        this(name, sourceName, success, durationMillis, steps, cleanup, failureDetail, description,
+                failureDetailKey, failureDetailArgs, false, List.of());
     }
 
     /** A result whose failure detail, if any, is plain text. */
@@ -118,6 +134,25 @@ public record ScenarioResult(
         return parts.isEmpty()
                 ? Messages.render(Message.of("engine.summary.beforeAnyStep", sourceName), locale)
                 : String.join("; ", parts);
+    }
+
+    /**
+     * What kind of failure this scenario is, or null when it passed: its failed step's kind; a
+     * {@link FailureKind#SETUP} problem when it failed before any step (it did not load, or its
+     * fixtures failed); a {@link FailureKind#FINDING} when only its cleanup failed.
+     */
+    @JsonIgnore
+    public FailureKind failureKind() {
+        if (success) {
+            return null;
+        }
+        for (int i = steps.size() - 1; i >= 0; i--) {
+            if (!steps.get(i).success()) {
+                return steps.get(i).kind();
+            }
+        }
+        boolean cleanupFailed = cleanup.stream().anyMatch(entry -> entry.status() == CleanupStatus.FAILED);
+        return failureDetail == null && cleanupFailed ? FailureKind.FINDING : FailureKind.SETUP;
     }
 
     /** The failure detail by key, or null when it is plain text. */

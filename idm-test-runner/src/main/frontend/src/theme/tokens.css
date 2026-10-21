@@ -1,0 +1,67 @@
+/*
+ * Graphite & indigo (spec §4.9). Light by default; dark when the operating system asks for it,
+ * unless the switch chose light; and dark whenever the switch chose it. The first ten colours are
+ * the spec's reference values; warn and the "on-*" text colours come from the mockups.
+ */
+:root {
+  color-scheme: light;
+  --bg: #fafafc;
+  --surface: #ffffff;
+  --raised: #f0f1f6;
+  --line: #e1e3ec;
+  --text: #1c1e27;
+  --muted: #5e6273;
+  --accent: #4f5fe8;
+  --ok: #1f9d63;
+  --finding: #e07b25;
+  --error: #d33b4a;
+  --warn: #b7860f;
+  --on-accent: #ffffff;
+  --on-status: #ffffff;
+  --on-warn: #ffffff;
+  --on-finding: #ffffff;
+
+  --font: 13px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: ui-monospace, Menlo, Consolas, monospace;
+  --radius: 8px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #111216;
+    --surface: #17181e;
+    --raised: #1e2028;
+    --line: #2a2d38;
+    --text: #e1e3ea;
+    --muted: #9195a5;
+    --accent: #7c8cff;
+    --ok: #4cc38a;
+    --finding: #f2994a;
+    --error: #f06a75;
+    --warn: #e9b44c;
+    --on-accent: #0e1030;
+    --on-status: #ffffff;
+    --on-warn: #1a1a1a;
+    --on-finding: #1d1206;
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #111216;
+  --surface: #17181e;
+  --raised: #1e2028;
+  --line: #2a2d38;
+  --text: #e1e3ea;
+  --muted: #9195a5;
+  --accent: #7c8cff;
+  --ok: #4cc38a;
+  --finding: #f2994a;
+  --error: #f06a75;
+  --warn: #e9b44c;
+  --on-accent: #0e1030;
+  --on-status: #ffffff;
+  --on-warn: #1a1a1a;
+  --on-finding: #1d1206;
+}

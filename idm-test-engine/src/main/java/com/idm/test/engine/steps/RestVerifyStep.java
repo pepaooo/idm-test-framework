@@ -5,12 +5,16 @@ import com.idm.test.connector.rest.client.IdmRestConnector;
 import com.idm.test.connector.rest.client.RestAuthenticator;
 import com.idm.test.connector.rest.config.RestProperties;
 import com.idm.test.connector.rest.model.RestResponse;
+import com.idm.test.core.model.ErrorType;
 import com.idm.test.core.model.OperationResult;
+import com.idm.test.engine.spi.Check;
 import com.idm.test.engine.spi.Message;
 import com.idm.test.engine.spi.StepOutcome;
 import com.idm.test.engine.spi.StepType;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
@@ -99,25 +103,35 @@ public final class RestVerifyStep implements StepType {
                                      String url, boolean captureRequested) {
         if (!result.isSuccess() || result.getData().isEmpty()) {
             return StepOutcome.failure(Message.of("step.rest.verify.failed",
-                    url, ConnectorProblems.request(method, url, result)));
+                    url, ConnectorProblems.request(method, url, result)),
+                    result.getErrorType().orElse(ErrorType.UNKNOWN_ERROR));
         }
 
         RestResponse response = result.getData().get();
 
+        // Every expectation is compared, so a finding shows each one; the message names the first
+        // that differs, the status before the body.
+        List<Check> checks = new ArrayList<>();
+        Message failure = null;
+
         if (expect.containsKey(STATUS)) {
             Object expectedStatus = expect.get(STATUS);
-            if (!ValueComparison.equal(expectedStatus, response.status())) {
-                return StepOutcome.failure(Message.of("step.rest.verify.statusMismatch",
-                        url, expectedStatus, response.status()));
+            boolean matched = ValueComparison.equal(expectedStatus, response.status());
+            checks.add(Check.compared(STATUS, expectedStatus, response.status(), matched));
+            if (!matched) {
+                failure = Message.of("step.rest.verify.statusMismatch", url, expectedStatus, response.status());
             }
         }
 
         if (expect.containsKey(BODY)) {
-            Message mismatch = mismatchIn(
-                    StepValues.toMap(expect.get(BODY)), response.body(), "");
-            if (mismatch != null) {
-                return StepOutcome.failure(Message.of("step.rest.verify.bodyMismatch", url, mismatch));
+            Message mismatch = compareIn(StepValues.toMap(expect.get(BODY)), response.body(), "", checks);
+            if (mismatch != null && failure == null) {
+                failure = Message.of("step.rest.verify.bodyMismatch", url, mismatch);
             }
+        }
+
+        if (failure != null) {
+            return StepOutcome.failure(failure).withChecks(checks);
         }
 
         Message message = Message.of("step.rest.verify.verified", method, url, response.status());
@@ -126,31 +140,37 @@ public final class RestVerifyStep implements StepType {
         capture.put("headers", response.headers());
         capture.put("body", response.body());
 
-        return captureRequested
+        return (captureRequested
                 ? StepOutcome.success(message, capture)
-                : StepOutcome.success(message);
+                : StepOutcome.success(message)).withChecks(checks);
     }
 
     /**
      * Compares only the fields the scenario named, recursing into nested maps, so a scenario
-     * need not restate a whole payload to assert one field.
+     * need not restate a whole payload to assert one field. Every named field is compared and
+     * added to {@code checks} by its dotted path; a field under a part of the body that is not an
+     * object was not found.
      *
      * @return a description of the first mismatch, or null when everything named matches
      */
     @SuppressWarnings("unchecked")
-    private static Message mismatchIn(Map<String, Object> expected, Object actual, String path) {
-        if (!(actual instanceof Map<?, ?> actualMap)) {
-            return Message.of("step.rest.verify.notObject", path.isEmpty() ? "body" : path, actual);
+    private static Message compareIn(Map<String, Object> expected, Object actual, String path, List<Check> checks) {
+        Message first = null;
+        Map<String, Object> actualMap = Map.of();
+        if (actual instanceof Map<?, ?> map) {
+            actualMap = (Map<String, Object>) map;
+        } else {
+            first = Message.of("step.rest.verify.notObject", path.isEmpty() ? "body" : path, actual);
         }
 
         for (Map.Entry<String, Object> field : expected.entrySet()) {
             String where = path.isEmpty() ? field.getKey() : path + "." + field.getKey();
-            Object actualValue = ((Map<String, Object>) actualMap).get(field.getKey());
+            Object actualValue = actualMap.get(field.getKey());
 
             if (field.getValue() instanceof Map<?, ?> nested) {
-                Message deeper = mismatchIn((Map<String, Object>) nested, actualValue, where);
-                if (deeper != null) {
-                    return deeper;
+                Message deeper = compareIn((Map<String, Object>) nested, actualValue, where, checks);
+                if (first == null) {
+                    first = deeper;
                 }
                 continue;
             }
@@ -159,11 +179,13 @@ public final class RestVerifyStep implements StepType {
             // authoring gesture (expect: 1 against an actual 1.0) does not pass in one
             // assertion step and fail in the other — falls back to comparing string form, so
             // 200 still matches "200".
-            if (!ValueComparison.equal(field.getValue(), actualValue)) {
-                return Message.of("step.rest.verify.fieldMismatch", where, field.getValue(), actualValue);
+            boolean matched = actual instanceof Map<?, ?> && ValueComparison.equal(field.getValue(), actualValue);
+            checks.add(Check.compared(where, field.getValue(), actualValue, matched));
+            if (!matched && first == null) {
+                first = Message.of("step.rest.verify.fieldMismatch", where, field.getValue(), actualValue);
             }
         }
-        return null;
+        return first;
     }
 
     /**
@@ -222,7 +244,7 @@ public final class RestVerifyStep implements StepType {
      * since a missing key and an explicit null are indistinguishable after {@code Map.get()}),
      * or a nested object with nothing in it (a scenario writing {@code profile: {}} asserts
      * only "profile is an object", the exact vacuous shape rejected at the top level), would
-     * let {@link #mismatchIn} report a match having compared nothing for that field. Recurses
+     * let {@link #compareIn} report a match having compared nothing for that field. Recurses
      * so the rule holds no matter how deep the {@code body} matcher nests.
      *
      * @return a description of the first offending field, or null when the matcher is sound

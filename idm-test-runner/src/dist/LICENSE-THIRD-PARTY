@@ -13,6 +13,22 @@ and runtime/release.
 lib/idm-test-runner-<version>.jar also contains the Spring Boot loader classes (Apache License,
 Version 2.0).
 
+lib/idm-test-runner-<version>.jar also contains the workbench front end (BOOT-INF/classes/static/),
+which bundles these npm packages (notices below):
+    react 19.3.0, react-dom 19.3.0, scheduler 0.28.0 (MIT License)
+    monaco-editor 0.54.0 (MIT License), with its dependencies marked 14.0.0 (MIT License) and
+        dompurify 3.1.7 (Mozilla Public License 2.0 or Apache License 2.0; used here under the
+        Apache License 2.0)
+    @monaco-editor/react 4.7.0, @monaco-editor/loader 1.7.0, state-local 1.0.7 (MIT License)
+    monaco-yaml 5.5.1, monaco-languageserver-types 0.4.1, monaco-marker-data-provider 1.2.5,
+        monaco-types 0.1.2, monaco-worker-manager 2.0.1, proxy-disposable 1.0.0 (MIT License)
+    prettier 3.9.10, jsonc-parser 3.3.1, path-browserify 1.0.1, @vscode/l10n 0.0.18, vscode-uri 3.2.0,
+        vscode-jsonrpc 9.0.3, vscode-languageserver-protocol 3.18.4,
+        vscode-languageserver-textdocument 1.0.15, vscode-languageserver-types 3.18.4 (MIT License)
+    yaml 2.9.1 (ISC License)
+monaco-editor also embeds code under its own third-party notices
+(https://github.com/microsoft/monaco-editor/blob/main/ThirdPartyNotices.txt).
+
 Components
 ----------
 
@@ -282,6 +298,10 @@ Spring Web
     org.springframework:spring-web  version 7.0.9
     Licence: Apache License, Version 2.0  <https://www.apache.org/licenses/LICENSE-2.0>
 
+Spring Web MVC
+    org.springframework:spring-webmvc  version 7.0.9
+    Licence: Apache License, Version 2.0  <https://www.apache.org/licenses/LICENSE-2.0>
+
 spring-boot
     org.springframework.boot:spring-boot  version 4.1.1
     Licence: Apache License, Version 2.0  <https://www.apache.org/licenses/LICENSE-2.0>
@@ -322,12 +342,28 @@ spring-boot-security-oauth2-client
     org.springframework.boot:spring-boot-security-oauth2-client  version 4.1.1
     Licence: Apache License, Version 2.0  <https://www.apache.org/licenses/LICENSE-2.0>
 
+spring-boot-servlet
+    org.springframework.boot:spring-boot-servlet  version 4.1.1
+    Licence: Apache License, Version 2.0  <https://www.apache.org/licenses/LICENSE-2.0>
+
 spring-boot-sql
     org.springframework.boot:spring-boot-sql  version 4.1.1
     Licence: Apache License, Version 2.0  <https://www.apache.org/licenses/LICENSE-2.0>
 
+spring-boot-tomcat
+    org.springframework.boot:spring-boot-tomcat  version 4.1.1
+    Licence: Apache License, Version 2.0  <https://www.apache.org/licenses/LICENSE-2.0>
+
 spring-boot-transaction
     org.springframework.boot:spring-boot-transaction  version 4.1.1
+    Licence: Apache License, Version 2.0  <https://www.apache.org/licenses/LICENSE-2.0>
+
+spring-boot-web-server
+    org.springframework.boot:spring-boot-web-server  version 4.1.1
+    Licence: Apache License, Version 2.0  <https://www.apache.org/licenses/LICENSE-2.0>
+
+spring-boot-webmvc
+    org.springframework.boot:spring-boot-webmvc  version 4.1.1
     Licence: Apache License, Version 2.0  <https://www.apache.org/licenses/LICENSE-2.0>
 
 spring-ldap-core
@@ -366,6 +402,18 @@ Stax2 API
     org.codehaus.woodstox:stax2-api  version 4.2.2
     Licence: The BSD 2-Clause License  <http://www.opensource.org/licenses/bsd-license.php>
 
+tomcat-embed-core
+    org.apache.tomcat.embed:tomcat-embed-core  version 11.0.24
+    Licence: Apache License, Version 2.0  <http://www.apache.org/licenses/LICENSE-2.0.txt>
+
+tomcat-embed-el
+    org.apache.tomcat.embed:tomcat-embed-el  version 11.0.24
+    Licence: Apache License, Version 2.0  <http://www.apache.org/licenses/LICENSE-2.0.txt>
+
+tomcat-embed-websocket
+    org.apache.tomcat.embed:tomcat-embed-websocket  version 11.0.24
+    Licence: Apache License, Version 2.0  <http://www.apache.org/licenses/LICENSE-2.0.txt>
+
 TXW2 Runtime
     org.glassfish.jaxb:txw2  version 4.0.9
     Licence: Eclipse Distribution License - v 1.0  <http://www.eclipse.org/org/documents/edl-v10.php>
@@ -387,6 +435,78 @@ xmlstreambuffer
 
 Notices
 -------
+
+React, React DOM and scheduler (npm react 19.3.0, react-dom 19.3.0, scheduler 0.28.0) - MIT
+
+MIT License
+
+Copyright (c) Meta Platforms, Inc. and affiliates.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+
+The workbench editor's npm packages under the MIT License (the licence text above applies to each,
+with its own copyright line):
+
+    monaco-editor 0.54.0                  Copyright (c) 2016 - present Microsoft Corporation
+    marked 14.0.0                         Copyright (c) 2018+, MarkedJS (https://github.com/markedjs/)
+    @monaco-editor/react 4.7.0            Copyright (c) 2018 Suren Atoyan
+    @monaco-editor/loader 1.7.0           Copyright (c) 2021 Suren Atoyan
+    state-local 1.0.7                     Copyright (c) 2020 Suren Atoyan
+    monaco-yaml 5.5.1                     Copyright (c) Microsoft Corporation
+    monaco-languageserver-types 0.4.1     Copyright (c) 2023 Remco Haszing
+    monaco-marker-data-provider 1.2.5     Copyright (c) 2022 Remco Haszing
+    monaco-types 0.1.2                    Copyright (c) 2021 Remco Haszing
+    monaco-worker-manager 2.0.1           Copyright (c) 2022 Remco Haszing
+    proxy-disposable 1.0.0                Copyright (c) 2026 Remco Haszing
+    prettier 3.9.10                       Copyright (c) James Long and contributors
+    jsonc-parser 3.3.1                    Copyright (c) Microsoft
+    vscode-uri 3.2.0                      Copyright (c) Microsoft
+    vscode-jsonrpc 9.0.3                  Copyright (c) Microsoft Corporation
+    vscode-languageserver-protocol 3.18.4 Copyright (c) Microsoft Corporation
+    vscode-languageserver-textdocument 1.0.15  Copyright (c) Microsoft Corporation
+    vscode-languageserver-types 3.18.4    Copyright (c) Microsoft Corporation
+    @vscode/l10n 0.0.18                   Copyright (c) Microsoft Corporation
+    path-browserify 1.0.1                 Copyright (c) 2013 James Halliday
+
+
+yaml (npm yaml 2.9.1) - ISC License
+
+Copyright Eemeli Aro <eemeli@gmail.com>
+
+Permission to use, copy, modify, and/or distribute this software for any purpose
+with or without fee is hereby granted, provided that the above copyright notice
+and this permission notice appear in all copies.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
+REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND
+FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
+INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS
+OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
+TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
+THIS SOFTWARE.
+
+
+DOMPurify (npm dompurify 3.1.7) - used under the Apache License, Version 2.0
+<https://www.apache.org/licenses/LICENSE-2.0> (it is also offered under the Mozilla Public
+License 2.0). Copyright Cure53 and other contributors.
+
 
 PostgreSQL JDBC Driver (org.postgresql:postgresql 42.7.13) - BSD-2-Clause
 

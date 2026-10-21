@@ -62,7 +62,10 @@ class ValidateCommandTest {
     @Test
     @DisplayName("Should list valid and invalid scenarios, summarise and exit 1")
     void testMixed() {
+        int before = StartedContexts.all().size();
         assertThat(validate()).isEqualTo(ExitCodes.FAILED);
+        assertThat(StartedContexts.all()).as("validate starts no Spring application, so no web server")
+                .hasSize(before);
         assertThat(out()).contains("✔ good.yaml", "✖ bad.yaml — ", "no.such.step",
                 "2 scenarios: 1 valid, 1 invalid");
     }

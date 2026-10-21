@@ -11,6 +11,8 @@
 2. [Scenario authoring](guides/scenario-authoring.md).
 3. [Writing scenarios: the reference](reference/writing-scenarios.md) — every step, parameter and rule.
 4. [Configuration](reference/configuration.md).
+5. [Running scenarios with `idmtest`](guides/runner.md) — without Maven, from a workspace folder.
+6. [The workbench](guides/workbench.md) — `idmtest ui`, the same in the browser.
 
 ## Understand and maintain the architecture
 

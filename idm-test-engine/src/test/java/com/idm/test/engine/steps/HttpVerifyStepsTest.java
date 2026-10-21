@@ -16,6 +16,7 @@ import com.idm.test.engine.i18n.Messages;
 import com.idm.test.engine.model.StepSpec;
 import com.idm.test.engine.result.ScenarioResult;
 import com.idm.test.engine.result.StepResult;
+import com.idm.test.engine.spi.Check;
 import com.idm.test.utils.data.TestDataGenerator;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -536,5 +537,64 @@ class HttpVerifyStepsTest {
         assertThat(step.message()).startsWith(head + "check 1 of 1 failed: could not evaluate js:{ response.json.missing.deeper }: ");
         assertThat(spanish(step)).startsWith(head + "la comprobación 1 de 1 falló: no se pudo evaluar"
                 + " js:{ response.json.missing.deeper }: ").endsWith(" (estado 200, body: {})");
+    }
+
+    @Test
+    @DisplayName("Failure kinds: a check the response fails is a finding")
+    void testFailureKinds() {
+        stubJson(200, "{\"active\":false}");
+        StepResult step = run(params("check", "js:{ response.json.active === true }"));
+        assertThat(step.success()).isFalse();
+        assertThat(step.failureKind()).as(step.message()).isEqualTo("FINDING");
+    }
+
+    @Test
+    @DisplayName("Each check is reported with expected true and what it gave, false or the error")
+    void testChecks() {
+        stubJson(200, "{\"active\":false}");
+
+        StepResult step = run(params("check", List.of("js:{ response.status === 200 }", "js:{ response.json.active }",
+                "js:{ response.json.profile.city === 'Madrid' }")));
+
+        assertThat(step.success()).isFalse();
+        assertThat(step.message()).contains("check 2 of 3 is false");
+        assertThat(step.checks()).hasSize(3);
+        assertThat(step.checks().get(0)).isEqualTo(new Check("js:{ response.status === 200 }", "true", "true", true));
+        assertThat(step.checks().get(1)).isEqualTo(new Check("js:{ response.json.active }", "true", "false", false));
+        Check threw = step.checks().get(2);
+        assertThat(threw.name()).isEqualTo("js:{ response.json.profile.city === 'Madrid' }");
+        assertThat(threw.expected()).isEqualTo("true");
+        assertThat(threw.matched()).isFalse();
+        assertThat(threw.found()).isNotBlank().isNotEqualTo("false");
+    }
+
+    @Test
+    @DisplayName("Under wait, the step's checks are those of the last attempt")
+    void testChecksOfLastAttempt() {
+        WIREMOCK.stubFor(get(urlEqualTo("/users/1")).inScenario("checks")
+                .whenScenarioStateIs(Scenario.STARTED).willSetStateTo("ready")
+                .willReturn(aResponse().withStatus(404).withBody("not yet")));
+        WIREMOCK.stubFor(get(urlEqualTo("/users/1")).inScenario("checks")
+                .whenScenarioStateIs("ready")
+                .willReturn(aResponse().withStatus(200).withHeader("Content-Type", "application/json").withBody("{\"active\":true}")));
+
+        StepResult step = run(params("check", List.of("js:{ response.status === 200 }", "js:{ response.json.active }"),
+                "wait", Map.of("timeout", "3s", "poll", "1s")));
+
+        assertThat(step.success()).as(step.message()).isTrue();
+        assertThat(step.attempts()).isEqualTo(2);
+        assertThat(step.checks()).extracting(Check::matched).containsExactly(true, true);
+        assertThat(step.checks()).extracting(Check::found).containsExactly("true", "true");
+    }
+
+    @Test
+    @DisplayName("A check whose expression names a secret never shows what it found")
+    void testChecksMaskSecrets() {
+        stubJson(200, "{\"token\":\"abcdefgh123456\"}");
+
+        StepResult step = run(params("check", "js:{ response.json.token === 'other' }"));
+
+        assertThat(step.checks()).containsExactly(
+                new Check("js:{ response.json.token === 'other' }", "true", "••••", false));
     }
 }

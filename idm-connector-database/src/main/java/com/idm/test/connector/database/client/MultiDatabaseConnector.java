@@ -42,6 +42,38 @@ public class MultiDatabaseConnector {
 
     private final Map<String, JdbcTemplate> jdbcTemplates;
 
+    /**
+     * The kind of a failed database call: refused credentials (SQLState class 28) are
+     * {@link ErrorType#AUTHENTICATION_ERROR}; a database that did not answer in time
+     * {@link ErrorType#TIMEOUT}; one that could not be reached (SQLState class 08, a connection
+     * exception, a refused or unknown host) {@link ErrorType#NETWORK_ERROR}; anything the
+     * database itself answered is {@link ErrorType#DATABASE_ERROR}.
+     */
+    static ErrorType errorType(Throwable e) {
+        for (Throwable t = e; t != null; t = t.getCause() == t ? null : t.getCause()) {
+            if (t instanceof java.sql.SQLException sql && sql.getSQLState() != null
+                    && sql.getSQLState().startsWith("28")) {
+                return ErrorType.AUTHENTICATION_ERROR;
+            }
+        }
+        for (Throwable t = e; t != null; t = t.getCause() == t ? null : t.getCause()) {
+            if (t instanceof java.net.SocketTimeoutException) {
+                return ErrorType.TIMEOUT;
+            }
+        }
+        for (Throwable t = e; t != null; t = t.getCause() == t ? null : t.getCause()) {
+            if (t instanceof java.sql.SQLTransientConnectionException
+                    || t instanceof java.sql.SQLNonTransientConnectionException
+                    || t instanceof java.net.ConnectException
+                    || t instanceof java.net.UnknownHostException
+                    || t instanceof java.sql.SQLException sql && sql.getSQLState() != null
+                            && sql.getSQLState().startsWith("08")) {
+                return ErrorType.NETWORK_ERROR;
+            }
+        }
+        return ErrorType.DATABASE_ERROR;
+    }
+
     public MultiDatabaseConnector(Map<String, JdbcTemplate> jdbcTemplates) {
         this.jdbcTemplates = jdbcTemplates;
     }
@@ -90,7 +122,7 @@ public class MultiDatabaseConnector {
             return OperationResult.<List<Map<String, Object>>>builder()
                     .success(false)
                     .message(queryProblem(databaseName, e).english())
-                    .errorType(ErrorType.DATABASE_ERROR)
+                    .errorType(errorType(e))
                     .throwable(e)
                     .build();
         } catch (Exception e) {
@@ -147,7 +179,7 @@ public class MultiDatabaseConnector {
             return OperationResult.<Integer>builder()
                     .success(false)
                     .message(updateProblem(databaseName, e).english())
-                    .errorType(ErrorType.DATABASE_ERROR)
+                    .errorType(errorType(e))
                     .throwable(e)
                     .build();
         } catch (Exception e) {
@@ -288,7 +320,7 @@ public class MultiDatabaseConnector {
             return OperationResult.<Boolean>builder()
                     .success(false)
                     .message("Error checking existence: " + e.getMessage())
-                    .errorType(ErrorType.DATABASE_ERROR)
+                    .errorType(errorType(e))
                     .throwable(e)
                     .build();
         }
@@ -321,7 +353,7 @@ public class MultiDatabaseConnector {
             return OperationResult.<Integer>builder()
                     .success(false)
                     .message("Error getting row count: " + e.getMessage())
-                    .errorType(ErrorType.DATABASE_ERROR)
+                    .errorType(errorType(e))
                     .throwable(e)
                     .build();
         }

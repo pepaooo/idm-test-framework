@@ -8,7 +8,6 @@ import com.idm.test.core.model.ErrorType;
 import com.idm.test.core.model.OperationResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.core.NestedExceptionUtils;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatusCode;
@@ -25,6 +24,10 @@ import java.net.UnknownHostException;
 import java.net.http.HttpTimeoutException;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.IdentityHashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
@@ -616,15 +619,27 @@ public class IdmRestConnector {
 
     /** A connect or timeout exception in the chain if there is one, else the most specific cause. */
     private static Throwable reportableCause(Throwable e) {
-        for (Throwable t = e; t != null; t = t.getCause()) {
+        List<Throwable> chain = causeChain(e);
+        for (Throwable t : chain) {
             if (isConnectFailure(t) || isTimeout(t)) {
                 return t;
             }
-            if (t.getCause() == t) {
-                break;
-            }
         }
-        return NestedExceptionUtils.getMostSpecificCause(e);
+        return chain.getLast();
+    }
+
+    /**
+     * {@code e} and its causes, outermost first, each once: a chain that loops back on itself (a
+     * cause set to an exception already in it) ends where it would repeat, so walking it always
+     * ends. Never empty.
+     */
+    static List<Throwable> causeChain(Throwable e) {
+        List<Throwable> chain = new ArrayList<>();
+        Set<Throwable> seen = Collections.newSetFromMap(new IdentityHashMap<>());
+        for (Throwable t = e; t != null && seen.add(t); t = t.getCause()) {
+            chain.add(t);
+        }
+        return chain;
     }
 
     private static String describe(Throwable t) {
@@ -647,23 +662,21 @@ public class IdmRestConnector {
     }
 
     /**
-     * Determines the ErrorType: by exception type anywhere in the cause chain first (connect
-     * and timeout failures), then by message for the status errors {@link #get} and friends
+     * Determines the ErrorType: by exception type anywhere in the cause chain first (connect,
+     * TLS and timeout failures), then by message for the status errors {@link #get} and friends
      * raise.
      *
      * @param e the exception
      * @return the error type
      */
-    private ErrorType determineErrorType(Exception e) {
-        for (Throwable t = e; t != null; t = t.getCause()) {
-            if (isConnectFailure(t)) {
+    static ErrorType determineErrorType(Exception e) {
+        for (Throwable t : causeChain(e)) {
+            // A TLS failure (handshake, untrusted certificate) means we never reached the service.
+            if (isConnectFailure(t) || t instanceof javax.net.ssl.SSLException) {
                 return ErrorType.NETWORK_ERROR;
             }
             if (isTimeout(t)) {
                 return ErrorType.TIMEOUT;
-            }
-            if (t.getCause() == t) {
-                break;
             }
         }
 

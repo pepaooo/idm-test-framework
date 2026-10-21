@@ -4,6 +4,7 @@ import com.idm.test.connector.rest.client.IdmRestConnector;
 import com.idm.test.connector.rest.client.RestAuthenticator;
 import com.idm.test.connector.rest.config.RestProperties;
 import com.idm.test.connector.rest.model.TextResponse;
+import com.idm.test.core.model.ErrorType;
 import com.idm.test.core.model.OperationResult;
 import com.idm.test.engine.spi.Message;
 import com.idm.test.engine.spi.StepOutcome;
@@ -59,7 +60,8 @@ public final class HttpRequestStep implements StepType {
         OperationResult<TextResponse> result = sent.result();
         if (!result.isSuccess() || result.getData().isEmpty()) {
             return StepOutcome.failure(Message.of("step.http.request.failed",
-                    request.url(), ConnectorProblems.request(request.method(), request.url(), result)))
+                    request.url(), ConnectorProblems.request(request.method(), request.url(), result)),
+                    result.getErrorType().orElse(ErrorType.UNKNOWN_ERROR))
                     .withEvidence(sent.evidence());
         }
         TextResponse response = result.getData().get();

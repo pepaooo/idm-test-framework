@@ -6,11 +6,14 @@ import com.idm.test.connector.ldap.client.LdapProblem;
 import com.idm.test.connector.ldap.client.LdapValueMatcher;
 import com.idm.test.core.model.ErrorType;
 import com.idm.test.core.model.OperationResult;
+import com.idm.test.engine.spi.Check;
 import com.idm.test.engine.spi.LdapEvidence;
 import com.idm.test.engine.spi.Message;
 import com.idm.test.engine.spi.StepOutcome;
 import com.idm.test.engine.spi.StepType;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
@@ -81,7 +84,8 @@ public final class LdapVerifyStep implements StepType {
         OperationResult<Map<String, Object>> entry = connector.readAttributes(dn);
         if (!entry.isSuccess() || entry.getData().isEmpty()) {
             StepOutcome failure = StepOutcome.failure(Message.of("step.ldap.verify.failed", where,
-                    LdapProblems.failure(entry, e -> EdirectoryConnector.readAttributesProblem(dn, e))));
+                    LdapProblems.failure(entry, e -> EdirectoryConnector.readAttributesProblem(dn, e))),
+                    entry.getErrorType().orElse(ErrorType.UNKNOWN_ERROR));
             return entry.getErrorType().filter(ErrorType.NOT_FOUND::equals).isPresent()
                     ? failure.withEvidence(LdapEvidence.absent(directory, dn, "read"))
                     : failure;
@@ -90,17 +94,26 @@ public final class LdapVerifyStep implements StepType {
         Map<String, Object> actual = entry.getData().get();
         LdapEvidence evidence = LdapEvidence.read(directory, dn, actual);
 
+        // Every attribute is compared, so a finding shows each one; the message names the first
+        // that differs.
+        List<Check> checks = new ArrayList<>();
+        LdapProblem firstMismatch = null;
         for (Map.Entry<String, Object> attribute : expected.entrySet()) {
-            LdapProblem mismatch = LdapValueMatcher.problem(
-                    attribute.getKey(), attribute.getValue(), actual.get(attribute.getKey()));
-            if (mismatch != null) {
-                return StepOutcome.failure(Message.of("step.ldap.verify.failed", where, LdapProblems.of(mismatch)))
-                        .withEvidence(evidence);
+            Object found = actual.get(attribute.getKey());
+            LdapProblem mismatch = LdapValueMatcher.problem(attribute.getKey(), attribute.getValue(), found);
+            checks.add(Check.compared(attribute.getKey(), attribute.getValue(), found, mismatch == null));
+            if (firstMismatch == null) {
+                firstMismatch = mismatch;
             }
+        }
+        if (firstMismatch != null) {
+            return StepOutcome.failure(Message.of("step.ldap.verify.failed", where, LdapProblems.of(firstMismatch)))
+                    .withEvidence(evidence).withChecks(checks);
         }
 
         if (!captureRequested) {
-            return StepOutcome.success(Message.of("step.ldap.verify.verified", where)).withEvidence(evidence);
+            return StepOutcome.success(Message.of("step.ldap.verify.verified", where)).withEvidence(evidence)
+                    .withChecks(checks);
         }
 
         // Every value of every attribute: a multi-valued one is a list, so it can be written
@@ -108,7 +121,8 @@ public final class LdapVerifyStep implements StepType {
         Map<String, Object> captured = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
         captured.putAll(actual);
         captured.put("dn", dn);
-        return StepOutcome.success(Message.of("step.ldap.verify.verified", where), captured).withEvidence(evidence);
+        return StepOutcome.success(Message.of("step.ldap.verify.verified", where), captured).withEvidence(evidence)
+                .withChecks(checks);
     }
 
     /**
@@ -124,7 +138,8 @@ public final class LdapVerifyStep implements StepType {
 
         if (!result.isSuccess()) {
             return StepOutcome.failure(Message.of("step.ldap.verify.checkFailed", where,
-                    LdapProblems.failure(result, EdirectoryConnector::existsProblem)));
+                    LdapProblems.failure(result, EdirectoryConnector::existsProblem)),
+                    result.getErrorType().orElse(ErrorType.UNKNOWN_ERROR));
         }
 
         boolean present = Boolean.TRUE.equals(result.getData().orElse(false));

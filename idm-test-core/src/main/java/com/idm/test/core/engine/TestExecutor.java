@@ -7,6 +7,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
+import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 
 /**
@@ -22,6 +23,9 @@ import java.util.function.Supplier;
 public class TestExecutor {
 
     private static final Logger log = LoggerFactory.getLogger(TestExecutor.class);
+
+    /** The longest a cancellable wait sleeps before it looks at its cancel signal again. */
+    static final Duration CANCEL_SLICE = Duration.ofMillis(250);
 
     /**
      * Wait until a condition is met or timeout occurs.
@@ -70,6 +74,63 @@ public class TestExecutor {
 
         long elapsed = System.currentTimeMillis() - startTime;
         log.warn("Condition not met after {} attempts in {}ms (timeout)", attempt, elapsed);
+        return false;
+    }
+
+    /**
+     * {@link #waitUntil(Supplier, Duration, Duration)} that can be cancelled: {@code cancel} is
+     * asked before each check and at least every {@link #CANCEL_SLICE} while sleeping between
+     * checks, and the wait gives up as soon as it answers true. No thread interrupts are used.
+     *
+     * @param cancel answers true when the wait should stop now
+     * @return true if the condition was met; false on timeout or when cancelled
+     */
+    public boolean waitUntil(
+            Supplier<Boolean> condition,
+            Duration timeout,
+            Duration pollInterval,
+            BooleanSupplier cancel) {
+
+        long startTime = System.currentTimeMillis();
+        long endTime = startTime + timeout.toMillis();
+        int attempt = 0;
+
+        while (System.currentTimeMillis() < endTime) {
+            if (cancel.getAsBoolean()) {
+                log.debug("waitUntil cancelled after {} attempts", attempt);
+                return false;
+            }
+            attempt++;
+            try {
+                if (condition.get()) {
+                    log.debug("Condition met after {} attempts in {}ms", attempt,
+                            System.currentTimeMillis() - startTime);
+                    return true;
+                }
+            } catch (Exception e) {
+                log.warn("Exception while checking condition (attempt {}): {}", attempt, e.getMessage());
+            }
+            if (sleepUnlessCancelled(pollInterval, cancel)) {
+                log.debug("waitUntil cancelled after {} attempts", attempt);
+                return false;
+            }
+        }
+
+        log.warn("Condition not met after {} attempts in {}ms (timeout)", attempt,
+                System.currentTimeMillis() - startTime);
+        return false;
+    }
+
+    /** Sleeps {@code duration} in slices; true when {@code cancel} answered true before it ended. */
+    private boolean sleepUnlessCancelled(Duration duration, BooleanSupplier cancel) {
+        long wakeAt = System.currentTimeMillis() + duration.toMillis();
+        long left;
+        while ((left = wakeAt - System.currentTimeMillis()) > 0) {
+            sleep(Duration.ofMillis(Math.min(left, CANCEL_SLICE.toMillis())));
+            if (cancel.getAsBoolean()) {
+                return true;
+            }
+        }
         return false;
     }
 

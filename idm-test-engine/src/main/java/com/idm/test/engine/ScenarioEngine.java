@@ -12,23 +12,38 @@ import com.idm.test.engine.result.CleanupStatus;
 import com.idm.test.engine.result.ScenarioResult;
 import com.idm.test.engine.result.StepResult;
 import com.idm.test.engine.spi.DeferredExpression;
+import com.idm.test.engine.spi.Evidence;
+import com.idm.test.engine.spi.FailureKind;
 import com.idm.test.engine.spi.Message;
+import com.idm.test.engine.spi.RunListener;
 import com.idm.test.engine.spi.StepOutcome;
 import com.idm.test.engine.spi.StepType;
+import com.idm.test.engine.spi.WaitObservation;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BooleanSupplier;
 
 /**
  * Runs a scenario: interpolate each step's parameters, execute in order, retry assertions that
  * declare a wait, stop at the first failure, then run the author's cleanup block.
+ * <p>
+ * A run can be watched ({@link RunListener}) and stopped: a stop is honoured before each step,
+ * before and between the tries under {@code wait:} (within a fraction of a second, however long the
+ * poll) and before the cleanup, and skips the cleanup entirely, so the
+ * result lists those entries with the values they would have used.
  * <p>
  * Deliberately knows nothing about Spring, JUnit, files or output formats. It takes its
  * dependencies by constructor and returns a result object. That is what lets a CLI reuse it.
@@ -39,6 +54,11 @@ public final class ScenarioEngine {
     private static final String SET_STEP = "set";
 
     private static final String DESCRIPTION = "description";
+
+    private static final Logger LOG = LoggerFactory.getLogger(ScenarioEngine.class);
+
+    /** Why a step, a cleanup entry or a scenario ended when the run was stopped. */
+    private static final Message STOPPED = Message.of("engine.run.stopped");
 
     private final Map<String, StepType> registry;
     private final FixtureFactory fixtures;
@@ -63,13 +83,27 @@ public final class ScenarioEngine {
     }
 
     public ScenarioResult run(Scenario scenario, String sourceName) {
+        return run(scenario, sourceName, RunListener.NONE, () -> false);
+    }
+
+    /**
+     * Runs {@code scenario}, telling {@code listener} how it goes, until it ends or
+     * {@code stopRequested} answers true. A stopped scenario fails as a setup problem; its cleanup
+     * does not run and comes back in {@link ScenarioResult#skippedCleanup()} instead.
+     */
+    public ScenarioResult run(Scenario scenario, String sourceName, RunListener runListener,
+                              BooleanSupplier stopRequested) {
+        // Every call goes through the guard: a listener that throws must not change the run.
+        RunListener listener = guarded(runListener);
         long started = System.currentTimeMillis();
         Map<String, Object> scope = new LinkedHashMap<>();
 
         List<StepResult> results = new ArrayList<>();
         List<CleanupResult> cleanupResults = List.of();
+        List<CleanupResult> skippedCleanup = List.of();
         boolean success = true;
         Message failureDetail = null;
+        AtomicBoolean stopped = new AtomicBoolean();
 
         try {
             // ScenarioValidator does validate fixture generator names on the path that calls
@@ -89,19 +123,43 @@ public final class ScenarioEngine {
                 StepSpec step = scenario.steps().get(i);
                 long stepStarted = System.currentTimeMillis();
                 StepResult result;
-                try {
-                    result = runStep(step, i, scope);
-                } catch (RuntimeException e) {
-                    result = failed(i, step.type(), Map.of(), stepStarted,
-                            Message.of("engine.step.threw", step.type(), KeyedArgumentException.typeName(e), thrown(e)),
-                            describe(step, scope));
+                if (stopRequested.getAsBoolean()) {
+                    // Recorded on the step that would have run next, so the stop shows where it came.
+                    stopped.set(true);
+                    result = failed(i, step.type(), Map.of(), stepStarted, STOPPED, describe(step, scope));
+                } else {
+                    listener.stepStarted(i, step.type(), describe(step, scope));
+                    try {
+                        result = runStep(step, i, scope, listener, stopRequested, stopped);
+                    } catch (RuntimeException e) {
+                        result = failed(i, step.type(), Map.of(), stepStarted,
+                                Message.of("engine.step.threw", step.type(), KeyedArgumentException.typeName(e),
+                                        thrown(e)),
+                                describe(step, scope));
+                    }
                 }
+                listener.stepFinished(result);
                 results.add(result);
                 success = result.success();
             }
         } finally {
-            // The author's cleanup always runs, whether or not the steps passed.
-            cleanupResults = runCleanup(scenario.cleanup(), scope);
+            // The author's cleanup always runs, whether or not the steps passed — unless the run
+            // was stopped: then nothing more runs, and the entries are reported as they would have run.
+            if (stopped.get() || stopRequested.getAsBoolean()) {
+                stopped.set(true);
+                skippedCleanup = skippedByStop(scenario.cleanup(), scope);
+            } else {
+                cleanupResults = runCleanup(scenario.cleanup(), scope, listener);
+            }
+        }
+
+        if (stopped.get() && success) {
+            // Every step that ran passed, but the stop came before the cleanup: the scenario did
+            // not finish, and something may be left in the lab.
+            success = false;
+            if (failureDetail == null) {
+                failureDetail = STOPPED;
+            }
         }
 
         boolean cleanupFailed = cleanupResults.stream()
@@ -110,11 +168,12 @@ public final class ScenarioEngine {
         return new ScenarioResult(scenario.name(), sourceName, success && !cleanupFailed,
                 System.currentTimeMillis() - started, results, cleanupResults,
                 failureDetail == null ? null : Messages.english(failureDetail), scenario.description(),
-                key(failureDetail), args(failureDetail));
+                key(failureDetail), args(failureDetail), stopped.get(), skippedCleanup);
     }
 
     @SuppressWarnings("unchecked")
-    private StepResult runStep(StepSpec step, int index, Map<String, Object> scope) {
+    private StepResult runStep(StepSpec step, int index, Map<String, Object> scope, RunListener listener,
+                               BooleanSupplier stopRequested, AtomicBoolean stopped) {
 
         long started = System.currentTimeMillis();
 
@@ -164,17 +223,20 @@ public final class ScenarioEngine {
             outcome = bind(scope, asName, outcome, step.type());
             return new StepResult(index, step.type(), reportable(resolved), outcome.success(),
                     System.currentTimeMillis() - started, outcome.message(), null, null, description,
-                    outcome.evidence(), key(outcome.detail()), args(outcome.detail()));
+                    outcome.evidence(), key(outcome.detail()), args(outcome.detail()), kindOf(outcome), null,
+                    outcome.checks());
         }
 
         AtomicInteger attempts = new AtomicInteger();
         AtomicReference<StepOutcome> last = new AtomicReference<>();
+        List<WaitObservation> history = new ArrayList<>();
 
         long waitStarted = System.currentTimeMillis();
         // True when the assertion passed or a final failure ended the wait early; either way
-        // waitUntil's loop condition was satisfied. Success itself always comes from `outcome`.
-        boolean stopped = executor.waitUntil(() -> {
-            attempts.incrementAndGet();
+        // waitUntil's loop condition was satisfied. False on timeout or stop (see `stopped`).
+        // Success itself always comes from `outcome`.
+        boolean ended = executor.waitUntil(() -> {
+            int attempt = attempts.incrementAndGet();
             StepOutcome outcome;
             try {
                 outcome = type.execute(resolved, captureRequested);
@@ -185,14 +247,37 @@ public final class ScenarioEngine {
                 // what actually happened on this attempt. Mirror the outer catch's format
                 // so the exception's class name is always present — otherwise a null
                 // message surfaces as the bare literal "null".
-                outcome = StepOutcome.failure(
-                        Message.of("engine.wait.threw", KeyedArgumentException.typeName(e), thrown(e)));
+                // An unexpected exception is a setup problem, as it is without wait.
+                outcome = setupFailure(
+                        Message.of("engine.wait.threw", KeyedArgumentException.typeName(e), thrown(e)), null);
             }
-            last.set(outcome);
+            StepOutcome previous = last.getAndSet(outcome);
+            long elapsed = System.currentTimeMillis() - waitStarted;
+            boolean changed = previous == null || !Objects.equals(previous.message(), outcome.message());
+            if (changed && history.size() < StepResult.MAX_WAIT_HISTORY) {
+                history.add(new WaitObservation(attempt, elapsed, outcome.message()));
+            }
+            listener.attempt(index, attempt, elapsed, outcome.message());
             // A final failure ends the wait: polling it again cannot change the answer.
             return outcome.success() || outcome.isFinal();
-        }, wait.timeout(), wait.poll());
+        }, wait.timeout(), wait.poll(), () -> {
+            // Asked before each try and every few hundred milliseconds while sleeping between
+            // tries, so a stop does not wait out a long poll interval.
+            if (stopRequested.getAsBoolean()) {
+                stopped.set(true);
+            }
+            return stopped.get();
+        });
         long waitedMillis = System.currentTimeMillis() - waitStarted;
+        List<WaitObservation> waitHistory = history.isEmpty() ? null : history;
+
+        if (stopped.get()) {
+            StepOutcome lastTry = last.get();
+            return new StepResult(index, step.type(), reportable(resolved), false,
+                    System.currentTimeMillis() - started, Messages.english(STOPPED), attempts.get(), waitedMillis,
+                    description, lastTry == null ? null : lastTry.evidence(), key(STOPPED), args(STOPPED),
+                    FailureKind.SETUP.name(), waitHistory, lastTry == null ? null : lastTry.checks());
+        }
 
         StepOutcome outcome = bind(scope, asName, last.get(), step.type());
         boolean success = outcome != null && outcome.success();
@@ -209,7 +294,7 @@ public final class ScenarioEngine {
         } else if (outcome.isFinal()) {
             detail = Message.of("engine.wait.notRetried", keyed(outcome));
             message = Messages.english(detail);
-        } else if (stopped) {
+        } else if (ended) {
             // Covers both the ordinary passing case and the one bind() just downgraded: the
             // assertion itself passed on this attempt, so its own message (success or, on a
             // missing capture, bind()'s failure message) is what belongs here — never the
@@ -222,16 +307,72 @@ public final class ScenarioEngine {
             message = Messages.english(detail);
         }
 
+        // The kind stays the last outcome's through the suffixes above; no outcome at all means
+        // the step never got an answer, a setup problem.
+        String kind = success ? null : outcome == null ? FailureKind.SETUP.name() : kindOf(outcome);
         return new StepResult(index, step.type(), reportable(resolved), success, elapsed, message,
                 attempts.get(), waitedMillis, description, outcome == null ? null : outcome.evidence(),
-                key(detail), args(detail));
+                key(detail), args(detail), kind, waitHistory, outcome == null ? null : outcome.checks());
     }
 
-    /** A failed step's result, its message by key. */
+    /**
+     * {@code listener} with every call guarded: what it throws is logged (its type only, never its
+     * message, which could carry a secret) and dropped.
+     */
+    private static RunListener guarded(RunListener listener) {
+        if (listener == null || listener == RunListener.NONE) {
+            return RunListener.NONE;
+        }
+        return new RunListener() {
+            @Override
+            public void stepStarted(int index, String type, String description) {
+                safely(listener, () -> listener.stepStarted(index, type, description));
+            }
+
+            @Override
+            public void attempt(int index, int attempt, long elapsedMillis, String message) {
+                safely(listener, () -> listener.attempt(index, attempt, elapsedMillis, message));
+            }
+
+            @Override
+            public void stepFinished(StepResult result) {
+                safely(listener, () -> listener.stepFinished(result));
+            }
+
+            @Override
+            public void cleanupFinished(CleanupResult result) {
+                safely(listener, () -> listener.cleanupFinished(result));
+            }
+        };
+    }
+
+    private static void safely(RunListener listener, Runnable call) {
+        try {
+            call.run();
+        } catch (RuntimeException e) {
+            LOG.warn("Run listener {} threw {}; ignored", listener.getClass().getName(), e.getClass().getName());
+        }
+    }
+
+    /**
+     * A failed step's result, its message by key: a setup problem, since the engine itself found
+     * the step could not run as written (or it threw).
+     */
     private static StepResult failed(int index, String type, Map<String, Object> params, long started,
                                      Message detail, String description) {
         return new StepResult(index, type, params, false, System.currentTimeMillis() - started,
-                Messages.english(detail), null, null, description, null, key(detail), args(detail));
+                Messages.english(detail), null, null, description, null, key(detail), args(detail),
+                FailureKind.SETUP.name());
+    }
+
+    /** A failure the engine records as a setup problem, with the evidence it has, if any. */
+    private static StepOutcome setupFailure(Message detail, Evidence evidence) {
+        return new StepOutcome(false, Messages.english(detail), null, false, evidence, detail, FailureKind.SETUP);
+    }
+
+    /** The outcome's failure kind by name, or null when it passed. */
+    private static String kindOf(StepOutcome outcome) {
+        return outcome.kind() == null ? null : outcome.kind().name();
     }
 
     /**
@@ -338,8 +479,9 @@ public final class ScenarioEngine {
             return outcome;
         }
         if (outcome.value() == null) {
-            return StepOutcome.failure(Message.of("engine.capture.noValue", stepType, asName))
-                    .withEvidence(outcome.evidence());
+            // The step's own defect, not the lab's: a setup problem.
+            return setupFailure(Message.of("engine.capture.noValue", stepType, asName), outcome.evidence())
+                    .withChecks(outcome.checks());
         }
         scope.put(String.valueOf(asName), outcome.value());
         return outcome;
@@ -349,7 +491,8 @@ public final class ScenarioEngine {
      * Runs every cleanup entry in order, whatever happened before. An entry that references a
      * name never bound is SKIPPED: what it would tear down never happened. Never throws.
      */
-    private List<CleanupResult> runCleanup(List<StepSpec> cleanup, Map<String, Object> scope) {
+    private List<CleanupResult> runCleanup(List<StepSpec> cleanup, Map<String, Object> scope,
+                                           RunListener listener) {
         List<CleanupResult> results = new ArrayList<>();
         for (int i = 0; i < cleanup.size(); i++) {
             StepSpec entry = cleanup.get(i);
@@ -362,9 +505,39 @@ public final class ScenarioEngine {
                         Message.of("engine.cleanup.threw", entry.type(), KeyedArgumentException.typeName(e), thrown(e)),
                         writtenDescription(entry));
             }
+            listener.cleanupFinished(result);
             results.add(result);
         }
         return results;
+    }
+
+    /**
+     * The cleanup entries a stop skipped, SKIPPED, each with the values it would have used: every
+     * parameter resolved with what the scenario had bound when it stopped, or as written when it
+     * cannot be. Runs nothing and never throws.
+     */
+    private List<CleanupResult> skippedByStop(List<StepSpec> cleanup, Map<String, Object> scope) {
+        List<CleanupResult> skipped = new ArrayList<>();
+        for (int i = 0; i < cleanup.size(); i++) {
+            StepSpec entry = cleanup.get(i);
+            Map<String, Object> params = new LinkedHashMap<>();
+            withoutDescription(entry.params()).forEach((name, value) -> params.put(name, resolvedOrRaw(value, scope)));
+            skipped.add(new CleanupResult(i, entry.type(), params, CleanupStatus.SKIPPED, 0,
+                    Messages.english(STOPPED), describe(entry, scope), key(STOPPED), args(STOPPED), null));
+        }
+        return skipped;
+    }
+
+    /** {@code value} resolved with {@code scope} when every reference is bound and resolving succeeds, else as written. */
+    private Object resolvedOrRaw(Object value, Map<String, Object> scope) {
+        if (!scope.keySet().containsAll(Interpolator.references(value))) {
+            return value;
+        }
+        try {
+            return Interpolator.resolve(value, scope, evaluator);
+        } catch (RuntimeException e) {
+            return value;
+        }
     }
 
     @SuppressWarnings("unchecked")
@@ -393,14 +566,23 @@ public final class ScenarioEngine {
         return new CleanupResult(index, entry.type(), resolved,
                 outcome.success() ? CleanupStatus.SUCCEEDED : CleanupStatus.FAILED,
                 System.currentTimeMillis() - started, outcome.message(), description,
-                key(outcome.detail()), args(outcome.detail()));
+                key(outcome.detail()), args(outcome.detail()), cleanupKind(outcome.success()));
     }
 
     /** A cleanup entry's result with no parameters recorded, its message by key. */
     private static CleanupResult cleanupResult(int index, String type, CleanupStatus status, long started,
                                                Message detail, String description) {
         return new CleanupResult(index, type, Map.of(), status, System.currentTimeMillis() - started,
-                Messages.english(detail), description, key(detail), args(detail));
+                Messages.english(detail), description, key(detail), args(detail),
+                cleanupKind(status != CleanupStatus.FAILED));
+    }
+
+    /**
+     * Every failed cleanup entry is a finding, whatever made it fail: something the scenario
+     * created may be left in the lab.
+     */
+    private static String cleanupKind(boolean succeededOrSkipped) {
+        return succeededOrSkipped ? null : FailureKind.FINDING.name();
     }
 
     /** The description as written, or null. */

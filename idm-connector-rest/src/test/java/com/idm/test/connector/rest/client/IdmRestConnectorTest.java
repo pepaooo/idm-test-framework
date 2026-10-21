@@ -452,4 +452,23 @@ class IdmRestConnectorTest {
         assertThat(result.isSuccess()).isTrue();
         assertThat(result.getData().orElseThrow().body()).isEqualTo(Map.of("a", 1));
     }
+
+    @Test
+    @DisplayName("A TLS handshake failure (an untrusted certificate) is a network error")
+    void testTlsFailure() {
+        WireMockServer tls = new WireMockServer(com.github.tomakehurst.wiremock.core.WireMockConfiguration.options()
+                .dynamicPort().dynamicHttpsPort());
+        tls.start();
+        try {
+            tls.stubFor(get(urlEqualTo("/users/test")).willReturn(aResponse().withStatus(200)));
+
+            OperationResult<RestResponse> result = connector.exchange("GET",
+                    "https://localhost:" + tls.httpsPort() + "/users/test", null, Map.of());
+
+            assertThat(result.isSuccess()).isFalse();
+            assertThat(result.getErrorType()).as(result.getMessage()).contains(ErrorType.NETWORK_ERROR);
+        } finally {
+            tls.stop();
+        }
+    }
 }

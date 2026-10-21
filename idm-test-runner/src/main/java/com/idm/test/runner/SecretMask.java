@@ -5,11 +5,13 @@ import com.idm.test.engine.result.RunInfo;
 import com.idm.test.engine.result.ScenarioResult;
 import com.idm.test.engine.result.Secrets;
 import com.idm.test.engine.result.StepResult;
+import com.idm.test.engine.spi.Check;
 import com.idm.test.engine.spi.Evidence;
 import com.idm.test.engine.spi.HttpEvidence;
 import com.idm.test.engine.spi.LdapEvidence;
 import com.idm.test.engine.spi.Message;
 import com.idm.test.engine.spi.SqlEvidence;
+import com.idm.test.engine.spi.WaitObservation;
 import org.springframework.core.env.MutablePropertySources;
 import org.springframework.core.env.PropertiesPropertySource;
 import org.springframework.core.env.PropertySourcesPropertyResolver;
@@ -34,7 +36,7 @@ import java.util.Set;
  * are left alone: replacing a one- or two-character value everywhere would garble unrelated text
  * (every {@code 1} in a message), and so short a value is no credential worth hiding.
  */
-final class SecretMask {
+public final class SecretMask {
 
     static final int MIN_LENGTH = 4;
     static final String MASK = "****";
@@ -46,6 +48,11 @@ final class SecretMask {
     private static final Set<String> NOT_SECRET = Set.of("PWD", "OLDPWD");
 
     private final List<String> values;
+
+    /** A mask for exactly these values (the workbench's, for text about a file being edited). */
+    public static SecretMask ofValues(Collection<String> values) {
+        return new SecretMask(values);
+    }
 
     SecretMask(Collection<String> values) {
         // Longest first, so a value that contains another is replaced whole.
@@ -61,7 +68,7 @@ final class SecretMask {
      * environment variable or a system property of the same name wins, as in Spring) and the file's
      * own value, plus every environment variable whose name looks secret ({@link Secrets#isSecret}).
      */
-    static SecretMask of(Map<String, String> secretsEnv, Map<String, String> environment) {
+    public static SecretMask of(Map<String, String> secretsEnv, Map<String, String> environment) {
         // The run's layers in Spring's order, highest first; secrets.env sits just below the environment.
         MutablePropertySources sources = new MutablePropertySources();
         sources.addLast(new PropertiesPropertySource(StandardEnvironment.SYSTEM_PROPERTIES_PROPERTY_SOURCE_NAME,
@@ -84,7 +91,7 @@ final class SecretMask {
         return new SecretMask(values);
     }
 
-    String apply(String text) {
+    public String apply(String text) {
         if (text == null) {
             return null;
         }
@@ -96,7 +103,7 @@ final class SecretMask {
     }
 
     /** The stack trace of {@code e}, masked. */
-    String stackTrace(Throwable e) {
+    public String stackTrace(Throwable e) {
         StringWriter trace = new StringWriter();
         e.printStackTrace(new PrintWriter(trace));
         return apply(trace.toString());
@@ -104,23 +111,24 @@ final class SecretMask {
 
     /**
      * {@code result} with every text in it masked: failure detail and its arguments, each step's
-     * and cleanup entry's message, arguments, description, resolved parameters and evidence.
-     * Names and step types stay as they are.
+     * and cleanup entry's message, arguments, description, resolved parameters and evidence, each
+     * waiting-history message, each check's name, expected and found text, and the entries a stop skipped. Names and step types stay as they are.
      */
-    ScenarioResult result(ScenarioResult result) {
+    public ScenarioResult result(ScenarioResult result) {
         if (values.isEmpty() || result == null) {
             return result;
         }
         List<StepResult> steps = result.steps() == null ? null
                 : result.steps().stream().map(this::step).toList();
         List<CleanupResult> cleanup = result.cleanup().stream().map(this::cleanup).toList();
+        List<CleanupResult> skipped = result.skippedCleanup().stream().map(this::cleanup).toList();
         return new ScenarioResult(result.name(), result.sourceName(), result.success(), result.durationMillis(),
                 steps, cleanup, apply(result.failureDetail()), apply(result.description()),
-                result.failureDetailKey(), list(result.failureDetailArgs()));
+                result.failureDetailKey(), list(result.failureDetailArgs()), result.stopped(), skipped);
     }
 
     /** {@code run} with its endpoint URLs masked. */
-    RunInfo runInfo(RunInfo run) {
+    public RunInfo runInfo(RunInfo run) {
         if (values.isEmpty() || run == null) {
             return run;
         }
@@ -130,16 +138,38 @@ final class SecretMask {
                 run.locale());
     }
 
-    private StepResult step(StepResult step) {
-        return new StepResult(step.index(), step.type(), map(step.resolvedParams()), step.success(),
-                step.durationMillis(), apply(step.message()), step.attempts(), step.waitedMillis(),
-                apply(step.description()), evidence(step.evidence()), step.messageKey(), list(step.messageArgs()));
+    /** {@code message} with its arguments masked, at any depth; null stays null. */
+    public Message message(Message message) {
+        return message == null ? null : new Message(message.key(), list(message.args()));
     }
 
-    private CleanupResult cleanup(CleanupResult entry) {
+    /** {@code step} with every text in it masked, as in {@link #result}. */
+    public StepResult step(StepResult step) {
+        return new StepResult(step.index(), step.type(), map(step.resolvedParams()), step.success(),
+                step.durationMillis(), apply(step.message()), step.attempts(), step.waitedMillis(),
+                apply(step.description()), evidence(step.evidence()), step.messageKey(), list(step.messageArgs()),
+                step.failureKind(), history(step.waitHistory()), checks(step.checks()));
+    }
+
+    /** Each check's name, expected and found text masked; whether it matched kept. */
+    private List<Check> checks(List<Check> checks) {
+        return checks.stream()
+                .map(check -> new Check(apply(check.name()), apply(check.expected()), apply(check.found()),
+                        check.matched()))
+                .toList();
+    }
+
+    private List<WaitObservation> history(List<WaitObservation> history) {
+        return history == null ? null : history.stream()
+                .map(entry -> new WaitObservation(entry.attempt(), entry.elapsedMillis(), apply(entry.message())))
+                .toList();
+    }
+
+    /** {@code entry} with every text in it masked, as in {@link #result}. */
+    public CleanupResult cleanup(CleanupResult entry) {
         return new CleanupResult(entry.index(), entry.type(), map(entry.resolvedParams()), entry.status(),
                 entry.durationMillis(), apply(entry.message()), apply(entry.description()), entry.messageKey(),
-                list(entry.messageArgs()));
+                list(entry.messageArgs()), entry.failureKind());
     }
 
     /** The evidence rebuilt from masked parts; its constructor masks and cuts it again as usual. */

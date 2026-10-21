@@ -681,4 +681,26 @@ class EdirectoryConnectorTest {
 
         connector.delete(dn);
     }
+
+    @Test
+    @DisplayName("A directory that cannot be reached, times out or rejects the bind is told apart from its own answers")
+    void testErrorTypes() {
+        javax.naming.CommunicationException refused = new javax.naming.CommunicationException("localhost:1");
+        refused.setRootCause(new java.net.ConnectException("Connection refused"));
+        assertThat(EdirectoryConnector.errorType(new org.springframework.ldap.CommunicationException(refused)))
+                .isEqualTo(ErrorType.NETWORK_ERROR);
+
+        javax.naming.CommunicationException slow = new javax.naming.CommunicationException("read timed out");
+        slow.setRootCause(new java.net.SocketTimeoutException("Read timed out"));
+        assertThat(EdirectoryConnector.errorType(new org.springframework.ldap.CommunicationException(slow)))
+                .isEqualTo(ErrorType.TIMEOUT);
+
+        assertThat(EdirectoryConnector.errorType(new org.springframework.ldap.AuthenticationException(
+                new javax.naming.AuthenticationException("[LDAP: error code 49 - Invalid Credentials]"))))
+                .isEqualTo(ErrorType.AUTHENTICATION_ERROR);
+
+        assertThat(EdirectoryConnector.errorType(new org.springframework.ldap.NameAlreadyBoundException(
+                new javax.naming.NameAlreadyBoundException("[LDAP: error code 68 - Entry Already Exists]"))))
+                .isEqualTo(ErrorType.LDAP_ERROR);
+    }
 }

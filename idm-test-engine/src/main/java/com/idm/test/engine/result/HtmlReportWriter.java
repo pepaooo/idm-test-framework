@@ -1,6 +1,7 @@
 package com.idm.test.engine.result;
 
 import com.idm.test.engine.i18n.Messages;
+import com.idm.test.engine.spi.FailureKind;
 import com.idm.test.engine.spi.JsonMappers;
 import com.idm.test.engine.spi.Message;
 import tools.jackson.core.JacksonException;
@@ -57,6 +58,8 @@ public final class HtmlReportWriter {
     static String render(RunInfo run, List<ScenarioResult> results, Instant now) {
         long passed = results.stream().filter(ScenarioResult::success).count();
         long failed = results.size() - passed;
+        long findings = results.stream().filter(r -> r.failureKind() == FailureKind.FINDING).count();
+        long setup = results.stream().filter(r -> r.failureKind() == FailureKind.SETUP).count();
         Locale locale = run.locale();
         String title = label("report.title", locale, run.runner());
 
@@ -97,6 +100,8 @@ public final class HtmlReportWriter {
                 .append(tile("scenarios", label("report.tile.scenarios", locale), String.valueOf(results.size())))
                 .append(tile("passed", label("report.tile.passed", locale), String.valueOf(passed)))
                 .append(tile("failed", label("report.tile.failed", locale), String.valueOf(failed)))
+                .append(tile("findings", label("report.tile.findings", locale), String.valueOf(findings)))
+                .append(tile("setup", label("report.tile.setup", locale), String.valueOf(setup)))
                 .append(tile("duration", label("report.tile.duration", locale), duration(total, locale)))
                 .append("</div>\n");
 
@@ -122,6 +127,7 @@ public final class HtmlReportWriter {
         html.append("<details class=\"scenario ").append(status).append('"')
                 .append(scenario.success() ? "" : " open").append(">\n<summary>")
                 .append(icon(scenario.success()))
+                .append(kind(scenario.failureKind(), locale))
                 .append(" <span class=\"file\">").append(esc(scenario.sourceName())).append("</span>");
         if (scenario.name() != null && !scenario.name().equals(scenario.sourceName())) {
             html.append(" <span class=\"name\">").append(esc(scenario.name())).append("</span>");
@@ -160,6 +166,10 @@ public final class HtmlReportWriter {
                 html.append("<li class=\"").append(entryStatus.toLowerCase(Locale.ROOT)).append("\">")
                         .append("<span class=\"status\">").append(statusLabel).append("</span> ")
                         .append("<span class=\"type\">").append(esc(entry.type())).append("</span>");
+                if (entry.status() == CleanupStatus.FAILED) {
+                    // Every failed cleanup entry is a finding: something may be left in the lab.
+                    html.append(kind(FailureKind.FINDING, locale));
+                }
                 if (entry.description() != null) {
                     html.append(" <span class=\"desc\">").append(esc(entry.description())).append("</span>");
                 }
@@ -176,8 +186,10 @@ public final class HtmlReportWriter {
     }
 
     private static void appendStep(StringBuilder html, StepResult step, Locale locale) {
-        html.append("<li class=\"step ").append(step.success() ? "passed" : "failed").append("\">")
-                .append("<div class=\"row\">").append(icon(step.success()))
+        FailureKind kind = step.kind();
+        html.append("<li class=\"step ").append(step.success() ? "passed" : "failed")
+                .append(kind == null ? "" : " " + cssClass(kind)).append("\">")
+                .append("<div class=\"row\">").append(icon(step.success())).append(kind(kind, locale))
                 .append(" <span class=\"num\">").append(step.index() + 1).append("</span>")
                 .append(" <span class=\"type\">").append(esc(step.type())).append("</span>");
         if (step.description() != null) {
@@ -228,6 +240,19 @@ public final class HtmlReportWriter {
                 + "<div class=\"value\" data-tile=\"" + key + "\">" + esc(value) + "</div></div>";
     }
 
+    /** The kind's label as a badge, preceded by a space; empty for null (nothing failed). */
+    private static String kind(FailureKind kind, Locale locale) {
+        if (kind == null) {
+            return "";
+        }
+        String key = kind == FailureKind.FINDING ? "report.kind.finding" : "report.kind.setup";
+        return " <span class=\"kind " + cssClass(kind) + "\">" + label(key, locale) + "</span>";
+    }
+
+    private static String cssClass(FailureKind kind) {
+        return kind == FailureKind.FINDING ? "finding" : "setup";
+    }
+
     private static String icon(boolean success) {
         return success ? "<span class=\"icon ok\">✔</span>" : "<span class=\"icon ko\">✖</span>";
     }
@@ -269,9 +294,9 @@ public final class HtmlReportWriter {
 
     private static final String CSS = """
             :root{--bg:#fff;--fg:#1f2328;--muted:#656d76;--line:#d0d7de;--ok:#1a7f37;--okbg:#eef8f0;\
-            --ko:#cf222e;--kobg:#fdeeee;--card:#f6f8fa;}
+            --ko:#cf222e;--kobg:#fdeeee;--card:#f6f8fa;--finding:#e07b25;--findingbg:#fdf3e9;}
             @media (prefers-color-scheme: dark){:root{--bg:#0d1117;--fg:#e6edf3;--muted:#8d96a0;--line:#30363d;\
-            --ok:#3fb950;--okbg:#12261a;--ko:#f85149;--kobg:#2d1416;--card:#161b22;}}
+            --ok:#3fb950;--okbg:#12261a;--ko:#f85149;--kobg:#2d1416;--card:#161b22;--finding:#f2994a;--findingbg:#2b1d10;}}
             body{background:var(--bg);color:var(--fg);font:14px/1.5 system-ui,-apple-system,Segoe UI,sans-serif;\
             margin:0 auto;max-width:1100px;padding:16px}
             h1{font-size:22px;margin:0 0 4px}h3{font-size:14px;margin:12px 0 4px}
@@ -294,6 +319,13 @@ public final class HtmlReportWriter {
             ol.steps{padding-left:0;list-style:none}ol.steps li{border-top:1px solid var(--line);padding:6px 0}
             li.step.failed{background:var(--kobg)}li.not-run{color:var(--muted);font-style:italic}
             .message{margin-left:22px;white-space:pre-wrap;word-break:break-word}li.step.failed .message{color:var(--ko)}
+            .kind{font-size:11px;font-weight:600;padding:1px 6px;border-radius:4px;border:1px solid currentColor}
+            .kind.finding{color:var(--finding)}.kind.setup{color:var(--ko)}
+            .tile.findings{border-color:var(--finding)}.tile.setup{border-color:var(--ko)}
+            li.step.failed.finding{background:var(--findingbg)}li.step.failed.finding .message{color:var(--finding)}
+            details.scenario.failed:has(>summary .kind.finding){border-color:var(--finding)}
+            details.scenario.failed:has(>summary .kind.finding)>summary{color:var(--finding)}
+            details.scenario.failed:has(>summary .kind.finding)>.failure{background:var(--findingbg);color:var(--finding)}
             details.params{margin-left:22px}details.params pre{background:var(--card);padding:8px;border-radius:6px;overflow:auto}
             ul.cleanup{padding-left:0;list-style:none}ul.cleanup li{padding:4px 0;border-top:1px dashed var(--line)}
             .status{font-size:11px;font-weight:600;padding:1px 6px;border-radius:4px;border:1px solid var(--line)}

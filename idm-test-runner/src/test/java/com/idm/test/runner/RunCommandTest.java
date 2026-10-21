@@ -1,7 +1,6 @@
 package com.idm.test.runner;
 
 import com.github.tomakehurst.wiremock.WireMockServer;
-import com.idm.test.utils.ldap.EmbeddedLdapServer;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeAll;
@@ -12,16 +11,13 @@ import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.ByteArrayOutputStream;
-import java.io.InputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.PosixFilePermissions;
-import java.sql.Connection;
 import java.sql.DriverManager;
-import java.sql.Statement;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -39,7 +35,12 @@ import javax.tools.ToolProvider;
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
 import static com.github.tomakehurst.wiremock.client.WireMock.okJson;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
-import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.options;
+import static com.idm.test.runner.LabFixture.BAD_STEP;
+import static com.idm.test.runner.LabFixture.DB_PASSWORD;
+import static com.idm.test.runner.LabFixture.LDAP_PASSWORD;
+import static com.idm.test.runner.LabFixture.REST_PASSWORD;
+import static com.idm.test.runner.LabFixture.WRONG_SN;
+import static com.idm.test.runner.LabFixture.scenario;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
@@ -49,42 +50,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 @DisplayName("idmtest run")
 class RunCommandTest {
 
-    private static final String BASE_DN = "dc=test,dc=com";
-    private static final String BIND_DN = "cn=admin,dc=test,dc=com";
-    private static final String LDAP_PASSWORD = "ldap-pw-7Hq2xV";
-    private static final String REST_PASSWORD = "rest-pw-9Zk4rT";
-    private static final String DB_PASSWORD = "db-pw-3Lm8Qe";
     private static final Clock CLOCK = Clock.fixed(Instant.parse("2026-10-16T10:15:30Z"), ZoneOffset.UTC);
     private static final String RUN_ID = "20261016-101530-lab";
-
-    private static final String WRONG_SN = """
-            name: Wrong surname
-            fixtures:
-              user:
-                generate: random-user
-            steps:
-              - ldap.create:
-                  dn: "cn=${user.userId},ou=users"
-                  as: createdDn
-                  attributes:
-                    cn: "${user.userId}"
-                    sn: "${user.lastName}"
-              - ldap.verify:
-                  dn: "cn=${user.userId},ou=users"
-                  wait: true
-                  expect:
-                    sn: "Not-${user.lastName}"
-            cleanup:
-              - ldap.delete:
-                  dn: "${createdDn}"
-            """;
-
-    private static final String BAD_STEP = """
-            name: Bad step
-            steps:
-              - no.such.step:
-                  dn: x
-            """;
 
     private static final String REST_ACCOUNT = """
             name: Account answers
@@ -96,7 +63,7 @@ class RunCommandTest {
                     status: 200
             """;
 
-    private static EmbeddedLdapServer ldap;
+    private static LabFixture lab;
     private static WireMockServer wireMock;
 
     private final ByteArrayOutputStream outBytes = new ByteArrayOutputStream();
@@ -107,9 +74,8 @@ class RunCommandTest {
 
     @BeforeAll
     static void startSystems() throws Exception {
-        ldap = EmbeddedLdapServer.start(BASE_DN, BIND_DN, LDAP_PASSWORD, 0, "ldap-init.ldif");
-        wireMock = new WireMockServer(options().dynamicPort());
-        wireMock.start();
+        lab = LabFixture.start();
+        wireMock = lab.wireMock();
         wireMock.stubFor(get(urlEqualTo("/accounts/runner"))
                 .withBasicAuth("runner", REST_PASSWORD)
                 .willReturn(okJson("{\"userId\":\"runner\"}")));
@@ -117,11 +83,8 @@ class RunCommandTest {
 
     @AfterAll
     static void stopSystems() {
-        if (wireMock != null) {
-            wireMock.stop();
-        }
-        if (ldap != null) {
-            ldap.close();
+        if (lab != null) {
+            lab.close();
         }
     }
 
@@ -133,66 +96,12 @@ class RunCommandTest {
 
     /** A workspace whose test-db has {@code jdbcUrl} and, unless null, {@code driverClassName}. */
     private Path workspace(String folder, String jdbcUrl, String driverClassName) throws Exception {
-        Path ws = Files.createDirectories(temp.resolve(folder));
-        Files.createDirectories(ws.resolve("scenarios"));
-        Files.createDirectories(ws.resolve("config"));
-        Files.writeString(ws.resolve("config/application-lab.yml"), """
-                idm:
-                  test:
-                    ldap:
-                      url: %s
-                      base-dn: %s
-                      user-dn: %s
-                      password: ${IDM_TEST_LDAP_PASSWORD}
-                    databases:
-                      test-db:
-                        jdbc-url: %s
-                        username: sa
-                        password: ${IDM_TEST_DB_PASSWORD}
-                %s    rest:
-                      idm:
-                        base-url: %s
-                        username: runner
-                        password: ${IDM_TEST_REST_PASSWORD}
-                    executor:
-                      default-timeout-seconds: 2
-                      default-poll-interval-seconds: 1
-                """.formatted(ldap.getUrl(), BASE_DN, BIND_DN, jdbcUrl,
-                driverClassName == null ? "" : "        driver-class-name: " + driverClassName + "\n",
-                wireMock.baseUrl()));
-        Files.writeString(ws.resolve("secrets.env"), "# lab secrets\nIDM_TEST_LDAP_PASSWORD=" + LDAP_PASSWORD
-                + "\nIDM_TEST_REST_PASSWORD=" + REST_PASSWORD + "\nIDM_TEST_DB_PASSWORD=" + DB_PASSWORD + "\n");
-        return ws;
+        return lab.workspace(temp.resolve(folder), jdbcUrl, driverClassName);
     }
 
-    /**
-     * A file-based H2 database with the corpus's users table: a database the in-memory guard
-     * accepts, created here with the password the run reads from secrets.env.
-     */
+    /** The lab's file H2 database (see {@link LabFixture#database}). */
     private String database() throws Exception {
-        Path dir = Files.createDirectories(temp.resolve("db"));
-        String url = "jdbc:h2:file:" + dir.resolve("lab").toAbsolutePath().toString().replace('\\', '/');
-        try (Connection connection = DriverManager.getConnection(url, "sa", DB_PASSWORD);
-             Statement statement = connection.createStatement()) {
-            statement.execute("""
-                    CREATE TABLE IF NOT EXISTS users (
-                        id INT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
-                        user_id VARCHAR(100) NOT NULL UNIQUE,
-                        first_name VARCHAR(100) NOT NULL,
-                        last_name VARCHAR(100) NOT NULL,
-                        email VARCHAR(255) NOT NULL,
-                        department VARCHAR(100),
-                        job_title VARCHAR(100),
-                        active BOOLEAN DEFAULT TRUE)
-                    """);
-        }
-        return url;
-    }
-
-    private static void scenario(Path ws, String name, String content) throws Exception {
-        Path file = ws.resolve("scenarios").resolve(name);
-        Files.createDirectories(file.getParent());
-        Files.writeString(file, content);
+        return LabFixture.database(temp.resolve("db"));
     }
 
     private static void corpusScenario(Path ws) throws Exception {
@@ -200,10 +109,7 @@ class RunCommandTest {
     }
 
     private static void corpusScenario(Path ws, String name) throws Exception {
-        try (InputStream in = RunCommandTest.class.getResourceAsStream("/scenarios/" + name)) {
-            assertThat(in).isNotNull();
-            Files.copy(in, ws.resolve("scenarios").resolve(name));
-        }
+        LabFixture.corpusScenario(ws, name);
     }
 
     private int run(Path ws, String... extra) {
@@ -283,9 +189,16 @@ class RunCommandTest {
         corpusScenario(ws);
         corpusScenario(ws, "provisioning-user-to-database.yaml");
 
+        int before = StartedContexts.all().size();
         int exit = run(ws, "--profile", "lab");
 
         assertThat(exit).as(out() + err()).isEqualTo(ExitCodes.OK);
+        List<StartedContexts.Started> started = StartedContexts.all().subList(before, StartedContexts.all().size());
+        assertThat(started).as("the run starts Spring once, without a web server").singleElement()
+                .satisfies(context -> {
+                    assertThat(context.webServer()).isFalse();
+                    assertThat(context.localServerPort()).isNull();
+                });
         Path folder = runFolder(ws);
         assertThat(folder.resolve("results.json")).isRegularFile();
         assertThat(folder.resolve("report.html")).isRegularFile();
@@ -314,7 +227,10 @@ class RunCommandTest {
         assertThat(exit).as(out() + err()).isEqualTo(ExitCodes.FAILED);
         assertThat(out()).contains("✔ provisioning-user-to-ldap.yaml  ", "✖ wrong-sn.yaml  ", " — ",
                 "2 scenarios: 1 passed, 1 failed · report: reports/" + RUN_ID + "/report.html");
+        assertThat(out().lines().filter(l -> l.startsWith("✖ wrong-sn.yaml")).findFirst().orElseThrow())
+                .endsWith(" · finding");
         String results = Files.readString(runFolder(ws).resolve("results.json"));
+        assertThat(results).contains("\"failureKind\" : \"FINDING\"");
         assertThat(results).contains("provisioning-user-to-ldap.yaml", "wrong-sn.yaml");
     }
 
@@ -330,6 +246,8 @@ class RunCommandTest {
         assertThat(exit).as(out() + err()).isEqualTo(ExitCodes.FAILED);
         assertThat(out()).contains("✖ a-bad.yaml  0 ms — ", "no.such.step", "✔ rest/account.yaml  ",
                 "2 scenarios: 1 passed, 1 failed");
+        assertThat(out().lines().filter(l -> l.startsWith("✖ a-bad.yaml")).findFirst().orElseThrow())
+                .endsWith(" · setup problem");
         Path folder = runFolder(ws);
         assertThat(Files.readString(folder.resolve("results.json"))).contains("a-bad.yaml", "rest/account.yaml");
         assertThat(Files.readString(folder.resolve("report.html"))).contains("a-bad.yaml", "rest/account.yaml");
@@ -347,7 +265,7 @@ class RunCommandTest {
         assertThat(out()).contains("✖ wrong-sn.yaml  ",
                 "1 escenarios: 0 superados, 1 fallidos · informe: reports/" + RUN_ID + "/report.html");
         String failureLine = out().lines().filter(l -> l.startsWith("✖ ")).findFirst().orElseThrow();
-        assertThat(failureLine).doesNotContain("expected").doesNotContain("Step ");
+        assertThat(failureLine).doesNotContain("expected").doesNotContain("Step ").endsWith(" · hallazgo");
         assertThat(Files.readString(runFolder(ws).resolve("report.html"))).contains("lang=\"es\"");
     }
 

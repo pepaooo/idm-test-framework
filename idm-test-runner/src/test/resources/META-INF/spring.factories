@@ -1,0 +1,2 @@
+# Test only: records each Spring application the runner starts, so tests can check it is not a web server
+org.springframework.context.ApplicationListener=com.idm.test.runner.StartedContexts

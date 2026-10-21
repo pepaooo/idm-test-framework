@@ -3,6 +3,7 @@ package com.idm.test.engine.steps;
 import com.idm.test.connector.ldap.client.EdirectoryConnector;
 import com.idm.test.connector.ldap.client.LdapDirectories;
 import com.idm.test.connector.ldap.model.LdapUser;
+import com.idm.test.core.model.ErrorType;
 import com.idm.test.core.model.OperationResult;
 import com.idm.test.engine.spi.LdapEvidence;
 import com.idm.test.engine.spi.Message;
@@ -59,7 +60,7 @@ public final class LdapCreateStep implements StepType {
 
         Message listProblem = LdapLists.problem("ldap.create", where, attributes, false);
         if (listProblem != null) {
-            return StepOutcome.failure(listProblem);
+            return StepOutcome.finalFailure(listProblem);
         }
 
         LdapEvidence evidence = LdapEvidence.written(LdapTarget.requested(params), dn, "create", attributes);
@@ -68,7 +69,8 @@ public final class LdapCreateStep implements StepType {
 
         if (!result.isSuccess()) {
             return StepOutcome.failure(Message.of("step.ldap.create.failed", where,
-                    LdapProblems.failure(result, EdirectoryConnector::createProblem)))
+                    LdapProblems.failure(result, EdirectoryConnector::createProblem)),
+                    result.getErrorType().orElse(ErrorType.UNKNOWN_ERROR))
                     .withEvidence(evidence);
         }
 

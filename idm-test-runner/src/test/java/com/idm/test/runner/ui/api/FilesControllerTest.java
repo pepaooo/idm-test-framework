@@ -35,6 +35,7 @@ import java.util.Map;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -291,14 +292,18 @@ class FilesControllerTest {
     void testChangeEvents() throws Exception {
         BlockingQueue<String> events = new LinkedBlockingQueue<>();
         HttpClient client = HttpClient.newHttpClient();
-        HttpRequest request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + server.port() + "/api/files/events"))
-                .header("Cookie", UiHttp.cookie(server)).header("Accept", "text/event-stream").GET().build();
-        HttpResponse<Stream<String>> response = client.send(request, HttpResponse.BodyHandlers.ofLines());
+        HttpResponse<Stream<String>> response = client.send(eventsRequest(), HttpResponse.BodyHandlers.ofLines());
         assertThat(response.statusCode()).isEqualTo(200);
         assertThat(response.headers().firstValue("Content-Type").orElse("")).startsWith("text/event-stream");
-        Thread reader = Thread.ofVirtual().start(() -> response.body()
-                .filter(line -> line.startsWith("data:"))
-                .forEach(line -> events.add(line.substring(5).trim())));
+        AtomicBoolean ended = new AtomicBoolean();
+        Thread reader = Thread.ofVirtual().start(() -> {
+            try (Stream<String> lines = response.body()) {
+                lines.filter(line -> line.startsWith("data:")).forEach(line -> events.add(line.substring(5).trim()));
+            } catch (RuntimeException e) {
+                // closed
+            }
+            ended.set(true);
+        });
         try {
             Path example = ws.resolve("scenarios/example.yaml");
             JsonNode changed = awaitEvent(events, "scenarios/example.yaml", "changed",
@@ -318,19 +323,49 @@ class FilesControllerTest {
                 }
             });
 
-            // opening another workspace moves the watcher there; the same subscription gets its events
+            // opening another workspace moves the watcher there and ends the first workspace's stream
             Path second = temp.resolve("second");
             InitCommand.run(second, new PrintStream(OutputStream.nullOutputStream()));
             Files.writeString(second.resolve("config/only-here.yml"), "x: 0\n");
             assertThat(UiHttp.send(server, "POST", "/api/workspaces/open",
                     JSON.writeValueAsString(Map.of("path", second.toString()))).status()).isEqualTo(200);
-            awaitEvent(events, "config/only-here.yml", "changed",
-                    i -> Files.writeString(second.resolve("config/only-here.yml"), "x: " + (i + 1) + "\n"));
+            long deadline = System.nanoTime() + EVENT_WAIT.toNanos();
+            while (!ended.get() && System.nanoTime() < deadline) {
+                Thread.sleep(50);
+            }
+            assertThat(ended).as("the first workspace's stream ended").isTrue();
+
+            // a tab of the second workspace subscribes for it and gets its events
+            HttpResponse<Stream<String>> again = client.send(eventsRequest(), HttpResponse.BodyHandlers.ofLines());
+            assertThat(again.statusCode()).isEqualTo(200);
+            BlockingQueue<String> secondEvents = new LinkedBlockingQueue<>();
+            Thread secondReader = Thread.ofVirtual().start(() -> {
+                try (Stream<String> lines = again.body()) {
+                    lines.filter(line -> line.startsWith("data:"))
+                            .forEach(line -> secondEvents.add(line.substring(5).trim()));
+                } catch (RuntimeException e) {
+                    // closed
+                }
+            });
+            try {
+                awaitEvent(secondEvents, "config/only-here.yml", "changed",
+                        i -> Files.writeString(second.resolve("config/only-here.yml"), "x: " + (i + 1) + "\n"));
+            } finally {
+                secondReader.interrupt();
+                again.body().close();
+            }
         } finally {
             reader.interrupt();
             response.body().close();
             client.close();
         }
+    }
+
+    /** The files events of the session's current workspace, as the page asks for them. */
+    private static HttpRequest eventsRequest() {
+        return HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + server.port()
+                        + UiHttp.withWorkspace(server, "/api/files/events")))
+                .header("Cookie", UiHttp.cookie(server)).header("Accept", "text/event-stream").GET().build();
     }
 
     // --- helpers --------------------------------------------------------------------------------

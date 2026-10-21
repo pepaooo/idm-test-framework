@@ -46,7 +46,7 @@ public final class RunEventStream implements AutoCloseable {
     /** Subscribes with {@code Last-Event-ID: lastEventId} unless it is null, as a reconnecting browser does. */
     public RunEventStream(UiServer server, String lastEventId) {
         HttpRequest.Builder request = HttpRequest.newBuilder(URI.create(
-                        "http://127.0.0.1:" + server.port() + "/api/runs/current/events"))
+                        "http://127.0.0.1:" + server.port() + UiHttp.withWorkspace(server, "/api/runs/current/events")))
                 .header("Cookie", UiHttp.cookie(server)).GET();
         if (lastEventId != null) {
             request.header("Last-Event-ID", lastEventId);

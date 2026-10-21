@@ -34,6 +34,56 @@ function isServerMessage(value: unknown): value is ServerMessage {
   );
 }
 
+/** The server's answer when another tab opened another workspace in this workbench. */
+export const WORKSPACE_SWITCHED = 'ui.workspace.switched';
+export const WORKSPACE_HEADER = 'X-Idmtest-Workspace';
+
+/*
+ * The workspace this page shows. The session's workspace is shared by every tab, so each call for
+ * the files, the lab, runs and reports says which one it is for; the server refuses it (409
+ * ui.workspace.switched) when another tab has opened another one since.
+ */
+let pageWorkspace: string | null = null;
+let switched: string | null = null;
+const switchListeners = new Set<() => void>();
+
+/** The workspace the page shows from now on (null: the start page); forgets an earlier switch. */
+export function setPageWorkspace(path: string | null): void {
+  pageWorkspace = path;
+  if (switched !== null) {
+    switched = null;
+    switchListeners.forEach((listener) => listener());
+  }
+}
+
+/** Whether another tab opened another workspace: the server's message, or null. For useSyncExternalStore. */
+export const workspaceSwitch = {
+  subscribe(listener: () => void): () => void {
+    switchListeners.add(listener);
+    return () => {
+      switchListeners.delete(listener);
+    };
+  },
+  get(): string | null {
+    return switched;
+  },
+};
+
+function noteSwitched(message: string) {
+  if (switched === null) {
+    switched = message;
+    switchListeners.forEach((listener) => listener());
+  }
+}
+
+/** `url` (same-origin, e.g. a report) with `?workspace=` of the page's workspace, for links and streams. */
+export function withWorkspace(url: string): string {
+  if (pageWorkspace === null) {
+    return url;
+  }
+  return `${url}${url.includes('?') ? '&' : '?'}workspace=${encodeURIComponent(pageWorkspace)}`;
+}
+
 /**
  * One same-origin call. The session cookie (HttpOnly, set by the server when the page was first
  * loaded with its token) goes with it; the page itself never sees or stores the token.
@@ -43,6 +93,9 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     Accept: 'application/json',
     'Accept-Language': currentLanguage(),
   };
+  if (pageWorkspace !== null) {
+    headers[WORKSPACE_HEADER] = encodeURIComponent(pageWorkspace);
+  }
   const multipart = typeof FormData !== 'undefined' && body instanceof FormData;
   if (body !== undefined && !multipart) {
     headers['Content-Type'] = 'application/json';
@@ -67,6 +120,9 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   }
   if (!response.ok) {
     if (isServerMessage(data)) {
+      if (response.status === 409 && data.key === WORKSPACE_SWITCHED) {
+        noteSwitched(data.message);
+      }
       throw new ApiProblem(response.status, data.key, data.message, data);
     }
     throw new ApiProblem(response.status, 'ui.unexpected', t('ui.error.status', { status: response.status }));
@@ -87,8 +143,8 @@ export function withQuery(path: string, params: Record<string, string | undefine
  * Server-Sent Events from `path`: `onEvent(name, data)` for each event of `names` (and unnamed
  * ones as "message"), with `data` parsed as JSON when it is JSON. The browser reconnects by itself
  * (sending Last-Event-ID); `onError(closed)` hears each connection error, `closed` true when the
- * browser gave up (e.g. the server answered 204: nothing to send). Returns the function that closes
- * the stream.
+ * browser gave up (e.g. the server answered 204: nothing to send, or 409: another workspace is open).
+ * The stream is for the page's workspace (`?workspace=`). Returns the function that closes the stream.
  */
 function events(
   path: string,
@@ -96,7 +152,7 @@ function events(
   names: readonly string[] = [],
   onError?: (closed: boolean) => void,
 ): () => void {
-  const source = new EventSource(path);
+  const source = new EventSource(withWorkspace(path));
   if (onError) {
     source.addEventListener('error', () => onError(source.readyState === 2));
   }

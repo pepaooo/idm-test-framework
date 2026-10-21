@@ -170,12 +170,21 @@ entries of the Run menu say why when you point at them.
   (then confirm the overwrite), **Load from disk**, or **Compare** (side by side). A file without
   edits simply reloads. Every Save carries the version that was read; if the file changed since, the
   save is refused and the same choice appears. Nothing is overwritten silently. Linux and Windows notice
-  outside changes within a fraction of a second; macOS within about 2 seconds.
+  outside changes within a fraction of a second; macOS within about 2 seconds. When the system drops
+  change notices (too many at once), or watching the files stops working for a moment, the workbench
+  reads the tree and every open file again, with the same rules.
 - **A second tab** on the same workspace shows "This workspace is open in another tab" and is
   read-only. **Take over** moves editing to it: the other tab keeps its edits as drafts first and becomes
   read-only. When the other tab has edits it could not keep as a draft (a file with a plain-text
   password, or text not yet checked), or does not say whether it has, Take over asks before it goes
   ahead; those edits stay in the other tab only, marked unsaved.
+- **Another workspace in another tab.** One workbench has one open workspace. When another tab of the
+  same workbench opens a different workspace from the start page, a tab still showing the first one
+  stops acting on it: it shows "This workspace is no longer the one open in the workbench (another tab
+  opened <name>)" over the page, with **Reload**. Nothing is saved, run or changed in the lab from that
+  tab — its saves, lab saves and runs are refused instead of landing in the other workspace — and its
+  unsaved edits stay where they were: in the tab, and in their drafts, which come back when you open
+  that workspace again. Reload opens the workspace that is open now.
 
 ## Run
 

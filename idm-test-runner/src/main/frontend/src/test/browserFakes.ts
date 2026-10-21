@@ -108,7 +108,7 @@ export class FakeEventSource {
 /** Sends `data` as an unnamed SSE event to every open stream at `url`. */
 export function emitServerEvent(url: string, data: unknown): void {
   for (const source of sources) {
-    if (source.url === url) {
+    if (source.url.split('?')[0] === url) {
       source.emit('message', data);
     }
   }
@@ -117,7 +117,7 @@ export function emitServerEvent(url: string, data: unknown): void {
 /** Sends a named SSE event to every open stream at `url`. */
 export function emitNamedEvent(url: string, name: string, data: unknown): void {
   for (const source of [...sources]) {
-    if (source.url === url) {
+    if (source.url.split('?')[0] === url) {
       source.emit(name, data);
     }
   }
@@ -125,11 +125,11 @@ export function emitNamedEvent(url: string, name: string, data: unknown): void {
 
 /** The open streams at `url`. */
 export function eventStreams(url: string): FakeEventSource[] {
-  return [...sources].filter((source) => source.url === url);
+  return [...sources].filter((source) => source.url.split('?')[0] === url);
 }
 
 export function openEventStreams(): string[] {
-  return [...sources].map((source) => source.url);
+  return [...sources].map((source) => source.url.split('?')[0]);
 }
 
 export function installBrowserFakes(): void {

@@ -85,6 +85,8 @@
   "ui.lock.banner": "This workspace is open in another tab",
   "ui.lock.hint": "This tab is read-only so the two tabs do not save over each other.",
   "ui.lock.takeOver": "Take over",
+  "ui.workspace.switchedHint": "Nothing is saved from this tab. Reload opens the workspace that is open now; edits kept as drafts come back when you open this one again.",
+  "ui.workspace.reload": "Reload",
   "ui.disk.title": "{name} changed on disk",
   "ui.disk.text": "The file was changed outside the workbench (another editor, git pull, the CLI) and this tab has unsaved changes to it. Nothing has been overwritten.",
   "ui.disk.keepMine": "Keep mine",

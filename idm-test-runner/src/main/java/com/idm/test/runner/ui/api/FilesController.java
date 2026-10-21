@@ -117,8 +117,7 @@ class FilesController {
 
     @GetMapping(value = "/api/files/events", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     SseEmitter events() {
-        workspace();
-        return watcher.subscribe();
+        return watcher.subscribe(workspace());
     }
 
     private WorkspaceFiles files() {

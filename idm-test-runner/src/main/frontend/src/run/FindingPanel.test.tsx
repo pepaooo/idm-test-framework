@@ -153,7 +153,8 @@ describe('Finding panel', () => {
     render(<Workbench workspace={WORKSPACE} lockWait={10} />);
     await runWith(server, [step(0, 'ldap.create'), findingStep()]);
     const report = within(finding()).getByRole('link', { name: 'Open full report' });
-    expect(report).toHaveAttribute('href', `/reports/${RUN_ID}/report.html`);
+    // a link cannot send a header: it names the workspace it is for
+    expect(report).toHaveAttribute('href', `/reports/${RUN_ID}/report.html?workspace=${encodeURIComponent(WORKSPACE.path)}`);
     expect(report).toHaveAttribute('target', '_blank');
     expect(report).toHaveAttribute('rel', expect.stringContaining('noopener'));
     await userEvent.click(within(finding()).getByRole('button', { name: 'Edit scenario' }));

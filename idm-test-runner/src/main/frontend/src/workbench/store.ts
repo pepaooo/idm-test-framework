@@ -1,4 +1,4 @@
-import { api, ApiProblem, withQuery } from '../api/client';
+import { api, ApiProblem, withQuery, WORKSPACE_SWITCHED } from '../api/client';
 import { t } from '../i18n';
 import { deleteDraft, draftsUnavailable, listDrafts, readDraft, writeDraft, type Draft } from './drafts';
 import { isSecretsFile, isValidatable, PLAIN_SECRET, type EditorFocus, type LineMark, type Problem } from './types';
@@ -637,7 +637,8 @@ export class WorkbenchStore {
         await this.unpersist(path);
       }
     } catch (e) {
-      if (e instanceof ApiProblem && e.status === 409) {
+      // another tab opened another workspace: nothing was saved, and the edits stay as they are
+      if (e instanceof ApiProblem && e.status === 409 && e.key !== WORKSPACE_SWITCHED) {
         const disk = await this.readDisk(path, e);
         this.update(path, () => ({ saving: false, conflict: disk }));
         throw new SaveError('conflict', e.message);
@@ -748,6 +749,14 @@ export class WorkbenchStore {
     } else {
       this.update(path, () => ({ conflict: { diskContent: disk.content, diskVersion: disk.version } }));
     }
+  }
+
+  /**
+   * The server may have missed file events (it says `overflow`): checks every open file against
+   * the disk, as for a `changed` event of each.
+   */
+  async recheckOpen(): Promise<void> {
+    await Promise.all(this.state.tabs.map((tab) => this.fileChanged(tab.path)));
   }
 
   /** Opens `path` and highlights lines `from`–`to` (1-based, inclusive). */

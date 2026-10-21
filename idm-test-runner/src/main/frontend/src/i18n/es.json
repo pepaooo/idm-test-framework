@@ -85,6 +85,8 @@
   "ui.lock.banner": "Este espacio de trabajo está abierto en otra pestaña",
   "ui.lock.hint": "Esta pestaña es de solo lectura para que las dos pestañas no guarden una encima de la otra.",
   "ui.lock.takeOver": "Tomar el control",
+  "ui.workspace.switchedHint": "Desde esta pestaña no se guarda nada. Al recargar se abre el espacio de trabajo abierto ahora; las ediciones conservadas como borrador vuelven cuando abra este de nuevo.",
+  "ui.workspace.reload": "Recargar",
   "ui.disk.title": "{name} cambió en el disco",
   "ui.disk.text": "El archivo se cambió fuera del banco de trabajo (otro editor, git pull, la CLI) y esta pestaña tiene cambios sin guardar. No se ha sobrescrito nada.",
   "ui.disk.keepMine": "Conservar los míos",

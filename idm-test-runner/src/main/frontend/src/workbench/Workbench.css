@@ -43,6 +43,31 @@
   border-bottom: 1px solid var(--line);
 }
 
+/* another tab opened another workspace: nothing here may act on it (blocks the page) */
+.switched-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 72px;
+  background: color-mix(in srgb, var(--bg) 78%, transparent);
+}
+
+.switched-banner {
+  max-width: 560px;
+  padding: 16px 18px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 8px 28px rgb(0 0 0 / 25%);
+}
+
+.switched-banner p {
+  margin: 0 0 10px;
+}
+
 .wb-warning {
   margin: 8px 14px 0;
 }

@@ -1,5 +1,6 @@
 package com.idm.test.runner.ui;
 
+import com.idm.test.runner.ui.api.WorkspaceGuard;
 import org.springframework.boot.SpringBootConfiguration;
 import org.springframework.boot.autoconfigure.ImportAutoConfiguration;
 import org.springframework.boot.autoconfigure.context.PropertyPlaceholderAutoConfiguration;
@@ -15,11 +16,14 @@ import org.springframework.boot.webmvc.autoconfigure.error.ErrorMvcAutoConfigura
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.core.Ordered;
+import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
+import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 /**
  * The Spring application {@code idmtest ui} starts: an embedded Tomcat, Spring MVC with JSON, the
  * static workbench from {@code classpath:/static/}, multipart uploads (Add files), and the controllers of this package and its
- * {@code api} package, all behind {@link TokenFilter}. Auto-configuration is a fixed list rather
+ * {@code api} package, all behind {@link TokenFilter} (and the workspace-scoped ones behind
+ * {@link WorkspaceGuard}). Auto-configuration is a fixed list rather
  * than everything on the class path: Spring Security is there (for the REST connector's OAuth2) and
  * must not add its own login, and the connectors are not needed to serve the workbench (runs start their own context).
  * {@link com.idm.test.runner.RunnerApplication} leaves this package out.
@@ -45,6 +49,18 @@ public class UiServerConfig {
         registration.setOrder(Ordered.HIGHEST_PRECEDENCE);
         registration.addUrlPatterns("/*");
         return registration;
+    }
+
+    /** The files, lab, runs and reports endpoints act only for the tab that shows the session's workspace. */
+    @Bean
+    WebMvcConfigurer workspaceGuard(UiSession session) {
+        WorkspaceGuard guard = new WorkspaceGuard(session);
+        return new WebMvcConfigurer() {
+            @Override
+            public void addInterceptors(InterceptorRegistry registry) {
+                registry.addInterceptor(guard).addPathPatterns(WorkspaceGuard.PATHS);
+            }
+        };
     }
 
     /** {@code <user.home>/.idmtest/recent.json}, with {@code user.home} as it is when the workbench starts. */

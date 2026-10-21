@@ -1,4 +1,5 @@
 import { useEffect, useSyncExternalStore } from 'react';
+import { withWorkspace } from '../api/client';
 import { Badge, type BadgeStatus } from '../components/Badge';
 import { currentLanguage, t, useLanguage } from '../i18n';
 import { missingFor } from '../lab/labState';
@@ -137,7 +138,9 @@ function ScenarioDetail({ run, store, scenario, rerunBlocked }: { run: RunState;
   const wb = useWorkbench();
   const steps = scenario.steps;
   const selected = steps.find((step) => step.index === run.selectedStep) ?? null;
-  const reportUrl = run.outcome?.reportUrl ?? (run.runId ? `/reports/${run.runId}/report.html` : null);
+  const report = run.outcome?.reportUrl ?? (run.runId ? `/reports/${run.runId}/report.html` : null);
+  // a link cannot send a header: the workspace it is for goes in the address
+  const reportUrl = report === null ? null : withWorkspace(report);
   const result = scenario.result;
   // the step a stop interrupted failed because of the stop, not of the lab or the setup
   const stoppedStep = result?.stopped ? ([...steps].reverse().find((s) => !s.success)?.index ?? null) : null;
@@ -322,7 +325,7 @@ export function RunPanel({ store }: { store: RunStore }) {
               {run.outcome?.reportUrl && (
                 <>
                   {' · '}
-                  <a href={run.outcome.reportUrl} target="_blank" rel="noopener noreferrer">
+                  <a href={withWorkspace(run.outcome.reportUrl)} target="_blank" rel="noopener noreferrer">
                     {t('ui.run.openReport')}
                   </a>
                 </>

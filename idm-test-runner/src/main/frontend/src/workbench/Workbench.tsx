@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
-import { api, ApiProblem, type OpenWorkspace, type ServerMessage } from '../api/client';
+import { api, ApiProblem, setPageWorkspace, workspaceSwitch, type OpenWorkspace, type ServerMessage } from '../api/client';
 import { Badge } from '../components/Badge';
 import { t } from '../i18n';
 import { ChangedOnDiskDialog } from './ChangedOnDiskDialog';
@@ -34,7 +34,8 @@ interface Props {
 }
 
 interface FileEvent {
-  type: 'changed' | 'created' | 'deleted';
+  /** `overflow`: events may have been missed (path ''): read the tree and the open files again. */
+  type: 'changed' | 'created' | 'deleted' | 'overflow';
   path: string;
 }
 
@@ -49,6 +50,9 @@ export function RunPanelSlot() {
  * gives the panels inside it the {@link WorkbenchApi} through `useWorkbench()`.
  */
 export function Workbench({ workspace, warning, lockWait = 300, runPanel, lab, run }: Props) {
+  // before any request of this screen (its children's effects run before its own): they are for this workspace
+  useMemo(() => setPageWorkspace(workspace.path), [workspace.path]);
+  const switched = useSyncExternalStore(workspaceSwitch.subscribe, workspaceSwitch.get);
   const store = useMemo(() => new WorkbenchStore(workspace.path), [workspace.path]);
   const state = useSyncExternalStore(store.subscribe, store.getState);
   const [lock, setLock] = useState<TabLock | null>(null);
@@ -133,25 +137,45 @@ export function Workbench({ workspace, warning, lockWait = 300, runPanel, lab, r
     if (typeof EventSource === 'undefined') {
       return undefined;
     }
-    return api.events('/api/files/events', (_name, data) => {
-      const event = data as FileEvent | null;
-      if (!event || typeof event.path !== 'string') {
-        return;
-      }
-      if (event.type === 'created' || event.type === 'deleted') {
-        void refreshTree();
-      }
-      if (event.type === 'changed' || event.type === 'created') {
-        void store.fileChanged(event.path);
-      }
-      labStore.fileEvent(event.path);
-    });
+    return api.events(
+      '/api/files/events',
+      (_name, data) => {
+        const event = data as FileEvent | null;
+        if (!event || typeof event.path !== 'string') {
+          return;
+        }
+        if (event.type === 'overflow') {
+          void refreshTree();
+          void store.recheckOpen();
+          void labStore.reload();
+          return;
+        }
+        if (event.type === 'created' || event.type === 'deleted') {
+          void refreshTree();
+        }
+        if (event.type === 'changed' || event.type === 'created') {
+          void store.fileChanged(event.path);
+        }
+        labStore.fileEvent(event.path);
+      },
+      [],
+      (closed) => {
+        // the server ended the stream for good (e.g. another tab opened another workspace: 409);
+        // reading the tree says why, and shows the banner when that is it
+        if (closed) {
+          void refreshTree();
+        }
+      },
+    );
   }, [store, refreshTree, labStore]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 's') {
         event.preventDefault();
+        if (workspaceSwitch.get() !== null) {
+          return; // another workspace is open: nothing is saved from here
+        }
         void store.save().catch(() => undefined); // the reason shows in the tab or the dialog
       }
     };
@@ -325,7 +349,22 @@ export function Workbench({ workspace, warning, lockWait = 300, runPanel, lab, r
           </aside>
         </div>
       </div>
-      {conflicted?.conflict && !state.readOnly && (
+      {switched !== null && (
+        <div className="switched-overlay">
+          <div className="switched-banner" role="alertdialog" aria-modal="true" aria-labelledby="switched-title" aria-describedby="switched-hint">
+            <p id="switched-title">
+              <Badge status="error" /> <strong>{switched}</strong>
+            </p>
+            <p id="switched-hint" className="muted">
+              {t('ui.workspace.switchedHint')}
+            </p>
+            <button type="button" className="primary" autoFocus onClick={() => window.location.reload()}>
+              {t('ui.workspace.reload')}
+            </button>
+          </div>
+        </div>
+      )}
+      {conflicted?.conflict && !state.readOnly && switched === null && (
         <ChangedOnDiskDialog
           key={`${conflicted.path}:${conflicted.conflict.diskVersion}`}
           path={conflicted.path}

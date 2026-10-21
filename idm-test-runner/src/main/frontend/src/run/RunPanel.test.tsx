@@ -93,7 +93,8 @@ describe('Run panel', () => {
     const end = within(panel()).getByText(/5 scenarios: 3 passed, 2 findings/, VISIBLE);
     expect(end).toHaveTextContent('5 scenarios: 3 passed, 2 findings · Open full report');
     const link = within(end).getByRole('link', { name: 'Open full report' });
-    expect(link).toHaveAttribute('href', `/reports/${RUN_ID}/report.html`);
+    // a link cannot send a header: it names the workspace it is for
+    expect(link).toHaveAttribute('href', `/reports/${RUN_ID}/report.html?workspace=${encodeURIComponent(WORKSPACE.path)}`);
     expect(link).toHaveAttribute('target', '_blank');
     expect(within(panel()).getByText('Last run · 14:32 · lab', VISIBLE)).toBeInTheDocument();
     expect(within(panel()).queryByRole('button', { name: '■ Stop' })).not.toBeInTheDocument();

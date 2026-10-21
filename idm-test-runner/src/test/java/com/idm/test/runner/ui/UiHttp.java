@@ -1,10 +1,14 @@
 package com.idm.test.runner.ui;
 
+import com.idm.test.runner.ui.api.WorkspaceGuard;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.Socket;
+import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -47,13 +51,35 @@ public final class UiHttp {
         return send(server, method, path, json, Map.of());
     }
 
-    /** As {@link #send(UiServer, String, String, String)}, with more headers. */
+    /**
+     * As {@link #send(UiServer, String, String, String)}, with more headers. Like the workbench's
+     * page, it says which workspace the request is for — the session's current one — unless
+     * {@code headers} name one themselves.
+     */
     public static Response send(UiServer server, String method, String path, String json,
                                 Map<String, String> headers) throws IOException {
         Map<String, String> all = new LinkedHashMap<>();
         all.put("Cookie", cookie(server));
+        Path workspace = server.session().workspace();
+        if (workspace != null && headers.keySet().stream().noneMatch(WorkspaceGuard.HEADER::equalsIgnoreCase)) {
+            all.put(WorkspaceGuard.HEADER, encode(workspace));
+        }
         all.putAll(headers);
         return request(method, path, "127.0.0.1:" + server.port(), all, json, server.port());
+    }
+
+    /** A workspace path as the page sends it in {@value WorkspaceGuard#HEADER} or {@code ?workspace=}. */
+    public static String encode(Path workspace) {
+        return URLEncoder.encode(workspace.toString(), StandardCharsets.UTF_8);
+    }
+
+    /** {@code path} with {@code ?workspace=} (or {@code &workspace=}) of the session's current workspace. */
+    public static String withWorkspace(UiServer server, String path) {
+        Path workspace = server.session().workspace();
+        if (workspace == null) {
+            return path;
+        }
+        return path + (path.contains("?") ? "&" : "?") + WorkspaceGuard.PARAMETER + "=" + encode(workspace);
     }
 
     /** Exactly the given headers (no cookie unless among them), to {@code port}. */

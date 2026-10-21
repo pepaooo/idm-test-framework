@@ -1,5 +1,6 @@
 package com.idm.test.runner.ui.api;
 
+import com.github.tomakehurst.wiremock.client.WireMock;
 import com.idm.test.runner.LabFixture;
 import com.idm.test.runner.ui.RunEventStream;
 import com.idm.test.runner.ui.RunEventStream.Sse;
@@ -29,6 +30,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
 import static com.github.tomakehurst.wiremock.client.WireMock.okJson;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
@@ -56,6 +58,8 @@ class RunsControllerTest {
 
     private static final JsonMapper JSON = JsonMapper.builder().build();
     private static final String TENANT_SECRET = "Zq9xRunsProbe";
+    /** A token the run learns only from a response: no known secret value, so only its key hides it. */
+    private static final String BOUND_TOKEN = "fake-bound-token-Kx72pQ";
 
     @TempDir
     static Path home;
@@ -72,6 +76,10 @@ class RunsControllerTest {
         System.setProperty("user.home", home.toString());
         lab = LabFixture.start();
         lab.wireMock().stubFor(get(urlEqualTo("/tenant-" + TENANT_SECRET + "/users")).willReturn(okJson("[]")));
+        lab.wireMock().stubFor(WireMock.post(urlEqualTo("/tenant-" + TENANT_SECRET + "/login"))
+                .willReturn(okJson("{\"access_token\":\"" + BOUND_TOKEN + "\"}")));
+        lab.wireMock().stubFor(get(urlEqualTo("/tenant-" + TENANT_SECRET + "/me")).willReturn(okJson("{}")));
+        lab.wireMock().stubFor(WireMock.post(urlEqualTo("/tenant-" + TENANT_SECRET + "/logout")).willReturn(okJson("{}")));
         server = UiCommand.start(0, Locale.ENGLISH, null, Map.of());
     }
 
@@ -303,17 +311,51 @@ class RunsControllerTest {
                         status: 200
                 """);
 
+        // A token bound at run time, sent in a header and in a cleanup body: masked by its key.
+        scenario(ws, "tenant-login.yaml", """
+                name: Tenant login
+                steps:
+                  - rest.request:
+                      target: tenant
+                      method: POST
+                      path: /login
+                      as: login
+                  - rest.verify:
+                      target: tenant
+                      path: /me
+                      headers:
+                        Authorization: "Bearer ${login.body.access_token}"
+                      expect:
+                        status: 200
+                cleanup:
+                  - rest.request:
+                      target: tenant
+                      method: POST
+                      path: /logout
+                      body:
+                        password: "${login.body.access_token}"
+                """);
+
         startRun(Map.of("profile", "lab", "scenarios", "all"));
         List<Sse> events = runToEnd();
 
         JsonNode outcome = events.getLast().data();
         // The directory scenario passed: the run used the password saved through the lab form.
-        assertThat(outcome.get("passed").asInt()).as(names(events).toString()).isEqualTo(2);
+        assertThat(outcome.get("passed").asInt()).as(names(events).toString()).isEqualTo(3);
+        JsonNode login = named(events, "scenarioFinished").stream().map(Sse::data)
+                .filter(d -> d.get("result").get("name").asString().equals("Tenant login")).findFirst().orElseThrow();
+        assertThat(login.get("result").get("steps").get(1).get("resolvedParams").get("headers").get("Authorization")
+                .asString()).isEqualTo("***");
+        assertThat(login.get("result").get("cleanup").get(0).get("resolvedParams").get("body").get("password")
+                .asString()).isEqualTo("***");
+        // the token was really sent: it is masked, not missing
+        lab.wireMock().verify(WireMock.getRequestedFor(urlEqualTo("/tenant-" + TENANT_SECRET + "/me"))
+                .withHeader("Authorization", equalTo("Bearer " + BOUND_TOKEN)));
         assertThat(outcome.get("findings").asInt()).isEqualTo(1);
         assertThat(names(events)).contains("attempt");
         String all = events.stream().map(e -> e.name() + " " + e.raw()).collect(Collectors.joining("\n"));
         assertThat(all).contains("tenant-****");
-        for (String secret : List.of(TENANT_SECRET, LDAP_PASSWORD, REST_PASSWORD, DB_PASSWORD)) {
+        for (String secret : List.of(TENANT_SECRET, LDAP_PASSWORD, REST_PASSWORD, DB_PASSWORD, BOUND_TOKEN)) {
             assertThat(all).doesNotContain(secret);
         }
     }

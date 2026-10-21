@@ -93,7 +93,11 @@ export function evidenceText(evidence: Evidence): string {
   return lines.join('\n');
 }
 
-/** `name: value` per resolved parameter (masked by the server). */
+/**
+ * `name: value` per resolved parameter. The server's run events mask them: the run's secret values
+ * as `****`, and every value under a secret-looking key (`password`, `Authorization`, `token`, …) as
+ * `***`, as report.html shows them — so a token bound while the run ran is hidden too.
+ */
 function Params({ params }: { params: Record<string, unknown> }) {
   const entries = Object.entries(params ?? {});
   if (entries.length === 0) {

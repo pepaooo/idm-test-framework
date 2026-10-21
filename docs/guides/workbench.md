@@ -182,8 +182,13 @@ message and **Open the lab panel**, which opens on that system's tab.
   run at a time: a second start is refused while one is going.
 - **Stop is immediate.** The current scenario's cleanup does not run. The panel says "Stopped —
   cleanup did not run" and lists the cleanup entries that were skipped, with the values they would have
-  used (passwords masked), such as the DN of the user that was created, so you know what may be left in
-  the lab. Scenarios the run never reached read "not run". In the totals and in the tree's badge, a
+  used, such as the DN of the user that was created, so you know what may be left in
+  the lab. The values are masked as in `report.html`: the `secrets.env` values as `****`, and any value
+  under a secret-looking key (`password`, `Authorization`, `token`, …) as `***`, which also hides a
+  token the run obtained while it ran. The same masking applies to every step the run panel shows;
+  `results.json` masks only the `secrets.env` values and keeps the other resolved parameters as they
+  were, as for `idmtest run`. Scenarios the run
+  never reached read "not run". In the totals and in the tree's badge, a
   stopped scenario currently counts as a setup problem.
 - A workbench run is an `idmtest run`: the same workspace files, settings precedence, checks before
   anything is contacted, JDBC driver loading, masking and `reports/<run-id>/` folder (with

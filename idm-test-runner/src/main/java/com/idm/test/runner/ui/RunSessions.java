@@ -1,7 +1,9 @@
 package com.idm.test.runner.ui;
 
 import com.idm.test.engine.i18n.Messages;
+import com.idm.test.engine.result.CleanupResult;
 import com.idm.test.engine.result.ScenarioResult;
+import com.idm.test.engine.result.Secrets;
 import com.idm.test.engine.result.StepResult;
 import com.idm.test.engine.spi.JsonMappers;
 import com.idm.test.engine.spi.Message;
@@ -45,7 +47,8 @@ import java.util.function.BooleanSupplier;
  * (past that, only the events of scenarios and of the run as a whole), so a subscriber gets the run's
  * events so far and then the new ones, in order, each once. Each subscriber has its own sender
  * thread: a browser that is slow or gone never holds up the run, and its failed send only drops it.
- * The events' texts are those {@link RunService} delivers, masked with the run's secret values.
+ * The events' texts are those {@link RunService} delivers, masked with the run's secret values, and
+ * the resolved parameters under a secret-looking key are masked too (see {@link #paramsMasked(StepResult)}).
  */
 public final class RunSessions {
 
@@ -273,6 +276,45 @@ public final class RunSessions {
                        int exitCode, String reportUrl) {
     }
 
+    // --- masking by key ----------------------------------------------------------------------------
+
+    /*
+     * The results RunService delivers have the run's secret values masked, as results.json has them.
+     * A value the run only learned while it ran (a token bound from a login response and sent as
+     * "Bearer ${login.body.access_token}") is no known value, so the events also hide every resolved
+     * parameter under a secret-looking key, at any depth — the engine's rule (Secrets), as report.html
+     * shows them. results.json keeps them: it is documented as unredacted.
+     */
+
+    static ScenarioResult paramsMasked(ScenarioResult result) {
+        if (result == null) {
+            return null;
+        }
+        return new ScenarioResult(result.name(), result.sourceName(), result.success(), result.durationMillis(),
+                result.steps() == null ? null : result.steps().stream().map(RunSessions::paramsMasked).toList(),
+                result.cleanup().stream().map(RunSessions::paramsMasked).toList(), result.failureDetail(),
+                result.description(), result.failureDetailKey(), result.failureDetailArgs(), result.stopped(),
+                result.skippedCleanup().stream().map(RunSessions::paramsMasked).toList());
+    }
+
+    static StepResult paramsMasked(StepResult step) {
+        return new StepResult(step.index(), step.type(), byKey(step.resolvedParams()), step.success(),
+                step.durationMillis(), step.message(), step.attempts(), step.waitedMillis(), step.description(),
+                step.evidence(), step.messageKey(), step.messageArgs(), step.failureKind(), step.waitHistory(),
+                step.checks());
+    }
+
+    static CleanupResult paramsMasked(CleanupResult entry) {
+        return new CleanupResult(entry.index(), entry.type(), byKey(entry.resolvedParams()), entry.status(),
+                entry.durationMillis(), entry.message(), entry.description(), entry.messageKey(),
+                entry.messageArgs(), entry.failureKind());
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> byKey(Map<String, Object> params) {
+        return params == null ? null : (Map<String, Object>) Secrets.maskByKey(params);
+    }
+
     /** One run: its stop flag, id and events. */
     static final class Run implements RunEvents {
 
@@ -381,12 +423,12 @@ public final class RunSessions {
 
         @Override
         public void stepFinished(StepResult result) {
-            add("stepFinished", result);
+            add("stepFinished", paramsMasked(result));
         }
 
         @Override
         public void scenarioFinished(ScenarioResult result, String failureLine) {
-            add("scenarioFinished", new ScenarioFinished(result, failureLine));
+            add("scenarioFinished", new ScenarioFinished(paramsMasked(result), failureLine));
         }
 
         @Override

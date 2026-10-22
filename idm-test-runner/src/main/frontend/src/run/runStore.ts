@@ -1,6 +1,7 @@
 import { api, ApiProblem, withQuery } from '../api/client';
 import { stepCount } from './scenarioYaml';
 import {
+  interruptedStep,
   isStopped,
   outcomeOf,
   scenarioPath,
@@ -286,7 +287,10 @@ export class RunStore {
           failureLine: typeof event.failureLine === 'string' ? event.failureLine : null,
         }));
         if (outcome !== 'passed' && !this.state.userSelected && !this.firstFailureBefore(result.sourceName)) {
-          const failed = [...result.steps].reverse().find((s) => !s.success);
+          // the last failure of its own, not the step the stop interrupted (unless that is all)
+          const interrupted = interruptedStep(result);
+          const failed =
+            [...result.steps].reverse().find((s) => !s.success && s !== interrupted) ?? [...result.steps].reverse().find((s) => !s.success);
           this.set({ selected: result.sourceName, selectedStep: failed ? failed.index : null });
         }
         this.scheduleTree();

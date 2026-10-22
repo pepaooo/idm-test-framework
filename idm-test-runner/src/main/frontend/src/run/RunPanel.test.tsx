@@ -206,11 +206,85 @@ describe('Run panel', () => {
     expect(within(first).queryByRole('img', { name: 'Stopped' })).not.toBeInTheDocument();
     expect(first).toHaveTextContent('finding');
     expect(first).not.toHaveTextContent('stopped');
-    expect(within(panel()).getByText('2 scenarios: 0 passed, 1 finding, 1 not run', VISIBLE)).toBeInTheDocument();
+    expect(within(panel()).getByText('2 scenarios: 0 passed, 1 finding, 1 not run · stopped', VISIBLE)).toBeInTheDocument();
     // the failed step is the finding, not a stop; the skipped cleanup is still listed
     await userEvent.click(first);
     expect(within(within(panel()).getByRole('button', { name: /2 ldap.verify/ })).getByRole('img', { name: 'Finding' })).toBeInTheDocument();
     expect(within(panel()).getByRole('region', { name: /Stopped — cleanup did not run/ })).toBeInTheDocument();
+  });
+
+  it('a finding before the step the stop interrupted counts as a finding and opens its finding panel', async () => {
+    const server = runServer();
+    render(<Workbench workspace={WORKSPACE} lockWait={10} />);
+    await runAll(server);
+    act(() => {
+      emit('runStarted', { runId: RUN_ID, scenarios: NAMES.slice(0, 1), locale: 'en' });
+      playScenario(
+        scenario(NAMES[0], [step(0, 'ldap.create'), findingStep(), { ...interrupted(), index: 2, type: 'ldap.verify' }], {
+          success: false,
+          stopped: true,
+          failureDetail: 'Stopped — cleanup did not run',
+        }),
+      );
+      emit('runFinished', { runId: RUN_ID, total: 1, passed: 0, findings: 1, setupProblems: 0, stoppedScenarios: 0, stopped: true, exitCode: 1, reportUrl: null });
+    });
+    const first = rows()[0];
+    expect(within(first).getByRole('img', { name: 'Finding' })).toHaveClass('badge-finding');
+    expect(first).not.toHaveTextContent('stopped');
+    // the finding step keeps its finding panel; the interrupted step is marked stopped
+    expect(within(panel()).getByRole('region', { name: 'Finding in step 2' })).toBeInTheDocument();
+    expect(within(within(panel()).getByRole('button', { name: /3 ldap.verify/ })).getByRole('img', { name: 'Stopped' })).toBeInTheDocument();
+  });
+
+  it('a stop after every step passed but a cleanup entry failed counts as a finding, not stopped', async () => {
+    const server = runServer();
+    render(<Workbench workspace={WORKSPACE} lockWait={10} />);
+    await runAll(server);
+    act(() => {
+      emit('runStarted', { runId: RUN_ID, scenarios: NAMES.slice(0, 1), locale: 'en' });
+      playScenario(
+        scenario(NAMES[0], [step(0, 'ldap.create')], {
+          success: false,
+          stopped: true,
+          failureDetail: null,
+          cleanup: [
+            { index: 0, type: 'ldap.delete', resolvedParams: { dn: 'cn=u123,ou=users' }, status: 'FAILED', durationMillis: 5, message: 'no such entry', description: null, failureKind: 'FINDING' },
+          ],
+        }),
+      );
+      emit('runFinished', { runId: RUN_ID, total: 1, passed: 0, findings: 1, setupProblems: 0, stoppedScenarios: 0, stopped: true, exitCode: 1, reportUrl: null });
+    });
+    const first = rows()[0];
+    expect(within(first).getByRole('img', { name: 'Finding' })).toHaveClass('badge-finding');
+    expect(within(first).queryByRole('img', { name: 'Stopped' })).not.toBeInTheDocument();
+  });
+
+  it('a run stopped between scenarios still says it was stopped', async () => {
+    const server = runServer();
+    render(<Workbench workspace={WORKSPACE} lockWait={10} />);
+    await runAll(server);
+    act(() => {
+      emit('runStarted', { runId: RUN_ID, scenarios: NAMES.slice(0, 2), locale: 'en' });
+      playScenario(passed(NAMES[0]));
+      emit('runFinished', { runId: RUN_ID, total: 2, passed: 1, findings: 0, setupProblems: 0, stoppedScenarios: 0, stopped: true, exitCode: 1, reportUrl: null });
+    });
+    expect(within(panel()).getByText('2 scenarios: 1 passed, 1 not run · stopped', VISIBLE)).toBeInTheDocument();
+    act(() => setLanguage('es', false));
+    expect(within(panel()).getByText('2 escenarios: 1 correcto, 1 no ejecutado · detenida', VISIBLE)).toBeInTheDocument();
+  });
+
+  it('counts "not run" from the rows, even when the server counts do not add up', async () => {
+    const server = runServer();
+    render(<Workbench workspace={WORKSPACE} lockWait={10} />);
+    await runAll(server);
+    act(() => {
+      emit('runStarted', { runId: RUN_ID, scenarios: NAMES, locale: 'en' });
+      playScenario(passed(NAMES[0]));
+      playScenario(stoppedIn(NAMES[1]));
+      // total says 9 although the run had 5 scenarios, 3 of them never reached
+      emit('runFinished', { runId: RUN_ID, total: 9, passed: 1, findings: 0, setupProblems: 0, stoppedScenarios: 1, stopped: true, exitCode: 1, reportUrl: null });
+    });
+    expect(within(panel()).getByText('9 scenarios: 1 passed, 1 stopped, 3 not run', VISIBLE)).toBeInTheDocument();
   });
 
   it('a stopped scenario says "Stopped — cleanup did not run" with the skipped entries and their values', async () => {

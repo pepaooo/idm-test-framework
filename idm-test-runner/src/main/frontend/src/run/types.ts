@@ -94,6 +94,8 @@ export interface ScenarioResult {
   steps: StepResult[];
   cleanup: CleanupResult[];
   failureDetail: string | null;
+  /** The message key of `failureDetail`, when it has one. */
+  failureDetailKey?: string;
   description: string | null;
   stopped?: boolean;
   skippedCleanup?: CleanupResult[];
@@ -136,7 +138,8 @@ export function outcomeOf(result: ScenarioResult): Outcome {
   }
   for (let i = result.steps.length - 1; i >= 0; i--) {
     const step = result.steps[i];
-    if (!step.success) {
+    // the step a stop interrupted says nothing about the lab: an earlier failure decides
+    if (!step.success && step.messageKey !== STOPPED_KEY) {
       return step.failureKind === 'SETUP' ? 'setup' : 'finding';
     }
   }
@@ -147,22 +150,30 @@ export function outcomeOf(result: ScenarioResult): Outcome {
 /** The engine's message key on the step a stop interrupted. */
 export const STOPPED_KEY = 'engine.run.stopped';
 
-/** The step a stop interrupted: the last failed step, when its failure is the stop's. */
+/** The step a stop interrupted (its failure is the engine's stop), when the run was stopped there. */
 export function interruptedStep(result: ScenarioResult): StepResult | null {
   if (!result.stopped) {
     return null;
   }
-  const failed = [...result.steps].reverse().find((s) => !s.success);
-  return failed?.messageKey === STOPPED_KEY ? failed : null;
+  return result.steps.find((s) => !s.success && s.messageKey === STOPPED_KEY) ?? null;
 }
 
 /**
- * Whether the scenario counts as stopped: a stop ended it and it had not failed by itself — no step
- * failed, or the last failed step is the one the stop interrupted. A scenario whose step already
- * failed (a finding or a setup problem) before the stop counts by that failure.
+ * Whether the stop is all that went wrong, so the scenario counts as stopped — the server's
+ * `ScenarioResult.stoppedOnly()`: a stop ended it, and either every step passed, no cleanup entry
+ * FAILED and the failure detail is none or the stop's; or exactly one step failed, the one the stop
+ * interrupted. Anything else (a step that had already failed, a failed cleanup) counts by its kind.
  */
 export function isStopped(result: ScenarioResult): boolean {
-  return Boolean(result.stopped) && (result.steps.every((s) => s.success) || interruptedStep(result) !== null);
+  if (!result.stopped) {
+    return false;
+  }
+  const failed = result.steps.filter((s) => !s.success);
+  if (failed.length === 0) {
+    const cleanupFailed = result.cleanup.some((entry) => entry.status === 'FAILED');
+    return !cleanupFailed && (result.failureDetail === null || result.failureDetailKey === STOPPED_KEY);
+  }
+  return failed.length === 1 && failed[0].messageKey === STOPPED_KEY;
 }
 
 /** The workspace-relative path of a scenario named by its path under scenarios/. */

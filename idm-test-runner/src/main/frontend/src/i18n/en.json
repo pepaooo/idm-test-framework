@@ -280,6 +280,7 @@
   "ui.run.scenarios.one": "{count} scenario",
   "ui.run.scenarios.other": "{count} scenarios",
   "ui.run.end": "{scenarios}: {parts}",
+  "ui.run.end.stopped": "stopped",
   "ui.run.openReport": "Open full report",
   "ui.run.scenariosLabel": "Scenarios of the run",
   "ui.run.stepsOf": "Steps of {name}",

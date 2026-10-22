@@ -256,9 +256,10 @@ entries of the Run menu say why when you point at them.
   `results.json` masks only the `secrets.env` values and keeps the other resolved parameters as they
   were, as for `idmtest run`. The interrupted scenario reads "stopped" with the warning ! (never the
   red of a setup problem), and scenarios the run never reached read "not run". The end line counts
-  each on its own, for example "5 scenarios: 2 passed, 1 finding, 1 stopped, 1 not run". A scenario
-  whose step had already failed before the stop counts as that finding or setup problem, and still
-  lists its skipped cleanup. A stop never changes the tree's badge: the scenario keeps the badge of its
+  each on its own, for example "5 scenarios: 2 passed, 1 finding, 1 stopped, 1 not run"; a run stopped
+  between two scenarios ends with "· stopped". A scenario whose step had already failed before the
+  stop, or whose cleanup entry failed, counts as that finding or setup problem, and still lists its
+  skipped cleanup. A stop never changes the tree's badge: the scenario keeps the badge of its
   last run that finished, so **Run only the ones that found something** is not affected either.
 - A workbench run is an `idmtest run`: the same workspace files, settings precedence, checks before
   anything is contacted, JDBC driver loading, masking and `reports/<run-id>/` folder (with

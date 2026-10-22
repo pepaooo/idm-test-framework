@@ -104,7 +104,8 @@ export function headline(run: RunState): string {
 
 /**
  * "5 scenarios: 2 passed, 1 finding, 1 stopped, 1 not run": setup problems and stopped scenarios
- * counted on their own, and the scenarios a stop or refusal kept from starting as "not run".
+ * counted on their own, and the rows a stop or refusal kept from starting as "not run"; a run stopped
+ * between scenarios ends with "· stopped".
  */
 export function endLine(run: RunState): string | null {
   const outcome = run.outcome;
@@ -122,11 +123,13 @@ export function endLine(run: RunState): string | null {
   if (stopped > 0) {
     parts.push(t('ui.result.stopped', { count: stopped }));
   }
-  const notRun = outcome.total - outcome.passed - outcome.findings - outcome.setupProblems - stopped;
+  const notRun = run.scenarios.filter((s) => s.state === 'notRun').length;
   if (notRun > 0) {
     parts.push(t('ui.result.notRun', { count: notRun }));
   }
-  return t('ui.run.end', { scenarios: t('ui.run.scenarios', { count: outcome.total }), parts: parts.join(', ') });
+  const line = t('ui.run.end', { scenarios: t('ui.run.scenarios', { count: outcome.total }), parts: parts.join(', ') });
+  // stopped between scenarios: no scenario says so, the line does
+  return outcome.stopped && stopped === 0 ? `${line} · ${t('ui.run.end.stopped')}` : line;
 }
 
 function StepBadge({ step, stopped }: { step: StepResult; stopped: boolean }) {

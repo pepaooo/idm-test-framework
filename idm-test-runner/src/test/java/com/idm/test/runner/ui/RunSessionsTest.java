@@ -6,13 +6,16 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -45,9 +48,9 @@ class RunSessionsTest {
             return new RunOutcome("20261019-101530-lab", null, 0, 0, 0, 0, true, 1);
         }, Map.of());
 
-        assertThat(sessions.start(ws, "lab", List.of(), Locale.ENGLISH)).isEqualTo("20261019-101530-lab");
+        assertThat(sessions.start(ws, "lab", List.of(), Locale.ENGLISH, () -> ws)).isEqualTo("20261019-101530-lab");
         assertThat(sessions.active()).isTrue();
-        assertThatThrownBy(() -> sessions.start(ws, "lab", List.of(), Locale.ENGLISH))
+        assertThatThrownBy(() -> sessions.start(ws, "lab", List.of(), Locale.ENGLISH, () -> ws))
                 .isInstanceOf(RunSessions.BusyException.class);
         assertThat(sessions.stop()).isTrue();
         release.countDown();
@@ -64,7 +67,7 @@ class RunSessionsTest {
             throw new IllegalStateException("the run broke");
         }, Map.of());
 
-        assertThat(sessions.start(ws, "lab", List.of(), Locale.ENGLISH)).isNull();
+        assertThat(sessions.start(ws, "lab", List.of(), Locale.ENGLISH, () -> ws)).isNull();
         waitIdle(sessions);
 
         List<RunSessions.Event> events = sessions.latestEvents();
@@ -74,7 +77,7 @@ class RunSessionsTest {
                     .doesNotContain("the run broke");
         });
         // the slot is free again: a new run starts instead of being refused as busy
-        assertThat(sessions.start(ws, "lab", List.of(), Locale.ENGLISH)).isNull();
+        assertThat(sessions.start(ws, "lab", List.of(), Locale.ENGLISH, () -> ws)).isNull();
         waitIdle(sessions);
     }
 
@@ -89,12 +92,12 @@ class RunSessionsTest {
             throw new Error("after-run broke");
         });
 
-        sessions.start(ws, "lab", List.of(), Locale.ENGLISH);
+        sessions.start(ws, "lab", List.of(), Locale.ENGLISH, () -> ws);
         waitIdle(sessions);
 
         assertThat(sessions.latestFinished()).isTrue();
         // the slot is free: the next run is not refused as busy
-        sessions.start(ws, "lab", List.of(), Locale.ENGLISH);
+        sessions.start(ws, "lab", List.of(), Locale.ENGLISH, () -> ws);
         waitIdle(sessions);
         assertThat(sessions.latestFinished()).isTrue();
     }
@@ -111,12 +114,145 @@ class RunSessionsTest {
             return new RunOutcome(null, null, 1, 1, 0, 0, false, 0);
         }, Map.of());
 
-        sessions.start(ws, "lab", List.of(), Locale.ENGLISH);
+        sessions.start(ws, "lab", List.of(), Locale.ENGLISH, () -> ws);
         waitIdle(sessions);
 
         List<RunSessions.Event> events = sessions.latestEvents();
         assertThat(events).hasSize(RunSessions.KEPT + 1);
         assertThat(events.getLast().name()).isEqualTo("scenarioFinished");
+    }
+
+    // --- the workspace while a run is going ---------------------------------------------------------
+
+    /** Sessions whose runs get their folder at once, then block until {@code release} opens. */
+    private static RunSessions blocking(CountDownLatch release) {
+        return new RunSessions((request, events, stop) -> {
+            events.runFolder("20261021-090000-lab");
+            try {
+                release.await(10, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            return new RunOutcome("20261021-090000-lab", null, 0, 0, 0, 0, false, 0);
+        }, Map.of());
+    }
+
+    @Test
+    @DisplayName("Should refuse to switch to another workspace while a run of this one is going")
+    void testSwitchRefusedWhileRunning() throws Exception {
+        Path x = Files.createDirectories(ws.resolve("x"));
+        Path y = Files.createDirectories(ws.resolve("y"));
+        UiSession session = new UiSession("fake-token", Locale.ENGLISH, x);
+        CountDownLatch release = new CountDownLatch(1);
+        RunSessions sessions = blocking(release);
+        try {
+            sessions.start(x, "lab", List.of(), Locale.ENGLISH, session::workspace);
+            Path realX = x.toRealPath();
+            assertThat(sessions.activeWorkspace()).isEqualTo(realX);
+
+            assertThatThrownBy(() -> sessions.switchWorkspace(session, y))
+                    .isInstanceOfSatisfying(RunSessions.RunningElsewhereException.class,
+                            e -> assertThat(e.running()).isEqualTo(realX));
+            assertThat(session.workspace()).isEqualTo(x);
+        } finally {
+            release.countDown();
+            waitIdle(sessions);
+        }
+    }
+
+    @Test
+    @DisplayName("Should open the workspace that is being run")
+    void testSameWorkspaceOpens() throws Exception {
+        Path x = Files.createDirectories(ws.resolve("x"));
+        UiSession session = new UiSession("fake-token", Locale.ENGLISH, x);
+        CountDownLatch release = new CountDownLatch(1);
+        RunSessions sessions = blocking(release);
+        try {
+            sessions.start(x, "lab", List.of(), Locale.ENGLISH, session::workspace);
+            // the same folder by another spelling is the same workspace
+            sessions.switchWorkspace(session, ws.resolve("x/../x"));
+            assertThat(session.workspace()).isEqualTo(ws.resolve("x/../x"));
+        } finally {
+            release.countDown();
+            waitIdle(sessions);
+        }
+    }
+
+    @Test
+    @DisplayName("Should switch once the run has ended")
+    void testSwitchAfterRun() throws Exception {
+        Path x = Files.createDirectories(ws.resolve("x"));
+        Path y = Files.createDirectories(ws.resolve("y"));
+        UiSession session = new UiSession("fake-token", Locale.ENGLISH, x);
+        CountDownLatch release = new CountDownLatch(1);
+        RunSessions sessions = blocking(release);
+        sessions.start(x, "lab", List.of(), Locale.ENGLISH, session::workspace);
+        release.countDown();
+        waitIdle(sessions);
+
+        assertThat(sessions.activeWorkspace()).isNull();
+        sessions.switchWorkspace(session, y);
+        assertThat(session.workspace()).isEqualTo(y);
+    }
+
+    @Test
+    @DisplayName("Should refuse a run of a workspace that is no longer the session's")
+    void testStartRefusedWhenSwitched() throws Exception {
+        Path x = Files.createDirectories(ws.resolve("x"));
+        Path y = Files.createDirectories(ws.resolve("y"));
+        UiSession session = new UiSession("fake-token", Locale.ENGLISH, y);
+        RunSessions sessions = blocking(new CountDownLatch(0));
+
+        assertThatThrownBy(() -> sessions.start(x, "lab", List.of(), Locale.ENGLISH, session::workspace))
+                .isInstanceOf(RunSessions.SwitchedException.class);
+        assertThat(sessions.active()).isFalse();
+    }
+
+    @Test
+    @DisplayName("Opening another workspace and starting a run never both happen")
+    void testOpenAndStartRace() throws Exception {
+        Path x = Files.createDirectories(ws.resolve("x"));
+        Path y = Files.createDirectories(ws.resolve("y"));
+        for (int round = 0; round < 200; round++) {
+            UiSession session = new UiSession("fake-token", Locale.ENGLISH, x);
+            CountDownLatch release = new CountDownLatch(1);
+            RunSessions sessions = blocking(release);
+            CyclicBarrier barrier = new CyclicBarrier(2);
+            AtomicReference<Object> started = new AtomicReference<>();
+            AtomicReference<Object> switched = new AtomicReference<>();
+            Thread starter = Thread.ofPlatform().start(() -> started.set(attempt(barrier,
+                    () -> sessions.start(x, "lab", List.of(), Locale.ENGLISH, session::workspace))));
+            Thread opener = Thread.ofPlatform().start(() -> switched.set(attempt(barrier, () -> {
+                sessions.switchWorkspace(session, y);
+                return "opened";
+            })));
+            starter.join(10_000);
+            opener.join(10_000);
+            try {
+                boolean runOnX = "20261021-090000-lab".equals(started.get())
+                        && switched.get() instanceof RunSessions.RunningElsewhereException
+                        && x.equals(session.workspace());
+                boolean openedY = started.get() instanceof RunSessions.SwitchedException
+                        && "opened".equals(switched.get()) && y.equals(session.workspace());
+                assertThat(runOnX || openedY)
+                        .as("round %d: start=%s, open=%s, session=%s", round, started.get(), switched.get(),
+                                session.workspace())
+                        .isTrue();
+            } finally {
+                release.countDown();
+                waitIdle(sessions);
+            }
+        }
+    }
+
+    /** {@code action}'s result after the barrier, or what it threw. */
+    private static Object attempt(CyclicBarrier barrier, java.util.concurrent.Callable<Object> action) {
+        try {
+            barrier.await(10, TimeUnit.SECONDS);
+            return action.call();
+        } catch (Exception e) {
+            return e;
+        }
     }
 
     private static void waitIdle(RunSessions sessions) throws InterruptedException {

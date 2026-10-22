@@ -8,11 +8,13 @@ import com.idm.test.runner.ui.FolderBrowser;
 import com.idm.test.runner.ui.GitTool;
 import com.idm.test.runner.ui.LastRuns;
 import com.idm.test.runner.ui.RecentWorkspaces;
+import com.idm.test.runner.ui.RunSessions;
 import com.idm.test.runner.ui.UiSession;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -46,11 +48,13 @@ class WorkspacesController {
     private final UiSession session;
     private final RecentWorkspaces recent;
     private final GitTool git;
+    private final RunSessions runs;
 
-    WorkspacesController(UiSession session, RecentWorkspaces recent, GitTool git) {
+    WorkspacesController(UiSession session, RecentWorkspaces recent, GitTool git, RunSessions runs) {
         this.session = session;
         this.recent = recent;
         this.git = git;
+        this.runs = runs;
     }
 
     /** A recent workspace; {@code lastRun} is null when it never ran or no longer exists. */
@@ -68,6 +72,14 @@ class WorkspacesController {
     }
 
     record Opened(String path, List<String> profiles) {
+    }
+
+    /** The workspace a run is going in. */
+    record RunningWorkspace(String path, String name) {
+    }
+
+    /** The 409 body while a run of another workspace is going: the error shape plus that workspace. */
+    record RunGoing(String key, String message, RunningWorkspace runningWorkspace) {
     }
 
     @GetMapping("/api/workspaces/recent")
@@ -122,8 +134,12 @@ class WorkspacesController {
         return new Created(target.toString(), warning);
     }
 
+    /**
+     * Opens a workspace: 409 {@code ui.workspace.runGoing} with {@code runningWorkspace} while a run of
+     * another one is going (the session keeps its workspace; nothing is added to the recent list).
+     */
     @PostMapping("/api/workspaces/open")
-    Opened open(@RequestBody OpenRequest request) {
+    ResponseEntity<?> open(@RequestBody OpenRequest request, HttpServletRequest http) {
         Path path = absolute(request.path());
         if (path == null) {
             throw ApiError.badRequest("runner.ui.workspace.notWorkspace", String.valueOf(request.path()));
@@ -134,9 +150,19 @@ class WorkspacesController {
         } catch (UsageException e) {
             throw ApiError.badRequest("runner.ui.workspace.notWorkspace", path.toString());
         }
-        session.open(workspace.root());
+        try {
+            runs.switchWorkspace(session, workspace.root());
+        } catch (RunSessions.RunningElsewhereException e) {
+            Path running = e.running();
+            Path fileName = running.getFileName();
+            String name = fileName == null ? running.toString() : fileName.toString();
+            ApiError.Body body = ApiError.Body.of(Message.of("runner.ui.workspace.runGoing", name),
+                    ApiError.locale(http.getHeader("Accept-Language"), session.locale()));
+            return ResponseEntity.status(HttpStatus.CONFLICT).contentType(MediaType.APPLICATION_JSON)
+                    .body(new RunGoing(body.key(), body.message(), new RunningWorkspace(running.toString(), name)));
+        }
         remember(workspace.root());
-        return new Opened(workspace.root().toString(), profiles(workspace));
+        return ResponseEntity.ok(new Opened(workspace.root().toString(), profiles(workspace)));
     }
 
     @DeleteMapping("/api/workspaces/recent")

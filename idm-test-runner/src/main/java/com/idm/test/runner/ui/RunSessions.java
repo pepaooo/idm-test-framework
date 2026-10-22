@@ -34,6 +34,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
+import java.util.function.Supplier;
 
 /**
  * The workbench's runs: one at a time, each on its own daemon thread through {@link RunService} —
@@ -72,6 +73,11 @@ public final class RunSessions {
     private final Runner runner;
     private final Map<String, String> environmentOverride;
     private final AtomicReference<Run> active = new AtomicReference<>();
+    /**
+     * Held while a run is installed ({@link #start}) and while the session's workspace is switched
+     * ({@link #switchWorkspace}), never while a run executes: the two never interleave.
+     */
+    private final Object workspaceLock = new Object();
     private final AtomicLong sequence = new AtomicLong();
     /** Random per workbench process: an event id of an earlier process never matches this one's. */
     private final String epoch = HexFormat.of().toHexDigits(new SecureRandom().nextLong());
@@ -114,17 +120,50 @@ public final class RunSessions {
         }
     }
 
+    /** The workspace a run was asked for is no longer the session's current one. */
+    public static final class SwitchedException extends RuntimeException {
+        SwitchedException() {
+            super("the workspace was switched");
+        }
+    }
+
+    /** A run of another workspace is going: the session keeps its workspace. */
+    public static final class RunningElsewhereException extends RuntimeException {
+        private final transient Path running;
+
+        RunningElsewhereException(Path running) {
+            super("a run is going in another workspace");
+            this.running = running;
+        }
+
+        /** The running workspace's real path. */
+        public Path running() {
+            return running;
+        }
+    }
+
     /**
      * Starts a run of {@code scenarios} (patterns as {@link RunRequest} takes them; empty: all) on its
      * own thread, and returns its id once the run has its folder (null when it was refused before, or
-     * did not get one within 30 s; its events tell why).
+     * did not get one within 30 s; its events tell why). {@code current} is the session's workspace,
+     * read under the same lock {@link #switchWorkspace} takes, so a run never starts for a workspace a
+     * tab has just switched away from.
      *
-     * @throws BusyException when a run is active
+     * @throws BusyException     when a run is active
+     * @throws SwitchedException when {@code workspace} is no longer {@code current}'s
      */
-    public String start(Path workspace, String profile, List<String> scenarios, Locale locale) {
-        Run run = new Run(epoch + "." + sequence.incrementAndGet(), locale);
-        if (!active.compareAndSet(null, run)) {
-            throw new BusyException();
+    public String start(Path workspace, String profile, List<String> scenarios, Locale locale,
+                        Supplier<Path> current) {
+        Path real = real(workspace);
+        Run run = new Run(epoch + "." + sequence.incrementAndGet(), locale, real);
+        synchronized (workspaceLock) {
+            Path now = current.get();
+            if (now == null || !real.equals(real(now))) {
+                throw new SwitchedException();
+            }
+            if (!active.compareAndSet(null, run)) {
+                throw new BusyException();
+            }
         }
         latest = run;
         RunRequest request = new RunRequest(workspace, profile, scenarios, locale, environmentOverride);
@@ -187,6 +226,38 @@ public final class RunSessions {
     /** Whether a run is active. */
     public boolean active() {
         return active.get() != null;
+    }
+
+    /** The active run's workspace (its real path), or null when no run is active. */
+    public Path activeWorkspace() {
+        Run run = active.get();
+        return run == null ? null : run.workspace;
+    }
+
+    /**
+     * Makes {@code root} the session's workspace, unless a run of another workspace is going: then the
+     * session keeps its workspace. Opening the running workspace itself is always allowed.
+     *
+     * @throws RunningElsewhereException when a run of another workspace is active
+     */
+    public void switchWorkspace(UiSession session, Path root) {
+        Path real = real(root);
+        synchronized (workspaceLock) {
+            Run run = active.get();
+            if (run != null && !run.workspace.equals(real)) {
+                throw new RunningElsewhereException(run.workspace);
+            }
+            session.open(root);
+        }
+    }
+
+    /** The real path, or the normalized absolute one when it cannot be resolved (gone, unreadable). */
+    private static Path real(Path path) {
+        try {
+            return path.toRealPath();
+        } catch (IOException | SecurityException e) {
+            return path.toAbsolutePath().normalize();
+        }
     }
 
     /**
@@ -323,13 +394,16 @@ public final class RunSessions {
         final AtomicBoolean stop = new AtomicBoolean();
         final CountDownLatch idKnown = new CountDownLatch(1);
         final Locale locale;
+        /** The workspace the run was started for, as a real path. */
+        final Path workspace;
         volatile String runId;
         private final List<Event> events = new ArrayList<>();
         private boolean finished;
 
-        Run(String sequence, Locale locale) {
+        Run(String sequence, Locale locale, Path workspace) {
             this.sequence = sequence;
             this.locale = locale;
+            this.workspace = workspace;
         }
 
         /** The id a subscriber sees for the event at {@code index}. */

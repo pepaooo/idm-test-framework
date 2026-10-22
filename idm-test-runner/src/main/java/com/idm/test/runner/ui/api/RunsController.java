@@ -41,7 +41,8 @@ import java.util.regex.Pattern;
  * <ul>
  *   <li>{@code POST /api/runs} {@code {profile, scenarios, onlyFindings, locale}} starts a run of the current
  *       workspace and answers 202 {@code {runId}} (null when the run was refused before it had a folder;
- *       the events say why); 409 {@code ui.run.busy} while one is active. {@code scenarios} is a list of
+ *       the events say why); 409 {@code ui.run.busy} while one is active, 409 {@code ui.workspace.switched}
+ *       when another tab opened another workspace meanwhile. {@code scenarios} is a list of
  *       workspace-relative scenario paths, {@code "all"} (also when left out) or {@code {"folder":
  *       "scenarios/<sub>"}}; {@code onlyFindings} keeps those whose last result was a finding or a setup
  *       problem. {@code locale} ({@code en}, {@code es}) is the run's language, the UI's by default.</li>
@@ -94,10 +95,16 @@ class RunsController {
         Locale locale = locale(request.locale());
         List<String> patterns = select(workspace, request.scenarios(), Boolean.TRUE.equals(request.onlyFindings()));
         try {
-            String runId = runs.start(workspace, profile, patterns, locale);
+            String runId = runs.start(workspace, profile, patterns, locale, session::workspace);
             return ResponseEntity.status(HttpStatus.ACCEPTED).body(new Started(runId));
         } catch (RunSessions.BusyException e) {
             throw busy();
+        } catch (RunSessions.SwitchedException e) {
+            // another tab opened another workspace since this request was let in
+            Path current = session.workspace();
+            Path name = current == null ? null : current.getFileName();
+            throw new ApiError(HttpStatus.CONFLICT, Message.of("runner.ui.workspace.switched",
+                    name != null ? name.toString() : String.valueOf(current)));
         }
     }
 

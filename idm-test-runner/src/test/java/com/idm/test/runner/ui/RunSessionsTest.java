@@ -11,11 +11,13 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Supplier;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -245,8 +247,68 @@ class RunSessionsTest {
         }
     }
 
+    @Test
+    @DisplayName("A switch that comes while a run is being installed waits for it and is then refused")
+    void testSwitchDuringStartWindow() throws Exception {
+        Path x = Files.createDirectories(ws.resolve("x"));
+        Path y = Files.createDirectories(ws.resolve("y"));
+        UiSession session = new UiSession("fake-token", Locale.ENGLISH, x);
+        CountDownLatch release = new CountDownLatch(1);
+        RunSessions sessions = blocking(release);
+        CountDownLatch inWindow = new CountDownLatch(1);
+        CountDownLatch proceed = new CountDownLatch(1);
+        // start() reads the session's workspace, then sits between that read and installing the run
+        Supplier<Path> current = () -> {
+            Path read = session.workspace();
+            inWindow.countDown();
+            try {
+                proceed.await(5, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            return read;
+        };
+        AtomicReference<Object> started = new AtomicReference<>();
+        AtomicReference<Object> switched = new AtomicReference<>();
+        Thread starter = Thread.ofPlatform().start(() -> started.set(call(
+                () -> sessions.start(x, "lab", List.of(), Locale.ENGLISH, current))));
+        try {
+            assertThat(inWindow.await(5, TimeUnit.SECONDS)).isTrue();
+            Thread opener = Thread.ofPlatform().start(() -> switched.set(call(() -> {
+                sessions.switchWorkspace(session, y);
+                return "opened";
+            })));
+            // the switch either blocks behind start() (the lock) or, without one, gets through at once
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+            while (opener.getState() != Thread.State.BLOCKED && opener.isAlive() && System.nanoTime() < deadline) {
+                Thread.sleep(1);
+            }
+            proceed.countDown();
+            starter.join(10_000);
+            opener.join(10_000);
+
+            assertThat(started.get()).as("start").isEqualTo("20261021-090000-lab");
+            assertThat(switched.get()).as("switch").isInstanceOf(RunSessions.RunningElsewhereException.class);
+            assertThat(session.workspace()).isEqualTo(x);
+        } finally {
+            proceed.countDown();
+            release.countDown();
+            starter.join(10_000);
+            waitIdle(sessions);
+        }
+    }
+
+    /** {@code action}'s result, or what it threw. */
+    private static Object call(Callable<Object> action) {
+        try {
+            return action.call();
+        } catch (Exception e) {
+            return e;
+        }
+    }
+
     /** {@code action}'s result after the barrier, or what it threw. */
-    private static Object attempt(CyclicBarrier barrier, java.util.concurrent.Callable<Object> action) {
+    private static Object attempt(CyclicBarrier barrier, Callable<Object> action) {
         try {
             barrier.await(10, TimeUnit.SECONDS);
             return action.call();

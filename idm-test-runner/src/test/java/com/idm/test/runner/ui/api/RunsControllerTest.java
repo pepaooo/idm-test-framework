@@ -275,6 +275,8 @@ class RunsControllerTest {
         assertThat(events.getLast().name()).isEqualTo("runFinished");
         assertThat(outcome.get("stopped").asBoolean()).isTrue();
         assertThat(outcome.get("total").asInt()).isEqualTo(2);
+        assertThat(outcome.get("stoppedScenarios").asInt()).isEqualTo(1);
+        assertThat(outcome.get("setupProblems").asInt()).isZero();
     }
 
     @Test

@@ -228,7 +228,8 @@ class RunServiceTest {
         assertThat(outcome.total()).isEqualTo(2);
         assertThat(outcome.passed()).isZero();
         assertThat(outcome.findings()).isZero();
-        assertThat(outcome.setupProblems()).isEqualTo(1);
+        assertThat(outcome.setupProblems()).isZero();
+        assertThat(outcome.stoppedScenarios()).isEqualTo(1);
         assertThat(recorder.finished).hasSize(1);
         ScenarioResult stopped = recorder.finished.getFirst();
         assertThat(stopped.sourceName()).isEqualTo("a-wrong-sn.yaml");
@@ -348,6 +349,26 @@ class RunServiceTest {
             assertThat(Files.readString(outcome.folder().resolve(file)))
                     .contains("a-bad.yaml", "provisioning-user-to-ldap.yaml", "wrong-sn.yaml");
         }
+    }
+
+    @Test
+    @DisplayName("Should count a scenario stopped during a wait as stopped, not as a setup problem")
+    void testStoppedCountsOnItsOwn() throws Exception {
+        Path ws = workspace();
+        scenario(ws, "a-wrong-sn.yaml", WRONG_SN);
+        corpusScenario(ws, "provisioning-user-to-ldap.yaml");
+        Recorder recorder = new Recorder();
+        AtomicBoolean stop = new AtomicBoolean();
+        recorder.onAttempt = () -> stop.set(true);
+
+        RunOutcome outcome = new RunService(CLOCK, false).run(request(ws), recorder, stop::get);
+
+        assertThat(outcome.stopped()).isTrue();
+        assertThat(outcome.exitCode()).isEqualTo(ExitCodes.FAILED);
+        assertThat(outcome.stoppedScenarios()).isEqualTo(1);
+        assertThat(outcome.setupProblems()).isZero();
+        assertThat(outcome.passed()).isZero();
+        assertThat(outcome.findings()).isZero();
     }
 
     @Test

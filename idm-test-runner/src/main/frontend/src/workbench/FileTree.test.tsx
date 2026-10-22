@@ -121,6 +121,66 @@ describe('FileTree', () => {
     expect(onAdded).not.toHaveBeenCalled();
   });
 
+  it('clicking a folder selects it, and still folds and unfolds it', async () => {
+    const onSelectFolder = vi.fn();
+    const { onOpen } = renderTree({ onSelectFolder });
+    const users = screen.getByRole('button', { name: 'users' });
+    expect(users).not.toHaveAttribute('aria-current');
+    await userEvent.click(users);
+    expect(onSelectFolder).toHaveBeenCalledWith('scenarios/users');
+    expect(users).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByRole('button', { name: /^create-user\.yaml/ })).not.toBeInTheDocument();
+    await userEvent.click(users);
+    expect(users).toHaveAttribute('aria-expanded', 'true');
+    // selecting does not open a file
+    expect(onOpen).not.toHaveBeenCalled();
+  });
+
+  it('the selected folder row is marked, one at a time', () => {
+    renderTree({ selectedFolder: 'scenarios/users' });
+    const users = screen.getByRole('button', { name: 'users' });
+    expect(users).toHaveAttribute('aria-current', 'true');
+    expect(users).toHaveClass('tree-selected');
+    expect(screen.getByRole('button', { name: 'scenarios' })).not.toHaveAttribute('aria-current');
+    expect(screen.getByRole('button', { name: 'config' })).not.toHaveAttribute('aria-current');
+  });
+
+  it('the keyboard selects a folder too', async () => {
+    const onSelectFolder = vi.fn();
+    const { onOpen } = renderTree({ onSelectFolder });
+    screen.getByRole('button', { name: 'users' }).focus();
+    await userEvent.keyboard('{Enter}');
+    expect(onSelectFolder).toHaveBeenCalledWith('scenarios/users');
+    await userEvent.keyboard(' ');
+    expect(onSelectFolder).toHaveBeenCalledTimes(2);
+    expect(onOpen).not.toHaveBeenCalled();
+  });
+
+  it('marks every scenario of the run: running, waiting, and the others keep their badges', () => {
+    renderTree({
+      runStates: new Map([
+        ['scenarios/users/create-user.yaml', 'running'],
+        ['scenarios/users/disable-user.yaml', 'waiting'],
+        ['scenarios/roles-grant.yaml', 'waiting'],
+      ]),
+    });
+    const create = screen.getByRole('button', { name: /^create-user\.yaml/ });
+    expect(within(create).getByRole('img', { name: 'Running' })).toHaveTextContent('◌');
+    expect(within(create).queryByRole('img', { name: /last run/ })).not.toBeInTheDocument();
+    for (const name of [/^disable-user\.yaml/, /^roles-grant\.yaml/]) {
+      const row = screen.getByRole('button', { name });
+      expect(within(row).getByRole('img', { name: 'Waiting' })).toHaveTextContent('○');
+      expect(within(row).queryByRole('img', { name: /last run/ })).not.toBeInTheDocument();
+    }
+  });
+
+  it('scenarios outside the run keep their last-result badge', () => {
+    renderTree({ runStates: new Map([['scenarios/users/create-user.yaml', 'running']]) });
+    const roles = screen.getByRole('button', { name: /^roles-grant\.yaml/ });
+    expect(within(roles).getByRole('img', { name: 'last run passed' })).toBeInTheDocument();
+    expect(within(roles).queryByRole('img', { name: 'Waiting' })).not.toBeInTheDocument();
+  });
+
   it('a read-only tab cannot add files', () => {
     renderTree({ readOnly: true });
     expect(screen.getByRole('button', { name: 'Add files' })).toBeDisabled();

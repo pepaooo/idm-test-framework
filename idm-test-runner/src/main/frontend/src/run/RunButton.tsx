@@ -30,7 +30,12 @@ export function scenariosIn(tree: TreeNode | null, prefix = 'scenarios'): TreeNo
   return out;
 }
 
-/** The folder Run folder runs: the active scenario's, when it is below scenarios/ itself. */
+/** A folder Run folder can run: one below scenarios/ (scenarios/ itself is Run all). */
+function isRunFolder(folder: string | null): folder is string {
+  return folder !== null && folder.startsWith('scenarios/') && folder.length > 'scenarios/'.length;
+}
+
+/** The active scenario's folder, when it is below scenarios/ itself. */
 export function folderOf(path: string | null): string | null {
   if (!isScenario(path)) {
     return null;
@@ -106,10 +111,11 @@ async function runScope(wb: WorkbenchApi, store: RunStore, scope: RunScope, save
 
 /**
  * The Run split button in the top bar (spec §4.6, mockup run-all.html): ▶ Run (⌘↵ / Ctrl+Enter)
- * runs the active scenario — "Save & Run" when it has unsaved changes — and ▾ opens Run folder,
+ * runs the active scenario — "Save & Run" when it has unsaved changes — and ▾ opens Run folder
+ * (`runFolder`, the folder selected in the tree, else the active scenario's),
  * Run all scenarios (⇧⌘↵) and Run only the ones that found something.
  */
-export function RunButton({ store }: { store: RunStore }) {
+export function RunButton({ store, runFolder = null }: { store: RunStore; runFolder?: string | null }) {
   useLanguage();
   const wb = useWorkbench();
   const run = useSyncExternalStore(store.subscribe, store.getState);
@@ -118,7 +124,8 @@ export function RunButton({ store }: { store: RunStore }) {
   const menu = useRef<HTMLDivElement>(null);
   const active = isScenario(wb.activePath) ? wb.activePath : null;
   const dirty = active !== null && wb.isDirty(active);
-  const folder = folderOf(active);
+  // the folder selected in the tree, else the active scenario's
+  const folder = isRunFolder(runFolder) ? runFolder : folderOf(active);
   // the main button runs the active scenario: only what it needs can block it
   const blocked = blockedReason(wb, store, active ? { kind: 'scenario', path: active } : null);
   // the menu opens unless every run is blocked; each item says what blocks its own run

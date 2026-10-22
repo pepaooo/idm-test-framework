@@ -102,7 +102,20 @@ export function Workbench({ workspace, warning, lockWait = 300, runPanel, lab, r
     runStore.connect(); // the current or last run
     return () => runStore.dispose();
   }, [runStore]);
-  const runningPath = runState.scenarios.find((s) => s.state === 'running')?.name;
+  // while a run goes on, the tree marks each of its scenarios still to finish
+  const runStates = useMemo(() => {
+    const marks = new Map<string, 'running' | 'waiting'>();
+    if (runState.phase === 'starting' || runState.phase === 'running') {
+      for (const row of runState.scenarios) {
+        if (row.state === 'running' || row.state === 'waiting') {
+          marks.set(`scenarios/${row.name}`, row.state);
+        }
+      }
+    }
+    return marks;
+  }, [runState.phase, runState.scenarios]);
+  // the folder Run folder runs: the last folder clicked in the tree, until a file is opened from it
+  const [runFolder, setRunFolder] = useState<string | null>(null);
 
   // leaving the workspace: keep pending drafts, then stop the timers
   useEffect(() => () => void store.flushNow().finally(() => store.dispose()), [store]);
@@ -279,7 +292,7 @@ export function Workbench({ workspace, warning, lockWait = 300, runPanel, lab, r
           saving={active?.saving ?? false}
           onSave={() => void store.save().catch(() => undefined)}
           lab={lab === undefined ? <LabChip store={labStore} /> : lab}
-          run={run === undefined ? <RunButton store={runStore} /> : run}
+          run={run === undefined ? <RunButton store={runStore} runFolder={runFolder} /> : run}
         />
         {lockState === 'readOnly' && (
           <div className="lock-banner" role="status">
@@ -324,8 +337,13 @@ export function Workbench({ workspace, warning, lockWait = 300, runPanel, lab, r
               active={state.active}
               dirty={dirty}
               readOnly={state.readOnly}
-              running={runningPath ? `scenarios/${runningPath}` : null}
-              onOpen={(path) => void store.open(path)}
+              selectedFolder={runFolder}
+              runStates={runStates}
+              onOpen={(path) => {
+                setRunFolder(null);
+                void store.open(path);
+              }}
+              onSelectFolder={setRunFolder}
               onAdded={() => void refreshTree()}
             />
           </div>

@@ -242,12 +242,20 @@ entries of the Run menu say why when you point at them.
 
 - **▶ Run** (⌘↵ / Ctrl+Enter) runs the scenario in the active tab, with the selected profile. When the
   file has unsaved edits the button reads **Save & Run** and saves first: runs always use saved files.
-- The arrow next to Run offers **Run folder** (the active scenario's folder, when it is below
-  `scenarios/`), **Run all scenarios** (⇧⌘↵ / Ctrl+Shift+Enter) and **Run only the ones that found
-  something** (the scenarios whose last run had a finding or a setup problem).
+- The arrow next to Run offers **Run folder**, **Run all scenarios** (⇧⌘↵ / Ctrl+Shift+Enter) and
+  **Run only the ones that found something** (the scenarios whose last run had a finding or a setup
+  problem).
+- **To run a folder**, click it in the tree (it is highlighted; Enter or Space selects it too, and
+  the click still folds or unfolds it), then **Run ▾ → Run folder `<folder>/` (n)**: it runs every
+  scenario in that folder and its subfolders. With no folder selected, Run folder is the active
+  scenario's folder; opening a file from the tree selects no folder again, so Run folder follows the
+  last click. `scenarios/` itself has no Run folder (Run all covers it), a folder without scenarios
+  shows it disabled with (0), and the selection is not kept after a reload. Selecting a folder never
+  changes what **▶ Run** runs: the scenario in the active tab.
 - During a run the panel shows "Running all · 3 of 5", each scenario's state (passed, finding, setup
-  problem, running "step 2 of 4…", waiting), and **■ Stop**. The tree marks the running scenario. One
-  run at a time: a second start is refused while one is going.
+  problem, running "step 2 of 4…", waiting), and **■ Stop**. The tree marks every scenario of the
+  run: ◌ running, ○ waiting, then its result badge as it finishes. One run at a time: a second start
+  is refused while one is going.
 - **Stop is immediate.** The current scenario's cleanup does not run. The panel says "Stopped —
   cleanup did not run" and lists the cleanup entries that were skipped, with the values they would have
   used, such as the DN of the user that was created, so you know what may be left in

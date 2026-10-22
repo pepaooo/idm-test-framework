@@ -157,6 +157,13 @@
   color: var(--muted);
 }
 
+/* the folder Run folder runs: a bar as well as the colour, so it does not rest on colour alone */
+.tree-dir.tree-selected {
+  background: var(--raised);
+  color: var(--accent);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
 .tree-caret {
   width: 1em;
   display: inline-block;
@@ -169,6 +176,10 @@
 
 .tree-badge {
   margin-left: auto;
+}
+
+.tree-waiting {
+  color: var(--muted);
 }
 
 .tree-message {

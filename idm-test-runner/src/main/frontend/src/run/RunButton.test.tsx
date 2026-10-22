@@ -5,7 +5,7 @@ import { Workbench } from '../workbench/Workbench';
 import { setLanguage } from '../i18n';
 import { directory, hrDatabase } from '../test/labServer';
 import { act } from '@testing-library/react';
-import { emit, RUN_ID, runServer, WORKSPACE } from '../test/runServer';
+import { emit, FILES, RUN_ID, runServer, WORKSPACE } from '../test/runServer';
 
 /** The accepted run starts and ends at once (so Run can start another). */
 function finishRun() {
@@ -285,6 +285,134 @@ describe('Run button', () => {
     expect(run).toBeDisabled();
     expect(run).toHaveAttribute('title', 'This workspace is open in another tab');
     expect(within(second.container).getByRole('button', { name: 'More ways to run' })).toBeDisabled();
+  });
+
+  describe('the folder selected in the tree', () => {
+    const WITH_ROLES = {
+      ...FILES,
+      'scenarios/roles/grant-role.yaml': 'name: Grant\nsteps:\n  - roles.grant: { user: a, roles: [r] }\n',
+      'scenarios/roles/revoke-role.yaml': 'name: Revoke\nsteps:\n  - roles.revoke: { user: a, roles: [r] }\n',
+      'scenarios/notes/readme.txt': 'notes\n',
+      'config/application-lab.yml': 'idm: {}\n',
+    };
+
+    async function openMenu() {
+      await userEvent.click(screen.getByRole('button', { name: 'More ways to run' }));
+      return screen.findByRole('menu');
+    }
+
+    async function closeMenu() {
+      await userEvent.keyboard('{Escape}');
+      await waitFor(() => expect(screen.queryByRole('menu')).not.toBeInTheDocument());
+    }
+
+    it('Run folder runs the selected folder, not the active scenario\'s', async () => {
+      const server = runServer({ files: WITH_ROLES });
+      render(<Workbench workspace={WORKSPACE} lockWait={10} />);
+      await ready();
+      await openCreate();
+      await userEvent.click(screen.getByRole('button', { name: 'roles' }));
+      const menu = await openMenu();
+      expect(within(menu).queryByRole('menuitem', { name: /Run folder users\// })).not.toBeInTheDocument();
+      await userEvent.click(within(menu).getByRole('menuitem', { name: 'Run folder roles/ (2)' }));
+      await waitFor(() => expect(server.runStarts()).toHaveLength(1));
+      expect(server.runStarts()[0].body).toMatchObject({ scenarios: { folder: 'scenarios/roles' }, onlyFindings: false });
+    });
+
+    it('opening a scenario from the tree moves Run folder back to its folder', async () => {
+      runServer({ files: WITH_ROLES });
+      render(<Workbench workspace={WORKSPACE} lockWait={10} />);
+      await ready();
+      await userEvent.click(await screen.findByRole('button', { name: 'roles' }));
+      expect(screen.getByRole('button', { name: 'roles' })).toHaveAttribute('aria-current', 'true');
+      await openCreate();
+      expect(screen.getByRole('button', { name: 'roles' })).not.toHaveAttribute('aria-current');
+      const menu = await openMenu();
+      expect(within(menu).getByRole('menuitem', { name: 'Run folder users/ (2)' })).toBeEnabled();
+      expect(within(menu).queryByRole('menuitem', { name: /Run folder roles\// })).not.toBeInTheDocument();
+    });
+
+    it('a selected folder runs without an open scenario', async () => {
+      const server = runServer({ files: WITH_ROLES });
+      render(<Workbench workspace={WORKSPACE} lockWait={10} />);
+      await ready();
+      await userEvent.click(await screen.findByRole('button', { name: 'roles' }));
+      expect(runButton()).toBeDisabled(); // no scenario open: Run has nothing to run
+      const menu = await openMenu();
+      await userEvent.click(within(menu).getByRole('menuitem', { name: 'Run folder roles/ (2)' }));
+      await waitFor(() => expect(server.runStarts()).toHaveLength(1));
+      expect(server.runStarts()[0].body).toMatchObject({ scenarios: { folder: 'scenarios/roles' } });
+    });
+
+    it('▶ Run and ⌘↵ keep running the open scenario', async () => {
+      const server = runServer({ files: WITH_ROLES });
+      render(<Workbench workspace={WORKSPACE} lockWait={10} />);
+      await ready();
+      await openCreate();
+      await userEvent.click(screen.getByRole('button', { name: 'roles' }));
+      await userEvent.click(runButton());
+      await waitFor(() => expect(server.runStarts()).toHaveLength(1));
+      expect(server.runStarts()[0].body).toMatchObject({ scenarios: [CREATE] });
+      finishRun();
+      fireEvent.keyDown(window, { key: 'Enter', ctrlKey: true });
+      await waitFor(() => expect(server.runStarts()).toHaveLength(2));
+      expect(server.runStarts()[1].body).toMatchObject({ scenarios: [CREATE] });
+    });
+
+    it('scenarios/ and config/ give no Run folder of their own: the open scenario\'s folder stays', async () => {
+      runServer({ files: WITH_ROLES });
+      render(<Workbench workspace={WORKSPACE} lockWait={10} />);
+      await ready();
+      await openCreate();
+      await userEvent.click(screen.getByRole('button', { name: 'scenarios' }));
+      let menu = await openMenu();
+      expect(within(menu).getAllByRole('menuitem', { name: /Run folder/ }).map((item) => item.textContent)).toEqual([
+        expect.stringContaining('Run folder users/ (2)'),
+      ]);
+      await closeMenu();
+      await userEvent.click(screen.getByRole('button', { name: 'scenarios' })); // unfold it again
+      await userEvent.click(screen.getByRole('button', { name: 'config' }));
+      menu = await openMenu();
+      expect(within(menu).getAllByRole('menuitem', { name: /Run folder/ }).map((item) => item.textContent)).toEqual([
+        expect.stringContaining('Run folder users/ (2)'),
+      ]);
+    });
+
+    it('a selected folder without scenarios shows Run folder disabled with (0)', async () => {
+      runServer({ files: WITH_ROLES });
+      render(<Workbench workspace={WORKSPACE} lockWait={10} />);
+      await ready();
+      await userEvent.click(await screen.findByRole('button', { name: 'notes' }));
+      const menu = await openMenu();
+      expect(within(menu).getByRole('menuitem', { name: 'Run folder notes/ (0)' })).toBeDisabled();
+    });
+
+    it('the tree marks every scenario of the run while it runs, then their results', async () => {
+      const server = runServer({ files: WITH_ROLES });
+      render(<Workbench workspace={WORKSPACE} lockWait={10} />);
+      await ready();
+      await userEvent.click(await screen.findByRole('button', { name: 'roles' }));
+      const menu = await openMenu();
+      await userEvent.click(within(menu).getByRole('menuitem', { name: 'Run folder roles/ (2)' }));
+      await waitFor(() => expect(server.runStarts()).toHaveLength(1));
+      const tree = screen.getByRole('navigation', { name: 'Workspace files' });
+      await userEvent.click(within(tree).getByRole('button', { name: 'roles' })); // the click folded it: unfold
+      act(() => {
+        emit('runStarted', { runId: RUN_ID, scenarios: ['roles/grant-role.yaml', 'roles/revoke-role.yaml'], locale: 'en' });
+        emit('scenarioStarted', { name: 'roles/grant-role.yaml' });
+      });
+      const grant = within(tree).getByRole('button', { name: /^grant-role\.yaml/ });
+      const revoke = within(tree).getByRole('button', { name: /^revoke-role\.yaml/ });
+      await waitFor(() => expect(within(grant).getByRole('img', { name: 'Running' })).toBeInTheDocument());
+      expect(within(revoke).getByRole('img', { name: 'Waiting' })).toHaveTextContent('○');
+      // a scenario outside the run is not marked
+      expect(within(within(tree).getByRole('button', { name: /^roles-grant\.yaml/ })).queryByRole('img', { name: 'Waiting' })).not.toBeInTheDocument();
+      act(() => {
+        emit('runFinished', { runId: RUN_ID, total: 2, passed: 0, findings: 0, setupProblems: 0, stopped: true, exitCode: 1, reportUrl: null });
+      });
+      await waitFor(() => expect(within(revoke).queryByRole('img', { name: 'Waiting' })).not.toBeInTheDocument());
+      expect(within(grant).queryByRole('img', { name: 'Running' })).not.toBeInTheDocument();
+    });
   });
 
   it('speaks Spanish', async () => {

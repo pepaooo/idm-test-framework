@@ -34,15 +34,23 @@ export function when(at: string, now: Date, lang: Language): string {
   }).format(date);
 }
 
-/** Red when a setup problem stopped a scenario, amber for findings, else green. */
+/** Red for a setup problem, amber for findings, the warning ! for a stopped scenario, else green. */
 export function runStatus(run: LastRun): BadgeStatus {
   if (run.setupProblems > 0) {
     return 'error';
   }
-  return run.findings > 0 ? 'finding' : 'ok';
+  if (run.findings > 0) {
+    return 'finding';
+  }
+  return run.stopped > 0 ? 'warn' : 'ok';
 }
 
-/** "2 findings", "1 finding, 1 setup problem", "12 passed". */
+/** The badge's spoken label: "Stopped" for the warning !, else the status's own. */
+export function runStatusLabel(run: LastRun, lang: Language): string | undefined {
+  return runStatus(run) === 'warn' ? translate(lang, 'ui.run.state.stopped') : undefined;
+}
+
+/** "2 findings", "1 finding, 1 setup problem", "1 stopped", "12 passed". */
 export function runSummary(run: LastRun, lang: Language): string {
   const parts: string[] = [];
   if (run.findings > 0) {
@@ -50,6 +58,9 @@ export function runSummary(run: LastRun, lang: Language): string {
   }
   if (run.setupProblems > 0) {
     parts.push(translate(lang, 'ui.result.setup', { count: run.setupProblems }));
+  }
+  if (run.stopped > 0) {
+    parts.push(translate(lang, 'ui.result.stopped', { count: run.stopped }));
   }
   return parts.length ? parts.join(', ') : translate(lang, 'ui.result.passed', { count: run.passed });
 }

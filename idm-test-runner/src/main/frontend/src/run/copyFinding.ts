@@ -1,5 +1,5 @@
 import { currentLanguage, t } from '../i18n';
-import type { HistoryEntry, Outcome, StepResult } from './types';
+import type { HistoryEntry, StepResult } from './types';
 
 /**
  * The plain-text "Copy finding" block (spec §4.8, mockup finding-panel.html) and the small
@@ -158,7 +158,7 @@ export function whenLabel(iso: string, now: Date, capital = true): string {
  * outcome in a row grouped, a day said once per group.
  */
 export function historyText(history: readonly HistoryEntry[], now: Date): string {
-  const groups: { outcome: Outcome; times: string[]; lastDay: string }[] = [];
+  const groups: { outcome: HistoryEntry['result']; times: string[]; lastDay: string }[] = [];
   for (const entry of [...history].reverse()) {
     const day = dayLabel(entry.at, now);
     let group = groups[groups.length - 1];

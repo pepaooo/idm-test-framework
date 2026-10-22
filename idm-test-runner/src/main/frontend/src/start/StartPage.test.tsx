@@ -72,6 +72,20 @@ describe('StartPage', () => {
     expect(within(lab).getByRole('img', { name: 'Setup problem' })).toBeInTheDocument();
   });
 
+  it('last run with a stop says "1 stopped" with the warning badge, not red', async () => {
+    fakeServer({
+      'GET /api/workspaces/recent': {
+        body: [{ ...RECENT[0], lastRun: { ...RECENT[0].lastRun!, passed: 2, findings: 0, setupProblems: 0, stopped: 1 } }],
+      },
+    });
+    renderStart();
+    const lab = await screen.findByRole('listitem', { name: /lab-tests/ });
+    expect(within(lab).getByTestId('last-result')).toHaveTextContent(/^! 1 stopped · today 14:32 · lab$/);
+    const badge = within(lab).getByRole('img', { name: 'Stopped' });
+    expect(badge).toHaveClass('badge-warn');
+    expect(within(lab).queryByRole('img', { name: 'Setup problem' })).not.toBeInTheDocument();
+  });
+
   it('greys a folder that no longer exists and offers to remove it from the list', async () => {
     const server = fakeServer({
       'GET /api/workspaces/recent': { body: RECENT },

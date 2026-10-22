@@ -8,7 +8,7 @@ import { stepLines } from './scenarioYaml';
 import { isConnectionProblem, systemOf } from './systems';
 import { scenarioPath, type CleanupResult, type Evidence, type HistoryEntry, type StepResult } from './types';
 
-const HISTORY_BADGE: Record<HistoryEntry['result'], BadgeStatus> = { passed: 'ok', finding: 'finding', setup: 'error' };
+const HISTORY_BADGE: Record<HistoryEntry['result'], BadgeStatus> = { passed: 'ok', finding: 'finding', setup: 'error', stopped: 'warn' };
 
 /** A value as one line of text (objects as JSON); the server masked it. */
 export function valueText(value: unknown): string {

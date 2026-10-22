@@ -1,6 +1,7 @@
 import { api, ApiProblem, withQuery } from '../api/client';
 import { stepCount } from './scenarioYaml';
 import {
+  isStopped,
   outcomeOf,
   scenarioPath,
   type RunFinishedEvent,
@@ -16,15 +17,18 @@ export type RunScope =
   | { kind: 'all' }
   | { kind: 'findings' };
 
-/** `notRun`: the run ended (stopped, refused) before it reached the scenario. */
-export type ScenarioState = 'waiting' | 'running' | 'passed' | 'finding' | 'setup' | 'notRun';
+/**
+ * `notRun`: the run ended (stopped, refused) before it reached the scenario. `stopped`: a stop
+ * interrupted it before it failed by itself (`isStopped`).
+ */
+export type ScenarioState = 'waiting' | 'running' | 'passed' | 'finding' | 'setup' | 'stopped' | 'notRun';
 
 /** One scenario of the run, as the events tell it so far. */
 export interface ScenarioRun {
   /** The path under scenarios/. */
   name: string;
   state: ScenarioState;
-  /** The run was stopped while this scenario ran: its cleanup did not run. */
+  /** The scenario counts as stopped (`state` is then `stopped`): its cleanup did not run. */
   stopped: boolean;
   /** The running step (from 0), while the scenario runs. */
   step: number | null;
@@ -270,10 +274,11 @@ export class RunStore {
         if (!result) {
           break;
         }
-        const outcome = outcomeOf(result);
+        const stopped = isStopped(result);
+        const outcome = stopped ? 'stopped' : outcomeOf(result);
         this.updateRow(result.sourceName, () => ({
           state: outcome,
-          stopped: Boolean(result.stopped),
+          stopped,
           step: null,
           attempt: null,
           steps: result.steps,

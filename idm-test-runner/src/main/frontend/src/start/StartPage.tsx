@@ -4,7 +4,7 @@ import { Badge } from '../components/Badge';
 import { t, useLanguage } from '../i18n';
 import { FolderPicker } from './FolderPicker';
 import { runGoing, RunGoingNotice, type RunGoing } from './RunGoingNotice';
-import { baseName, runStatus, runSummary, when } from './format';
+import { baseName, runStatus, runStatusLabel, runSummary, when } from './format';
 import './StartPage.css';
 
 export type Opened = (workspace: OpenWorkspace, warning?: ServerMessage) => void;
@@ -160,7 +160,7 @@ function RecentList({
             <span className="result" id={resultId} data-testid="last-result">
               {w.lastRun ? (
                 <>
-                  <Badge status={runStatus(w.lastRun)} />
+                  <Badge status={runStatus(w.lastRun)} label={runStatusLabel(w.lastRun, lang)} />
                   {' '}
                   {runSummary(w.lastRun, lang)}
                   <span className="muted">

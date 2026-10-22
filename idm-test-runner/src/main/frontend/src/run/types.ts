@@ -110,7 +110,10 @@ export interface RunFinishedEvent {
   total: number;
   passed: number;
   findings: number;
+  /** Not in `setupProblems`; `total` minus every count is the scenarios the run never reached. */
   setupProblems: number;
+  /** The scenarios a stop interrupted (older servers leave it out). */
+  stoppedScenarios?: number;
   stopped: boolean;
   exitCode: number;
   reportUrl: string | null;
@@ -121,7 +124,7 @@ export interface HistoryEntry {
   runId: string;
   at: string;
   profile: string | null;
-  result: 'passed' | 'finding' | 'setup';
+  result: 'passed' | 'finding' | 'setup' | 'stopped';
 }
 
 export type Outcome = 'passed' | 'finding' | 'setup';
@@ -139,6 +142,27 @@ export function outcomeOf(result: ScenarioResult): Outcome {
   }
   const cleanupFailed = result.cleanup.some((entry) => entry.status === 'FAILED');
   return result.failureDetail === null && cleanupFailed ? 'finding' : 'setup';
+}
+
+/** The engine's message key on the step a stop interrupted. */
+export const STOPPED_KEY = 'engine.run.stopped';
+
+/** The step a stop interrupted: the last failed step, when its failure is the stop's. */
+export function interruptedStep(result: ScenarioResult): StepResult | null {
+  if (!result.stopped) {
+    return null;
+  }
+  const failed = [...result.steps].reverse().find((s) => !s.success);
+  return failed?.messageKey === STOPPED_KEY ? failed : null;
+}
+
+/**
+ * Whether the scenario counts as stopped: a stop ended it and it had not failed by itself — no step
+ * failed, or the last failed step is the one the stop interrupted. A scenario whose step already
+ * failed (a finding or a setup problem) before the stop counts by that failure.
+ */
+export function isStopped(result: ScenarioResult): boolean {
+  return Boolean(result.stopped) && (result.steps.every((s) => s.success) || interruptedStep(result) !== null);
 }
 
 /** The workspace-relative path of a scenario named by its path under scenarios/. */

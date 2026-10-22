@@ -3,6 +3,7 @@ import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Workbench } from '../workbench/Workbench';
 import { setLanguage } from '../i18n';
+import type { ScenarioResult } from './types';
 import { emit, findingStep, openRunStreams, playScenario, RUN_ID, runServer, scenario, step, WORKSPACE } from '../test/runServer';
 
 vi.mock('../workbench/monaco/CodeEditor', async () => ({ default: (await import('../test/fakeCodeEditor')).FakeCodeEditor }));
@@ -37,6 +38,11 @@ async function runAll(server: ReturnType<typeof runServer>) {
 }
 
 const passed = (name: string) => scenario(name, [step(0, 'ldap.create')]);
+/** The step a stop interrupted, as the engine reports it. */
+const interrupted = () =>
+  findingStep({ failureKind: 'SETUP', message: 'Stopped — cleanup did not run', messageKey: 'engine.run.stopped', checks: [] });
+const stoppedIn = (name: string, extra: Partial<ScenarioResult> = {}) =>
+  scenario(name, [step(0, 'ldap.create'), interrupted()], { success: false, stopped: true, failureDetail: 'Stopped — cleanup did not run', ...extra });
 const finding = (name: string) => scenario(name, [step(0, 'ldap.create'), findingStep()]);
 
 describe('Run panel', () => {
@@ -134,6 +140,79 @@ describe('Run panel', () => {
     expect(within(panel()).getByText('The lab did not do what this step expects')).toBeInTheDocument();
   });
 
+  it('end line counts stopped: "5 scenarios: 2 passed, 1 finding, 1 stopped, 1 not run", never a setup problem', async () => {
+    const server = runServer();
+    render(<Workbench workspace={WORKSPACE} lockWait={10} />);
+    await runAll(server);
+    act(() => {
+      emit('runStarted', { runId: RUN_ID, scenarios: NAMES, locale: 'en' });
+      playScenario(passed(NAMES[0]));
+      playScenario(passed(NAMES[1]));
+      playScenario(finding(NAMES[2]));
+      playScenario(stoppedIn(NAMES[3]));
+      emit('runFinished', { runId: RUN_ID, total: 5, passed: 2, findings: 1, setupProblems: 0, stoppedScenarios: 1, stopped: true, exitCode: 1, reportUrl: null });
+    });
+    expect(within(panel()).getByText('5 scenarios: 2 passed, 1 finding, 1 stopped, 1 not run', VISIBLE)).toBeInTheDocument();
+    expect(panel()).not.toHaveTextContent(/setup problem/i);
+    const marker = within(rows()[3]).getByRole('img', { name: 'Stopped' });
+    expect(marker).toHaveTextContent('!');
+    expect(marker).toHaveClass('badge-warn');
+    expect(rows()[3]).toHaveTextContent('stopped');
+    expect(rows()[4]).toHaveTextContent('not run');
+
+    act(() => setLanguage('es', false));
+    expect(within(panel()).getByText('5 escenarios: 2 correctos, 1 hallazgo, 1 detenido, 1 no ejecutado', VISIBLE)).toBeInTheDocument();
+  });
+
+  it('stopped keeps the tree badge: a scenario that last passed still shows ✓ after a stop', async () => {
+    const server = runServer({ results: { 'scenarios/users/create-user.yaml': 'passed' } });
+    render(<Workbench workspace={WORKSPACE} lockWait={10} />);
+    await runAll(server);
+    const tree = screen.getByRole('navigation', { name: 'Workspace files' });
+    const createUser = () => within(tree).getByRole('button', { name: /create-user.yaml/ });
+    await waitFor(() => expect(within(createUser()).getByRole('img', { name: 'last run passed' })).toBeInTheDocument());
+    const readsBefore = server.treeReads();
+    act(() => {
+      emit('runStarted', { runId: RUN_ID, scenarios: NAMES, locale: 'en' });
+      playScenario(stoppedIn(NAMES[0]));
+    });
+    await waitFor(() => expect(server.treeReads()).toBeGreaterThan(readsBefore));
+    act(() => emit('runFinished', { runId: RUN_ID, total: 5, passed: 0, findings: 0, setupProblems: 0, stoppedScenarios: 1, stopped: true, exitCode: 1, reportUrl: null }));
+    expect(within(rows()[0]).getByRole('img', { name: 'Stopped' })).toBeInTheDocument();
+    const badge = within(createUser()).getByRole('img', { name: 'last run passed' });
+    expect(badge).toHaveTextContent('✓');
+    expect(within(createUser()).queryByRole('img', { name: /stopped|setup/i })).not.toBeInTheDocument();
+  });
+
+  it('a stop after a finding counts the scenario as a finding (amber), not as stopped', async () => {
+    const server = runServer();
+    render(<Workbench workspace={WORKSPACE} lockWait={10} />);
+    await runAll(server);
+    act(() => {
+      emit('runStarted', { runId: RUN_ID, scenarios: NAMES.slice(0, 2), locale: 'en' });
+      playScenario(
+        scenario(NAMES[0], [step(0, 'ldap.create'), findingStep()], {
+          success: false,
+          stopped: true,
+          skippedCleanup: [
+            { index: 0, type: 'ldap.delete', resolvedParams: { dn: 'cn=u123,ou=users' }, status: 'SKIPPED', durationMillis: 0, message: 'stopped', description: null },
+          ],
+        }),
+      );
+      emit('runFinished', { runId: RUN_ID, total: 2, passed: 0, findings: 1, setupProblems: 0, stoppedScenarios: 0, stopped: true, exitCode: 1, reportUrl: null });
+    });
+    const first = rows()[0];
+    expect(within(first).getByRole('img', { name: 'Finding' })).toHaveClass('badge-finding');
+    expect(within(first).queryByRole('img', { name: 'Stopped' })).not.toBeInTheDocument();
+    expect(first).toHaveTextContent('finding');
+    expect(first).not.toHaveTextContent('stopped');
+    expect(within(panel()).getByText('2 scenarios: 0 passed, 1 finding, 1 not run', VISIBLE)).toBeInTheDocument();
+    // the failed step is the finding, not a stop; the skipped cleanup is still listed
+    await userEvent.click(first);
+    expect(within(within(panel()).getByRole('button', { name: /2 ldap.verify/ })).getByRole('img', { name: 'Finding' })).toBeInTheDocument();
+    expect(within(panel()).getByRole('region', { name: /Stopped — cleanup did not run/ })).toBeInTheDocument();
+  });
+
   it('a stopped scenario says "Stopped — cleanup did not run" with the skipped entries and their values', async () => {
     const server = runServer();
     render(<Workbench workspace={WORKSPACE} lockWait={10} />);
@@ -141,7 +220,7 @@ describe('Run panel', () => {
     act(() => {
       emit('runStarted', { runId: RUN_ID, scenarios: NAMES.slice(0, 2), locale: 'en' });
       playScenario(
-        scenario(NAMES[0], [step(0, 'ldap.create'), findingStep({ failureKind: 'SETUP', message: 'Stopped — cleanup did not run', checks: [] })], {
+        scenario(NAMES[0], [step(0, 'ldap.create'), interrupted()], {
           success: false,
           stopped: true,
           failureDetail: 'The run was stopped before the cleanup',
@@ -150,7 +229,7 @@ describe('Run panel', () => {
           ],
         }),
       );
-      emit('runFinished', { runId: RUN_ID, total: 2, passed: 0, findings: 0, setupProblems: 1, stopped: true, exitCode: 1, reportUrl: null });
+      emit('runFinished', { runId: RUN_ID, total: 2, passed: 0, findings: 0, setupProblems: 0, stoppedScenarios: 1, stopped: true, exitCode: 1, reportUrl: null });
     });
     await userEvent.click(rows()[0]);
     const stopped = within(panel()).getByRole('region', { name: /Stopped — cleanup did not run/ });
@@ -163,7 +242,7 @@ describe('Run panel', () => {
     expect(within(within(panel()).getByRole('button', { name: /2 ldap.verify/ })).getByRole('img', { name: 'Stopped' })).toBeInTheDocument();
     expect(rows()[0]).toHaveTextContent('stopped');
     expect(within(rows()[0]).getByRole('img', { name: 'Stopped' })).toHaveTextContent('!');
-    expect(within(panel()).getByText(/2 scenarios: 0 passed, 1 setup problem · stopped/, VISIBLE)).toBeInTheDocument();
+    expect(within(panel()).getByText('2 scenarios: 0 passed, 1 stopped, 1 not run', VISIBLE)).toBeInTheDocument();
   });
 
   it('scenarios a stopped or refused run never reached read "not run", not "waiting"', async () => {

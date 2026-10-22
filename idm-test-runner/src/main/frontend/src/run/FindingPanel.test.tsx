@@ -97,6 +97,36 @@ describe('Finding panel', () => {
     expect(server.sent.some((r) => r.url === `/api/runs/history?scenario=${encodeURIComponent(CREATE)}`)).toBe(true);
   });
 
+  it('history shows a stopped run as "stopped" (!), and "used to pass" still finds the passed run', async () => {
+    const server = runServer({
+      history: [
+        { runId: RUN_ID, at: today(0, 2), profile: 'lab', result: 'stopped' },
+        { runId: '20261013-164501-lab', at: daysAgo(3, 16, 45), profile: 'lab', result: 'passed' },
+      ],
+    });
+    render(<Workbench workspace={WORKSPACE} lockWait={10} />);
+    await runWith(server, [step(0, 'ldap.create'), findingStep()]);
+    const box = finding();
+    const runs = await within(box).findByRole('list', { name: /passed .*; stopped today 00:02/ });
+    const items = within(runs).getAllByRole('listitem');
+    expect(items[0]).toHaveTextContent(/✓ \w+ 16:45/);
+    expect(within(items[0]).getByRole('img', { name: 'Passed' })).toBeInTheDocument();
+    const stopped = within(items[1]).getByRole('img', { name: 'Stopped' });
+    expect(stopped).toHaveTextContent('!');
+    expect(stopped).toHaveClass('badge-warn');
+    expect(within(box).getByText(/It used to pass: last on \w+ 16:45\./)).toBeInTheDocument();
+  });
+
+  it('a history of only stopped runs shows no "used to pass"', async () => {
+    const server = runServer({ history: [{ runId: RUN_ID, at: today(0, 2), profile: 'lab', result: 'stopped' }] });
+    render(<Workbench workspace={WORKSPACE} lockWait={10} />);
+    await runWith(server, [step(0, 'ldap.create'), findingStep()]);
+    const box = finding();
+    const runs = await within(box).findByRole('list', { name: /^stopped today 00:02$/ });
+    expect(within(runs).getByRole('img', { name: 'Stopped' })).toHaveClass('badge-warn');
+    expect(within(box).queryByText(/used to pass/)).not.toBeInTheDocument();
+  });
+
   it('says on which try the value changed, and renders evidence as text, never as markup', async () => {
     const server = runServer();
     render(<Workbench workspace={WORKSPACE} lockWait={10} />);

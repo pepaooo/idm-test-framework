@@ -9,14 +9,14 @@ import { seconds, timeLabel } from './copyFinding';
 import { stepLines } from './scenarioYaml';
 import { CleanupList, FindingPanel, SetupPanel, StoppedView, stepTitle } from './FindingPanel';
 import type { RunState, RunStore, ScenarioRun } from './runStore';
-import { scenarioPath, type StepResult } from './types';
+import { interruptedStep, scenarioPath, type StepResult } from './types';
 import './Run.css';
 
 const STATE_BADGE: Record<'passed' | 'finding' | 'setup', BadgeStatus> = { passed: 'ok', finding: 'finding', setup: 'error' };
 
 /** The marker in front of a scenario: ✓ / ✕ amber / ✕ red / ! stopped, or running / waiting. */
 function ScenarioMarker({ scenario }: { scenario: ScenarioRun }) {
-  if (scenario.stopped) {
+  if (scenario.state === 'stopped') {
     return <Badge status="warn" label={t('ui.run.state.stopped')} />;
   }
   if (scenario.state === 'running') {
@@ -61,7 +61,7 @@ function rowDetail(scenario: ScenarioRun): string {
     }
     default: {
       const time = scenario.result ? seconds(scenario.result.durationMillis) : '';
-      const word = scenario.stopped ? t('ui.run.row.stopped') : scenario.state === 'passed' ? '' : t(`ui.run.row.${scenario.state}`);
+      const word = scenario.state === 'passed' ? '' : t(`ui.run.row.${scenario.state}`);
       return [time, word].filter(Boolean).join(' · ');
     }
   }
@@ -102,7 +102,10 @@ export function headline(run: RunState): string {
   return t('ui.run.head.last', { when: [when, run.profile].filter(Boolean).join(' · ') });
 }
 
-/** "5 scenarios: 3 passed, 2 findings" (setup problems counted on their own). */
+/**
+ * "5 scenarios: 2 passed, 1 finding, 1 stopped, 1 not run": setup problems and stopped scenarios
+ * counted on their own, and the scenarios a stop or refusal kept from starting as "not run".
+ */
 export function endLine(run: RunState): string | null {
   const outcome = run.outcome;
   if (!outcome) {
@@ -115,8 +118,15 @@ export function endLine(run: RunState): string | null {
   if (outcome.setupProblems > 0) {
     parts.push(t('ui.result.setup', { count: outcome.setupProblems }));
   }
-  const line = t('ui.run.end', { scenarios: t('ui.run.scenarios', { count: outcome.total }), parts: parts.join(', ') });
-  return outcome.stopped ? `${line} · ${t('ui.run.end.stopped')}` : line;
+  const stopped = outcome.stoppedScenarios ?? 0;
+  if (stopped > 0) {
+    parts.push(t('ui.result.stopped', { count: stopped }));
+  }
+  const notRun = outcome.total - outcome.passed - outcome.findings - outcome.setupProblems - stopped;
+  if (notRun > 0) {
+    parts.push(t('ui.result.notRun', { count: notRun }));
+  }
+  return t('ui.run.end', { scenarios: t('ui.run.scenarios', { count: outcome.total }), parts: parts.join(', ') });
 }
 
 function StepBadge({ step, stopped }: { step: StepResult; stopped: boolean }) {
@@ -143,7 +153,7 @@ function ScenarioDetail({ run, store, scenario, rerunBlocked }: { run: RunState;
   const reportUrl = report === null ? null : withWorkspace(report);
   const result = scenario.result;
   // the step a stop interrupted failed because of the stop, not of the lab or the setup
-  const stoppedStep = result?.stopped ? ([...steps].reverse().find((s) => !s.success)?.index ?? null) : null;
+  const stoppedStep = result ? (interruptedStep(result)?.index ?? null) : null;
   const shown = selected && selected.index !== stoppedStep ? selected : null;
   // spec §4.8: the editor marks the failed step's lines (when the file is open, now or later);
   // a new run of the scenario clears them (Workbench, on scenarioStarted)

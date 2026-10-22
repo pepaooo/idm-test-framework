@@ -47,7 +47,7 @@ class RunSessionsTest {
             }
             sawStop.set(stop.getAsBoolean());
             ended.countDown();
-            return new RunOutcome("20261019-101530-lab", null, 0, 0, 0, 0, true, 1);
+            return new RunOutcome("20261019-101530-lab", null, 0, 0, 0, 0, 0, true, 1);
         }, Map.of());
 
         assertThat(sessions.start(ws, "lab", List.of(), Locale.ENGLISH, () -> ws)).isEqualTo("20261019-101530-lab");
@@ -88,7 +88,7 @@ class RunSessionsTest {
     void testAfterRunError() throws Exception {
         RunSessions sessions = new RunSessions((request, events, stop) -> {
             events.runFolder("20261019-101530-lab");
-            return new RunOutcome("20261019-101530-lab", null, 0, 0, 0, 0, false, 0);
+            return new RunOutcome("20261019-101530-lab", null, 0, 0, 0, 0, 0, false, 0);
         }, Map.of());
         sessions.afterEachRun(() -> {
             throw new Error("after-run broke");
@@ -113,7 +113,7 @@ class RunSessionsTest {
             }
             events.scenarioFinished(new ScenarioResult("a", "a.yaml", true, 0,
                     List.of(), List.of(), null), null);
-            return new RunOutcome(null, null, 1, 1, 0, 0, false, 0);
+            return new RunOutcome(null, null, 1, 1, 0, 0, 0, false, 0);
         }, Map.of());
 
         sessions.start(ws, "lab", List.of(), Locale.ENGLISH, () -> ws);
@@ -135,7 +135,7 @@ class RunSessionsTest {
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
-            return new RunOutcome("20261021-090000-lab", null, 0, 0, 0, 0, false, 0);
+            return new RunOutcome("20261021-090000-lab", null, 0, 0, 0, 0, 0, false, 0);
         }, Map.of());
     }
 

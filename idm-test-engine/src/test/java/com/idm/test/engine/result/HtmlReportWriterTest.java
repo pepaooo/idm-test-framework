@@ -529,4 +529,75 @@ class HtmlReportWriterTest {
                 .contains("<span class=\"kind setup\">Problema de configuración</span>")
                 .contains(">Hallazgos<").contains(">Problemas de configuración<");
     }
+
+    /** As the engine records a scenario stopped during a wait: the interrupted step is SETUP. */
+    private static ScenarioResult stoppedDuringWait() {
+        return new ScenarioResult("Stopped one", "stopped.yaml", false, 2_000,
+                List.of(new StepResult(0, "ldap.verify", Map.of("dn", "cn=u,ou=users"), false, 1_500,
+                        "Stopped — cleanup did not run", 2, 1_400L, null, null, "engine.run.stopped", List.of(),
+                        "SETUP")),
+                List.of(), null, null, null, null, true,
+                List.of(new CleanupResult(0, "ldap.delete", Map.of("dn", "cn=u,ou=users"), CleanupStatus.SKIPPED, 0,
+                        "Stopped — cleanup did not run", null)));
+    }
+
+    @Test
+    @DisplayName("A stopped scenario is labelled Stopped, not a setup problem, and counted in its own tile")
+    void testStoppedScenario() {
+        String html = render(passed(), stoppedDuringWait());
+
+        assertThat(html).contains("<span class=\"kind stopped\">Stopped</span>")
+                .doesNotContain("<span class=\"kind setup\">")
+                .contains("data-tile=\"stopped\">1<")
+                .contains("data-tile=\"setup\">0<")
+                .contains("data-tile=\"findings\">0<")
+                .contains(">Stopped<")
+                .contains(".kind.stopped{color:var(--finding)}");
+        assertThat(html.split("<span class=\"kind stopped\">Stopped</span>", -1))
+                .as("the scenario's summary and its interrupted step").hasSize(3);
+    }
+
+    @Test
+    @DisplayName("The stopped label and tile are in Spanish too")
+    void testSpanishStoppedScenario() {
+        String html = HtmlReportWriter.render(RUN_ES, List.of(stoppedDuringWait()), NOW);
+
+        assertThat(html).contains("<span class=\"kind stopped\">Detenido</span>")
+                .doesNotContain("Problema de configuración</span>")
+                .contains(">Detenidos<");
+    }
+
+    /** A FINDING step failed, then the stop came before the cleanup. */
+    private static ScenarioResult stoppedAfterFinding() {
+        return new ScenarioResult("Found then stopped", "found.yaml", false, 2_000,
+                List.of(new StepResult(0, "ldap.verify", Map.of("dn", "cn=u,ou=users"), false, 1_500,
+                        "sn: expected X, was Y", 3, 1_400L, null, null, null, null, "FINDING")),
+                List.of(), null, null, null, null, true,
+                List.of(new CleanupResult(0, "ldap.delete", Map.of("dn", "cn=u,ou=users"), CleanupStatus.SKIPPED, 0,
+                        "Stopped — cleanup did not run", null)));
+    }
+
+    /** Hand-built: an earlier FINDING step failed and a later step carries the stop's key. */
+    private static ScenarioResult findingThenInterrupted() {
+        return new ScenarioResult("Found, then interrupted", "both.yaml", false, 2_000,
+                List.of(new StepResult(0, "ldap.verify", Map.of(), false, 100, "sn: expected X, was Y", null, null,
+                                null, null, null, null, "FINDING"),
+                        new StepResult(1, "ldap.verify", Map.of(), false, 100, "Stopped — cleanup did not run", null,
+                                null, null, null, "engine.run.stopped", List.of(), "SETUP")),
+                List.of(), null, null, null, null, true, List.of());
+    }
+
+    @Test
+    @DisplayName("A scenario stopped after its step found a problem is labelled and counted as a finding")
+    void testStoppedAfterFinding() {
+        String html = render(stoppedAfterFinding(), findingThenInterrupted());
+
+        assertThat(html).contains("data-tile=\"findings\">2<")
+                .contains("data-tile=\"stopped\">0<")
+                .contains("data-tile=\"setup\">0<")
+                .contains("<summary><span class=\"icon ko\">");
+        assertThat(html.split("<summary>[^\\n]*<span class=\"kind finding\">Finding</span>", -1))
+                .as("both scenarios' summaries say Finding").hasSize(3);
+        assertThat(html).doesNotContainPattern("<summary>[^\\n]*kind stopped");
+    }
 }

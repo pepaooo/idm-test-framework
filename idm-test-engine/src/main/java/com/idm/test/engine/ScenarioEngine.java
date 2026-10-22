@@ -58,7 +58,7 @@ public final class ScenarioEngine {
     private static final Logger LOG = LoggerFactory.getLogger(ScenarioEngine.class);
 
     /** Why a step, a cleanup entry or a scenario ended when the run was stopped. */
-    private static final Message STOPPED = Message.of("engine.run.stopped");
+    private static final Message STOPPED = Message.of(ScenarioResult.STOPPED_KEY);
 
     private final Map<String, StepType> registry;
     private final FixtureFactory fixtures;
@@ -88,8 +88,10 @@ public final class ScenarioEngine {
 
     /**
      * Runs {@code scenario}, telling {@code listener} how it goes, until it ends or
-     * {@code stopRequested} answers true. A stopped scenario fails as a setup problem; its cleanup
-     * does not run and comes back in {@link ScenarioResult#skippedCleanup()} instead.
+     * {@code stopRequested} answers true. A stopped scenario fails; its failure kind stays {@code SETUP}
+     * when the stop is all that went wrong, but it then counts as stopped, not as a setup problem
+     * (see {@link ScenarioResult#stoppedOnly()}). Its cleanup does not run and comes back in
+     * {@link ScenarioResult#skippedCleanup()} instead.
      */
     public ScenarioResult run(Scenario scenario, String sourceName, RunListener runListener,
                               BooleanSupplier stopRequested) {

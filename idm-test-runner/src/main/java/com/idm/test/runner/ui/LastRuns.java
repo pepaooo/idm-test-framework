@@ -42,14 +42,17 @@ public final class LastRuns {
 
     /**
      * How one run ended, as its results file tells it. Every scenario in it counts once, as {@link
-     * com.idm.test.runner.run.RunOutcome} counts it: passed, a finding or a setup problem.
+     * com.idm.test.runner.run.RunOutcome} counts it: passed, a finding, a setup problem or stopped.
      *
      * @param runId the run folder's name
      * @param at    when the results file was last written (the end of the run, or its latest scenario),
      *              ISO-8601 in UTC
      * @param profile the profile, from the run id; null when the folder name is not a run id
+     * @param stopped the scenarios only a stop failed ({@link ScenarioResult#stoppedOnly()}); not in
+     *                {@code setupProblems}
      */
-    public record LastRun(String runId, String at, String profile, int passed, int findings, int setupProblems) {
+    public record LastRun(String runId, String at, String profile, int passed, int findings, int setupProblems,
+                          int stopped) {
     }
 
     /** The run whose {@code results.json} was written last, or empty when the workspace never ran. */
@@ -63,9 +66,13 @@ public final class LastRuns {
         return Optional.empty();
     }
 
-    /** How a scenario ended in a run: as {@link LastRun} counts it. */
+    /**
+     * How a scenario ended in a run: as {@link LastRun} counts it. {@link #STOPPED} is a scenario only a
+     * stop failed ({@link ScenarioResult#stoppedOnly()}): it did not finish, so it tells nothing of how
+     * the scenario fares. A stopped scenario whose step had already failed counts by that step's kind.
+     */
     public enum Outcome {
-        PASSED("passed"), FINDING("finding"), SETUP("setup");
+        PASSED("passed"), FINDING("finding"), SETUP("setup"), STOPPED("stopped");
 
         private final String json;
 
@@ -73,16 +80,18 @@ public final class LastRuns {
             this.json = json;
         }
 
-        /** {@code passed}, {@code finding} or {@code setup}. */
+        /** {@code passed}, {@code finding}, {@code setup} or {@code stopped}. */
         public String json() {
             return json;
         }
     }
 
     /**
-     * Each of the {@code wanted} scenarios' outcome in the newest results file that ran it, by source
-     * name (the path under {@code scenarios/}, with {@code /}): a run of one scenario does not hide the
-     * others'. Results files are read newest first, and no more once every wanted scenario has one.
+     * Each of the {@code wanted} scenarios' outcome in the newest results file that ran it to its end,
+     * by source name (the path under {@code scenarios/}, with {@code /}): a run of one scenario does not
+     * hide the others', and a stopped run hides none — never {@link Outcome#STOPPED}; no entry when every
+     * run of it was stopped. Results files are read newest first, and no more once every wanted scenario
+     * has one.
      */
     public static Map<String, Outcome> lastOutcomes(Path workspace, Set<String> wanted) {
         Map<String, Outcome> outcomes = new HashMap<>();
@@ -91,7 +100,7 @@ public final class LastRuns {
                 break;
             }
             scenarios(file).ifPresent(list -> list.forEach(s -> {
-                if (s.sourceName() != null && wanted.contains(s.sourceName())) {
+                if (s.sourceName() != null && wanted.contains(s.sourceName()) && s.outcome() != Outcome.STOPPED) {
                     outcomes.putIfAbsent(s.sourceName(), s.outcome());
                 }
             }));
@@ -106,7 +115,7 @@ public final class LastRuns {
      * @param profile as {@link LastRun#profile}
      * @param result  for a scenario's history, its outcome in that run; for the workspace's, the run's
      *                worst: {@code setup} when a scenario had a setup problem, else {@code finding} when
-     *                one had a finding, else {@code passed}
+     *                one had a finding, else {@code stopped} when one was stopped, else {@code passed}
      */
     public record HistoryEntry(String runId, String at, String profile, String result) {
     }
@@ -130,7 +139,8 @@ public final class LastRuns {
                 Set<Outcome> outcomes = EnumSet.noneOf(Outcome.class);
                 scenarios.get().forEach(s -> outcomes.add(s.outcome()));
                 result = (outcomes.contains(Outcome.SETUP) ? Outcome.SETUP
-                        : outcomes.contains(Outcome.FINDING) ? Outcome.FINDING : Outcome.PASSED).json();
+                        : outcomes.contains(Outcome.FINDING) ? Outcome.FINDING
+                        : outcomes.contains(Outcome.STOPPED) ? Outcome.STOPPED : Outcome.PASSED).json();
             } else {
                 result = scenarios.get().stream().filter(s -> scenario.equals(s.sourceName())).findFirst()
                         .map(s -> s.outcome().json()).orElse(null);
@@ -151,16 +161,18 @@ public final class LastRuns {
             int passed = 0;
             int findings = 0;
             int setup = 0;
+            int stopped = 0;
             for (ScenarioOutcome scenario : list) {
                 switch (scenario.outcome()) {
                     case PASSED -> passed++;
                     case FINDING -> findings++;
                     case SETUP -> setup++;
+                    case STOPPED -> stopped++;
                 }
             }
             String runId = resultsJson.getParent().getFileName().toString();
             return new LastRun(runId, modified(resultsJson).toInstant().toString(),
-                    profile(runId, workspace), passed, findings, setup);
+                    profile(runId, workspace), passed, findings, setup, stopped);
         });
     }
 
@@ -196,7 +208,7 @@ public final class LastRuns {
             List<ScenarioOutcome> list = new ArrayList<>();
             for (JsonNode scenario : root) {
                 ScenarioResult result = outline(scenario);
-                Outcome outcome = result.success() ? Outcome.PASSED
+                Outcome outcome = result.stoppedOnly() ? Outcome.STOPPED : result.success() ? Outcome.PASSED
                         : result.failureKind() == FailureKind.FINDING ? Outcome.FINDING : Outcome.SETUP;
                 list.add(new ScenarioOutcome(result.sourceName(), outcome));
             }
@@ -207,8 +219,10 @@ public final class LastRuns {
     }
 
     /**
-     * Just what {@link ScenarioResult#failureKind()} looks at — success, each step's success and kind,
-     * the failure detail, each cleanup entry's status — so the rule stays in one place.
+     * Just what {@link ScenarioResult#failureKind()} and {@link ScenarioResult#stoppedOnly()} look at —
+     * success, each step's success, kind and message key, the failure detail and its key, each cleanup
+     * entry's status, whether a stop interrupted it (a missing {@code stopped} is false: the engine
+     * writes it only when true) — so the rules stay in one place.
      */
     private static ScenarioResult outline(JsonNode scenario) {
         List<StepResult> steps = new ArrayList<>();
@@ -217,8 +231,9 @@ public final class LastRuns {
             if (kind != null) {
                 FailureKind.valueOf(kind); // an unknown kind is not a results file of ours
             }
+            String messageKey = step.path("messageKey").isString() ? step.path("messageKey").asString() : null;
             steps.add(new StepResult(step.path("index").asInt(), step.path("type").asString(null), null,
-                    step.path("success").asBoolean(), 0, null, null, null, null, null, null, null, kind));
+                    step.path("success").asBoolean(), 0, null, null, null, null, null, messageKey, null, kind));
         }
         List<CleanupResult> cleanup = new ArrayList<>();
         for (JsonNode entry : scenario.path("cleanup")) {
@@ -228,8 +243,11 @@ public final class LastRuns {
                     status, 0, null));
         }
         String detail = scenario.path("failureDetail").isString() ? scenario.path("failureDetail").asString() : null;
+        String detailKey = scenario.path("failureDetailKey").isString()
+                ? scenario.path("failureDetailKey").asString() : null;
         return new ScenarioResult(scenario.path("name").asString(null), scenario.path("sourceName").asString(null),
-                scenario.path("success").asBoolean(), 0, steps, cleanup, detail);
+                scenario.path("success").asBoolean(), 0, steps, cleanup, detail, null, detailKey, null,
+                scenario.path("stopped").asBoolean(false), List.of());
     }
 
     /**

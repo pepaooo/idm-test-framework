@@ -205,6 +205,8 @@ export interface LastRun {
   passed: number;
   findings: number;
   setupProblems: number;
+  /** The scenarios a stop interrupted; not in `setupProblems`. */
+  stopped: number;
 }
 
 export interface RecentWorkspace {

@@ -1062,7 +1062,9 @@ Each scenario record has:
 
 The rule comes from the connector's error type: `NETWORK_ERROR`, `TIMEOUT`,
 `AUTHENTICATION_ERROR` and `CONFIGURATION_ERROR` are setup problems; every other failure is a
-finding. A stopped scenario currently counts as a setup problem (ITF-63). `idmtest run` appends
+finding. A scenario the workbench's Stop interrupted (`stopped: true`, with no step failed before the
+stop) is neither: it counts as stopped, in its own tile of `report.html` ("Stopped") and in the
+workbench; one whose step had already failed counts by that failure. `idmtest run` appends
 ` · finding` or ` · setup problem` to a failed scenario's line, and the
 [workbench](../guides/workbench.md) shows findings in amber and setup problems in red.
 

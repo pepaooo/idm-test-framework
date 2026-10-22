@@ -214,7 +214,7 @@ public final class RunService {
     /** A refusal before the run has a folder. */
     private static RunOutcome refused(RunEvents events, Message reason, String text, String trace, Path folder) {
         events.refused(reason, text, trace);
-        return new RunOutcome(folder == null ? null : folder.getFileName().toString(), folder, 0, 0, 0, 0, false,
+        return new RunOutcome(folder == null ? null : folder.getFileName().toString(), folder, 0, 0, 0, 0, 0, false,
                 ExitCodes.CANNOT_START);
     }
 
@@ -553,6 +553,7 @@ public final class RunService {
             private int passed;
             private int findings;
             private int setupProblems;
+            private int stoppedScenarios;
             private boolean stopped;
 
             Tally(int total) {
@@ -560,7 +561,9 @@ public final class RunService {
             }
 
             void count(ScenarioResult result) {
-                if (result.success()) {
+                if (result.stoppedOnly()) {
+                    stoppedScenarios++;
+                } else if (result.success()) {
                     passed++;
                 } else if (result.failureKind() == FailureKind.FINDING) {
                     findings++;
@@ -570,7 +573,8 @@ public final class RunService {
             }
 
             RunOutcome outcome(int exitCode) {
-                return new RunOutcome(runId, folder, total, passed, findings, setupProblems, stopped, exitCode);
+                return new RunOutcome(runId, folder, total, passed, findings, setupProblems, stoppedScenarios,
+                        stopped, exitCode);
             }
         }
     }

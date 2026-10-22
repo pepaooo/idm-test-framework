@@ -58,8 +58,11 @@ public final class HtmlReportWriter {
     static String render(RunInfo run, List<ScenarioResult> results, Instant now) {
         long passed = results.stream().filter(ScenarioResult::success).count();
         long failed = results.size() - passed;
-        long findings = results.stream().filter(r -> r.failureKind() == FailureKind.FINDING).count();
-        long setup = results.stream().filter(r -> r.failureKind() == FailureKind.SETUP).count();
+        // A scenario only the stop failed counts as stopped; one whose step failed first, by that kind.
+        long stopped = results.stream().filter(ScenarioResult::stoppedOnly).count();
+        long findings = results.stream()
+                .filter(r -> !r.stoppedOnly() && r.failureKind() == FailureKind.FINDING).count();
+        long setup = results.stream().filter(r -> !r.stoppedOnly() && r.failureKind() == FailureKind.SETUP).count();
         Locale locale = run.locale();
         String title = label("report.title", locale, run.runner());
 
@@ -102,6 +105,7 @@ public final class HtmlReportWriter {
                 .append(tile("failed", label("report.tile.failed", locale), String.valueOf(failed)))
                 .append(tile("findings", label("report.tile.findings", locale), String.valueOf(findings)))
                 .append(tile("setup", label("report.tile.setup", locale), String.valueOf(setup)))
+                .append(tile("stopped", label("report.tile.stopped", locale), String.valueOf(stopped)))
                 .append(tile("duration", label("report.tile.duration", locale), duration(total, locale)))
                 .append("</div>\n");
 
@@ -127,7 +131,7 @@ public final class HtmlReportWriter {
         html.append("<details class=\"scenario ").append(status).append('"')
                 .append(scenario.success() ? "" : " open").append(">\n<summary>")
                 .append(icon(scenario.success()))
-                .append(kind(scenario.failureKind(), locale))
+                .append(scenario.stoppedOnly() ? stoppedBadge(locale) : kind(scenario.failureKind(), locale))
                 .append(" <span class=\"file\">").append(esc(scenario.sourceName())).append("</span>");
         if (scenario.name() != null && !scenario.name().equals(scenario.sourceName())) {
             html.append(" <span class=\"name\">").append(esc(scenario.name())).append("</span>");
@@ -187,9 +191,12 @@ public final class HtmlReportWriter {
 
     private static void appendStep(StringBuilder html, StepResult step, Locale locale) {
         FailureKind kind = step.kind();
+        // The step a stop interrupted: the engine marks it SETUP, but it is no setup problem.
+        boolean interrupted = !step.success() && ScenarioResult.STOPPED_KEY.equals(step.messageKey());
         html.append("<li class=\"step ").append(step.success() ? "passed" : "failed")
-                .append(kind == null ? "" : " " + cssClass(kind)).append("\">")
-                .append("<div class=\"row\">").append(icon(step.success())).append(kind(kind, locale))
+                .append(interrupted ? " stopped" : kind == null ? "" : " " + cssClass(kind)).append("\">")
+                .append("<div class=\"row\">").append(icon(step.success()))
+                .append(interrupted ? stoppedBadge(locale) : kind(kind, locale))
                 .append(" <span class=\"num\">").append(step.index() + 1).append("</span>")
                 .append(" <span class=\"type\">").append(esc(step.type())).append("</span>");
         if (step.description() != null) {
@@ -247,6 +254,11 @@ public final class HtmlReportWriter {
         }
         String key = kind == FailureKind.FINDING ? "report.kind.finding" : "report.kind.setup";
         return " <span class=\"kind " + cssClass(kind) + "\">" + label(key, locale) + "</span>";
+    }
+
+    /** The stopped label as a badge, preceded by a space. */
+    private static String stoppedBadge(Locale locale) {
+        return " <span class=\"kind stopped\">" + label("report.kind.stopped", locale) + "</span>";
     }
 
     private static String cssClass(FailureKind kind) {
@@ -322,6 +334,11 @@ public final class HtmlReportWriter {
             .kind{font-size:11px;font-weight:600;padding:1px 6px;border-radius:4px;border:1px solid currentColor}
             .kind.finding{color:var(--finding)}.kind.setup{color:var(--ko)}
             .tile.findings{border-color:var(--finding)}.tile.setup{border-color:var(--ko)}
+            .kind.stopped{color:var(--finding)}.tile.stopped{border-color:var(--finding)}
+            li.step.failed.stopped{background:var(--findingbg)}li.step.failed.stopped .message{color:var(--finding)}
+            details.scenario.failed:has(>summary .kind.stopped){border-color:var(--finding)}
+            details.scenario.failed:has(>summary .kind.stopped)>summary{color:var(--finding)}
+            details.scenario.failed:has(>summary .kind.stopped)>.failure{background:var(--findingbg);color:var(--finding)}
             li.step.failed.finding{background:var(--findingbg)}li.step.failed.finding .message{color:var(--finding)}
             details.scenario.failed:has(>summary .kind.finding){border-color:var(--finding)}
             details.scenario.failed:has(>summary .kind.finding)>summary{color:var(--finding)}

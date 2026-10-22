@@ -153,6 +153,42 @@ describe('Run button', () => {
     expect(server.runStarts()[1].body).toMatchObject({ scenarios: 'all', onlyFindings: true });
   });
 
+  it('only-findings ignores a stopped run: the scenario keeps its last finished result', async () => {
+    const server = runServer({ results: { [CREATE]: 'finding', 'scenarios/roles-grant.yaml': 'passed' } });
+    render(<Workbench workspace={WORKSPACE} lockWait={10} />);
+    await ready();
+    await openCreate();
+    const more = screen.getByRole('button', { name: 'More ways to run' });
+    await userEvent.click(more);
+    await userEvent.click(screen.getByRole('menuitem', { name: /Run all scenarios/ }));
+    await waitFor(() => expect(server.runStarts()).toHaveLength(1));
+    const readsBefore = server.treeReads();
+    act(() => {
+      emit('runStarted', { runId: RUN_ID, scenarios: ['roles-grant.yaml'], locale: 'en' });
+      emit('scenarioStarted', { name: 'roles-grant.yaml' });
+      emit('scenarioFinished', {
+        result: {
+          name: 'roles-grant.yaml',
+          sourceName: 'roles-grant.yaml',
+          success: false,
+          stopped: true,
+          durationMillis: 100,
+          steps: [
+            { index: 0, type: 'roles.grant', resolvedParams: {}, success: false, durationMillis: 50, message: 'Stopped — cleanup did not run', messageKey: 'engine.run.stopped', failureKind: 'SETUP', attempts: null, waitedMillis: null, description: null },
+          ],
+          cleanup: [],
+          failureDetail: 'Stopped — cleanup did not run',
+          description: null,
+        },
+        failureLine: null,
+      });
+      emit('runFinished', { runId: RUN_ID, total: 1, passed: 0, findings: 0, setupProblems: 0, stoppedScenarios: 1, stopped: true, exitCode: 1, reportUrl: null });
+    });
+    await waitFor(() => expect(server.treeReads()).toBeGreaterThan(readsBefore));
+    await userEvent.click(more);
+    expect(await screen.findByRole('menuitem', { name: /only the ones that found something/ })).toHaveTextContent('Run only the ones that found something (1)');
+  });
+
   it('is blocked with the lab message when the lab misses something; the button opens the lab panel there', async () => {
     const server = runServer({ lab: { systems: [directory('ready'), hrDatabase('missing')] } });
     render(<Workbench workspace={WORKSPACE} lockWait={10} />);

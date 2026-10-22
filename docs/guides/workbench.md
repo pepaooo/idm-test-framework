@@ -99,7 +99,8 @@ Re-run the install after changing another module. To stop the browser from openi
 Without `--workspace`, the workbench opens on the start page:
 
 - **Recent workspaces**: each one's name, folder and last result, for example
-  "✕ 2 findings · today 14:32 · lab", "✓ 12 passed · yesterday · uat" or "never run". A folder that no
+  "✕ 2 findings · today 14:32 · lab", "✓ 12 passed · yesterday · uat", "! 1 stopped · today 09:05 · lab"
+  or "never run". A folder that no
   longer exists is greyed, says "folder not found" and offers **Remove from list**. The list is a file of
   folder paths, `~/.idmtest/recent.json`; it never holds scenario content or secrets.
 - **Create a workspace**: a name, where to put it (**Browse…** opens a folder picker served by the
@@ -126,7 +127,9 @@ this computer only".
   the first one by name chosen at the start); the **lab chip**; "● N unsaved"; **Save**; the **Run**
   split button; language and theme.
 - **Left, the file tree**: `scenarios/` and `config/` and the files at the top of the workspace.
-  Scenarios show the badge of their last run (✓ passed, amber ✕ finding, red ✕ setup problem); files
+  Scenarios show the badge of their last run that finished (✓ passed, amber ✕ finding, red ✕ setup
+  problem); a scenario counted as stopped never changes it (a stop after a real finding shows that
+  finding), and a scenario with no finished run has no badge; files
   with unsaved edits show ●; `secrets.env` shows a lock and never opens. **Add files**, or dropping
   `.yaml`/`.yml` files on the tree, copies them into `scenarios/` (up to 2 MB each); a file of the same
   name is never overwritten: the copy becomes `name (2).yaml`.
@@ -252,9 +255,13 @@ entries of the Run menu say why when you point at them.
   under a secret-looking key (`password`, `Authorization`, `token`, …) as `***`, which also hides a
   token the run obtained while it ran. The same masking applies to every step the run panel shows;
   `results.json` masks only the `secrets.env` values and keeps the other resolved parameters as they
-  were, as for `idmtest run`. Scenarios the run
-  never reached read "not run". In the totals and in the tree's badge, a
-  stopped scenario currently counts as a setup problem.
+  were, as for `idmtest run`. The interrupted scenario reads "stopped" with the warning ! (never the
+  red of a setup problem), and scenarios the run never reached read "not run". The end line counts
+  each on its own, for example "5 scenarios: 2 passed, 1 finding, 1 stopped, 1 not run"; a run stopped
+  between two scenarios ends with "· stopped". A scenario whose step had already failed before the
+  stop counts as that finding or setup problem, and still lists its skipped cleanup. A scenario
+  counted as stopped never changes the tree's badge: it keeps the badge of its last run that
+  finished, so **Run only the ones that found something** is not affected either.
 - A workbench run is an `idmtest run`: the same workspace files, settings precedence, checks before
   anything is contacted, JDBC driver loading, masking and `reports/<run-id>/` folder (with
   `report.html`, `results.json` and `run.log`). A run uses the workbench's language. The differences are
@@ -299,7 +306,8 @@ Click a failed scenario, then its failed step, to open the **finding panel**:
 - **Waiting**: "30 tries every 2 s over 60 s — the value never changed" (it was never provisioned) or
   "the value changed on try 3" (a slow driver may need a longer wait);
 - **Evidence**: what the system returned on the last try, secrets hidden;
-- **This scenario's recent runs**, from `reports/`, with a hint when it used to pass;
+- **This scenario's recent runs**, from `reports/`, with a hint when it used to pass; a stopped run
+  shows as "stopped" (!) and never counts as a pass or a failure;
 - **↻ Rerun as is**, **Copy finding**, **Open full report**, **Edit scenario**.
 
 The editor marks the failed step's lines by itself; **Edit scenario** opens the file there.

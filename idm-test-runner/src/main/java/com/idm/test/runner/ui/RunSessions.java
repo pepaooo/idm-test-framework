@@ -343,8 +343,8 @@ public final class RunSessions {
     }
 
     /** {@link RunOutcome} without the folder's path, and where its report is served. */
-    record RunFinished(String runId, int total, int passed, int findings, int setupProblems, boolean stopped,
-                       int exitCode, String reportUrl) {
+    record RunFinished(String runId, int total, int passed, int findings, int setupProblems,
+                       int stoppedScenarios, boolean stopped, int exitCode, String reportUrl) {
     }
 
     // --- masking by key ----------------------------------------------------------------------------
@@ -508,7 +508,7 @@ public final class RunSessions {
         @Override
         public void runFinished(RunOutcome outcome) {
             add("runFinished", new RunFinished(outcome.runId(), outcome.total(), outcome.passed(), outcome.findings(),
-                    outcome.setupProblems(), outcome.stopped(), outcome.exitCode(),
+                    outcome.setupProblems(), outcome.stoppedScenarios(), outcome.stopped(), outcome.exitCode(),
                     outcome.runId() == null ? null : "/reports/" + outcome.runId() + "/report.html"));
         }
 

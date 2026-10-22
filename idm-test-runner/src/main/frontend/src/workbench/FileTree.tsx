@@ -1,4 +1,4 @@
-import { useRef, useState, type DragEvent } from 'react';
+import { useId, useRef, useState, type DragEvent } from 'react';
 import { api, ApiProblem } from '../api/client';
 import { Badge, type BadgeStatus } from '../components/Badge';
 import { t } from '../i18n';
@@ -52,6 +52,8 @@ export function FileTree({
   const [messages, setMessages] = useState<{ text: string; problem: boolean }[]>([]);
   const [dropping, setDropping] = useState(false);
   const input = useRef<HTMLInputElement>(null);
+  // the selected folder's description: it is the folder Run folder runs (the active file is current too)
+  const runFolderNote = useId();
 
   const isOpen = (path: string) => startsOpen(path) !== toggled.has(path);
   const toggle = (path: string) =>
@@ -112,6 +114,7 @@ export function FileTree({
             style={indent}
             aria-expanded={open}
             aria-current={selected ? 'true' : undefined}
+            aria-describedby={selected ? runFolderNote : undefined}
             onClick={() => {
               toggle(node.path);
               onSelectFolder?.(node.path);
@@ -203,6 +206,9 @@ export function FileTree({
           }}
         />
       </div>
+      <span id={runFolderNote} hidden>
+        {t('ui.tree.runFolder')}
+      </span>
       {tree?.children && <ul className="tree-list">{tree.children.map((child) => renderNode(child, 0))}</ul>}
       {messages.map((message) => (
         <p

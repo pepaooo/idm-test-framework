@@ -145,6 +145,21 @@ describe('FileTree', () => {
     expect(screen.getByRole('button', { name: 'config' })).not.toHaveAttribute('aria-current');
   });
 
+  it('the selected folder says it is the folder Run folder runs, apart from the active file', () => {
+    renderTree({ selectedFolder: 'scenarios/users', active: 'scenarios/roles-grant.yaml' });
+    const users = screen.getByRole('button', { name: 'users' });
+    expect(users).toHaveAccessibleName('users');
+    expect(users).toHaveAccessibleDescription('Run folder');
+    expect(screen.getByRole('button', { name: /^roles-grant\.yaml/ })).not.toHaveAccessibleDescription('Run folder');
+    expect(screen.getByRole('button', { name: 'config' })).toHaveAccessibleDescription('');
+  });
+
+  it('speaks Spanish for the selected folder', () => {
+    setLanguage('es', false);
+    renderTree({ selectedFolder: 'scenarios/users' });
+    expect(screen.getByRole('button', { name: 'users' })).toHaveAccessibleDescription('Carpeta a ejecutar');
+  });
+
   it('the keyboard selects a folder too', async () => {
     const onSelectFolder = vi.fn();
     const { onOpen } = renderTree({ onSelectFolder });

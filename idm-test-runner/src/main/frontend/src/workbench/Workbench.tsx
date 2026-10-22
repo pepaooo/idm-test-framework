@@ -13,7 +13,7 @@ import { TopBar } from './TopBar';
 import { LabChip } from '../lab/LabChip';
 import { deriveLabState } from '../lab/labState';
 import { LabStore } from '../lab/labStore';
-import { RunButton } from '../run/RunButton';
+import { isRunFolder, RunButton } from '../run/RunButton';
 import { RunPanel } from '../run/RunPanel';
 import { readScenarioFile, RunStore } from '../run/runStore';
 import type { TreeNode } from './types';
@@ -337,7 +337,8 @@ export function Workbench({ workspace, warning, lockWait = 300, runPanel, lab, r
               active={state.active}
               dirty={dirty}
               readOnly={state.readOnly}
-              selectedFolder={runFolder}
+              // a folder Run folder cannot run (scenarios/, config/…) is not shown as selected
+              selectedFolder={isRunFolder(runFolder) ? runFolder : null}
               runStates={runStates}
               onOpen={(path) => {
                 setRunFolder(null);

@@ -31,7 +31,7 @@ export function scenariosIn(tree: TreeNode | null, prefix = 'scenarios'): TreeNo
 }
 
 /** A folder Run folder can run: one below scenarios/ (scenarios/ itself is Run all). */
-function isRunFolder(folder: string | null): folder is string {
+export function isRunFolder(folder: string | null): folder is string {
   return folder !== null && folder.startsWith('scenarios/') && folder.length > 'scenarios/'.length;
 }
 

@@ -378,6 +378,23 @@ describe('Run button', () => {
       ]);
     });
 
+    it('a folder that cannot be run is not shown as selected; one below scenarios/ is', async () => {
+      runServer({ files: WITH_ROLES });
+      render(<Workbench workspace={WORKSPACE} lockWait={10} />);
+      await ready();
+      const tree = screen.getByRole('navigation', { name: 'Workspace files' });
+      const selected = () => tree.querySelectorAll('[aria-current="true"], .tree-selected');
+      await userEvent.click(await within(tree).findByRole('button', { name: 'config' }));
+      expect(within(tree).getByRole('button', { name: 'config' })).toHaveAttribute('aria-expanded', 'true'); // still unfolds
+      expect(selected()).toHaveLength(0);
+      await userEvent.click(within(tree).getByRole('button', { name: 'scenarios' }));
+      expect(selected()).toHaveLength(0);
+      await userEvent.click(within(tree).getByRole('button', { name: 'scenarios' })); // unfold again
+      await userEvent.click(within(tree).getByRole('button', { name: 'users' }));
+      expect(selected()).toHaveLength(1);
+      expect(within(tree).getByRole('button', { name: 'users' })).toHaveAttribute('aria-current', 'true');
+    });
+
     it('a selected folder without scenarios shows Run folder disabled with (0)', async () => {
       runServer({ files: WITH_ROLES });
       render(<Workbench workspace={WORKSPACE} lockWait={10} />);

@@ -73,6 +73,7 @@
   "ui.tree.dropHint": "Drop .yaml files here to add them to scenarios/",
   "ui.tree.locked": "locked",
   "ui.tree.secrets": "secrets.env is never opened in the editor",
+  "ui.tree.runFolder": "Run folder",
   "ui.tree.unsaved": "unsaved",
   "ui.tree.lastResult.passed": "last run passed",
   "ui.tree.lastResult.finding": "last run: finding",

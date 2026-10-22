@@ -84,17 +84,23 @@ export function withWorkspace(url: string): string {
   return `${url}${url.includes('?') ? '&' : '?'}workspace=${encodeURIComponent(pageWorkspace)}`;
 }
 
+/** Per-call options. `workspace`: the workspace the call is for, instead of the page's. */
+export interface RequestOptions {
+  workspace?: string;
+}
+
 /**
  * One same-origin call. The session cookie (HttpOnly, set by the server when the page was first
  * loaded with its token) goes with it; the page itself never sees or stores the token.
  */
-async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+async function request<T>(method: string, path: string, body?: unknown, options?: RequestOptions): Promise<T> {
   const headers: Record<string, string> = {
     Accept: 'application/json',
     'Accept-Language': currentLanguage(),
   };
-  if (pageWorkspace !== null) {
-    headers[WORKSPACE_HEADER] = encodeURIComponent(pageWorkspace);
+  const workspace = options?.workspace ?? pageWorkspace;
+  if (workspace !== null) {
+    headers[WORKSPACE_HEADER] = encodeURIComponent(workspace);
   }
   const multipart = typeof FormData !== 'undefined' && body instanceof FormData;
   if (body !== undefined && !multipart) {
@@ -173,7 +179,8 @@ function events(
 
 export const api = {
   get: <T>(path: string) => request<T>('GET', path),
-  post: <T>(path: string, body?: unknown) => request<T>('POST', path, body ?? {}),
+  /** `options.workspace`: send the call for that workspace (e.g. stopping a run from the start page). */
+  post: <T>(path: string, body?: unknown, options?: RequestOptions) => request<T>('POST', path, body ?? {}, options),
   put: <T>(path: string, body?: unknown) => request<T>('PUT', path, body ?? {}),
   del: <T = void>(path: string) => request<T>('DELETE', path),
   /** A multipart POST (the browser sets the boundary). */

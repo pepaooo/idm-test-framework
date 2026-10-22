@@ -216,3 +216,16 @@ button.ws-open:hover {
   font-size: 11px;
   color: var(--accent);
 }
+
+.run-going p {
+  margin: 0;
+}
+
+.run-going p + p,
+.run-going .actions {
+  margin-top: 8px;
+}
+
+.run-going .actions {
+  justify-content: flex-start;
+}

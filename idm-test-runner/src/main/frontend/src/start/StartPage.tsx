@@ -3,6 +3,7 @@ import { api, ApiProblem, withQuery, type OpenWorkspace, type RecentWorkspace, t
 import { Badge } from '../components/Badge';
 import { t, useLanguage } from '../i18n';
 import { FolderPicker } from './FolderPicker';
+import { runGoing, RunGoingNotice, type RunGoing } from './RunGoingNotice';
 import { baseName, runStatus, runSummary, when } from './format';
 import './StartPage.css';
 
@@ -18,21 +19,75 @@ async function openWorkspace(path: string, onOpened: Opened, warning?: ServerMes
   onOpened({ path: opened.path, name: baseName(opened.path), profiles: opened.profiles }, warning);
 }
 
+/** The run-going notice the page shows (one at a time), in the part of the page whose open it answers. */
+interface Notice {
+  owner: string;
+  /** Tells notices apart, so a new one starts afresh (not stopping). Set by `show`. */
+  id?: number;
+  notice: RunGoing;
+  /** The same open again. */
+  retry: () => Promise<void>;
+}
+
+let noticeIds = 0;
+
+/** The page's notice, shared by the recent list and both forms. */
+interface Notices {
+  current: Notice | null;
+  show: (notice: Notice | null) => void;
+}
+
+/**
+ * The notice for `owner`'s open, when it is the one shown: Stop the run / Cancel. `onClosed` hears
+ * Cancel, and any other error (shown by the owner as its own problem).
+ */
+function OwnNotice({ notices, owner, onClosed }: { notices: Notices; owner: string; onClosed: (problem?: string) => void }) {
+  const current = notices.current;
+  if (current?.owner !== owner) {
+    return null;
+  }
+  return (
+    <RunGoingNotice
+      key={current.id}
+      notice={current.notice}
+      retry={current.retry}
+      onCancel={() => {
+        notices.show(null);
+        onClosed();
+      }}
+      onProblem={(problem) => {
+        notices.show(null);
+        onClosed(problem);
+      }}
+    />
+  );
+}
+
 /** Spec §4.2: recent workspaces, create one, open one. `git`: whether git is installed. */
 export function StartPage({ git, onOpened }: { git: boolean; onOpened: Opened }) {
   const lang = useLanguage();
+  const [notice, setNotice] = useState<Notice | null>(null);
+  const notices: Notices = { current: notice, show: (next) => setNotice(next && { ...next, id: ++noticeIds }) };
   return (
     <main className="start">
-      <RecentList lang={lang} onOpened={onOpened} />
+      <RecentList lang={lang} onOpened={onOpened} notices={notices} />
       <div>
-        <CreateForm git={git} onOpened={onOpened} />
-        <OpenForm onOpened={onOpened} />
+        <CreateForm git={git} onOpened={onOpened} notices={notices} />
+        <OpenForm onOpened={onOpened} notices={notices} />
       </div>
     </main>
   );
 }
 
-function RecentList({ lang, onOpened }: { lang: ReturnType<typeof useLanguage>; onOpened: Opened }) {
+function RecentList({
+  lang,
+  onOpened,
+  notices,
+}: {
+  lang: ReturnType<typeof useLanguage>;
+  onOpened: Opened;
+  notices: Notices;
+}) {
   const [recent, setRecent] = useState<RecentWorkspace[] | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const ids = useId();
@@ -65,9 +120,15 @@ function RecentList({ lang, onOpened }: { lang: ReturnType<typeof useLanguage>; 
   const open = async (path: string) => {
     try {
       setProblem(null);
+      notices.show(null);
       await openWorkspace(path, onOpened);
     } catch (e) {
-      setProblem(message(e));
+      const going = runGoing(e);
+      if (going) {
+        notices.show({ owner: ids, notice: going, retry: () => openWorkspace(path, onOpened) });
+      } else {
+        setProblem(message(e));
+      }
     }
   };
 
@@ -77,7 +138,8 @@ function RecentList({ lang, onOpened }: { lang: ReturnType<typeof useLanguage>; 
       <h2 id={`${ids}-title`} className="section-title">
         {t('ui.start.recent')}
       </h2>
-      {problem && (
+      <OwnNotice notices={notices} owner={ids} onClosed={(closing) => setProblem(closing ?? null)} />
+      {problem && notices.current?.owner !== ids && (
         <p role="alert" className="problem">
           <Badge status="error" /> {problem}
         </p>
@@ -191,7 +253,7 @@ function FolderField({
   );
 }
 
-function CreateForm({ git, onOpened }: { git: boolean; onOpened: Opened }) {
+function CreateForm({ git, onOpened, notices }: { git: boolean; onOpened: Opened; notices: Notices }) {
   const ids = useId();
   const [name, setName] = useState('');
   const [parent, setParent] = useState('');
@@ -204,6 +266,7 @@ function CreateForm({ git, onOpened }: { git: boolean; onOpened: Opened }) {
     event.preventDefault();
     setBusy(true);
     setProblem(null);
+    notices.show(null);
     try {
       const created = await api.post<{ path: string; warning: ServerMessage | null }>('/api/workspaces', {
         name,
@@ -211,12 +274,24 @@ function CreateForm({ git, onOpened }: { git: boolean; onOpened: Opened }) {
         includeExample,
         gitInit: git && gitInit,
       });
-      await openWorkspace(created.path, onOpened, created.warning ?? undefined);
+      const warning = created.warning ?? undefined;
+      try {
+        await openWorkspace(created.path, onOpened, warning);
+      } catch (e) {
+        const going = runGoing(e);
+        if (!going) {
+          throw e;
+        }
+        // The folder exists now: only its open waits for the run.
+        notices.show({ owner: ids, notice: going, retry: () => openWorkspace(created.path, onOpened, warning) });
+        setBusy(false);
+      }
     } catch (e) {
       setProblem(message(e));
       setBusy(false);
     }
   };
+  const noticeHere = notices.current?.owner === ids;
 
   return (
     <form className="card" aria-labelledby={`${ids}-title`} onSubmit={(event) => void submit(event)}>
@@ -242,13 +317,14 @@ function CreateForm({ git, onOpened }: { git: boolean; onOpened: Opened }) {
           {t('ui.start.create.gitInit')}
         </label>
       )}
-      {problem && (
+      <OwnNotice notices={notices} owner={ids} onClosed={(closing) => setProblem(closing ?? null)} />
+      {problem && !noticeHere && (
         <p role="alert" className="problem">
           <Badge status="error" /> {problem}
         </p>
       )}
       <div className="actions">
-        <button type="submit" className="primary" disabled={busy}>
+        <button type="submit" className="primary" disabled={busy || noticeHere}>
           {t('ui.start.create.submit')}
         </button>
       </div>
@@ -256,7 +332,7 @@ function CreateForm({ git, onOpened }: { git: boolean; onOpened: Opened }) {
   );
 }
 
-function OpenForm({ onOpened }: { onOpened: Opened }) {
+function OpenForm({ onOpened, notices }: { onOpened: Opened; notices: Notices }) {
   const ids = useId();
   const [path, setPath] = useState('');
   const [busy, setBusy] = useState(false);
@@ -266,26 +342,35 @@ function OpenForm({ onOpened }: { onOpened: Opened }) {
     event.preventDefault();
     setBusy(true);
     setProblem(null);
+    notices.show(null);
+    const folder = path.trim();
     try {
-      await openWorkspace(path.trim(), onOpened);
+      await openWorkspace(folder, onOpened);
     } catch (e) {
-      setProblem(message(e));
+      const going = runGoing(e);
+      if (going) {
+        notices.show({ owner: ids, notice: going, retry: () => openWorkspace(folder, onOpened) });
+      } else {
+        setProblem(message(e));
+      }
       setBusy(false);
     }
   };
+  const noticeHere = notices.current?.owner === ids;
 
   return (
     <form className="card" aria-labelledby={`${ids}-title`} onSubmit={(event) => void submit(event)}>
       <h3 id={`${ids}-title`}>{t('ui.start.open.title')}</h3>
       <p className="muted">{t('ui.start.open.hint')}</p>
       <FolderField id={`${ids}-folder`} label={t('ui.start.open.folder')} value={path} onChange={setPath} />
-      {problem && (
+      <OwnNotice notices={notices} owner={ids} onClosed={(closing) => setProblem(closing ?? null)} />
+      {problem && !noticeHere && (
         <p role="alert" className="problem">
           <Badge status="error" /> {problem}
         </p>
       )}
       <div className="actions">
-        <button type="submit" className="secondary" disabled={busy || path.trim() === ''}>
+        <button type="submit" className="secondary" disabled={busy || noticeHere || path.trim() === ''}>
           {t('ui.start.open.submit')}
         </button>
       </div>

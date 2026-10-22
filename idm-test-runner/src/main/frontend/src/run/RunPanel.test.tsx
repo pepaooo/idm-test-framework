@@ -259,6 +259,31 @@ describe('Run panel', () => {
     expect(within(first).queryByRole('img', { name: 'Stopped' })).not.toBeInTheDocument();
   });
 
+  it('a fixture failure followed by a stop shows the setup problem with its reason and the skipped cleanup', async () => {
+    const server = runServer();
+    render(<Workbench workspace={WORKSPACE} lockWait={10} />);
+    await runAll(server);
+    act(() => {
+      emit('runStarted', { runId: RUN_ID, scenarios: NAMES.slice(0, 1), locale: 'en' });
+      playScenario(
+        scenario(NAMES[0], [], {
+          success: false,
+          stopped: true,
+          failureDetail: 'Fixture hr-users failed: table HR_USERS not found',
+          failureDetailKey: 'engine.fixture.failed',
+          skippedCleanup: [
+            { index: 0, type: 'ldap.delete', resolvedParams: { dn: 'cn=u123,ou=users' }, status: 'SKIPPED', durationMillis: 0, message: 'stopped', description: null },
+          ],
+        }),
+      );
+      emit('runFinished', { runId: RUN_ID, total: 1, passed: 0, findings: 0, setupProblems: 1, stoppedScenarios: 0, stopped: true, exitCode: 1, reportUrl: null });
+    });
+    expect(within(rows()[0]).getByRole('img', { name: 'Setup problem' })).toHaveClass('badge-error');
+    const setup = within(panel()).getByRole('region', { name: /Setup problem/ });
+    expect(within(setup).getByText('Fixture hr-users failed: table HR_USERS not found')).toBeInTheDocument();
+    expect(within(panel()).getByRole('region', { name: /Stopped — cleanup did not run/ })).toBeInTheDocument();
+  });
+
   it('a run stopped between scenarios still says it was stopped', async () => {
     const server = runServer();
     render(<Workbench workspace={WORKSPACE} lockWait={10} />);

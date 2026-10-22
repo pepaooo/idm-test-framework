@@ -128,7 +128,8 @@ this computer only".
   split button; language and theme.
 - **Left, the file tree**: `scenarios/` and `config/` and the files at the top of the workspace.
   Scenarios show the badge of their last run that finished (✓ passed, amber ✕ finding, red ✕ setup
-  problem); a stopped run never changes it, and a scenario with no finished run has no badge; files
+  problem); a scenario counted as stopped never changes it (a stop after a real finding shows that
+  finding), and a scenario with no finished run has no badge; files
   with unsaved edits show ●; `secrets.env` shows a lock and never opens. **Add files**, or dropping
   `.yaml`/`.yml` files on the tree, copies them into `scenarios/` (up to 2 MB each); a file of the same
   name is never overwritten: the copy becomes `name (2).yaml`.
@@ -258,9 +259,9 @@ entries of the Run menu say why when you point at them.
   red of a setup problem), and scenarios the run never reached read "not run". The end line counts
   each on its own, for example "5 scenarios: 2 passed, 1 finding, 1 stopped, 1 not run"; a run stopped
   between two scenarios ends with "· stopped". A scenario whose step had already failed before the
-  stop, or whose cleanup entry failed, counts as that finding or setup problem, and still lists its
-  skipped cleanup. A stop never changes the tree's badge: the scenario keeps the badge of its
-  last run that finished, so **Run only the ones that found something** is not affected either.
+  stop counts as that finding or setup problem, and still lists its skipped cleanup. A scenario
+  counted as stopped never changes the tree's badge: it keeps the badge of its last run that
+  finished, so **Run only the ones that found something** is not affected either.
 - A workbench run is an `idmtest run`: the same workspace files, settings precedence, checks before
   anything is contacted, JDBC driver loading, masking and `reports/<run-id>/` folder (with
   `report.html`, `results.json` and `run.log`). A run uses the workbench's language. The differences are

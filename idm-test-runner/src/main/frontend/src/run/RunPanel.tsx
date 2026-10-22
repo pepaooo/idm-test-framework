@@ -9,7 +9,7 @@ import { seconds, timeLabel } from './copyFinding';
 import { stepLines } from './scenarioYaml';
 import { CleanupList, FindingPanel, SetupPanel, StoppedView, stepTitle } from './FindingPanel';
 import type { RunState, RunStore, ScenarioRun } from './runStore';
-import { interruptedStep, scenarioPath, type StepResult } from './types';
+import { interruptedStep, isStopped, scenarioPath, type StepResult } from './types';
 import './Run.css';
 
 const STATE_BADGE: Record<'passed' | 'finding' | 'setup', BadgeStatus> = { passed: 'ok', finding: 'finding', setup: 'error' };
@@ -221,7 +221,7 @@ function ScenarioDetail({ run, store, scenario, rerunBlocked }: { run: RunState;
           onRerun={rerun}
         />
       )}
-      {result && !result.success && result.steps.every((s) => s.success) && result.failureDetail !== null && !result.stopped && (
+      {result && !result.success && result.steps.every((s) => s.success) && result.failureDetail !== null && !isStopped(result) && (
         <SetupPanel scenario={scenario.name} step={null} message={scenario.failureLine ?? result.failureDetail} />
       )}
       {result && <CleanupList entries={result.cleanup} />}

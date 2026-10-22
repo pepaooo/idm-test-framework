@@ -10,7 +10,8 @@ export interface RunGoing {
 }
 
 const RUN_GOING = 'ui.workspace.runGoing';
-const RUN_NONE = 'ui.run.none';
+/** Stop's answers that mean the run is over already: none is going, or another tab opened another workspace since. */
+const RUN_OVER = new Set(['ui.run.none', 'ui.workspace.switched']);
 /** How often the open is tried again after a stop, and for how long. */
 const RETRY_EVERY_MS = 500;
 const WAIT_AT_MOST_MS = 30_000;
@@ -34,7 +35,8 @@ function text(e: unknown): string {
 /**
  * "A run is going in lab-tests…" with Stop the run (asked first: Stop skips the cleanup) and Cancel.
  * After a stop, `retry` (the same open again) is tried every 500 ms until it works, for at most 30 s;
- * then the notice comes back. `onProblem` hears any other error, `onCancel` closes the notice.
+ * then the notice comes back. `retry` gets `isCurrent`: false once this notice is gone (replaced or
+ * closed), so a late answer does not open its workspace. `onProblem` hears any other error, `onCancel` closes the notice.
  */
 export function RunGoingNotice({
   notice,
@@ -43,7 +45,7 @@ export function RunGoingNotice({
   onProblem,
 }: {
   notice: RunGoing;
-  retry: () => Promise<void>;
+  retry: (isCurrent: () => boolean) => Promise<void>;
   onCancel: () => void;
   onProblem: (message: string) => void;
 }) {
@@ -65,7 +67,7 @@ export function RunGoingNotice({
     const attempt = async () => {
       timer.current = null;
       try {
-        await retry();
+        await retry(() => alive.current);
       } catch (e) {
         if (!alive.current) {
           return;
@@ -99,7 +101,7 @@ export function RunGoingNotice({
       if (!alive.current) {
         return;
       }
-      if (e instanceof ApiProblem && e.key === RUN_NONE) {
+      if (e instanceof ApiProblem && RUN_OVER.has(e.key)) {
         waitForTheEnd(deadline, 0); // it had already ended
       } else {
         setStopping(false);

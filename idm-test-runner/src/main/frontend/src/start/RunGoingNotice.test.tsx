@@ -255,4 +255,83 @@ describe('the run-going notice on the start page', () => {
     expect(confirm).toHaveBeenCalledWith('¿Detener la ejecución en lab-tests? Su limpieza no se ejecutará.');
     expect(await screen.findByText('Deteniendo la ejecución…')).toBeInTheDocument();
   });
+
+  it('create, wait, Cancel, Create again: opens the created folder without creating it twice', async () => {
+    const server = fakeServer({
+      'GET /api/workspaces/recent': { body: [] },
+      'POST /api/workspaces': { body: { path: '/home/ana/Work/new-lab', warning: null } },
+      'POST /api/workspaces/open': inTurn([RUN_GOING, { body: { path: '/home/ana/Work/new-lab', profiles: [] } }]),
+    });
+    const onOpened = renderStart();
+    const create = screen.getByRole('form', { name: 'Create a workspace' });
+    await userEvent.type(within(create).getByLabelText('Name'), 'new-lab');
+    await userEvent.type(within(create).getByLabelText('Where'), '/home/ana/Work');
+    await userEvent.click(within(create).getByRole('button', { name: 'Create workspace' }));
+    const notice = await within(create).findByRole('alert');
+    await userEvent.click(within(notice).getByRole('button', { name: 'Cancel' }));
+
+    await userEvent.click(within(create).getByRole('button', { name: 'Create workspace' }));
+    await vi.waitFor(() => expect(onOpened).toHaveBeenCalledWith({ path: '/home/ana/Work/new-lab', name: 'new-lab', profiles: [] }, undefined));
+    expect(server.calls().filter((c) => c === 'POST /api/workspaces')).toHaveLength(1);
+    expect(server.sent.filter((r) => r.url === '/api/workspaces/open').map((r) => r.body)).toEqual([
+      { path: '/home/ana/Work/new-lab' },
+      { path: '/home/ana/Work/new-lab' },
+    ]);
+  });
+
+  it('a retry that answers after its notice was replaced does not open its workspace', async () => {
+    let answerHr: (answer: Answer) => void = () => {};
+    let hrOpens = 0;
+    fakeServer({
+      'GET /api/workspaces/recent': { body: RECENT },
+      'POST /api/workspaces/open': (request) => {
+        if ((request.body as { path: string }).path !== HR) {
+          return RUN_GOING;
+        }
+        hrOpens++;
+        return hrOpens === 1 ? RUN_GOING : new Promise<Answer>((resolve) => (answerHr = resolve));
+      },
+      'POST /api/runs/current/stop': { status: 202, body: { runId: 'r1' } },
+    });
+    const onOpened = renderStart();
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const notice = await openHrAndGetNotice();
+
+    vi.useFakeTimers();
+    fireEvent.click(within(notice).getByRole('button', { name: 'Stop the run' }));
+    await advance(500);
+    expect(hrOpens).toBe(2); // the retry is waiting for its answer
+
+    const open = screen.getByRole('form', { name: 'Open a workspace' });
+    fireEvent.change(within(open).getByLabelText('Folder'), { target: { value: '/home/ana/ws' } });
+    fireEvent.submit(open);
+    await advance(0);
+    expect(within(open).getByRole('alert')).toBeInTheDocument();
+
+    answerHr(OPENED_HR);
+    await advance(0);
+    expect(onOpened).not.toHaveBeenCalled();
+  });
+
+  it('a stop answered "another workspace is open now" means the run is over: opens at once, no switch notice', async () => {
+    const server = fakeServer({
+      'GET /api/workspaces/recent': { body: RECENT },
+      'POST /api/workspaces/open': inTurn([RUN_GOING, OPENED_HR]),
+      'POST /api/runs/current/stop': {
+        status: 409,
+        body: { key: 'ui.workspace.switched', message: 'This workspace is no longer the one open in the workbench.' },
+      },
+    });
+    const onOpened = renderStart();
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const notice = await openHrAndGetNotice();
+
+    vi.useFakeTimers();
+    fireEvent.click(within(notice).getByRole('button', { name: 'Stop the run' }));
+    await advance(0);
+    expect(server.sent.filter((r) => r.url === '/api/workspaces/open')).toHaveLength(2);
+    expect(onOpened).toHaveBeenCalledTimes(1);
+    expect(workspaceSwitch.get()).toBeNull();
+    expect(screen.queryByText(/no longer the one open/)).not.toBeInTheDocument();
+  });
 });

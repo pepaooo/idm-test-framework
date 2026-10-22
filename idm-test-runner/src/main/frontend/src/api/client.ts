@@ -126,7 +126,8 @@ async function request<T>(method: string, path: string, body?: unknown, options?
   }
   if (!response.ok) {
     if (isServerMessage(data)) {
-      if (response.status === 409 && data.key === WORKSPACE_SWITCHED) {
+      // A call for another workspace than the page's (options.workspace) says nothing about this page.
+      if (response.status === 409 && data.key === WORKSPACE_SWITCHED && options?.workspace === undefined) {
         noteSwitched(data.message);
       }
       throw new ApiProblem(response.status, data.key, data.message, data);

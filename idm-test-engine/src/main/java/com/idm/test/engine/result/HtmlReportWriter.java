@@ -28,8 +28,6 @@ import java.util.Locale;
  */
 public final class HtmlReportWriter {
 
-    /** The message key of the step a stop interrupted ({@code ScenarioEngine}'s). */
-    private static final String STOPPED_KEY = "engine.run.stopped";
     private static final JsonMapper JSON = JsonMappers.builder().enable(SerializationFeature.INDENT_OUTPUT).build();
 
     private HtmlReportWriter() {
@@ -60,10 +58,11 @@ public final class HtmlReportWriter {
     static String render(RunInfo run, List<ScenarioResult> results, Instant now) {
         long passed = results.stream().filter(ScenarioResult::success).count();
         long failed = results.size() - passed;
-        // A stopped scenario counts as stopped only, whatever its failure kind: it did not finish.
-        long stopped = results.stream().filter(ScenarioResult::stopped).count();
-        long findings = results.stream().filter(r -> !r.stopped() && r.failureKind() == FailureKind.FINDING).count();
-        long setup = results.stream().filter(r -> !r.stopped() && r.failureKind() == FailureKind.SETUP).count();
+        // A scenario only the stop failed counts as stopped; one whose step failed first, by that kind.
+        long stopped = results.stream().filter(ScenarioResult::stoppedOnly).count();
+        long findings = results.stream()
+                .filter(r -> !r.stoppedOnly() && r.failureKind() == FailureKind.FINDING).count();
+        long setup = results.stream().filter(r -> !r.stoppedOnly() && r.failureKind() == FailureKind.SETUP).count();
         Locale locale = run.locale();
         String title = label("report.title", locale, run.runner());
 
@@ -132,7 +131,7 @@ public final class HtmlReportWriter {
         html.append("<details class=\"scenario ").append(status).append('"')
                 .append(scenario.success() ? "" : " open").append(">\n<summary>")
                 .append(icon(scenario.success()))
-                .append(scenario.stopped() ? stoppedBadge(locale) : kind(scenario.failureKind(), locale))
+                .append(scenario.stoppedOnly() ? stoppedBadge(locale) : kind(scenario.failureKind(), locale))
                 .append(" <span class=\"file\">").append(esc(scenario.sourceName())).append("</span>");
         if (scenario.name() != null && !scenario.name().equals(scenario.sourceName())) {
             html.append(" <span class=\"name\">").append(esc(scenario.name())).append("</span>");
@@ -193,7 +192,7 @@ public final class HtmlReportWriter {
     private static void appendStep(StringBuilder html, StepResult step, Locale locale) {
         FailureKind kind = step.kind();
         // The step a stop interrupted: the engine marks it SETUP, but it is no setup problem.
-        boolean interrupted = !step.success() && STOPPED_KEY.equals(step.messageKey());
+        boolean interrupted = !step.success() && ScenarioResult.STOPPED_KEY.equals(step.messageKey());
         html.append("<li class=\"step ").append(step.success() ? "passed" : "failed")
                 .append(interrupted ? " stopped" : kind == null ? "" : " " + cssClass(kind)).append("\">")
                 .append("<div class=\"row\">").append(icon(step.success()))

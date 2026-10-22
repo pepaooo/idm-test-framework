@@ -43,6 +43,9 @@ public record ScenarioResult(
         @JsonInclude(JsonInclude.Include.NON_DEFAULT) boolean stopped,
         @JsonInclude(JsonInclude.Include.NON_EMPTY) List<CleanupResult> skippedCleanup) {
 
+    /** The message key of the step a stop interrupted, and of a scenario stopped before its cleanup. */
+    public static final String STOPPED_KEY = "engine.run.stopped";
+
     public ScenarioResult {
         cleanup = cleanup == null ? List.of() : cleanup;
         failureDetailArgs = failureDetailArgs == null
@@ -139,7 +142,9 @@ public record ScenarioResult(
     /**
      * What kind of failure this scenario is, or null when it passed: its failed step's kind; a
      * {@link FailureKind#SETUP} problem when it failed before any step (it did not load, or its
-     * fixtures failed); a {@link FailureKind#FINDING} when only its cleanup failed.
+     * fixtures failed); a {@link FailureKind#FINDING} when only its cleanup failed. The step a stop
+     * interrupted ({@link #STOPPED_KEY}) is passed over: an earlier failed step's kind wins, and a
+     * scenario only the stop failed is a {@link FailureKind#SETUP} problem.
      */
     @JsonIgnore
     public FailureKind failureKind() {
@@ -147,12 +152,32 @@ public record ScenarioResult(
             return null;
         }
         for (int i = steps.size() - 1; i >= 0; i--) {
-            if (!steps.get(i).success()) {
+            if (!steps.get(i).success() && !STOPPED_KEY.equals(steps.get(i).messageKey())) {
                 return steps.get(i).kind();
             }
         }
         boolean cleanupFailed = cleanup.stream().anyMatch(entry -> entry.status() == CleanupStatus.FAILED);
         return failureDetail == null && cleanupFailed ? FailureKind.FINDING : FailureKind.SETUP;
+    }
+
+    /**
+     * Whether the stop is all that went wrong, so the scenario counts as stopped: {@link #stopped()},
+     * and either every step passed, no cleanup entry FAILED and the failure detail is none or the
+     * engine's stop ({@link #STOPPED_KEY}); or exactly one step failed, the one the stop interrupted
+     * (its message key is {@link #STOPPED_KEY}). Anything else — a step that had already failed when
+     * the stop came, a fixture failure — counts by its {@link #failureKind() kind}.
+     */
+    @JsonIgnore
+    public boolean stoppedOnly() {
+        if (!stopped) {
+            return false;
+        }
+        List<StepResult> failed = steps.stream().filter(step -> !step.success()).toList();
+        if (failed.isEmpty()) {
+            boolean cleanupFailed = cleanup.stream().anyMatch(entry -> entry.status() == CleanupStatus.FAILED);
+            return !cleanupFailed && (failureDetail == null || STOPPED_KEY.equals(failureDetailKey));
+        }
+        return failed.size() == 1 && STOPPED_KEY.equals(failed.getFirst().messageKey());
     }
 
     /** The failure detail by key, or null when it is plain text. */

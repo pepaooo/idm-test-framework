@@ -103,6 +103,59 @@ class LastRunsTest {
                 .containsExactly("passed", "stopped", "finding", "setup");
     }
 
+    @Test
+    @DisplayName("Should count a scenario stopped after its step found a problem as a finding, not pass over it")
+    void testStoppedAfterFindingIsAFinding() throws Exception {
+        writeResults("20261020-090000-lab", Instant.parse("2026-10-20T07:00:00Z"), "[" + passed("a.yaml") + "]");
+        writeResults("20261021-090000-lab", Instant.parse("2026-10-21T07:00:00Z"),
+                "[" + stoppedAfterFinding("a.yaml") + "]");
+
+        assertThat(LastRuns.lastOutcomes(ws, Set.of("a.yaml"))).containsExactly(Map.entry("a.yaml", Outcome.FINDING));
+        assertThat(LastRuns.history(ws, "a.yaml", 10)).extracting(HistoryEntry::result)
+                .containsExactly("finding", "passed");
+        assertThat(LastRuns.history(ws, null, 10)).extracting(HistoryEntry::result)
+                .containsExactly("finding", "passed");
+        LastRun run = LastRuns.newest(ws).orElseThrow();
+        assertThat(run.findings()).isEqualTo(1);
+        assertThat(run.stopped()).isZero();
+    }
+
+    @Test
+    @DisplayName("Should count a stopped record with an earlier failed finding and a later stopped step as a finding")
+    void testEarlierFindingBeforeStoppedStep() throws Exception {
+        writeResults("20261020-090000-lab", Instant.parse("2026-10-20T07:00:00Z"), "[" + passed("a.yaml") + "]");
+        String steps = "{\"index\":0,\"type\":\"ldap.verify\",\"success\":false,\"failureKind\":\"FINDING\"},"
+                + "{\"index\":1,\"type\":\"ldap.verify\",\"success\":false,"
+                + "\"messageKey\":\"engine.run.stopped\",\"failureKind\":\"SETUP\"}";
+        writeResults("20261021-090000-lab", Instant.parse("2026-10-21T07:00:00Z"),
+                "[" + record("a.yaml", false, steps, ",\"stopped\":true") + "]");
+
+        assertThat(LastRuns.lastOutcomes(ws, Set.of("a.yaml"))).containsExactly(Map.entry("a.yaml", Outcome.FINDING));
+    }
+
+    @Test
+    @DisplayName("Should count a stopped record whose fixtures failed as a setup problem")
+    void testStoppedWithFixtureFailureIsSetup() throws Exception {
+        writeResults("20261021-090000-lab", Instant.parse("2026-10-21T07:00:00Z"),
+                "[{\"name\":\"a.yaml\",\"sourceName\":\"a.yaml\",\"success\":false,\"steps\":[],\"cleanup\":[],"
+                        + "\"failureDetail\":\"fixture failed\",\"failureDetailKey\":\"engine.fixture.failed\","
+                        + "\"stopped\":true}]");
+
+        assertThat(LastRuns.lastOutcomes(ws, Set.of("a.yaml"))).containsExactly(Map.entry("a.yaml", Outcome.SETUP));
+    }
+
+    @Test
+    @DisplayName("Should count a scenario stopped after its steps passed, before its cleanup, as stopped")
+    void testStoppedBeforeCleanupIsStopped() throws Exception {
+        writeResults("20261021-090000-lab", Instant.parse("2026-10-21T07:00:00Z"),
+                "[" + record("a.yaml", false, "{\"index\":0,\"type\":\"ldap.verify\",\"success\":true}",
+                        ",\"failureDetail\":\"Stopped — cleanup did not run\","
+                                + "\"failureDetailKey\":\"engine.run.stopped\",\"stopped\":true") + "]");
+
+        assertThat(LastRuns.newest(ws).orElseThrow().stopped()).isEqualTo(1);
+        assertThat(LastRuns.lastOutcomes(ws, Set.of("a.yaml"))).isEmpty();
+    }
+
     // --- helpers --------------------------------------------------------------------------------
 
     private void writeResults(String runId, Instant at, String json) throws IOException {
@@ -130,6 +183,13 @@ class LastRunsTest {
         return record(name, false, "{\"index\":0,\"type\":\"ldap.verify\",\"success\":false,"
                         + "\"message\":\"Stopped — cleanup did not run\",\"messageKey\":\"engine.run.stopped\","
                         + "\"failureKind\":\"SETUP\"}",
+                ",\"stopped\":true,\"skippedCleanup\":[{\"index\":0,\"type\":\"ldap.delete\",\"status\":\"SKIPPED\"}]");
+    }
+
+    /** A FINDING step failed, then the stop came before the cleanup. */
+    private static String stoppedAfterFinding(String name) {
+        return record(name, false,
+                "{\"index\":0,\"type\":\"ldap.verify\",\"success\":false,\"failureKind\":\"FINDING\"}",
                 ",\"stopped\":true,\"skippedCleanup\":[{\"index\":0,\"type\":\"ldap.delete\",\"status\":\"SKIPPED\"}]");
     }
 

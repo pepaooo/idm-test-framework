@@ -561,7 +561,7 @@ public final class RunService {
             }
 
             void count(ScenarioResult result) {
-                if (result.stopped()) {
+                if (result.stoppedOnly()) {
                     stoppedScenarios++;
                 } else if (result.success()) {
                     passed++;

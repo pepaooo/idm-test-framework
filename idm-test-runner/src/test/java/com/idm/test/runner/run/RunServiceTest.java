@@ -89,6 +89,7 @@ class RunServiceTest {
         RunOutcome outcome;
         Runnable onAttempt = () -> { };
         Runnable onScenarioFinished = () -> { };
+        java.util.function.Consumer<StepResult> onStepFinished = step -> { };
 
         @Override
         public void runStarted(String runId, List<String> scenarios) {
@@ -117,6 +118,7 @@ class RunServiceTest {
         public void stepFinished(StepResult result) {
             events.add("stepFinished " + result.index() + " " + result.type());
             texts.add(result.toString());
+            onStepFinished.accept(result);
         }
 
         @Override
@@ -369,6 +371,31 @@ class RunServiceTest {
         assertThat(outcome.setupProblems()).isZero();
         assertThat(outcome.passed()).isZero();
         assertThat(outcome.findings()).isZero();
+    }
+
+    @Test
+    @DisplayName("Should count a scenario stopped after its step found a problem as a finding, not as stopped")
+    void testStoppedAfterFindingCountsAsFinding() throws Exception {
+        Path ws = workspace();
+        scenario(ws, "a-wrong-sn.yaml", WRONG_SN);
+        Recorder recorder = new Recorder();
+        AtomicBoolean stop = new AtomicBoolean();
+        // The stop comes once the verify step has failed, before the cleanup.
+        recorder.onStepFinished = step -> {
+            if (!step.success()) {
+                stop.set(true);
+            }
+        };
+
+        RunOutcome outcome = new RunService(CLOCK, false).run(request(ws), recorder, stop::get);
+
+        ScenarioResult result = recorder.finished.getFirst();
+        assertThat(result.stopped()).isTrue();
+        assertThat(result.skippedCleanup()).extracting(CleanupResult::type).containsExactly("ldap.delete");
+        assertThat(outcome.findings()).isEqualTo(1);
+        assertThat(outcome.stoppedScenarios()).isZero();
+        assertThat(outcome.setupProblems()).isZero();
+        assertThat(outcome.exitCode()).isEqualTo(ExitCodes.FAILED);
     }
 
     @Test

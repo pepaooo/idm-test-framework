@@ -48,7 +48,8 @@ public final class LastRuns {
      * @param at    when the results file was last written (the end of the run, or its latest scenario),
      *              ISO-8601 in UTC
      * @param profile the profile, from the run id; null when the folder name is not a run id
-     * @param stopped the scenarios a stop interrupted; not in {@code setupProblems}
+     * @param stopped the scenarios only a stop failed ({@link ScenarioResult#stoppedOnly()}); not in
+     *                {@code setupProblems}
      */
     public record LastRun(String runId, String at, String profile, int passed, int findings, int setupProblems,
                           int stopped) {
@@ -66,8 +67,9 @@ public final class LastRuns {
     }
 
     /**
-     * How a scenario ended in a run: as {@link LastRun} counts it. {@link #STOPPED} is a scenario a
-     * stop interrupted: it did not finish, so it tells nothing of how the scenario fares.
+     * How a scenario ended in a run: as {@link LastRun} counts it. {@link #STOPPED} is a scenario only a
+     * stop failed ({@link ScenarioResult#stoppedOnly()}): it did not finish, so it tells nothing of how
+     * the scenario fares. A stopped scenario whose step had already failed counts by that step's kind.
      */
     public enum Outcome {
         PASSED("passed"), FINDING("finding"), SETUP("setup"), STOPPED("stopped");
@@ -206,7 +208,7 @@ public final class LastRuns {
             List<ScenarioOutcome> list = new ArrayList<>();
             for (JsonNode scenario : root) {
                 ScenarioResult result = outline(scenario);
-                Outcome outcome = result.stopped() ? Outcome.STOPPED : result.success() ? Outcome.PASSED
+                Outcome outcome = result.stoppedOnly() ? Outcome.STOPPED : result.success() ? Outcome.PASSED
                         : result.failureKind() == FailureKind.FINDING ? Outcome.FINDING : Outcome.SETUP;
                 list.add(new ScenarioOutcome(result.sourceName(), outcome));
             }
@@ -217,9 +219,10 @@ public final class LastRuns {
     }
 
     /**
-     * Just what {@link ScenarioResult#failureKind()} looks at — success, each step's success and kind,
-     * the failure detail, each cleanup entry's status — so the rule stays in one place; and whether a
-     * stop interrupted it (a missing {@code stopped} is false: the engine writes it only when true).
+     * Just what {@link ScenarioResult#failureKind()} and {@link ScenarioResult#stoppedOnly()} look at —
+     * success, each step's success, kind and message key, the failure detail and its key, each cleanup
+     * entry's status, whether a stop interrupted it (a missing {@code stopped} is false: the engine
+     * writes it only when true) — so the rules stay in one place.
      */
     private static ScenarioResult outline(JsonNode scenario) {
         List<StepResult> steps = new ArrayList<>();
@@ -228,8 +231,9 @@ public final class LastRuns {
             if (kind != null) {
                 FailureKind.valueOf(kind); // an unknown kind is not a results file of ours
             }
+            String messageKey = step.path("messageKey").isString() ? step.path("messageKey").asString() : null;
             steps.add(new StepResult(step.path("index").asInt(), step.path("type").asString(null), null,
-                    step.path("success").asBoolean(), 0, null, null, null, null, null, null, null, kind));
+                    step.path("success").asBoolean(), 0, null, null, null, null, null, messageKey, null, kind));
         }
         List<CleanupResult> cleanup = new ArrayList<>();
         for (JsonNode entry : scenario.path("cleanup")) {
@@ -239,8 +243,10 @@ public final class LastRuns {
                     status, 0, null));
         }
         String detail = scenario.path("failureDetail").isString() ? scenario.path("failureDetail").asString() : null;
+        String detailKey = scenario.path("failureDetailKey").isString()
+                ? scenario.path("failureDetailKey").asString() : null;
         return new ScenarioResult(scenario.path("name").asString(null), scenario.path("sourceName").asString(null),
-                scenario.path("success").asBoolean(), 0, steps, cleanup, detail, null, null, null,
+                scenario.path("success").asBoolean(), 0, steps, cleanup, detail, null, detailKey, null,
                 scenario.path("stopped").asBoolean(false), List.of());
     }
 

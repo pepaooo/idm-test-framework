@@ -58,7 +58,7 @@ public final class ScenarioEngine {
     private static final Logger LOG = LoggerFactory.getLogger(ScenarioEngine.class);
 
     /** Why a step, a cleanup entry or a scenario ended when the run was stopped. */
-    private static final Message STOPPED = Message.of("engine.run.stopped");
+    private static final Message STOPPED = Message.of(ScenarioResult.STOPPED_KEY);
 
     private final Map<String, StepType> registry;
     private final FixtureFactory fixtures;

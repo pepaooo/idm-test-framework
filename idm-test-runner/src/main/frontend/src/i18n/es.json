@@ -73,6 +73,7 @@
   "ui.tree.dropHint": "Suelte aquí archivos .yaml para añadirlos a scenarios/",
   "ui.tree.locked": "bloqueado",
   "ui.tree.secrets": "secrets.env nunca se abre en el editor",
+  "ui.tree.runFolder": "Carpeta a ejecutar",
   "ui.tree.unsaved": "sin guardar",
   "ui.tree.lastResult.passed": "la última ejecución fue correcta",
   "ui.tree.lastResult.finding": "última ejecución: hallazgo",

@@ -1,4 +1,4 @@
-import { useRef, useState, type DragEvent } from 'react';
+import { useId, useRef, useState, type DragEvent } from 'react';
 import { api, ApiProblem } from '../api/client';
 import { Badge, type BadgeStatus } from '../components/Badge';
 import { t } from '../i18n';
@@ -15,11 +15,17 @@ interface Props {
   active: string | null;
   dirty: ReadonlySet<string>;
   readOnly: boolean;
-  /** The scenario the current run is running, marked as running. */
-  running?: string | null;
+  /** The folder selected for Run folder (workspace-relative), marked as the selected row. */
+  selectedFolder?: string | null;
+  /** The scenarios of the current run still to finish, by workspace-relative path. */
+  runStates?: ReadonlyMap<string, 'running' | 'waiting'>;
   onOpen(path: string): void;
+  /** A folder row was clicked (it also folds or unfolds). */
+  onSelectFolder?(path: string): void;
   onAdded(added: string[]): void;
 }
+
+const NO_RUN: ReadonlyMap<string, 'running' | 'waiting'> = new Map();
 
 const isYaml = (name: string) => /\.ya?ml$/i.test(name);
 
@@ -31,11 +37,23 @@ const startsOpen = (path: string) => path === 'scenarios' || path.startsWith('sc
  * secrets.env locked and never opened. "Add files" and dropping .yaml/.yml files on the tree copy
  * them into scenarios/ through `POST /api/files/add`.
  */
-export function FileTree({ tree, active, dirty, readOnly, running = null, onOpen, onAdded }: Props) {
+export function FileTree({
+  tree,
+  active,
+  dirty,
+  readOnly,
+  selectedFolder = null,
+  runStates = NO_RUN,
+  onOpen,
+  onSelectFolder,
+  onAdded,
+}: Props) {
   const [toggled, setToggled] = useState<ReadonlySet<string>>(new Set());
   const [messages, setMessages] = useState<{ text: string; problem: boolean }[]>([]);
   const [dropping, setDropping] = useState(false);
   const input = useRef<HTMLInputElement>(null);
+  // the selected folder's description: it is the folder Run folder runs (the active file is current too)
+  const runFolderNote = useId();
 
   const isOpen = (path: string) => startsOpen(path) !== toggled.has(path);
   const toggle = (path: string) =>
@@ -87,9 +105,21 @@ export function FileTree({ tree, active, dirty, readOnly, running = null, onOpen
     const indent = { paddingLeft: 10 + depth * 12 };
     if (node.dir) {
       const open = isOpen(node.path);
+      const selected = node.path === selectedFolder;
       return (
         <li key={node.path}>
-          <button type="button" className="tree-row tree-dir" style={indent} aria-expanded={open} onClick={() => toggle(node.path)}>
+          <button
+            type="button"
+            className={`tree-row tree-dir${selected ? ' tree-selected' : ''}`}
+            style={indent}
+            aria-expanded={open}
+            aria-current={selected ? 'true' : undefined}
+            aria-describedby={selected ? runFolderNote : undefined}
+            onClick={() => {
+              toggle(node.path);
+              onSelectFolder?.(node.path);
+            }}
+          >
             <span aria-hidden="true" className="tree-caret">{open ? '▾' : '▸'} </span>
             {node.name}
           </button>
@@ -112,6 +142,7 @@ export function FileTree({ tree, active, dirty, readOnly, running = null, onOpen
       );
     }
     const result = node.kind === 'scenario' && node.lastResult ? node.lastResult : null;
+    const runState = runStates.get(node.path);
     return (
       <li key={node.path}>
         <button
@@ -127,12 +158,17 @@ export function FileTree({ tree, active, dirty, readOnly, running = null, onOpen
               {' ●'}
             </span>
           )}
-          {node.path === running && (
+          {runState === 'running' && (
             <span className="tree-badge run-spin" role="img" aria-label={t('ui.run.state.running')}>
               ◌
             </span>
           )}
-          {result && node.path !== running && (
+          {runState === 'waiting' && (
+            <span className="tree-badge tree-waiting" role="img" aria-label={t('ui.run.state.waiting')}>
+              ○
+            </span>
+          )}
+          {result && runState === undefined && (
             <span className="tree-badge">
               <Badge status={RESULT_BADGE[result]} label={t(`ui.tree.lastResult.${result}`)} />
             </span>
@@ -170,6 +206,9 @@ export function FileTree({ tree, active, dirty, readOnly, running = null, onOpen
           }}
         />
       </div>
+      <span id={runFolderNote} hidden>
+        {t('ui.tree.runFolder')}
+      </span>
       {tree?.children && <ul className="tree-list">{tree.children.map((child) => renderNode(child, 0))}</ul>}
       {messages.map((message) => (
         <p

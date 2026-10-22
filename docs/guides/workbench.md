@@ -109,6 +109,14 @@ Without `--workspace`, the workbench opens on the start page:
 - **Open a workspace**: any folder with a `scenarios/` folder, typed or picked with **Browse…**,
   including folders made with `idmtest init`.
 
+While a run is going, the workbench keeps its workspace: opening another one (from the list, by folder,
+or after creating one) shows "A run is going in lab-tests. Wait for it to finish, or stop it." with
+**Stop the run** and **Cancel**. Stop the run asks first ("Stop the run in lab-tests? Its cleanup will
+not run."), because a stopped scenario skips its cleanup; the page then shows "Stopping the run…" and
+opens the workspace you asked for by itself once the run has ended (if the run is still going after
+30 seconds, the notice comes back). A workspace created during a run is created at once; only its
+opening waits. Cancel closes the notice. The workspace being run can always be opened.
+
 The top bar has the language and the light/dark switch; the footer shows the version and "listening on
 this computer only".
 

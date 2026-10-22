@@ -1,6 +1,8 @@
 package com.idm.test.runner.ui.api;
 
 import com.idm.test.runner.InitCommand;
+import com.idm.test.runner.LabFixture;
+import com.idm.test.runner.ui.RunEventStream;
 import com.idm.test.runner.ui.UiCommand;
 import com.idm.test.runner.ui.UiHttp;
 import com.idm.test.runner.ui.UiHttp.Response;
@@ -222,6 +224,65 @@ class WorkspacesControllerTest {
         assertThat(json(spanish).get("key").asString()).isEqualTo("ui.workspace.notWorkspace");
         assertThat(json(spanish).get("message").asString()).contains("espacio de trabajo");
         assertThat(recentFile()).doesNotExist();
+    }
+
+    @Test
+    @DisplayName("Open refuses another workspace while a run is going (409 naming the running one), in the request's language")
+    void testOpenRefusedWhileRunning() throws Exception {
+        try (LabFixture lab = LabFixture.start();
+             UiServer running = UiCommand.start(0, Locale.ENGLISH, null, Map.of())) {
+            // a run that waits 60 s for a value it never sees, until it is stopped
+            Path x = lab.workspace(temp.resolve("running-ws"), LabFixture.database(temp.resolve("db")), null);
+            Path settings = x.resolve("config/application-lab.yml");
+            Files.writeString(settings, Files.readString(settings)
+                    .replace("default-timeout-seconds: 2", "default-timeout-seconds: 60"));
+            LabFixture.scenario(x, "wrong-sn.yaml", LabFixture.WRONG_SN);
+            Path y = temp.resolve("other-ws");
+            InitCommand.run(y, new PrintStream(OutputStream.nullOutputStream()));
+
+            Response opened = UiHttp.send(running, "POST", "/api/workspaces/open",
+                    JSON.writeValueAsString(Map.of("path", x.toString())));
+            assertThat(opened.status()).as(opened.body()).isEqualTo(200);
+            Response started = UiHttp.send(running, "POST", "/api/runs",
+                    JSON.writeValueAsString(Map.of("profile", "lab")));
+            assertThat(started.status()).as(started.body()).isEqualTo(202);
+            try (RunEventStream stream = new RunEventStream(running)) {
+                stream.until("attempt");
+
+                Response refused = UiHttp.send(running, "POST", "/api/workspaces/open",
+                        JSON.writeValueAsString(Map.of("path", y.toString())));
+                assertThat(refused.status()).as(refused.body()).isEqualTo(409);
+                assertThat(refused.header("Content-Type")).startsWith("application/json");
+                JsonNode body = json(refused);
+                assertThat(body.propertyNames()).containsExactlyInAnyOrder("key", "message", "runningWorkspace");
+                assertThat(body.get("key").asString()).isEqualTo("ui.workspace.runGoing");
+                assertThat(body.get("runningWorkspace").get("name").asString()).isEqualTo("running-ws");
+                assertThat(body.get("runningWorkspace").get("path").asString())
+                        .isEqualTo(x.toRealPath().toString());
+                assertThat(body.get("message").asString())
+                        .isEqualTo("A run is going in running-ws. Wait for it to finish, or stop it.");
+
+                Response spanish = UiHttp.send(running, "POST", "/api/workspaces/open",
+                        JSON.writeValueAsString(Map.of("path", y.toString())), Map.of("Accept-Language", "es"));
+                assertThat(spanish.status()).isEqualTo(409);
+                assertThat(json(spanish).get("message").asString()).isEqualTo(
+                        "Hay una ejecución en curso en running-ws. Espere a que termine o deténgala.");
+
+                assertThat(json(UiHttp.get(running, "/api/health")).get("workspace").asString())
+                        .isEqualTo(x.toString());
+                // the refused workspace is not added to the recent list
+                assertThat(json(UiHttp.get(running, "/api/workspaces/recent")))
+                        .noneMatch(r -> r.get("path").asString().equals(y.toString()));
+                // opening the running workspace itself is still allowed
+                Response same = UiHttp.send(running, "POST", "/api/workspaces/open",
+                        JSON.writeValueAsString(Map.of("path", x.toString())));
+                assertThat(same.status()).as(same.body()).isEqualTo(200);
+
+                Response stop = UiHttp.send(running, "POST", "/api/runs/current/stop", null);
+                assertThat(stop.status()).as(stop.body()).isEqualTo(202);
+                assertThat(stream.all().getLast().name()).isEqualTo("runFinished");
+            }
+        }
     }
 
     // --- recent -------------------------------------------------------------------------------

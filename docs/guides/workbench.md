@@ -249,9 +249,10 @@ entries of the Run menu say why when you point at them.
   the click still folds or unfolds it), then **Run ▾ → Run folder `<folder>/` (n)**: it runs every
   scenario in that folder and its subfolders. With no folder selected, Run folder is the active
   scenario's folder; opening a file from the tree selects no folder again, so Run folder follows the
-  last click. `scenarios/` itself has no Run folder (Run all covers it), a folder without scenarios
-  shows it disabled with (0), and the selection is not kept after a reload. Selecting a folder never
-  changes what **▶ Run** runs: the scenario in the active tab.
+  last click. `scenarios/` itself has no Run folder (Run all covers it), and folders outside
+  `scenarios/` (`config/`, `reports/`) are not selected: the menu then offers the open scenario's
+  folder. A folder without scenarios shows it disabled with (0), and the selection is not kept after a
+  reload. Selecting a folder never changes what **▶ Run** runs: the scenario in the active tab.
 - During a run the panel shows "Running all · 3 of 5", each scenario's state (passed, finding, setup
   problem, running "step 2 of 4…", waiting), and **■ Stop**. The tree marks every scenario of the
   run: ◌ running, ○ waiting, then its result badge as it finishes. One run at a time: a second start

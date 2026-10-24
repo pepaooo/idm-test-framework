@@ -3,7 +3,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import userEvent from '@testing-library/user-event';
 import { Workbench } from '../workbench/Workbench';
 import { setLanguage } from '../i18n';
-import { directory, hrDatabase } from '../test/labServer';
+import { defaultDirectoryNeeded, directory, hrDatabase, namedDirectory } from '../test/labServer';
 import { act } from '@testing-library/react';
 import { emit, FILES, RUN_ID, runServer, WORKSPACE } from '../test/runServer';
 
@@ -236,6 +236,50 @@ describe('Run button', () => {
     await userEvent.click(screen.getByRole('menuitem', { name: /Run folder users\// }));
     await waitFor(() => expect(server.runStarts()).toHaveLength(2));
     expect(server.runStarts()[1].body).toMatchObject({ scenarios: { folder: 'scenarios/users' } });
+  });
+
+  it('is blocked with "Lab: choose a default directory" for a scenario with steps without directory:; the button opens that tab', async () => {
+    const server = runServer({
+      lab: {
+        systems: [namedDirectory('ad'), namedDirectory('edirectory'), { ...hrDatabase('ready'), usedByScenarios: ['hr-sync.yaml'] }],
+        defaultDirectory: defaultDirectoryNeeded({ usedByScenarios: ['users/create-user.yaml'] }),
+      },
+    });
+    render(<Workbench workspace={WORKSPACE} lockWait={10} />);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Lab: choose a default directory' })).toBeInTheDocument());
+    await openCreate();
+    expect(runButton()).toBeDisabled();
+    expect(runButton()).toHaveAttribute('title', 'Run is blocked: Lab: choose a default directory');
+    const run = screen.getByRole('complementary', { name: 'Run' });
+    await userEvent.click(within(run).getByRole('button', { name: 'Open the lab panel' }));
+    const panel = await screen.findByRole('dialog', { name: /Lab connection/ });
+    expect(within(panel).getByRole('tab', { selected: true })).toHaveTextContent('Default directory');
+    await userEvent.click(within(panel).getByRole('button', { name: 'Close the lab panel' }));
+
+    // hr-sync.yaml has no ldap step: it runs
+    await userEvent.click(await screen.findByRole('button', { name: /^hr-sync\.yaml/ }));
+    await waitFor(() => expect((screen.getByLabelText('Edit scenarios/hr-sync.yaml') as HTMLTextAreaElement).value).toContain('name: HR'));
+    expect(runButton()).toBeEnabled();
+    await userEvent.click(screen.getByRole('button', { name: 'More ways to run' }));
+    expect(screen.getByRole('menuitem', { name: /Run all scenarios/ })).toBeDisabled();
+    await userEvent.keyboard('{Escape}');
+    await userEvent.click(runButton());
+    await waitFor(() => expect(server.runStarts()).toHaveLength(1));
+  });
+
+  it('an invalid default directory blocks every run (the runner refuses it up front)', async () => {
+    runServer({
+      lab: {
+        systems: [namedDirectory('ad'), { ...hrDatabase('ready'), usedByScenarios: ['hr-sync.yaml'] }],
+        defaultDirectory: defaultDirectoryNeeded({ usedByScenarios: ['users/create-user.yaml'], value: 'nope', source: 'profile', state: 'invalid' }),
+      },
+    });
+    render(<Workbench workspace={WORKSPACE} lockWait={10} />);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Lab: choose a default directory' })).toBeInTheDocument());
+    await userEvent.click(await screen.findByRole('button', { name: /^hr-sync\.yaml/ }));
+    await waitFor(() => expect((screen.getByLabelText('Edit scenarios/hr-sync.yaml') as HTMLTextAreaElement).value).toContain('name: HR'));
+    expect(runButton()).toBeDisabled();
+    expect(runButton()).toHaveAttribute('title', 'Run is blocked: Lab: choose a default directory');
   });
 
   it('a failed lab reload does not block Run but shows a warning line', async () => {

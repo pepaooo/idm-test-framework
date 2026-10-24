@@ -25,8 +25,25 @@ export interface LabSystem {
   lastTest: TestResult | null;
 }
 
+/**
+ * Steps without `directory:` that `idmtest run` cannot place (LabSettings.DefaultDirectory): several
+ * directories and no `default-directory`, or one that names none of them. Null in the view otherwise.
+ */
+export interface DefaultDirectory {
+  usedByScenarios: string[];
+  /** The directories the runner knows, sorted. */
+  choices: string[];
+  /** The configured `idm.test.default-directory`, or null when unset. */
+  value: string | null;
+  /** Where `value` comes from (null when unset). */
+  source: 'profile' | 'application.yml' | 'environment' | null;
+  state: 'missing' | 'invalid';
+}
+
 export interface LabView {
   systems: LabSystem[];
+  /** Absent or null when steps without `directory:` have a directory. */
+  defaultDirectory?: DefaultDirectory | null;
 }
 
 /**

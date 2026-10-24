@@ -1,6 +1,9 @@
 import { t } from '../i18n';
 import type { LabField, LabState, LabSystem, LabView } from './types';
 
+/** The lab panel's tab for the default directory (no system has this id: system ids hold a kind). */
+export const DEFAULT_DIRECTORY_TAB = 'default-directory';
+
 /** The systems the chip counts: those a scenario uses (all of them when no scenario uses any). */
 export function countedSystems(view: LabView): LabSystem[] {
   const used = view.systems.filter((system) => system.usedByScenarios.length > 0);
@@ -19,10 +22,11 @@ function inSentence(label: string): string {
 }
 
 /**
- * The lab's readiness as the chip shows it and Run (Task 14) checks it: missing (a required field
- * of a used system is not filled in) before untested before ready. With no view yet (loading, or
- * the settings could not be read) it is `untested`: nothing is known to be missing, so Run is not
- * blocked and the run itself reports what is wrong.
+ * The lab's readiness as the chip shows it and Run (Task 14) checks it: missing (steps without
+ * `directory:` have no default directory, or a required field of a used system is not filled in)
+ * before untested before ready. With no view yet (loading, or the settings could not be read) it
+ * is `untested`: nothing is known to be missing, so Run is not blocked and the run itself reports
+ * what is wrong.
  */
 export function deriveLabState(view: LabView | null, error: string | null, hasProfile = true): LabState {
   if (!hasProfile) {
@@ -42,15 +46,36 @@ function missingState(missing: LabSystem): LabState {
   return { state: 'missing', missingSystemId: missing.id, message: t(key, { system: missing.name, field: label }) };
 }
 
+function defaultDirectoryState(): LabState {
+  return { state: 'missing', missingSystemId: DEFAULT_DIRECTORY_TAB, message: t('ui.lab.chip.defaultDirectory') };
+}
+
+/**
+ * Whether a run of `scenarios` (null: all) is refused for the default directory: an invalid one
+ * refuses every run up front, as `idmtest run` does; a missing one only the runs with a scenario
+ * that has steps without `directory:`.
+ */
+function defaultDirectoryBlocks(view: LabView, scenarios: readonly string[] | null): boolean {
+  const block = view.defaultDirectory;
+  if (!block) {
+    return false;
+  }
+  return block.state === 'invalid' || scenarios === null || block.usedByScenarios.some((name) => scenarios.includes(name));
+}
+
 /**
  * What blocks a run of `scenarios` (names as under scenarios/, as `usedByScenarios` has them; null:
- * all of them): the first missing system one of them uses (spec §4.5: "something a selected
- * scenario needs is absent"), or null. A system no selected scenario uses does not block. When no
+ * all of them): the default directory when the runner would refuse it for them, else the first
+ * missing system one of them uses (spec §4.5: "something a selected scenario needs is absent"), or
+ * null. A system no selected scenario uses does not block. When no
  * scenario is known to use any system, every system counts, as for the chip.
  */
 export function missingFor(view: LabView | null, scenarios: readonly string[] | null): LabState | null {
   if (!view) {
     return null;
+  }
+  if (defaultDirectoryBlocks(view, scenarios)) {
+    return defaultDirectoryState();
   }
   const counted = countedSystems(view);
   const anyUsed = view.systems.some((system) => system.usedByScenarios.length > 0);
@@ -63,6 +88,9 @@ export function missingFor(view: LabView | null, scenarios: readonly string[] | 
 }
 
 function fromView(view: LabView): LabState {
+  if (view.defaultDirectory) {
+    return defaultDirectoryState();
+  }
   const systems = countedSystems(view);
   const missing = systems.find((system) => system.status === 'missing');
   if (missing) {

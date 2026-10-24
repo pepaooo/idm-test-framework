@@ -76,6 +76,8 @@ export function FileTree({
   const [creating, setCreating] = useState<Creating | null>(null);
   // the button that opened the name dialog: it gets the focus back when the dialog closes
   const opener = useRef<HTMLButtonElement | null>(null);
+  // a create of the name dialog is on its way
+  const sending = useRef(false);
   // the selected folder's description: it is the folder Run folder runs (the active file is current too)
   const runFolderNote = useId();
 
@@ -109,6 +111,9 @@ export function FileTree({
   };
 
   const startCreating = (what: Creating, button: HTMLButtonElement) => {
+    if (sending.current) {
+      return; // the dialog waits for its create; another request would replace it under that create
+    }
     opener.current = button;
     setCreating(what);
   };
@@ -128,6 +133,7 @@ export function FileTree({
   /** Creates `folder/fileName`: null when done, else the reason it was refused. */
   const create = async (what: Creating, folder: string, fileName: string): Promise<string | null> => {
     const path = `${folder}/${fileName}`;
+    sending.current = true;
     try {
       let content: string;
       if (what.kind === 'new') {
@@ -156,6 +162,8 @@ export function FileTree({
       return null;
     } catch (e) {
       return e instanceof ApiProblem ? e.message : String(e);
+    } finally {
+      sending.current = false;
     }
   };
 
@@ -322,6 +330,8 @@ export function FileTree({
       </nav>
       {creating && (
         <NewScenarioDialog
+          // one dialog per request: a second one (another row's Duplicate) starts afresh
+          key={creating.kind === 'new' ? 'new' : `duplicate:${creating.source}`}
           title={t(creating.kind === 'new' ? 'ui.tree.new' : 'ui.tree.duplicate')}
           label={t(creating.kind === 'new' ? 'ui.tree.newName' : 'ui.tree.duplicateName')}
           folder={targetFolder}

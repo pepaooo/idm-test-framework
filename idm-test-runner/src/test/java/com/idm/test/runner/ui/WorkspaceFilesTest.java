@@ -271,6 +271,27 @@ class WorkspaceFilesTest {
         files.createScenario("scenarios/top.yml", "name: top\n");
         assertThat(Files.readString(ws.resolve("scenarios/top.yml"))).isEqualTo("name: top\n");
         assertThat(child(child(files.tree(), "scenarios"), "scenarios/top.yml").kind()).isEqualTo("scenario");
+        // close to a Windows device name, but not one
+        for (String name : new String[] {"console", "com10", "con-x", "lpt0", "my con", "a.b"}) {
+            files.createScenario("scenarios/" + name + ".yaml", "name: x\n");
+            assertThat(ws.resolve("scenarios/" + name + ".yaml")).exists();
+        }
+    }
+
+    @Test
+    @DisplayName("A failed write whose clean-up also fails keeps the write error, with the clean-up's attached")
+    void testFailedWriteKeepsItsError() throws Exception {
+        Path notEmpty = Files.createDirectories(temp.resolve("left/inside"));
+        IOException write = new IOException("disk full");
+
+        IOException thrown = WorkspaceFiles.removeHalfWritten(notEmpty.getParent(), write);
+
+        assertThat(thrown).isSameAs(write);
+        assertThat(thrown.getSuppressed()).hasSize(1);
+        assertThat(thrown.getSuppressed()[0]).isInstanceOf(java.nio.file.DirectoryNotEmptyException.class);
+        Path half = Files.writeString(temp.resolve("half.yaml"), "na");
+        assertThat(WorkspaceFiles.removeHalfWritten(half, write)).isSameAs(write);
+        assertThat(half).doesNotExist();
     }
 
     @Test
@@ -318,7 +339,12 @@ class WorkspaceFilesTest {
     void testCreateRefusals() throws Exception {
         List<String> before = listing();
         for (String path : new String[] {"scenarios/", "scenarios/.yaml", "scenarios/a:b.yaml", "scenarios/a\\b.yaml",
-                "scenarios/a..b.yaml", "scenarios/.hidden.yaml"}) {
+                "scenarios/a..b.yaml", "scenarios/.hidden.yaml", "scenarios/con.yaml", "scenarios/CON.yml",
+                "scenarios/prn.yaml", "scenarios/aux.yaml", "scenarios/nul.yaml", "scenarios/com1.yaml",
+                "scenarios/Com9.yaml", "scenarios/lpt1.yaml", "scenarios/LPT9.yaml", "scenarios/con.backup.yaml",
+                "scenarios/a*b.yaml", "scenarios/a?b.yaml", "scenarios/a\"b.yaml", "scenarios/a<b.yaml",
+                "scenarios/a>b.yaml", "scenarios/a|b.yaml", "scenarios/a .yaml", "scenarios/a..yaml",
+                "scenarios/a.b..yaml"}) {
             assertProblem(() -> files.createScenario(path, "x: 1\n"), Problem.BAD_NAME);
         }
         for (String path : new String[] {"../x.yaml", "scenarios/../config/a.yaml", "config/a.yaml", "a.yaml",

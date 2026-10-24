@@ -269,7 +269,12 @@ entries of the Run menu say why when you point at them.
   It copies **what the editor shows**, unsaved edits included; the original is neither saved nor
   changed, and keeps its unsaved edits in its tab. The copy is exact: its `name:` is not changed, and
   a password written in plain text in the original is in the copy too, with the same warning.
-- **Names.** An empty name, or one with `/`, `\`, `..` or `:`, is refused before anything is sent. A
+- **Names.** An empty name (`.yaml` alone too), one starting with a dot, one with `/`, `\`, `..`, `:`
+  or any of `* ? " < > |`, one ending in a dot or space, and the names Windows keeps for devices (`con`,
+  `prn`, `aux`, `nul`, `com1`–`com9`, `lpt1`–`lpt9`, in any case and with any extension) are refused
+  before anything is sent, on every system, so the workspace stays usable on Windows too. A name that
+  YAML would read as something else (`null`, `yes`, `1.50`, a date…) is written in quotes in the
+  template's `name:`. While a create is on its way the dialog cannot be cancelled. A
   name that already exists is refused with "<path> already exists; choose another name.": the dialog
   stays open for another name, and **nothing is ever overwritten**. Enter creates, Escape cancels.
 - In a read-only (second) tab both are disabled.

@@ -2,17 +2,31 @@ import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { Badge } from '../components/Badge';
 import { t } from '../i18n';
 
+/** A part before the first dot that Windows keeps for a device, in any letter case. */
+const WINDOWS_DEVICE = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i;
+
 /**
  * The file name for what was typed (trimmed), `.yaml` added when it ends in neither .yaml nor
- * .yml; null when it cannot be a file name: empty, or with `/`, `\`, `..` or `:` (the server
- * refuses those too, as `ui.file.badName`).
+ * .yml; null when it cannot be a file name, as the server's `ui.file.badName` (WorkspaceFiles
+ * .createScenario) decides: an empty name before the extension, a name starting with a dot, one with
+ * `/`, `\`, `..`, `:` or `* ? " < > |`, one ending in a dot or space before the extension, or a
+ * Windows device name (con, nul, com1, lpt9…) before its first dot.
  */
 export function fileNameOf(typed: string): string | null {
-  const name = typed.trim();
-  if (!name || /[/\\:]/.test(name) || name.includes('..')) {
+  const trimmed = typed.trim();
+  const name = /\.ya?ml$/.test(trimmed) ? trimmed : `${trimmed}.yaml`;
+  const stem = name.replace(/\.ya?ml$/, '');
+  if (
+    !stem ||
+    name.startsWith('.') ||
+    /[/\\:*?"<>|]/.test(name) ||
+    name.includes('..') ||
+    /[. ]$/.test(stem) ||
+    WINDOWS_DEVICE.test(stem.split('.')[0].trim())
+  ) {
     return null;
   }
-  return /\.ya?ml$/.test(name) ? name : `${name}.yaml`;
+  return name;
 }
 
 interface Props {
@@ -83,7 +97,10 @@ export function NewScenarioDialog({ title, label, folder, suggested, onCreate, o
         onKeyDown={(event) => {
           if (event.key === 'Escape') {
             event.stopPropagation();
-            onCancel();
+            // a create on its way finishes first: closing now would leave a file made behind the dialog
+            if (!busy) {
+              onCancel();
+            }
           }
         }}
       >
@@ -110,7 +127,7 @@ export function NewScenarioDialog({ title, label, folder, suggested, onCreate, o
         )}
         <div className="actions">
           <span className="spacer" />
-          <button type="button" className="secondary" onClick={onCancel}>
+          <button type="button" className="secondary" disabled={busy} onClick={onCancel}>
             {t('ui.tree.cancel')}
           </button>
           <button type="submit" className="primary" disabled={busy}>

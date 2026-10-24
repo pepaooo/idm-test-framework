@@ -1,5 +1,7 @@
 package com.idm.test.runner.ui.api;
 
+import com.idm.test.engine.ScenarioLoader;
+import com.idm.test.engine.model.Scenario;
 import com.idm.test.runner.InitCommand;
 import com.idm.test.runner.ui.UiCommand;
 import com.idm.test.runner.ui.UiHttp;
@@ -15,6 +17,7 @@ import org.junit.jupiter.api.io.TempDir;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -149,6 +152,7 @@ class FilesControllerTest {
         Response created = put("scenarios/brand-new.yaml", "x: 1\n", "0".repeat(64));
         assertThat(created.status()).isEqualTo(404);
         assertThat(json(created).get("key").asString()).isEqualTo("ui.file.notFound");
+        assertThat(json(created).get("message").asString()).contains("New scenario").contains("Add files");
         assertThat(ws.resolve("scenarios/brand-new.yaml")).doesNotExist();
     }
 
@@ -377,6 +381,10 @@ class FilesControllerTest {
         refusals.put("scenarios/", "ui.file.badName");
         refusals.put("scenarios/a\\b.yaml", "ui.file.badName");
         refusals.put("scenarios/a..b.yaml", "ui.file.badName");
+        for (String name : new String[] {"con", "CON", "prn", "aux", "Nul", "com1", "COM9", "lpt1", "lpt9",
+                "con.backup", "nul .x", "a*b", "a?b", "a\"b", "a<b", "a>b", "a|b", "a ", "a."}) {
+            refusals.put("scenarios/" + name + ".yaml", "ui.file.badName");
+        }
         for (Map.Entry<String, String> refusal : refusals.entrySet()) {
             Response response = create(refusal.getKey(), "name: x\n");
             assertThat(response.status()).as(refusal.getKey() + " " + response.body()).isEqualTo(400);
@@ -410,15 +418,34 @@ class FilesControllerTest {
     }
 
     @Test
-    @DisplayName("The new-scenario template, named, validates with zero problems")
+    @DisplayName("The new-scenario template, named, validates with zero problems and keeps the file stem as name")
     void testTemplateValidates() throws Exception {
-        String content = TEMPLATE.replace("<file name without extension>", "disable-user");
+        // the stem, and how the workbench's scenarioTemplate.ts writes it: plain, or double-quoted when
+        // YAML would read it as something else (a comment, null, a boolean, a number, a date)
+        Map<String, String> names = new LinkedHashMap<>();
+        names.put("disable-user", "disable-user");
+        names.put("#1 [x]", "\"#1 [x]\"");
+        names.put("null", "\"null\"");
+        names.put("Yes", "\"Yes\"");
+        names.put("1.50", "\"1.50\"");
+        names.put("0x10", "\"0x10\"");
+        names.put("2026-10-24", "\"2026-10-24\"");
+        for (Map.Entry<String, String> name : names.entrySet()) {
+            String content = TEMPLATE.replace("<file name without extension>", name.getValue());
 
-        Response validated = UiHttp.send(server, "POST", "/api/validate",
-                JSON.writeValueAsString(Map.of("path", "scenarios/disable-user.yaml", "content", content)));
+            Response validated = UiHttp.send(server, "POST", "/api/validate", JSON.writeValueAsString(
+                    Map.of("path", "scenarios/" + name.getKey() + ".yaml", "content", content)));
 
-        assertThat(validated.status()).as(validated.body()).isEqualTo(200);
-        assertThat(json(validated).get("problems").size()).as(validated.body()).isZero();
+            assertThat(validated.status()).as(validated.body()).isEqualTo(200);
+            assertThat(json(validated).get("problems").size()).as(name.getKey() + " " + validated.body()).isZero();
+            Scenario scenario = ScenarioLoader.load(
+                    new ByteArrayInputStream(content.getBytes(StandardCharsets.UTF_8)), name.getKey() + ".yaml");
+            assertThat(scenario.name()).isEqualTo(name.getKey());
+        }
+        // unquoted, null is no name at all: why the template quotes it
+        Response unquoted = UiHttp.send(server, "POST", "/api/validate", JSON.writeValueAsString(Map.of(
+                "path", "scenarios/null.yaml", "content", TEMPLATE.replace("<file name without extension>", "null"))));
+        assertThat(unquoted.body()).contains("validation.load.nameRequired");
     }
 
     private static Response create(String path, String content) throws IOException {

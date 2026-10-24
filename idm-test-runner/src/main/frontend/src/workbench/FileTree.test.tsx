@@ -233,7 +233,10 @@ describe('FileTree', () => {
     expect(screen.queryByRole('button', { name: /^Duplicate secrets/ })).not.toBeInTheDocument();
   });
 
-  it.each(['', '   ', 'x/y', 'x\\y', '..', 'a..b', 'c:x'])('refuses the name %j before sending anything', async (name) => {
+  it.each([
+    '', '   ', 'x/y', 'x\\y', '..', 'a..b', 'c:x', '.yaml', '.yml', '.hidden', 'con', 'CON.yaml', 'Nul', 'aux.yml',
+    'prn', 'com1', 'LPT9', 'con.backup', 'a*b', 'a?b', 'a"b', 'a<b', 'a>b', 'a|b', 'a .yaml', 'a..yaml', 'a.',
+  ])('refuses the name %j before sending anything', async (name) => {
     const server = fakeServer({ 'POST /api/files/new': { status: 201, body: { path: 'scenarios/x.yaml', version: 'v1' } } });
     const onCreated = vi.fn();
     renderTree({ onCreated });
@@ -310,5 +313,51 @@ describe('FileTree', () => {
     expect(within(screen.getByRole('dialog', { name: 'Duplicar' })).getByLabelText('Nombre de la copia')).toHaveValue(
       'roles-grant-copy.yaml',
     );
+  });
+
+  it('accepts names close to a Windows device name', async () => {
+    const server = fakeServer({ 'POST /api/files/new': (r) => ({ status: 201, body: { path: (r.body as { path: string }).path, version: 'v1' } }) });
+    const onCreated = vi.fn();
+    renderTree({ onCreated });
+    for (const name of ['console', 'com10', 'lpt0', 'a.b']) {
+      await userEvent.click(screen.getByRole('button', { name: 'New scenario' }));
+      await userEvent.type(within(screen.getByRole('dialog')).getByLabelText('Name of the new scenario'), `${name}{Enter}`);
+      await waitFor(() => expect(onCreated).toHaveBeenCalledWith(`scenarios/${name}.yaml`));
+    }
+    expect(server.sent).toHaveLength(4);
+  });
+
+  it('a second dialog request while one is open does not keep the first one\'s name', async () => {
+    fakeServer({});
+    renderTree();
+    await userEvent.click(screen.getByRole('button', { name: 'Duplicate roles-grant.yaml' }));
+    await userEvent.type(within(screen.getByRole('dialog')).getByLabelText('Name of the copy'), '-typed');
+    // the tree's buttons stay reachable (Tab), e.g. another row's Duplicate
+    fireEvent.click(screen.getByRole('button', { name: 'Duplicate create-user.yaml' }));
+    const dialogs = screen.getAllByRole('dialog');
+    expect(dialogs).toHaveLength(1);
+    const input = within(dialogs[0]).getByLabelText('Name of the copy');
+    expect(input).toHaveValue('create-user-copy.yaml');
+    expect(dialogs[0]).toHaveTextContent('scenarios/users/');
+  });
+
+  it('while a create is on its way, Cancel and Escape do nothing, so a file is never created behind a closed dialog', async () => {
+    let answer: (value: { status: number; body: unknown }) => void = () => undefined;
+    fakeServer({ 'POST /api/files/new': () => new Promise((resolve) => (answer = resolve)) });
+    const onCreated = vi.fn();
+    renderTree({ onCreated });
+    await userEvent.click(screen.getByRole('button', { name: 'New scenario' }));
+    const dialog = screen.getByRole('dialog');
+    await userEvent.type(within(dialog).getByLabelText('Name of the new scenario'), 'slow{Enter}');
+    await waitFor(() => expect(within(dialog).getByRole('button', { name: 'Create' })).toBeDisabled());
+    expect(within(dialog).getByRole('button', { name: 'Cancel' })).toBeDisabled();
+    fireEvent.keyDown(within(dialog).getByLabelText('Name of the new scenario'), { key: 'Escape' });
+    expect(screen.getByRole('dialog')).toBe(dialog);
+    fireEvent.click(screen.getByRole('button', { name: 'Duplicate roles-grant.yaml' }));
+    expect(screen.getByRole('dialog', { name: 'New scenario' })).toBe(dialog);
+
+    answer({ status: 201, body: { path: 'scenarios/slow.yaml', version: 'v1' } });
+    await waitFor(() => expect(onCreated).toHaveBeenCalledWith('scenarios/slow.yaml'));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 });

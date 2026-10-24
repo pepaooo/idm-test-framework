@@ -18,4 +18,20 @@ describe('scenarioTemplate', () => {
     expect(scenarioTemplate('#1 [x]').split('\n')[0]).toBe('name: "#1 [x]"');
     expect(scenarioTemplate('niño 2.0').split('\n')[0]).toBe('name: niño 2.0');
   });
+
+  it.each(['null', 'Null', 'NULL', '~', 'true', 'False', 'yes', 'No', 'on', 'OFF', 'y', 'N'])(
+    'quotes %j, which YAML reads as null or a boolean',
+    (name) => {
+      expect(scenarioTemplate(name).split('\n')[0]).toBe(`name: "${name}"`);
+    },
+  );
+
+  it.each(['1.50', '0x10', '1_000', '2026-10-24', '12', '1e3', '0o7'])('quotes %j, which YAML reads as a number or date', (name) => {
+    expect(scenarioTemplate(name).split('\n')[0]).toBe(`name: "${name}"`);
+  });
+
+  it('leaves words that only contain a reserved one plain', () => {
+    expect(scenarioTemplate('null-check').split('\n')[0]).toBe('name: null-check');
+    expect(scenarioTemplate('yes please').split('\n')[0]).toBe('name: yes please');
+  });
 });

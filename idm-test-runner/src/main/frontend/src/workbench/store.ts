@@ -73,6 +73,9 @@ export interface StoreOptions {
 
 const filePath = (path: string) => withQuery('/api/files', { path });
 
+/** The server's key for a file that changed on disk since the version sent. */
+const FILE_CHANGED = 'ui.file.changed';
+
 function messageOf(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
@@ -711,7 +714,85 @@ export class WorkbenchStore {
     void this.validate(path);
   }
 
-  /** A file event from the server for `path` (created and changed alike; deleted is the tree's). */
+  /**
+   * Deletes the scenario `path` (the user confirmed) at the version this tab last read or saved — a
+   * file not open is read first for its version. Done: its tab closes and its draft is removed.
+   * Refused, it throws the server's {@link ApiProblem} and the file and tab stay; when the refusal
+   * is that the file changed on disk (409 `ui.file.changed`) an open tab learns of the change as
+   * for a save: with edits, the changed-on-disk choice; without, a quiet reload. Either way a
+   * second Delete goes over what the user has now seen, never over the stale version.
+   */
+  async deleteFile(path: string): Promise<void> {
+    if (this.state.readOnly) {
+      throw new ApiProblem(0, 'ui.lock.banner', t('ui.lock.banner'));
+    }
+    await this.saves.get(path)?.catch(() => undefined);
+    await this.opening.get(path);
+    const doc = this.doc(path);
+    const version = doc?.loaded ? doc.version : (await api.get<FileContent>(filePath(path))).version;
+    try {
+      await api.del(withQuery('/api/files', { path, version }));
+    } catch (e) {
+      if (e instanceof ApiProblem && e.status === 409 && e.key === FILE_CHANGED && this.doc(path)?.loaded) {
+        await this.learnDiskChange(path, e);
+      }
+      throw e;
+    }
+    await this.dropDeleted(path);
+  }
+
+  /** After a 409 `ui.file.changed`: the open tab's edits get the choice; a tab without edits reloads. */
+  private async learnDiskChange(path: string, problem: ApiProblem): Promise<void> {
+    const disk = await this.readDisk(path, problem);
+    const now = this.doc(path);
+    if (!now?.loaded) {
+      return;
+    }
+    if (isDirty(now) || now.conflict || disk.diskContent === null) {
+      this.update(path, () => ({ conflict: disk }));
+      return;
+    }
+    this.update(path, () => ({
+      content: disk.diskContent!,
+      diskContent: disk.diskContent!,
+      version: disk.diskVersion,
+      validated: null,
+    }));
+    void this.validate(path);
+  }
+
+  /** The file is gone from disk: its tab closes without asking, its draft is removed. */
+  private async dropDeleted(path: string): Promise<void> {
+    this.close(path);
+    this.wantedMarks.delete(path);
+    await this.unpersist(path);
+  }
+
+  /**
+   * A `deleted` file event (another tab deleted it, or another program). Only once the server
+   * confirms the file is gone (404) does the tab close and its draft go — without the
+   * changed-on-disk choice, since there is nothing on disk to keep or compare. A file that is back
+   * already (an editor's save by delete-and-rename, a git checkout) is a change instead, with the
+   * usual rules for edits; when the server cannot be asked, nothing changes.
+   */
+  async fileDeleted(path: string): Promise<void> {
+    await this.saves.get(path)?.catch(() => undefined);
+    await this.opening.get(path);
+    if (!this.doc(path) && !(await readDraft(this.workspace, path))) {
+      return; // neither open here nor kept as a draft: nothing to do
+    }
+    try {
+      await api.get<FileContent>(filePath(path));
+    } catch (e) {
+      if (e instanceof ApiProblem && e.status === 404) {
+        await this.dropDeleted(path);
+      }
+      return;
+    }
+    await this.fileChanged(path);
+  }
+
+  /** A file event from the server for `path` (created and changed alike; deleted: see fileDeleted). */
   async fileChanged(path: string): Promise<void> {
     await this.saves.get(path)?.catch(() => undefined);
     await this.opening.get(path);

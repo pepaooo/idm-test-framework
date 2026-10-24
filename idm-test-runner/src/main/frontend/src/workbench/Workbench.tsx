@@ -183,6 +183,9 @@ export function Workbench({ workspace, warning, lockWait = 300, runPanel, lab, r
         if (event.type === 'changed' || event.type === 'created') {
           void store.fileChanged(event.path);
         }
+        if (event.type === 'deleted') {
+          void store.fileDeleted(event.path);
+        }
         labStore.fileEvent(event.path);
       },
       [],
@@ -369,6 +372,15 @@ export function Workbench({ workspace, warning, lockWait = 300, runPanel, lab, r
                 setRunFolder(null);
                 void refreshTree();
                 void store.open(path);
+              }}
+              onDelete={async (path) => {
+                try {
+                  await store.deleteFile(path);
+                } catch (e) {
+                  return e instanceof ApiProblem ? e.message : String(e);
+                }
+                void refreshTree();
+                return null;
               }}
             />
           </div>

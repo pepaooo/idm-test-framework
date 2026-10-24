@@ -209,6 +209,40 @@ describe('FileTree', () => {
     expect(screen.getByRole('button', { name: 'Duplicate create-user.yaml' })).toBeDisabled();
   });
 
+  it('a read-only tab cannot delete scenarios', () => {
+    renderTree({ readOnly: true, onDelete: vi.fn() });
+    expect(screen.getByRole('button', { name: 'Delete roles-grant.yaml' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Delete create-user.yaml' })).toBeDisabled();
+  });
+
+  it('only scenario rows can be deleted: not config/, secrets.env, other files or folders', async () => {
+    renderTree({ onDelete: vi.fn() });
+    expect(screen.getByRole('button', { name: 'Delete roles-grant.yaml' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Delete disable-user.yaml' })).toBeEnabled();
+    await userEvent.click(screen.getByRole('button', { name: 'config' }));
+    await userEvent.click(screen.getByRole('button', { name: 'reports' }));
+    await userEvent.click(screen.getByRole('button', { name: '2026-10-19' }));
+    expect(screen.getByRole('button', { name: /application-lab\.yml/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /report\.html/ })).toBeInTheDocument();
+    const deletes = screen.getAllByRole('button', { name: /^Delete / }).map((button) => button.getAttribute('aria-label'));
+    expect(deletes.sort()).toEqual(['Delete create-user.yaml', 'Delete disable-user.yaml', 'Delete roles-grant.yaml']);
+  });
+
+  it('the delete dialog closes when the tab turns read-only, and a refused delete keeps it open with the reason', async () => {
+    fakeServer({ 'GET /api/files/git': { body: { state: 'clean' } } });
+    const onDelete = vi.fn(async () => 'roles-grant.yaml is part of the run that is going');
+    const props = { tree: TREE, active: null, dirty: new Set<string>(), onOpen: vi.fn(), onAdded: vi.fn(), onDelete };
+    const { rerender } = render(<FileTree {...props} readOnly={false} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Delete roles-grant.yaml' }));
+    const dialog = screen.getByRole('dialog', { name: 'Delete' });
+    expect(within(dialog).getByRole('button', { name: 'Cancel' })).toHaveFocus();
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
+    expect(onDelete).toHaveBeenCalledWith('scenarios/roles-grant.yaml');
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('roles-grant.yaml is part of the run that is going');
+    rerender(<FileTree {...props} readOnly />);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
   it('the name dialog closes when the tab turns read-only', async () => {
     const props = {
       tree: TREE,
@@ -298,8 +332,9 @@ describe('FileTree', () => {
   it('speaks Spanish for new and duplicate', async () => {
     setLanguage('es', false);
     fakeServer({});
-    renderTree();
+    renderTree({ onDelete: vi.fn() });
     expect(screen.getByRole('button', { name: 'Duplicar roles-grant.yaml' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Eliminar roles-grant.yaml' })).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Nuevo escenario' }));
     const dialog = screen.getByRole('dialog', { name: 'Nuevo escenario' });
     const input = within(dialog).getByLabelText('Nombre del nuevo escenario');

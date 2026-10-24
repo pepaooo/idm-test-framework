@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState, type DragEvent } from 'react';
 import { api, ApiProblem, withQuery } from '../api/client';
 import { Badge, type BadgeStatus } from '../components/Badge';
 import { t } from '../i18n';
+import { DeleteDialog } from './DeleteDialog';
 import { NewScenarioDialog } from './NewScenarioDialog';
 import { scenarioTemplate } from './scenarioTemplate';
 import type { TreeNode } from './types';
@@ -31,6 +32,11 @@ interface Props {
   textOf?(path: string): string | undefined;
   /** New scenario or Duplicate created this file. */
   onCreated?(path: string): void;
+  /**
+   * Deletes a scenario (after the user confirmed): resolves to null when done, else to the reason it
+   * was refused. Scenario rows offer Delete only when this is given.
+   */
+  onDelete?(path: string): Promise<string | null>;
 }
 
 /** What the name dialog is for: a new scenario, or a copy of `source`. */
@@ -53,7 +59,8 @@ const startsOpen = (path: string) => path === 'scenarios' || path.startsWith('sc
  * secrets.env locked and never opened. "Add files" and dropping .yaml/.yml files on the tree copy
  * them into scenarios/ through `POST /api/files/add`. "New scenario" (in `newFolder`, from the
  * template) and Duplicate on a scenario row (in its folder, copying what the editor shows) create a
- * file through `POST /api/files/new`, which never overwrites one.
+ * file through `POST /api/files/new`, which never overwrites one. Delete on a scenario row asks
+ * first ({@link DeleteDialog}) and then calls `onDelete`.
  */
 export function FileTree({
   tree,
@@ -68,12 +75,15 @@ export function FileTree({
   newFolder = 'scenarios',
   textOf = () => undefined,
   onCreated = () => undefined,
+  onDelete,
 }: Props) {
   const [toggled, setToggled] = useState<ReadonlySet<string>>(new Set());
   const [messages, setMessages] = useState<{ text: string; problem: boolean }[]>([]);
   const [dropping, setDropping] = useState(false);
   const input = useRef<HTMLInputElement>(null);
   const [creating, setCreating] = useState<Creating | null>(null);
+  // the scenario the delete dialog asks about
+  const [deleting, setDeleting] = useState<string | null>(null);
   // the button that opened the name dialog: it gets the focus back when the dialog closes
   const opener = useRef<HTMLButtonElement | null>(null);
   // a create of the name dialog is on its way
@@ -115,19 +125,53 @@ export function FileTree({
       return; // the dialog waits for its create; another request would replace it under that create
     }
     opener.current = button;
+    setDeleting(null);
     setCreating(what);
   };
 
-  // a tab that turns read-only (another tab took over) creates nothing: the dialog closes
+  const startDeleting = (path: string, button: HTMLButtonElement) => {
+    if (sending.current) {
+      return; // a create or delete is on its way: its dialog stays until it answers
+    }
+    opener.current = button;
+    setCreating(null);
+    setDeleting(path);
+  };
+
+  // a tab that turns read-only (another tab took over) creates and deletes nothing: the dialog closes
   useEffect(() => {
     if (readOnly) {
       setCreating(null);
+      setDeleting(null);
     }
   }, [readOnly]);
 
   const stopCreating = () => {
     setCreating(null);
     opener.current?.focus();
+  };
+
+  const stopDeleting = () => {
+    setDeleting(null);
+    opener.current?.focus();
+  };
+
+  /** Deletes `path` (confirmed): null when done, else the reason it was refused. */
+  const remove = async (path: string): Promise<string | null> => {
+    if (!onDelete) {
+      return null;
+    }
+    sending.current = true;
+    try {
+      const refused = await onDelete(path);
+      if (refused === null) {
+        // its row is gone: the focus goes back to the tree
+        setDeleting(null);
+      }
+      return refused;
+    } finally {
+      sending.current = false;
+    }
   };
 
   /** Creates `folder/fileName`: null when done, else the reason it was refused. */
@@ -260,13 +304,25 @@ export function FileTree({
         {node.kind === 'scenario' && (
           <button
             type="button"
-            className="tree-action"
+            className={`tree-action${onDelete ? ' tree-action-shifted' : ''}`}
             disabled={readOnly}
             aria-label={`${t('ui.tree.duplicate')} ${node.name}`}
             title={t('ui.tree.duplicate')}
             onClick={(event) => startCreating({ kind: 'duplicate', source: node.path }, event.currentTarget)}
           >
             ⧉
+          </button>
+        )}
+        {node.kind === 'scenario' && onDelete && (
+          <button
+            type="button"
+            className="tree-action"
+            disabled={readOnly}
+            aria-label={`${t('ui.tree.delete')} ${node.name}`}
+            title={t('ui.tree.delete')}
+            onClick={(event) => startDeleting(node.path, event.currentTarget)}
+          >
+            🗑
           </button>
         )}
       </li>
@@ -338,6 +394,15 @@ export function FileTree({
           suggested={creating.kind === 'new' ? '' : copyName(nameOf(creating.source))}
           onCreate={(fileName) => create(creating, targetFolder, fileName)}
           onCancel={stopCreating}
+        />
+      )}
+      {deleting && (
+        <DeleteDialog
+          key={deleting}
+          path={deleting}
+          unsaved={dirty.has(deleting)}
+          onDelete={() => remove(deleting)}
+          onCancel={stopDeleting}
         />
       )}
     </>

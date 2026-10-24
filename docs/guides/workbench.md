@@ -296,7 +296,9 @@ entries of the Run menu say why when you point at them.
   or discard it?" **Keep mine** creates the file again with the tab's text (never over a file that is
   back meanwhile: then you get the changed-on-disk choice); **Discard** closes the tab and drops the
   edits. Until you choose, nothing is saved. A read-only (second) tab keeps its edits too and asks once
-  it holds the workspace. Edits kept in the browser for a file not open are left alone. A file that is
+  it holds the workspace. Edits kept in the browser for a file not open are left alone; when the
+  workbench next opens the workspace (or the page is reloaded), such a file opens with the same
+  question. A file that is
   back at once (some editors save by deleting and renaming) is treated as changed, not deleted.
 - Only scenario files under `scenarios/` offer **Delete**: not `config/`, `secrets.env`, other files
   or folders. In a read-only (second) tab it is disabled.

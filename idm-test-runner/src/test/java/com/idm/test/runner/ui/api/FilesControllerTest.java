@@ -11,6 +11,7 @@ import com.idm.test.runner.ui.UiHttp.Response;
 import com.idm.test.runner.ui.UiServer;
 import com.idm.test.runner.ui.WorkspaceFiles;
 import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -32,6 +33,7 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -489,6 +491,29 @@ class FilesControllerTest {
             reader.interrupt();
             stream.body().close();
             client.close();
+        }
+    }
+
+    @Test
+    @DisplayName("A delete the disk refuses answers 500 ui.file.deleteFailed (not 'could not write'), in English and Spanish")
+    void testDeleteFailed() throws Exception {
+        Assumptions.assumeTrue(ws.getFileSystem().supportedFileAttributeViews().contains("posix"), "needs POSIX permissions");
+        Path folder = Files.createDirectories(ws.resolve("scenarios/locked"));
+        Files.writeString(folder.resolve("x.yaml"), "name: x\n");
+        String version = json(get("scenarios/locked/x.yaml")).get("version").asString();
+        Files.setPosixFilePermissions(folder, PosixFilePermissions.fromString("r-xr-xr-x"));
+        try {
+            Assumptions.assumeFalse(Files.isWritable(folder), "the folder stays writable (running as root?)");
+            Response failed = delete("scenarios/locked/x.yaml", version);
+            assertThat(failed.status()).as(failed.body()).isEqualTo(500);
+            assertThat(json(failed).get("key").asString()).isEqualTo("ui.file.deleteFailed");
+            assertThat(json(failed).get("message").asString()).startsWith("could not delete scenarios/locked/x.yaml: ");
+            Response es = UiHttp.send(server, "DELETE", "/api/files?path=scenarios%2Flocked%2Fx.yaml&version="
+                    + URLEncoder.encode(version, StandardCharsets.UTF_8), null, Map.of("Accept-Language", "es"));
+            assertThat(json(es).get("message").asString()).startsWith("no se pudo eliminar scenarios/locked/x.yaml: ");
+            assertThat(folder.resolve("x.yaml")).exists();
+        } finally {
+            Files.setPosixFilePermissions(folder, PosixFilePermissions.fromString("rwxr-xr-x"));
         }
     }
 

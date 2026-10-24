@@ -88,6 +88,32 @@ class GitToolTest {
         assertThat(snapshot(repo.resolve(".git"))).as("nothing under .git changed").isEqualTo(before);
     }
 
+    @Test
+    @DisplayName("Git state never starts a configured fsmonitor hook or daemon")
+    void testGitStateStartsNoFsmonitor(@TempDir Path temp) throws Exception {
+        GitTool git = new GitTool();
+        Assumptions.assumeTrue(git.available(), "git is not installed");
+        Assumptions.assumeTrue(temp.getFileSystem().supportedFileAttributeViews().contains("posix"), "needs a shell hook");
+        Path repo = Files.createDirectories(temp.resolve("repo"));
+        Files.createDirectories(repo.resolve("scenarios"));
+        Files.writeString(repo.resolve("scenarios/a.yaml"), "name: a\n");
+        assertThat(git.init(repo)).isTrue();
+        git(repo, "add", "-A");
+        git(repo, "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "-c", "commit.gpgsign=false",
+                "commit", "--quiet", "--no-verify", "-m", "first");
+        Path marker = temp.resolve("fsmonitor-ran");
+        Path hook = temp.resolve("fsmonitor-hook.sh");
+        Files.writeString(hook, "#!/bin/sh\ntouch '" + marker + "'\nexit 1\n");
+        Files.setPosixFilePermissions(hook, java.nio.file.attribute.PosixFilePermissions.fromString("rwx------"));
+        git(repo, "config", "core.fsmonitor", hook.toString());
+        Files.writeString(repo.resolve("scenarios/a.yaml"), "name: a changed\n");
+
+        assertThat(git.state(repo, "scenarios/a.yaml")).isEqualTo(GitTool.FileState.CHANGED);
+        assertThat(git.state(repo, "scenarios/new.yaml")).isEqualTo(GitTool.FileState.UNTRACKED);
+
+        assertThat(marker).as("the fsmonitor hook was started").doesNotExist();
+    }
+
     /** Runs git in {@code repo} without the GIT_* variables; fails the test when it fails. */
     private static void git(Path repo, String... args) throws Exception {
         List<String> command = new ArrayList<>(List.of("git"));

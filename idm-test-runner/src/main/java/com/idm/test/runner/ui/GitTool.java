@@ -68,15 +68,17 @@ public final class GitTool {
     /**
      * The git state of {@code relativePath} (workspace-relative, with {@code /}) in {@code workspace}'s
      * own repository; {@link FileState#NONE} when the workspace has no {@code .git}. Only reads: git
-     * runs with {@code --no-optional-locks}, so it does not refresh or write the index, and with
+     * runs with {@code --no-optional-locks}, so it does not refresh or write the index, with
+     * {@code core.fsmonitor=false}, so a configured fsmonitor hook or daemon is never started, and with
      * {@code --literal-pathspecs}, so {@code * ? [} in a name are not patterns.
      */
     public FileState state(Path workspace, String relativePath) {
         if (!Files.exists(workspace.resolve(".git"), LinkOption.NOFOLLOW_LINKS) || !available()) {
             return FileState.NONE;
         }
-        Result tracked = exec(List.of(program, "--no-optional-locks", "--literal-pathspecs", "ls-files",
-                "--error-unmatch", "--", relativePath), workspace, STATE_SECONDS);
+        Result tracked = exec(List.of(program, "-c", "core.fsmonitor=false", "--no-optional-locks",
+                "--literal-pathspecs", "ls-files", "--error-unmatch", "--", relativePath),
+                workspace, STATE_SECONDS);
         if (tracked == null) {
             return FileState.NONE;
         }
@@ -86,8 +88,9 @@ public final class GitTool {
         if (tracked.exitCode() != 0) {
             return FileState.NONE;
         }
-        Result status = exec(List.of(program, "--no-optional-locks", "--literal-pathspecs", "status",
-                "--porcelain=v1", "-z", "--untracked-files=no", "--", relativePath), workspace, STATE_SECONDS);
+        Result status = exec(List.of(program, "-c", "core.fsmonitor=false", "--no-optional-locks",
+                "--literal-pathspecs", "status", "--porcelain=v1", "-z", "--untracked-files=no", "--", relativePath),
+                workspace, STATE_SECONDS);
         if (status == null || status.exitCode() != 0) {
             return FileState.NONE;
         }

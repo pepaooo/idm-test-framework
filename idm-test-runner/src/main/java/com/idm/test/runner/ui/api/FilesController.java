@@ -130,7 +130,7 @@ class FilesController {
         } catch (WorkspaceFiles.ChangedException e) {
             return changed(path, e, http);
         } catch (UncheckedIOException e) {
-            throw writeFailed(path, e);
+            throw deleteFailed(path, e);
         }
     }
 
@@ -234,6 +234,12 @@ class FilesController {
             case NOT_DELETABLE -> ApiError.badRequest("runner.ui.file.notDeletable");
             case IN_RUN -> new ApiError(HttpStatus.CONFLICT, Message.of("runner.ui.file.inRun", e.subject()));
         };
+    }
+
+    private static ApiError deleteFailed(String path, UncheckedIOException e) {
+        Throwable cause = e.getCause();
+        String reason = cause.getMessage() == null ? cause.getClass().getSimpleName() : cause.getMessage();
+        return new ApiError(HttpStatus.INTERNAL_SERVER_ERROR, Message.of("runner.ui.file.deleteFailed", path, reason));
     }
 
     private static ApiError writeFailed(String path, UncheckedIOException e) {

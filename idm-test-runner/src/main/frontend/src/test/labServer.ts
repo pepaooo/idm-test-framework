@@ -1,5 +1,5 @@
 import type { Answer } from './fakeServer';
-import type { LabField, LabSystem, LabView, TestResult } from '../lab/types';
+import type { DefaultDirectory, LabField, LabSystem, LabView, TestResult } from '../lab/types';
 
 /** Lab fixtures and the `/api/lab` routes of a fake server (secret values never in a view, as on the server). */
 
@@ -67,19 +67,31 @@ export function hrDatabase(status: LabSystem['status'] = 'missing'): LabSystem {
   };
 }
 
+/** The reported setup: example.yaml has steps without directory:, two directories, no default. */
+export function defaultDirectoryNeeded(extra: Partial<DefaultDirectory> = {}): DefaultDirectory {
+  return { usedByScenarios: ['example.yaml'], choices: ['ad', 'edirectory'], value: null, source: null, state: 'missing', ...extra };
+}
+
+/** A named directory (`directory:<name>`). */
+export function namedDirectory(name: string, status: LabSystem['status'] = 'ready', usedByScenarios: string[] = []): LabSystem {
+  return { ...directory(status), id: `directory:${name}`, name: `Directory ${name}`, usedByScenarios };
+}
+
 export interface LabRoutesOptions {
   /** The view per profile (a function: computed per request). */
   views: Record<string, LabView | (() => LabView)>;
   /** What a save answers: the new view, or an error; default the profile's view as it is. */
   onSave?: (profile: string, body: unknown) => Answer;
   onTest?: (body: unknown) => TestResult | Answer;
+  /** What `PUT /api/lab/default-directory` answers; default the profile's view as it is. */
+  onSaveDefault?: (profile: string, body: unknown) => Answer;
 }
 
 function profileOf(url: string) {
   return new URL(url, 'http://127.0.0.1').searchParams.get('profile') ?? '';
 }
 
-export function labRoutes({ views, onSave, onTest }: LabRoutesOptions) {
+export function labRoutes({ views, onSave, onTest, onSaveDefault }: LabRoutesOptions) {
   const view = (profile: string): Answer => {
     const found = views[profile];
     if (!found) {
@@ -91,6 +103,8 @@ export function labRoutes({ views, onSave, onTest }: LabRoutesOptions) {
     'GET /api/lab': (request: { url: string }) => view(profileOf(request.url)),
     'PUT /api/lab': (request: { url: string; body: unknown }) =>
       onSave ? onSave(profileOf(request.url), request.body) : view(profileOf(request.url)),
+    'PUT /api/lab/default-directory': (request: { url: string; body: unknown }) =>
+      onSaveDefault ? onSaveDefault(profileOf(request.url), request.body) : view(profileOf(request.url)),
     'POST /api/lab/test': (request: { body: unknown }) => {
       const answer = onTest ? onTest(request.body) : { ok: true, message: 'Connected · bind OK', millis: 112 };
       return 'ok' in answer ? { body: answer } : answer;

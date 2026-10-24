@@ -6,7 +6,7 @@ import { useWorkbench } from '../workbench/context';
 import { setLanguage } from '../i18n';
 import { emitServerEvent } from '../test/browserFakes';
 import { WORKSPACE, workbenchServer } from '../test/workbenchServer';
-import { directory, hrDatabase, labRoutes, rest } from '../test/labServer';
+import { defaultDirectoryNeeded, directory, hrDatabase, labRoutes, namedDirectory, rest } from '../test/labServer';
 import type { LabState, LabView } from './types';
 
 vi.mock('../workbench/monaco/CodeEditor', async () => ({ default: (await import('../test/fakeCodeEditor')).FakeCodeEditor }));
@@ -65,6 +65,24 @@ describe('Lab chip', () => {
       missingSystemId: 'database:hr',
       message: 'Lab: HR database needs a password',
     });
+  });
+
+  it('reads "Lab: choose a default directory" with ✕ when steps without directory: have no directory', async () => {
+    start({ lab: { systems: [namedDirectory('ad'), namedDirectory('edirectory'), rest('ready')], defaultDirectory: defaultDirectoryNeeded() } });
+    await waitFor(() => expect(chip()).toHaveTextContent('Lab: choose a default directory'));
+    expect(within(chip()).getByRole('img')).toHaveClass('badge-missing');
+    expect(within(chip()).getByRole('img')).toHaveTextContent('✕');
+    expect(labState()).toEqual({
+      state: 'missing',
+      missingSystemId: 'default-directory',
+      message: 'Lab: choose a default directory',
+    });
+  });
+
+  it('an invalid default directory is missing too', async () => {
+    start({ lab: { systems: [namedDirectory('ad')], defaultDirectory: defaultDirectoryNeeded({ value: 'nope', source: 'profile', state: 'invalid' }) } });
+    await waitFor(() => expect(chip()).toHaveTextContent('Lab: choose a default directory'));
+    expect(labState()).toMatchObject({ state: 'missing', missingSystemId: 'default-directory' });
   });
 
   it('says "an" before a vowel, and keeps a label that starts with an acronym as it is', async () => {
@@ -144,5 +162,11 @@ describe('Lab chip', () => {
     setLanguage('es', false);
     start({ lab: { systems: [directory('ready'), rest('untested')] } });
     await waitFor(() => expect(screen.getByRole('button', { name: /^Lab/ })).toHaveTextContent('Lab: 1 de 2 listos'));
+  });
+
+  it('asks for a default directory in Spanish', async () => {
+    setLanguage('es', false);
+    start({ lab: { systems: [namedDirectory('ad')], defaultDirectory: defaultDirectoryNeeded() } });
+    await waitFor(() => expect(chip()).toHaveTextContent('Lab: elija un directorio predeterminado'));
   });
 });

@@ -20,7 +20,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.TreeSet;
 
 /**
  * Builds the report's description of a run from the Spring environment and the scenarios it
@@ -86,10 +85,7 @@ public final class RunInfos {
                 .bind("idm.test.directories", Bindable.mapOf(String.class, LdapProperties.class))
                 .orElse(Map.of());
         String legacyUrl = environment.getProperty("idm.test.ldap.url");
-        Set<String> names = new TreeSet<>(named.keySet());
-        if (named.isEmpty() || (legacyUrl != null && !legacyUrl.isBlank())) {
-            names.add(LdapDirectories.DEFAULT);
-        }
+        Set<String> names = RealEnvironmentGuards.directoryCandidates(named.keySet(), legacyUrl);
         Optional<String> defaultName;
         try {
             defaultName = LdapDirectories.resolveDefault(environment.getProperty("idm.test.default-directory"), names);

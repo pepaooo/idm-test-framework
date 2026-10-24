@@ -142,6 +142,8 @@ class WorkspaceGuardTest {
 
         assertSwitched(as(x, "PUT", "/api/lab?profile=lab", JSON.writeValueAsString(Map.of("systemId", "ldap",
                 "values", Map.of(), "secrets", Map.of("password", "fake-tab-a-password")))));
+        assertSwitched(as(x, "PUT", "/api/lab/default-directory?profile=lab",
+                JSON.writeValueAsString(Map.of("name", "edirectory"))));
         assertSwitched(as(x, "GET", "/api/lab?profile=lab", null));
         assertSwitched(as(x, "POST", "/api/lab/test", "{}"));
         assertSwitched(as(x, "POST", "/api/runs", JSON.writeValueAsString(Map.of("profile", "lab"))));

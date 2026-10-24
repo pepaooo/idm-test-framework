@@ -5,7 +5,7 @@ import { Workbench } from '../workbench/Workbench';
 import { setLanguage } from '../i18n';
 import { WORKSPACE, workbenchServer } from '../test/workbenchServer';
 import { emitServerEvent } from '../test/browserFakes';
-import { directory, hrDatabase, labRoutes, rest, type LabRoutesOptions } from '../test/labServer';
+import { defaultDirectoryNeeded, directory, hrDatabase, labRoutes, namedDirectory, rest, type LabRoutesOptions } from '../test/labServer';
 import type { Answer } from '../test/fakeServer';
 import type { LabSystem, LabView } from './types';
 
@@ -382,6 +382,153 @@ describe('Lab panel', () => {
       await userEvent.type(within(form).getByLabelText(/^Base URL/), 'https://crm.lab');
       await userEvent.click(within(form).getByRole('button', { name: 'Save' }));
       await waitFor(() => expect(saved).toEqual({ systemId: 'rest:crm', values: { 'base-url': 'https://crm.lab' }, secrets: {} }));
+    });
+  });
+  describe('default directory choice', () => {
+    const ad = () => namedDirectory('ad', 'ready');
+    const edirectory = (used: string[] = []) => namedDirectory('edirectory', 'ready', used);
+    const needing = (extra = {}): LabView => ({ systems: [ad(), edirectory()], defaultDirectory: defaultDirectoryNeeded(extra) });
+    const defaultPuts = (server: ReturnType<typeof start>['server']) =>
+      server.sent.filter((r) => r.method === 'PUT' && r.url.startsWith('/api/lab/default-directory'));
+
+    it('opens on a first "Default directory" tab with ✕; choosing one and Save writes it and clears the tab and the chip', async () => {
+      const { server } = start({
+        views: { lab: needing() },
+        onSaveDefault: () => ({ body: { systems: [ad(), edirectory(['example.yaml'])], defaultDirectory: null } }),
+      });
+      await screen.findByRole('button', { name: 'Lab: choose a default directory' });
+      const panel = await openPanel();
+      const tabs = within(within(panel).getByRole('tablist')).getAllByRole('tab');
+      expect(tabs.map((tab) => tab.textContent)).toEqual(['✕ Default directory', '✓ Directory ad', '✓ Directory edirectory']);
+      expect(within(tabs[0]).getByRole('img')).toHaveClass('badge-missing');
+      expect(tabs[0]).toHaveAttribute('aria-selected', 'true');
+      const form = within(panel).getByRole('tabpanel');
+      expect(form).toHaveAccessibleName('Default directory');
+      expect(form).toHaveTextContent(
+        'example.yaml use steps without directory:, and there is no default directory. Choose which directory those steps use.',
+      );
+      const select = within(form).getByLabelText('Directory');
+      expect(within(select).getAllByRole('option').map((o) => o.textContent)).toEqual(['Choose a directory', 'ad', 'edirectory']);
+      expect(form).toHaveTextContent('config/application-lab.yml');
+      const save = within(form).getByRole('button', { name: 'Save' });
+      expect(save).toBeDisabled();
+
+      await userEvent.selectOptions(select, 'edirectory');
+      await userEvent.click(save);
+      await waitFor(() => expect(defaultPuts(server)).toHaveLength(1));
+      expect(defaultPuts(server)[0].url).toBe('/api/lab/default-directory?profile=lab');
+      expect(defaultPuts(server)[0].body).toEqual({ name: 'edirectory' });
+      await waitFor(() => expect(within(panel).queryByRole('tab', { name: /Default directory/ })).not.toBeInTheDocument());
+      expect(within(within(panel).getByRole('tablist')).getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
+        '✓ Directory ad',
+        '✓ Directory edirectory',
+      ]);
+      expect(screen.getByRole('button', { name: 'Lab ready' })).toBeInTheDocument();
+    });
+
+    it('an invalid default-directory says so, with the value', async () => {
+      start({ views: { lab: needing({ value: 'nope', source: 'profile', state: 'invalid' }) } });
+      const form = within(await openPanel()).getByRole('tabpanel');
+      expect(form).toHaveAccessibleName('Default directory');
+      expect(form).toHaveTextContent('default-directory is "nope", which is not one of the configured directories.');
+      // every step may name its directory: the "steps without directory:" sentence would not be true
+      expect(form).not.toHaveTextContent('use steps without directory:');
+      expect(within(form).getByLabelText('Directory')).toHaveValue('');
+    });
+
+    it('an invalid default-directory with no scenario using ldap.* steps names no scenario', async () => {
+      start({ views: { lab: needing({ usedByScenarios: [], value: 'nope', source: 'profile', state: 'invalid' }) } });
+      await screen.findByRole('button', { name: 'Lab: choose a default directory' });
+      const form = within(await openPanel()).getByRole('tabpanel');
+      expect(form).toHaveAccessibleName('Default directory');
+      expect(form).toHaveTextContent('default-directory is "nope", which is not one of the configured directories.');
+      expect(form).not.toHaveTextContent('use steps without directory:');
+    });
+
+    it('a chosen directory that a refreshed view no longer offers is dropped, and nothing is left unsaved', async () => {
+      const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+      let current = needing();
+      const { server } = start({ views: { lab: () => current } });
+      const form = within(await openPanel()).getByRole('tabpanel');
+      await userEvent.selectOptions(within(form).getByLabelText('Directory'), 'edirectory');
+      expect(within(form).getByRole('button', { name: 'Save' })).toBeEnabled();
+      current = { systems: [ad()], defaultDirectory: defaultDirectoryNeeded({ choices: ['ad', 'openldap'] }) };
+      const reads = server.calls().filter((c) => c.startsWith('GET /api/lab')).length;
+      emitServerEvent('/api/files/events', { type: 'changed', path: 'config/application.yml' });
+      await waitFor(() => expect(server.calls().filter((c) => c.startsWith('GET /api/lab')).length).toBeGreaterThan(reads));
+      await waitFor(() => expect(within(form).getByLabelText('Directory')).toHaveValue(''));
+      expect(within(within(form).getByLabelText('Directory')).getAllByRole('option').map((o) => o.textContent)).toEqual([
+        'Choose a directory',
+        'ad',
+        'openldap',
+      ]);
+      expect(within(form).getByRole('button', { name: 'Save' })).toBeDisabled();
+      await userEvent.click(screen.getByRole('button', { name: 'Close the lab panel' }));
+      expect(confirm).not.toHaveBeenCalled();
+      expect(screen.queryByRole('dialog', { name: /Lab connection/ })).not.toBeInTheDocument();
+    });
+
+    it('a value set by the environment is shown read-only, with where to change it', async () => {
+      const { server } = start({ views: { lab: needing({ value: 'nope', source: 'environment', state: 'invalid' }) } });
+      const form = within(await openPanel()).getByRole('tabpanel');
+      expect(within(form).getByLabelText('Directory')).toBeDisabled();
+      expect(within(form).getByText('from the environment')).toBeInTheDocument();
+      // the profile may hold a ${VAR} reference: the variable is not always IDM_TEST_DEFAULTDIRECTORY
+      expect(form).toHaveTextContent('Set through an environment variable: change it there.');
+      expect(form).not.toHaveTextContent('IDM_TEST_DEFAULTDIRECTORY');
+      expect(within(form).getByRole('button', { name: 'Save' })).toBeDisabled();
+      expect(defaultPuts(server)).toHaveLength(0);
+    });
+
+    it("shows the server's reason when the save is refused", async () => {
+      start({
+        views: { lab: needing() },
+        onSaveDefault: (): Answer => ({ status: 400, body: { key: 'ui.lab.badDefaultDirectory', message: '"edirectory" is not one of the directories' } }),
+      });
+      const form = within(await openPanel()).getByRole('tabpanel');
+      await userEvent.selectOptions(within(form).getByLabelText('Directory'), 'edirectory');
+      await userEvent.click(within(form).getByRole('button', { name: 'Save' }));
+      expect(await within(form).findByRole('alert')).toHaveTextContent('"edirectory" is not one of the directories');
+    });
+
+    it('in a read-only tab Save stays off', async () => {
+      workbenchServer({ files: {}, routes: labRoutes({ views: { lab: needing() } }) });
+      render(<Workbench workspace={WORKSPACE} lockWait={10} />);
+      await screen.findByRole('button', { name: /^Lab[: ]/ });
+      await new Promise((resolve) => setTimeout(resolve, 60)); // the first tab holds the workspace
+      const second = render(<Workbench workspace={WORKSPACE} lockWait={10} />);
+      await within(second.container).findByText('This workspace is open in another tab');
+      const chip = within(second.container).getByRole('button', { name: 'Lab: choose a default directory' });
+      await userEvent.click(chip);
+      const panel = await within(second.container).findByRole('dialog', { name: /Lab connection/ });
+      const form = within(panel).getByRole('tabpanel');
+      expect(form).toHaveAccessibleName('Default directory');
+      expect(within(form).getByLabelText('Directory')).toBeDisabled();
+      expect(within(form).getByRole('button', { name: 'Save' })).toBeDisabled();
+    });
+
+    it('speaks Spanish', async () => {
+      setLanguage('es', false);
+      start({ views: { lab: needing() } });
+      const chip = await screen.findByRole('button', { name: 'Lab: elija un directorio predeterminado' });
+      await userEvent.click(chip);
+      const panel = await screen.findByRole('dialog', { name: /Conexión al lab/ });
+      expect(within(panel).getByRole('tab', { selected: true })).toHaveTextContent('Directorio predeterminado');
+      const form = within(panel).getByRole('tabpanel');
+      expect(form).toHaveTextContent(
+        'example.yaml usan pasos sin directory: y no hay un directorio predeterminado. Elija qué directorio usan esos pasos.',
+      );
+      expect(within(form).getByLabelText('Directorio')).toBeInTheDocument();
+    });
+
+    it('speaks Spanish for an invalid value', async () => {
+      setLanguage('es', false);
+      start({ views: { lab: needing({ value: 'nope', source: 'profile', state: 'invalid' }) } });
+      await userEvent.click(await screen.findByRole('button', { name: 'Lab: elija un directorio predeterminado' }));
+      const panel = await screen.findByRole('dialog', { name: /Conexión al lab/ });
+      expect(within(panel).getByRole('tabpanel')).toHaveTextContent(
+        'default-directory es "nope", que no es ninguno de los directorios configurados.',
+      );
     });
   });
 });

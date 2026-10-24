@@ -1,5 +1,7 @@
 package com.idm.test.runner.ui.api;
 
+import com.idm.test.engine.ScenarioLoader;
+import com.idm.test.engine.model.Scenario;
 import com.idm.test.runner.InitCommand;
 import com.idm.test.runner.ui.UiCommand;
 import com.idm.test.runner.ui.UiHttp;
@@ -15,6 +17,7 @@ import org.junit.jupiter.api.io.TempDir;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -29,10 +32,15 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -144,6 +152,7 @@ class FilesControllerTest {
         Response created = put("scenarios/brand-new.yaml", "x: 1\n", "0".repeat(64));
         assertThat(created.status()).isEqualTo(404);
         assertThat(json(created).get("key").asString()).isEqualTo("ui.file.notFound");
+        assertThat(json(created).get("message").asString()).contains("New scenario").contains("Add files");
         assertThat(ws.resolve("scenarios/brand-new.yaml")).doesNotExist();
     }
 
@@ -259,6 +268,189 @@ class FilesControllerTest {
         assertThat(big.status()).isEqualTo(413);
         assertThat(json(big).get("key").asString()).isEqualTo("ui.file.tooLarge");
         assertThat(ws.resolve("scenarios/big.yaml")).doesNotExist();
+    }
+
+    // --- create ---------------------------------------------------------------------------------
+
+    /**
+     * The front end's new-scenario template (ITF-70), with its name placeholder left to fill. It has
+     * one active step, a {@code set} that touches no system, because a scenario with no steps
+     * ({@code steps:} or {@code steps: []}) fails validation with {@code validation.noSteps}.
+     */
+    private static final String TEMPLATE = """
+            name: <file name without extension>
+            description: Describe what this scenario checks.
+
+            fixtures:
+              user:
+                generate: random-user
+
+            steps:
+              - set:
+                  userDn: "cn=${user.userId},ou=users,o=data"
+            #  - ldap.create:
+            #      dn: "${userDn}"
+            #      as: createdDn
+            #      attributes:
+            #        cn: "${user.userId}"
+            #        sn: "${user.lastName}"
+            #  - ldap.verify:
+            #      dn: "${createdDn}"
+            #      exists: true
+
+            #cleanup:
+            #  - ldap.delete:
+            #      dn: "${createdDn}"
+            """;
+
+    @Test
+    @DisplayName("POST /api/files/new creates the file exactly as sent: 201 with its path and version")
+    void testCreateScenario() throws Exception {
+        String content = "﻿name: disable-user\r\ndescription: niño\r\n";
+
+        Response created = create("scenarios/disable-user.yaml", content);
+
+        assertThat(created.status()).as(created.body()).isEqualTo(201);
+        JsonNode body = json(created);
+        assertThat(body.propertyNames()).containsExactlyInAnyOrder("path", "version");
+        assertThat(body.get("path").asString()).isEqualTo("scenarios/disable-user.yaml");
+        assertThat(body.get("version").asString())
+                .isEqualTo(WorkspaceFiles.version(content.getBytes(StandardCharsets.UTF_8)));
+        assertThat(Files.readAllBytes(ws.resolve("scenarios/disable-user.yaml")))
+                .isEqualTo(content.getBytes(StandardCharsets.UTF_8));
+        JsonNode node = find(json(UiHttp.get(server, "/api/files/tree")), "scenarios/disable-user.yaml");
+        assertThat(node.get("kind").asString()).isEqualTo("scenario");
+        assertThat(json(get("scenarios/disable-user.yaml")).get("version").asString())
+                .isEqualTo(body.get("version").asString());
+    }
+
+    @Test
+    @DisplayName("Eight creates of one name at once: one 201, seven 409 ui.file.exists, the winner's content kept")
+    void testCreateNeverOverwrites() throws Exception {
+        String original = Files.readString(ws.resolve("scenarios/example.yaml"));
+        Response existing = create("scenarios/example.yaml", "name: mine\n");
+        assertThat(existing.status()).isEqualTo(409);
+        assertThat(json(existing).get("key").asString()).isEqualTo("ui.file.exists");
+        assertThat(json(existing).get("message").asString())
+                .isEqualTo("scenarios/example.yaml already exists; choose another name.");
+        assertThat(Files.readString(ws.resolve("scenarios/example.yaml"))).isEqualTo(original);
+
+        ExecutorService pool = Executors.newFixedThreadPool(8);
+        try {
+            CountDownLatch go = new CountDownLatch(1);
+            List<Future<Response>> results = new ArrayList<>();
+            for (int i = 0; i < 8; i++) {
+                String content = "name: twin\nwriter: " + i + "\n";
+                results.add(pool.submit(() -> {
+                    go.await();
+                    return create("scenarios/twin.yaml", content);
+                }));
+            }
+            go.countDown();
+            List<Integer> statuses = new ArrayList<>();
+            String winner = null;
+            for (int i = 0; i < 8; i++) {
+                Response response = results.get(i).get();
+                statuses.add(response.status());
+                if (response.status() == 201) {
+                    winner = "name: twin\nwriter: " + i + "\n";
+                } else {
+                    assertThat(json(response).get("key").asString()).isEqualTo("ui.file.exists");
+                }
+            }
+            assertThat(statuses).filteredOn(s -> s == 201).hasSize(1);
+            assertThat(statuses).filteredOn(s -> s == 409).hasSize(7);
+            assertThat(Files.readString(ws.resolve("scenarios/twin.yaml"))).isEqualTo(winner);
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
+    @Test
+    @DisplayName("Bad names and paths outside scenarios/ are 400 ui.file.badName or ui.file.badPath; nothing is written")
+    void testCreateRefusals() throws Exception {
+        List<String> before = listing(temp);
+        Map<String, String> refusals = new LinkedHashMap<>();
+        refusals.put("../x.yaml", "ui.file.badPath");
+        refusals.put("scenarios/../config/a.yaml", "ui.file.badPath");
+        refusals.put("config/a.yaml", "ui.file.badPath");
+        refusals.put("scenarios/secrets.env", "ui.file.badPath");
+        refusals.put("scenarios/new-scenario", "ui.file.badPath");
+        refusals.put("scenarios/missing/a.yaml", "ui.file.badPath");
+        refusals.put("scenarios/a:b.yaml", "ui.file.badName");
+        refusals.put("scenarios/", "ui.file.badName");
+        refusals.put("scenarios/a\\b.yaml", "ui.file.badName");
+        refusals.put("scenarios/a..b.yaml", "ui.file.badName");
+        for (String name : new String[] {"con", "CON", "prn", "aux", "Nul", "com1", "COM9", "lpt1", "lpt9",
+                "con.backup", "nul .x", "a*b", "a?b", "a\"b", "a<b", "a>b", "a|b", "a ", "a."}) {
+            refusals.put("scenarios/" + name + ".yaml", "ui.file.badName");
+        }
+        for (Map.Entry<String, String> refusal : refusals.entrySet()) {
+            Response response = create(refusal.getKey(), "name: x\n");
+            assertThat(response.status()).as(refusal.getKey() + " " + response.body()).isEqualTo(400);
+            assertThat(json(response).get("key").asString()).as(refusal.getKey()).isEqualTo(refusal.getValue());
+        }
+        Response badName = create("scenarios/a:b.yaml", "name: x\n");
+        assertThat(json(badName).get("message").asString())
+                .isEqualTo("'a:b.yaml' is not a file name: use letters, digits, spaces, - and _, without / \\ .. or :.");
+        Response big = create("scenarios/big.yaml", "a".repeat(WorkspaceFiles.MAX_BYTES + 1));
+        assertThat(big.status()).isEqualTo(413);
+        assertThat(json(big).get("key").asString()).isEqualTo("ui.file.tooLarge");
+        Response noContent = UiHttp.send(server, "POST", "/api/files/new",
+                JSON.writeValueAsString(Map.of("path", "scenarios/b.yaml")));
+        assertThat(noContent.status()).isEqualTo(400);
+        assertThat(json(noContent).get("key").asString()).isEqualTo("ui.request.invalid");
+        assertThat(listing(temp)).isEqualTo(before);
+    }
+
+    @Test
+    @DisplayName("The refusals read in Spanish with Accept-Language: es")
+    void testCreateMessagesInSpanish() throws Exception {
+        Map<String, String> es = Map.of("Accept-Language", "es");
+        Response exists = UiHttp.send(server, "POST", "/api/files/new",
+                JSON.writeValueAsString(Map.of("path", "scenarios/example.yaml", "content", "x: 1\n")), es);
+        assertThat(json(exists).get("message").asString())
+                .isEqualTo("scenarios/example.yaml ya existe; elija otro nombre.");
+        Response badName = UiHttp.send(server, "POST", "/api/files/new",
+                JSON.writeValueAsString(Map.of("path", "scenarios/a:b.yaml", "content", "x: 1\n")), es);
+        assertThat(json(badName).get("message").asString()).isEqualTo(
+                "'a:b.yaml' no es un nombre de archivo: use letras, dígitos, espacios, - y _, sin / \\ .. ni :.");
+    }
+
+    @Test
+    @DisplayName("The new-scenario template, named, validates with zero problems and keeps the file stem as name")
+    void testTemplateValidates() throws Exception {
+        // the stem, and how the workbench's scenarioTemplate.ts writes it: plain, or double-quoted when
+        // YAML would read it as something else (a comment, null, a boolean, a number, a date)
+        Map<String, String> names = new LinkedHashMap<>();
+        names.put("disable-user", "disable-user");
+        names.put("#1 [x]", "\"#1 [x]\"");
+        names.put("null", "\"null\"");
+        names.put("Yes", "\"Yes\"");
+        names.put("1.50", "\"1.50\"");
+        names.put("0x10", "\"0x10\"");
+        names.put("2026-10-24", "\"2026-10-24\"");
+        for (Map.Entry<String, String> name : names.entrySet()) {
+            String content = TEMPLATE.replace("<file name without extension>", name.getValue());
+
+            Response validated = UiHttp.send(server, "POST", "/api/validate", JSON.writeValueAsString(
+                    Map.of("path", "scenarios/" + name.getKey() + ".yaml", "content", content)));
+
+            assertThat(validated.status()).as(validated.body()).isEqualTo(200);
+            assertThat(json(validated).get("problems").size()).as(name.getKey() + " " + validated.body()).isZero();
+            Scenario scenario = ScenarioLoader.load(
+                    new ByteArrayInputStream(content.getBytes(StandardCharsets.UTF_8)), name.getKey() + ".yaml");
+            assertThat(scenario.name()).isEqualTo(name.getKey());
+        }
+        // unquoted, null is no name at all: why the template quotes it
+        Response unquoted = UiHttp.send(server, "POST", "/api/validate", JSON.writeValueAsString(Map.of(
+                "path", "scenarios/null.yaml", "content", TEMPLATE.replace("<file name without extension>", "null"))));
+        assertThat(unquoted.body()).contains("validation.load.nameRequired");
+    }
+
+    private static Response create(String path, String content) throws IOException {
+        return UiHttp.send(server, "POST", "/api/files/new",
+                JSON.writeValueAsString(Map.of("path", path, "content", content)));
     }
 
     // --- no workspace ---------------------------------------------------------------------------

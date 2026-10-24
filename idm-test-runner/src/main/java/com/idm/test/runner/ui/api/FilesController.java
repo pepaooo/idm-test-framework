@@ -25,9 +25,11 @@ import java.util.List;
 
 /**
  * The editor's files: the workspace tree, reading a file with its version, saving it only over that
- * version (409 with {@code currentVersion} otherwise), adding scenarios, and change events. All act
- * on the session's current workspace (400 {@code ui.workspace.none} while none is open); the rules
- * for paths, {@code secrets.env} and saving are {@link WorkspaceFiles}'s. GETs only read.
+ * version (409 with {@code currentVersion} otherwise), adding scenarios, creating one
+ * ({@code POST /api/files/new}: 201, or 409 {@code ui.file.exists}, never an overwrite), and change
+ * events. All act on the session's current workspace (400 {@code ui.workspace.none} while none is
+ * open); the rules for paths, {@code secrets.env} and saving are {@link WorkspaceFiles}'s. GETs only
+ * read.
  */
 @RestController
 class FilesController {
@@ -47,6 +49,12 @@ class FilesController {
     }
 
     record Added(List<String> added) {
+    }
+
+    record CreateRequest(String path, String content) {
+    }
+
+    record Created(String path, String version) {
     }
 
     /** The 409 body: the error shape plus the version now on disk. */
@@ -115,6 +123,22 @@ class FilesController {
         }
     }
 
+    @PostMapping("/api/files/new")
+    ResponseEntity<Created> create(@RequestBody CreateRequest request) {
+        WorkspaceFiles files = files();
+        if (request.content() == null) {
+            throw ApiError.badRequest("runner.ui.request.invalid", "content");
+        }
+        try {
+            WorkspaceFiles.Content created = files.createScenario(request.path(), request.content());
+            return ResponseEntity.status(HttpStatus.CREATED).body(new Created(request.path(), created.version()));
+        } catch (WorkspaceFiles.FileException e) {
+            throw error(e);
+        } catch (UncheckedIOException e) {
+            throw writeFailed(request.path(), e);
+        }
+    }
+
     @GetMapping(value = "/api/files/events", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     SseEmitter events() {
         return watcher.subscribe(workspace());
@@ -141,6 +165,8 @@ class FilesController {
             case NOT_TEXT -> new ApiError(HttpStatus.UNSUPPORTED_MEDIA_TYPE,
                     Message.of("runner.ui.file.notText", e.subject()));
             case NOT_YAML -> ApiError.badRequest("runner.ui.file.notYaml", e.subject());
+            case BAD_NAME -> ApiError.badRequest("runner.ui.file.badName", e.subject());
+            case EXISTS -> new ApiError(HttpStatus.CONFLICT, Message.of("runner.ui.file.exists", e.subject()));
         };
     }
 

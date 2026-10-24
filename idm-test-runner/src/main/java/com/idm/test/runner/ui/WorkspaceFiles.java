@@ -1,6 +1,7 @@
 package com.idm.test.runner.ui;
 
 import java.io.IOException;
+import java.io.OutputStream;
 import java.io.UncheckedIOException;
 import java.nio.ByteBuffer;
 import java.nio.charset.CharacterCodingException;
@@ -30,6 +31,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.regex.Pattern;
 
 /**
  * A workspace's files as the workbench's editor sees them: the tree, reading, saving with a version
@@ -45,7 +47,7 @@ import java.util.concurrent.locks.ReentrantLock;
  * version cannot both win. A save writes a temp file in the same folder and moves it over the file
  * (atomically where the file system can), with the content exactly as the UTF-8 bytes of the text
  * sent — line endings and a byte order mark included. Saves never create files: new files come only
- * through {@link #add}, into {@code scenarios/}, never replacing one.
+ * through {@link #add} and {@link #createScenario}, under {@code scenarios/}, never replacing one.
  * <p>
  * The tree has {@code scenarios/} and {@code config/} (all their levels) and the workspace's
  * top-level files; it leaves out every other folder ({@code reports/}, {@code drivers/}, {@code .git},
@@ -65,6 +67,14 @@ public final class WorkspaceFiles {
     /** One lock per file (by real path) for every workspace of this program: saves of one file wait in turn. */
     private static final Map<String, ReentrantLock> LOCKS = new ConcurrentHashMap<>();
 
+    /**
+     * A file-name part before its first dot that Windows keeps for a device, on any letter case: such
+     * a scenario could not be checked out or opened there, so it is refused on every system.
+     */
+    private static final Pattern WINDOWS_DEVICE = Pattern.compile("(?i)con|prn|aux|nul|com[1-9]|lpt[1-9]");
+    /** What a Windows file name cannot have: {@code * ? " < > |}, or an end in a dot or a space. */
+    private static final Pattern NOT_ON_WINDOWS = Pattern.compile("[*?\"<>|]|[. ]$");
+
     private final Path root;
 
     /** @param root the workspace folder */
@@ -73,7 +83,7 @@ public final class WorkspaceFiles {
     }
 
     /** What is wrong with a request for a file. */
-    public enum Problem { BAD_PATH, SECRETS, NOT_FOUND, TOO_LARGE, NOT_TEXT, NOT_YAML }
+    public enum Problem { BAD_PATH, BAD_NAME, SECRETS, NOT_FOUND, TOO_LARGE, NOT_TEXT, NOT_YAML, EXISTS }
 
     /** A file request that cannot be done; {@link #subject()} is the path or file name it was about. */
     public static final class FileException extends RuntimeException {
@@ -426,6 +436,84 @@ public final class WorkspaceFiles {
             throw new FileException(Problem.BAD_PATH, filename);
         }
         return stem + extension;
+    }
+
+    // --- create ---------------------------------------------------------------------------------
+
+    /**
+     * Creates the scenario file {@code path} with {@code content}, written exactly as its UTF-8 bytes;
+     * never replaces a file, also when two creates of one name race ({@link Problem#EXISTS}). The file
+     * name (after the last {@code /}) must not be empty, start with a dot or contain {@code \},
+     * {@code ..} or {@code :}, nor be a name Windows refuses: a device name such as {@code con} or
+     * {@code lpt1} before its first dot, any of {@code * ? " < > |}, or an end in a dot or space before
+     * the extension ({@link Problem#BAD_NAME}); {@code path} must end in {@code .yaml} or
+     * {@code .yml} and pass the checks of every path, under {@code scenarios/}, in a folder that exists
+     * ({@link Problem#BAD_PATH}; folders are not created). At most {@link #MAX_BYTES}.
+     *
+     * @return the content and its version
+     * @throws IllegalArgumentException when {@code content} is null
+     */
+    public Content createScenario(String path, String content) {
+        if (content == null) {
+            throw new IllegalArgumentException("content");
+        }
+        if (path == null || path.isEmpty()) {
+            throw new FileException(Problem.BAD_PATH, "");
+        }
+        String name = path.substring(path.lastIndexOf('/') + 1);
+        String stem = name.endsWith(".yaml") ? name.substring(0, name.length() - 5)
+                : name.endsWith(".yml") ? name.substring(0, name.length() - 4) : name;
+        if (stem.isEmpty() || name.startsWith(".") || name.contains("\\") || name.contains("..")
+                || name.contains(":") || NOT_ON_WINDOWS.matcher(stem).find()
+                || WINDOWS_DEVICE.matcher(stem.substring(0, stem.contains(".") ? stem.indexOf('.') : stem.length())
+                        .strip()).matches()) {
+            throw new FileException(Problem.BAD_NAME, name);
+        }
+        if (stem.equals(name)) {
+            throw new FileException(Problem.BAD_PATH, path);
+        }
+        underScenarios(path);
+        Path file = resolve(path);
+        if (!Files.isDirectory(file.getParent())) {
+            throw new FileException(Problem.BAD_PATH, path);
+        }
+        byte[] bytes = content.getBytes(StandardCharsets.UTF_8);
+        if (bytes.length > MAX_BYTES) {
+            throw new FileException(Problem.TOO_LARGE, path);
+        }
+        ReentrantLock lock = LOCKS.computeIfAbsent(file.toString(), k -> new ReentrantLock());
+        lock.lock();
+        try {
+            OutputStream out;
+            try {
+                out = Files.newOutputStream(file, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
+            } catch (FileAlreadyExistsException e) {
+                throw new FileException(Problem.EXISTS, path);
+            }
+            try (out) {
+                out.write(bytes);
+            } catch (IOException e) {
+                throw removeHalfWritten(file, e); // ours since CREATE_NEW succeeded: leave no half-written file
+            }
+            return new Content(content, version(bytes));
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /**
+     * Deletes the file a failed write left behind and gives back {@code failure}, the write's error,
+     * with the deletion's error attached ({@link Throwable#addSuppressed}) when that fails too.
+     */
+    static IOException removeHalfWritten(Path file, IOException failure) {
+        try {
+            Files.deleteIfExists(file);
+        } catch (IOException e) {
+            failure.addSuppressed(e);
+        }
+        return failure;
     }
 
     // --- paths ----------------------------------------------------------------------------------

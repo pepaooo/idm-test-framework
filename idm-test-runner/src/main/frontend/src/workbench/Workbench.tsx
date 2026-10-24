@@ -39,6 +39,20 @@ interface FileEvent {
   path: string;
 }
 
+/**
+ * Where New scenario creates the file: the folder selected in the tree, else the open file's
+ * folder, else scenarios/ — always scenarios/ or a folder below it.
+ */
+export function newScenarioFolder(selected: string | null, active: string | null): string {
+  const underScenarios = (folder: string | null): folder is string =>
+    folder !== null && (folder === 'scenarios' || folder.startsWith('scenarios/'));
+  if (underScenarios(selected)) {
+    return selected;
+  }
+  const activeFolder = active?.includes('/') ? active.slice(0, active.lastIndexOf('/')) : null;
+  return underScenarios(activeFolder) ? activeFolder : 'scenarios';
+}
+
 /** What the run panel says before any run. */
 export function RunPanelSlot() {
   return <p className="muted run-placeholder">{t('ui.run.placeholder')}</p>;
@@ -346,6 +360,16 @@ export function Workbench({ workspace, warning, lockWait = 300, runPanel, lab, r
               }}
               onSelectFolder={setRunFolder}
               onAdded={() => void refreshTree()}
+              newFolder={newScenarioFolder(runFolder, state.active)}
+              textOf={(path) => {
+                const doc = store.doc(path);
+                return doc?.loaded ? doc.content : undefined;
+              }}
+              onCreated={(path) => {
+                setRunFolder(null);
+                void refreshTree();
+                void store.open(path);
+              }}
             />
           </div>
           <div className="wb-col wb-editor">

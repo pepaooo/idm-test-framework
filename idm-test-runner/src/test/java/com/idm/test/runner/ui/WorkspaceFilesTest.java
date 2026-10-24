@@ -257,6 +257,116 @@ class WorkspaceFilesTest {
         assertProblem(() -> files.add(List.of(new Upload("latin.yaml", new byte[] {(byte) 0xF1}))), Problem.NOT_TEXT);
     }
 
+    // --- create ---------------------------------------------------------------------------------
+
+    @Test
+    @DisplayName("Create writes a new scenario exactly as sent, in scenarios/ or a folder under it")
+    void testCreateScenario() throws Exception {
+        String content = "﻿name: new\r\ndescription: café\r\n";
+        WorkspaceFiles.Content created = files.createScenario("scenarios/sub/new.yaml", content);
+        assertThat(Files.readAllBytes(ws.resolve("scenarios/sub/new.yaml")))
+                .isEqualTo(content.getBytes(StandardCharsets.UTF_8));
+        assertThat(created.content()).isEqualTo(content);
+        assertThat(created.version()).isEqualTo(files.read("scenarios/sub/new.yaml").version());
+        files.createScenario("scenarios/top.yml", "name: top\n");
+        assertThat(Files.readString(ws.resolve("scenarios/top.yml"))).isEqualTo("name: top\n");
+        assertThat(child(child(files.tree(), "scenarios"), "scenarios/top.yml").kind()).isEqualTo("scenario");
+        // close to a Windows device name, but not one
+        for (String name : new String[] {"console", "com10", "con-x", "lpt0", "my con", "a.b"}) {
+            files.createScenario("scenarios/" + name + ".yaml", "name: x\n");
+            assertThat(ws.resolve("scenarios/" + name + ".yaml")).exists();
+        }
+    }
+
+    @Test
+    @DisplayName("A failed write whose clean-up also fails keeps the write error, with the clean-up's attached")
+    void testFailedWriteKeepsItsError() throws Exception {
+        Path notEmpty = Files.createDirectories(temp.resolve("left/inside"));
+        IOException write = new IOException("disk full");
+
+        IOException thrown = WorkspaceFiles.removeHalfWritten(notEmpty.getParent(), write);
+
+        assertThat(thrown).isSameAs(write);
+        assertThat(thrown.getSuppressed()).hasSize(1);
+        assertThat(thrown.getSuppressed()[0]).isInstanceOf(java.nio.file.DirectoryNotEmptyException.class);
+        Path half = Files.writeString(temp.resolve("half.yaml"), "na");
+        assertThat(WorkspaceFiles.removeHalfWritten(half, write)).isSameAs(write);
+        assertThat(half).doesNotExist();
+    }
+
+    @Test
+    @DisplayName("Create never overwrites: an existing name, and 8 creates of one name at once, give EXISTS")
+    void testCreateNeverOverwrites() throws Exception {
+        assertProblem(() -> files.createScenario("scenarios/a.yaml", "name: other\n"), Problem.EXISTS);
+        assertThat(Files.readString(ws.resolve("scenarios/a.yaml"))).isEqualTo("name: a\n");
+        ExecutorService pool = Executors.newFixedThreadPool(8);
+        try {
+            for (int round = 0; round < 10; round++) {
+                String path = "scenarios/race-" + round + ".yaml";
+                CountDownLatch go = new CountDownLatch(1);
+                List<Future<String>> results = new ArrayList<>();
+                for (int i = 0; i < 8; i++) {
+                    String content = "round: " + round + "\nwriter: " + i + "\n";
+                    Callable<String> create = () -> {
+                        go.await();
+                        try {
+                            files.createScenario(path, content);
+                            return content;
+                        } catch (FileException e) {
+                            assertThat(e.problem()).isEqualTo(Problem.EXISTS);
+                            return null;
+                        }
+                    };
+                    results.add(pool.submit(create));
+                }
+                go.countDown();
+                List<String> winners = new ArrayList<>();
+                for (Future<String> result : results) {
+                    if (result.get() != null) {
+                        winners.add(result.get());
+                    }
+                }
+                assertThat(winners).as("round " + round).hasSize(1);
+                assertThat(Files.readString(ws.resolve(path))).isEqualTo(winners.getFirst());
+            }
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
+    @Test
+    @DisplayName("Create refuses bad names and paths outside scenarios/, writing nothing")
+    void testCreateRefusals() throws Exception {
+        List<String> before = listing();
+        for (String path : new String[] {"scenarios/", "scenarios/.yaml", "scenarios/a:b.yaml", "scenarios/a\\b.yaml",
+                "scenarios/a..b.yaml", "scenarios/.hidden.yaml", "scenarios/con.yaml", "scenarios/CON.yml",
+                "scenarios/prn.yaml", "scenarios/aux.yaml", "scenarios/nul.yaml", "scenarios/com1.yaml",
+                "scenarios/Com9.yaml", "scenarios/lpt1.yaml", "scenarios/LPT9.yaml", "scenarios/con.backup.yaml",
+                "scenarios/a*b.yaml", "scenarios/a?b.yaml", "scenarios/a\"b.yaml", "scenarios/a<b.yaml",
+                "scenarios/a>b.yaml", "scenarios/a|b.yaml", "scenarios/a .yaml", "scenarios/a..yaml",
+                "scenarios/a.b..yaml"}) {
+            assertProblem(() -> files.createScenario(path, "x: 1\n"), Problem.BAD_NAME);
+        }
+        for (String path : new String[] {"../x.yaml", "scenarios/../config/a.yaml", "config/a.yaml", "a.yaml",
+                "scenarios/secrets.env", "scenarios/notes.txt", "scenarios/b", "scenarios/missing/b.yaml",
+                "scenarios/sub", "/tmp/x.yaml", "scenarios//b.yaml", ""}) {
+            assertProblem(() -> files.createScenario(path, "x: 1\n"), Problem.BAD_PATH);
+        }
+        assertProblem(() -> files.createScenario(null, "x: 1\n"), Problem.BAD_PATH);
+        assertProblem(() -> files.createScenario("scenarios/big.yaml", "a".repeat(WorkspaceFiles.MAX_BYTES + 1)),
+                Problem.TOO_LARGE);
+        assertThatThrownBy(() -> files.createScenario("scenarios/b.yaml", null))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThat(listing()).isEqualTo(before);
+        assertThat(temp.resolve("x.yaml")).doesNotExist();
+    }
+
+    private List<String> listing() throws IOException {
+        try (Stream<Path> walk = Files.walk(temp)) {
+            return walk.map(p -> temp.relativize(p).toString()).sorted().toList();
+        }
+    }
+
     // --- tree -----------------------------------------------------------------------------------
 
     @Test

@@ -695,6 +695,18 @@ class RealEnvironmentGuardsTest {
     }
 
     @Test
+    @DisplayName("The candidate directories: the named ones, plus the old block when none is named or its URL is set")
+    void testDirectoryCandidates() {
+        assertThat(RealEnvironmentGuards.directoryCandidates(Set.of(), null)).containsExactly("default");
+        assertThat(RealEnvironmentGuards.directoryCandidates(Set.of("edirectory", "ad"), null))
+                .containsExactly("ad", "edirectory");
+        assertThat(RealEnvironmentGuards.directoryCandidates(Set.of("edirectory", "ad"), " "))
+                .containsExactly("ad", "edirectory");
+        assertThat(RealEnvironmentGuards.directoryCandidates(Set.of("edirectory", "ad"), "ldap://old.test:389"))
+                .containsExactly("ad", "default", "edirectory");
+    }
+
+    @Test
     @DisplayName("default-directory decides what a step without directory: is checked against")
     void testDefaultDirectorySetting() {
         assertThatThrownBy(() -> RealEnvironmentGuards.requireRealTarget(directoriesTarget(

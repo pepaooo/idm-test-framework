@@ -219,7 +219,17 @@ public final class LabSettings {
                              String status, ConnectionTester.Result lastTest) {
     }
 
-    public record View(List<SystemView> systems) {
+    /**
+     * The default directory, when steps without {@code directory:} need one and the runner could not pick
+     * it: the scenarios with such steps, the directories to choose from (sorted, as the runner names them),
+     * the configured {@code idm.test.default-directory} (null when unset), and {@code missing} (unset, and
+     * several directories) or {@code invalid} (it names none of the choices).
+     */
+    public record DefaultDirectory(List<String> usedByScenarios, List<String> choices, String value, String state) {
+    }
+
+    /** The lab: its systems, and {@code defaultDirectory} null unless one has to be chosen. */
+    public record View(List<SystemView> systems, DefaultDirectory defaultDirectory) {
     }
 
     // --- reading --------------------------------------------------------------------------------
@@ -238,11 +248,20 @@ public final class LabSettings {
         Snapshot snapshot = snapshot(workspace, profile);
         SecretMask mask = mask(snapshot, List.of());
         Map<String, Set<String>> users = new LinkedHashMap<>();
+        Set<String> needDefault = new TreeSet<>();
+        DefaultChoice defaultChoice = defaultChoice(snapshot);
         boolean[] soapUse = new boolean[2];
         for (Map.Entry<String, ScenarioNeeds> entry : scenarioNeeds(snapshot).entrySet()) {
             ScenarioNeeds needs = entry.getValue();
             for (String directory : needs.directories()) {
-                use(users, directoryId(snapshot, directory), entry.getKey());
+                if (!ScenarioNeeds.DEFAULT_DIRECTORY.equals(directory)) {
+                    use(users, directoryId(snapshot, directory), entry.getKey());
+                } else if (defaultChoice.systemId() != null) {
+                    use(users, defaultChoice.systemId(), entry.getKey());
+                } else {
+                    // the runner refuses this run (runner.guard.noDefaultDirectory): ask for the default
+                    needDefault.add(entry.getKey());
+                }
             }
             needs.databases().forEach(db -> use(users, "database:" + db, entry.getKey()));
             needs.restTargets().forEach(target -> use(users, "rest:" + target, entry.getKey()));
@@ -267,7 +286,10 @@ public final class LabSettings {
         for (SystemRef ref : systems.values()) {
             views.add(view(snapshot, ref, new ArrayList<>(users.get(ref.id())), soapUse, locale, mask));
         }
-        return new View(views);
+        DefaultDirectory defaultDirectory = needDefault.isEmpty() ? null : new DefaultDirectory(
+                List.copyOf(needDefault), defaultChoice.choices(), mask.apply(defaultChoice.value()),
+                defaultChoice.state());
+        return new View(views, defaultDirectory);
     }
 
     private static void use(Map<String, Set<String>> users, String id, String scenario) {
@@ -416,23 +438,34 @@ public final class LabSettings {
         return needs;
     }
 
-    /** The system an ldap.* step's directory is: named, or the default one as the runner picks it. */
-    private String directoryId(Snapshot snapshot, String directory) {
-        if (!ScenarioNeeds.DEFAULT_DIRECTORY.equals(directory)) {
-            return LdapDirectories.DEFAULT.equals(directory) && !directoryNames(snapshot).contains(directory)
-                    ? "ldap" : "directory:" + directory;
-        }
+    /** The system an ldap.* step's named directory is: {@code default} is the old block unless one is named so. */
+    private static String directoryId(Snapshot snapshot, String directory) {
+        return LdapDirectories.DEFAULT.equals(directory) && !directoryNames(snapshot).contains(directory)
+                ? "ldap" : "directory:" + directory;
+    }
+
+    /**
+     * The default directory as {@code idmtest run} picks it: {@code systemId} the system steps without
+     * {@code directory:} use, or null when the runner refuses them — {@code state} then says why
+     * ({@code missing} or {@code invalid}). {@code choices} are the directories the runner knows,
+     * {@code value} the configured {@code idm.test.default-directory} (null when unset).
+     */
+    private record DefaultChoice(String systemId, List<String> choices, String value, String state) {
+    }
+
+    private DefaultChoice defaultChoice(Snapshot snapshot) {
         Set<String> named = directoryNames(snapshot);
-        Set<String> names = new TreeSet<>(named);
-        if (named.isEmpty() || !blank(resolve(snapshot, "idm.test.ldap.url").value())) {
-            names.add(LdapDirectories.DEFAULT);
-        }
+        Set<String> names = RealEnvironmentGuards.directoryCandidates(named, resolve(snapshot, "idm.test.ldap.url").value());
+        List<String> choices = List.copyOf(names);
+        String configured = resolve(snapshot, "idm.test.default-directory").value();
+        String value = blank(configured) ? null : configured;
         try {
-            String chosen = LdapDirectories.resolveDefault(resolve(snapshot, "idm.test.default-directory").value(), names)
-                    .orElse(LdapDirectories.DEFAULT);
-            return LdapDirectories.DEFAULT.equals(chosen) && !named.contains(chosen) ? "ldap" : "directory:" + chosen;
+            return LdapDirectories.resolveDefault(configured, names)
+                    .map(chosen -> new DefaultChoice(LdapDirectories.DEFAULT.equals(chosen) && !named.contains(chosen)
+                            ? "ldap" : "directory:" + chosen, choices, value, null))
+                    .orElseGet(() -> new DefaultChoice(null, choices, value, "missing"));
         } catch (IllegalStateException e) {
-            return "ldap";
+            return new DefaultChoice(null, choices, value, "invalid");
         }
     }
 
@@ -567,7 +600,36 @@ public final class LabSettings {
             }
         }
 
-        Path profileFile = snapshot.workspace().profileFile(profile);
+        write(root, snapshot, yaml, env);
+    }
+
+    /**
+     * Saves {@code name} as {@code idm.test.default-directory} in the profile file (uncommenting the
+     * template's line when there is one). {@code name} must be one of the directories the runner knows.
+     */
+    public void saveDefaultDirectory(Path root, String profile, String name) {
+        Snapshot snapshot = snapshot(root, profile);
+        DefaultChoice choice = defaultChoice(snapshot);
+        if (name == null || !choice.choices().contains(name)) {
+            throw ApiError.badRequest("runner.ui.lab.badDefaultDirectory", String.valueOf(name), choice.choices());
+        }
+        String property = "idm.test.default-directory";
+        String variable = RealEnvironmentGuards.variableFor(property);
+        if (environment.containsKey(variable)) {
+            throw ApiError.badRequest("runner.ui.lab.fromEnvironment", "default-directory", variable);
+        }
+        Map<String, String> yaml = new LinkedHashMap<>();
+        yaml.put(property, name);
+        write(root, snapshot, yaml, Map.of());
+    }
+
+    /**
+     * Writes {@code yaml} into the snapshot's profile file and {@code env} into {@code secrets.env}: the
+     * profile file must not be {@code application.yml} and both must be inside the workspace, and the
+     * edit is tried before {@code secrets.env} changes.
+     */
+    private static void write(Path root, Snapshot snapshot, Map<String, String> yaml, Map<String, String> env) {
+        Path profileFile = snapshot.workspace().profileFile(snapshot.profile());
         String shown = "config/" + profileFile.getFileName();
         // dry run first, so a profile file that cannot be edited stops the save before secrets.env changes
         Path secretsFile = snapshot.workspace().secretsFile();

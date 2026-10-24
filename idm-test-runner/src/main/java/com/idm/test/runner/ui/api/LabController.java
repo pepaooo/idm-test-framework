@@ -21,7 +21,9 @@ import java.util.Map;
  * settings (secrets only as {@code set}, {@code not set}, {@code environment} or
  * {@code application.yml}, never their value) and status; {@code PUT /api/lab?profile=} saves one
  * system's settings ({@code values} into {@code config/application-<profile>.yml}, {@code secrets} into
- * {@code secrets.env}) and answers with the lab as GET does; {@code POST /api/lab/test} tests a system
+ * {@code secrets.env}) and answers with the lab as GET does; {@code PUT /api/lab/default-directory?profile=}
+ * saves {@code name} as the default directory (one of the lab's {@code defaultDirectory.choices}) into the
+ * profile file and answers as GET does; {@code POST /api/lab/test} tests a system
  * with the form's values without saving anything. All act on the session's current workspace (400
  * {@code ui.workspace.none} while none is open); the rules are {@link LabSettings}'s. GET only reads.
  */
@@ -46,6 +48,9 @@ class LabController {
         }
     }
 
+    record DefaultDirectoryRequest(String name) {
+    }
+
     record TestRequest(String systemId, String profile, Map<String, String> values, Map<String, String> secrets) {
         /** Never shows the secrets. */
         @Override
@@ -65,6 +70,15 @@ class LabController {
         Path workspace = workspace();
         String name = profile(profile);
         lab.save(workspace, name, request.systemId(), request.values(), request.secrets());
+        return lab.read(workspace, name, locale(http));
+    }
+
+    @PutMapping("/api/lab/default-directory")
+    LabSettings.View saveDefaultDirectory(@RequestParam String profile, @RequestBody DefaultDirectoryRequest request,
+                                          HttpServletRequest http) {
+        Path workspace = workspace();
+        String name = profile(profile);
+        lab.saveDefaultDirectory(workspace, name, request.name());
         return lab.read(workspace, name, locale(http));
     }
 

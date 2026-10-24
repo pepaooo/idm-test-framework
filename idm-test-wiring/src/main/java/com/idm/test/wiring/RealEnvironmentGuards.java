@@ -179,13 +179,7 @@ public final class RealEnvironmentGuards {
         Map<String, LdapProperties> named = Binder.get(environment)
                 .bind("idm.test.directories", Bindable.mapOf(String.class, LdapProperties.class))
                 .orElse(Map.of());
-        String legacyUrl = environment.getProperty("idm.test.ldap.url");
-        Set<String> names = new TreeSet<>(named.keySet());
-        // With no named directories, the old block is the only candidate, and its own checks
-        // explain an unset URL better than "not configured" would.
-        if (named.isEmpty() || (legacyUrl != null && !legacyUrl.isBlank())) {
-            names.add(LdapDirectories.DEFAULT);
-        }
+        Set<String> names = directoryCandidates(named.keySet(), environment.getProperty("idm.test.ldap.url"));
         Optional<String> defaultName =
                 LdapDirectories.resolveDefault(environment.getProperty("idm.test.default-directory"), names);
 
@@ -216,6 +210,21 @@ public final class RealEnvironmentGuards {
                 requireNamedDirectory(name, named.get(name), locale);
             }
         }
+    }
+
+    /**
+     * The directories a run can use, sorted: the named ones ({@code idm.test.directories.<name>}), plus
+     * {@value LdapDirectories#DEFAULT} (the older {@code idm.test.ldap} block) when none is named or
+     * {@code legacyUrl} is set. With no named directories, the old block is the only candidate, and its
+     * own checks explain an unset URL better than "not configured" would. The lab panel resolves the
+     * default directory from the same set, so it asks for exactly what a run would refuse.
+     */
+    public static Set<String> directoryCandidates(Set<String> named, String legacyUrl) {
+        Set<String> names = new TreeSet<>(named);
+        if (named.isEmpty() || (legacyUrl != null && !legacyUrl.isBlank())) {
+            names.add(LdapDirectories.DEFAULT);
+        }
+        return names;
     }
 
     /** The older idm.test.ldap block's checks, unchanged. */

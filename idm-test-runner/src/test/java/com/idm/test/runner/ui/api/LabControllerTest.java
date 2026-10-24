@@ -500,6 +500,156 @@ class LabControllerTest {
         assertThat(Files.readString(profile)).isEqualTo("idm: [\n");
     }
 
+    // --- the default directory ------------------------------------------------------------------
+
+    /** Two named directories, edirectory and ad, in application.yml; {@code more} is added under idm.test. */
+    private static String twoDirectories(String more) {
+        return "idm:\n  test:\n" + more
+                + "    directories:\n"
+                + "      edirectory:\n        url: ldap://edir.test:389\n"
+                + "      ad:\n        url: ldap://ad.test:389\n";
+    }
+
+    private static boolean hasSystem(JsonNode lab, String id) {
+        for (JsonNode system : lab.get("systems")) {
+            if (system.get("id").asString().equals(id)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static List<String> strings(JsonNode array) {
+        List<String> all = new ArrayList<>();
+        array.forEach(node -> all.add(node.asString()));
+        return all;
+    }
+
+    private static Response putDefault(String profile, String name, Map<String, String> headers) throws IOException {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("name", name);
+        return UiHttp.send(server, "PUT", "/api/lab/default-directory?profile=" + profile,
+                JSON.writeValueAsString(body), headers);
+    }
+
+    @Test
+    @DisplayName("Steps without directory: and two directories with no default ask for a default, not the old Directory")
+    void testAmbiguousDefaultDirectory() throws IOException {
+        Path ws = openWorkspace(server);
+        Files.writeString(ws.resolve("config/application.yml"), twoDirectories(""));
+
+        JsonNode view = lab(server, "lab");
+
+        assertThat(hasSystem(view, "ldap")).as(view.toString()).isFalse();
+        JsonNode choice = view.get("defaultDirectory");
+        assertThat(choice.isObject()).as(view.toString()).isTrue();
+        assertThat(strings(choice.get("usedByScenarios"))).containsExactly("example.yaml");
+        assertThat(strings(choice.get("choices"))).containsExactly("ad", "edirectory");
+        assertThat(choice.get("value").isNull()).isTrue();
+        assertThat(choice.get("state").asString()).isEqualTo("missing");
+        assertThat(system(view, "directory:ad").get("usedByScenarios").size()).isZero();
+        assertThat(system(view, "directory:edirectory").get("usedByScenarios").size()).isZero();
+    }
+
+    @Test
+    @DisplayName("A default-directory that names no configured directory is reported as invalid, with its value")
+    void testInvalidDefaultDirectory() throws IOException {
+        Path ws = openWorkspace(server);
+        Files.writeString(ws.resolve("config/application.yml"), twoDirectories("    default-directory: nope\n"));
+
+        JsonNode view = lab(server, "lab");
+
+        assertThat(hasSystem(view, "ldap")).as(view.toString()).isFalse();
+        JsonNode choice = view.get("defaultDirectory");
+        assertThat(choice.isObject()).as(view.toString()).isTrue();
+        assertThat(choice.get("state").asString()).isEqualTo("invalid");
+        assertThat(choice.get("value").asString()).isEqualTo("nope");
+        assertThat(strings(choice.get("choices"))).containsExactly("ad", "edirectory");
+        assertThat(strings(choice.get("usedByScenarios"))).containsExactly("example.yaml");
+    }
+
+    @Test
+    @DisplayName("A default that resolves (one directory, the old block's URL, a valid default) asks for nothing new")
+    void testResolvableDefaultUnchanged() throws IOException {
+        Path ws = openWorkspace(server);
+        Path shared = ws.resolve("config/application.yml");
+
+        JsonNode fresh = lab(server, "lab");
+        assertThat(fresh.get("defaultDirectory").isNull()).as(fresh.toString()).isTrue();
+        assertThat(strings(system(fresh, "ldap").get("usedByScenarios"))).containsExactly("example.yaml");
+
+        Files.writeString(shared, "idm:\n  test:\n    directories:\n      edirectory:\n        url: ldap://edir.test:389\n");
+        JsonNode one = lab(server, "lab");
+        assertThat(one.get("defaultDirectory").isNull()).as(one.toString()).isTrue();
+        assertThat(strings(system(one, "directory:edirectory").get("usedByScenarios"))).containsExactly("example.yaml");
+        assertThat(hasSystem(one, "ldap")).isFalse();
+
+        Files.writeString(shared, twoDirectories("    ldap:\n      url: ldap://old.test:389\n"));
+        JsonNode legacy = lab(server, "lab");
+        assertThat(legacy.get("defaultDirectory").isNull()).as(legacy.toString()).isTrue();
+        assertThat(strings(system(legacy, "ldap").get("usedByScenarios"))).containsExactly("example.yaml");
+        assertThat(system(legacy, "directory:ad").get("usedByScenarios").size()).isZero();
+
+        Files.writeString(shared, twoDirectories("    default-directory: ad\n"));
+        JsonNode chosen = lab(server, "lab");
+        assertThat(chosen.get("defaultDirectory").isNull()).as(chosen.toString()).isTrue();
+        assertThat(strings(system(chosen, "directory:ad").get("usedByScenarios"))).containsExactly("example.yaml");
+        assertThat(system(chosen, "directory:edirectory").get("usedByScenarios").size()).isZero();
+        assertThat(hasSystem(chosen, "ldap")).isFalse();
+    }
+
+    @Test
+    @DisplayName("Saving the default directory uncomments the template's line in the profile file and nothing else")
+    void testSaveDefaultDirectory() throws IOException {
+        Path ws = openWorkspace(server);
+        Path shared = ws.resolve("config/application.yml");
+        String sharedText = twoDirectories("");
+        Files.writeString(shared, sharedText);
+        Path profile = ws.resolve("config/application-lab.yml");
+        String template = Files.readString(profile);
+        assertThat(template).contains("# idm:\n#   test:\n", "\n#     default-directory: edirectory\n");
+
+        Response saved = putDefault("lab", "edirectory", Map.of());
+
+        assertThat(saved.status()).as(saved.body()).isEqualTo(200);
+        String expected = template.replace("# idm:\n#   test:\n", "idm:\n  test:\n")
+                .replace("\n#     default-directory: edirectory\n", "\n    default-directory: edirectory\n");
+        assertThat(Files.readString(profile)).isEqualTo(expected);
+        assertThat(Files.readString(shared)).isEqualTo(sharedText);
+        assertThat(Files.exists(ws.resolve("secrets.env"))).isFalse();
+        JsonNode view = JSON.readTree(saved.body());
+        assertThat(view.get("defaultDirectory").isNull()).as(saved.body()).isTrue();
+        assertThat(strings(system(view, "directory:edirectory").get("usedByScenarios"))).containsExactly("example.yaml");
+        assertThat(hasSystem(view, "ldap")).isFalse();
+        assertThat(lab(server, "lab").get("defaultDirectory").isNull()).isTrue();
+    }
+
+    @Test
+    @DisplayName("Saving a default directory that is not one of the choices is refused, in English and Spanish")
+    void testBadDefaultDirectory() throws IOException {
+        Path ws = openWorkspace(server);
+        Files.writeString(ws.resolve("config/application.yml"), twoDirectories(""));
+        List<String> before = snapshot(ws);
+
+        Response english = putDefault("lab", "nope", Map.of());
+        Response spanish = putDefault("lab", "nope", Map.of("Accept-Language", "es"));
+        Response none = putDefault("lab", null, Map.of());
+
+        assertThat(english.status()).as(english.body()).isEqualTo(400);
+        JsonNode en = JSON.readTree(english.body());
+        assertThat(en.get("key").asString()).isEqualTo("ui.lab.badDefaultDirectory");
+        assertThat(en.get("message").asString())
+                .isEqualTo("'nope' is not one of the configured directories. Choose one of: [ad, edirectory]");
+        assertThat(spanish.status()).isEqualTo(400);
+        JsonNode es = JSON.readTree(spanish.body());
+        assertThat(es.get("key").asString()).isEqualTo("ui.lab.badDefaultDirectory");
+        assertThat(es.get("message").asString())
+                .isEqualTo("'nope' no es ninguno de los directorios configurados. Elija uno de: [ad, edirectory]");
+        assertThat(none.status()).isEqualTo(400);
+        assertThat(JSON.readTree(none.body()).get("key").asString()).isEqualTo("ui.lab.badDefaultDirectory");
+        assertThat(snapshot(ws)).isEqualTo(before);
+    }
+
     @Test
     @DisplayName("Without a workspace the lab API answers 400 ui.workspace.none")
     void testNoWorkspace() throws Exception {

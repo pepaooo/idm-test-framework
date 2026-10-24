@@ -3,6 +3,8 @@ package com.idm.test.runner.ui.api;
 import com.idm.test.engine.ScenarioLoader;
 import com.idm.test.engine.model.Scenario;
 import com.idm.test.runner.InitCommand;
+import com.idm.test.runner.LabFixture;
+import com.idm.test.runner.ui.RunEventStream;
 import com.idm.test.runner.ui.UiCommand;
 import com.idm.test.runner.ui.UiHttp;
 import com.idm.test.runner.ui.UiHttp.Response;
@@ -453,6 +455,218 @@ class FilesControllerTest {
                 JSON.writeValueAsString(Map.of("path", path, "content", content)));
     }
 
+    // --- delete ---------------------------------------------------------------------------------
+
+    @Test
+    @DisplayName("DELETE with the version read: 204, the file is gone from disk and the tree, and the watcher says deleted")
+    void testDelete() throws Exception {
+        Path doomed = ws.resolve("scenarios/users/doomed.yaml");
+        Files.createDirectories(doomed.getParent());
+        Files.writeString(doomed, "name: doomed\n");
+        BlockingQueue<String> events = new LinkedBlockingQueue<>();
+        HttpClient client = HttpClient.newHttpClient();
+        HttpResponse<Stream<String>> stream = client.send(eventsRequest(), HttpResponse.BodyHandlers.ofLines());
+        Thread reader = Thread.ofVirtual().start(() -> {
+            try (Stream<String> lines = stream.body()) {
+                lines.filter(line -> line.startsWith("data:")).forEach(line -> events.add(line.substring(5).trim()));
+            } catch (RuntimeException e) {
+                // closed
+            }
+        });
+        try {
+            String version = json(get("scenarios/users/doomed.yaml")).get("version").asString();
+            // the watcher may only now register the new folder: wait until it reports a change there
+            awaitEvent(events, "scenarios/users/doomed.yaml", "changed",
+                    i -> Files.writeString(doomed, "name: doomed\n"));
+
+            Response deleted = delete("scenarios/users/doomed.yaml", version);
+
+            assertThat(deleted.status()).as(deleted.body()).isEqualTo(204);
+            assertThat(doomed).doesNotExist();
+            assertThat(json(UiHttp.get(server, "/api/files/tree")).toString()).doesNotContain("doomed.yaml");
+            awaitEvent(events, "scenarios/users/doomed.yaml", "deleted", i -> { });
+        } finally {
+            reader.interrupt();
+            stream.body().close();
+            client.close();
+        }
+    }
+
+    @Test
+    @DisplayName("DELETE with an old version answers 409 ui.file.changed with the current version and keeps the file")
+    void testDeleteStaleVersionRefused() throws Exception {
+        String version = json(get("scenarios/example.yaml")).get("version").asString();
+        Files.writeString(ws.resolve("scenarios/example.yaml"), "name: from git pull\n");
+
+        Response conflict = delete("scenarios/example.yaml", version);
+
+        assertThat(conflict.status()).isEqualTo(409);
+        JsonNode body = json(conflict);
+        assertThat(body.propertyNames()).containsExactlyInAnyOrder("key", "message", "currentVersion");
+        assertThat(body.get("key").asString()).isEqualTo("ui.file.changed");
+        assertThat(body.get("currentVersion").asString())
+                .isEqualTo(WorkspaceFiles.version("name: from git pull\n".getBytes(StandardCharsets.UTF_8)));
+        assertThat(Files.readString(ws.resolve("scenarios/example.yaml"))).isEqualTo("name: from git pull\n");
+    }
+
+    @Test
+    @DisplayName("DELETE refuses config, secrets.env, scenarios/, escapes, links out and a missing version; nothing is deleted")
+    void testDeleteRefusals() throws Exception {
+        Files.writeString(ws.resolve("secrets.env"), "IDM_TEST_LDAP_PASSWORD=fake-not-a-real-value\n");
+        Files.writeString(temp.resolve("outside.yaml"), "x: 1\n");
+        String lab = Files.readString(ws.resolve("config/application-lab.yml"));
+        String example = json(get("scenarios/example.yaml")).get("version").asString();
+        Map<String, String> refusals = new LinkedHashMap<>();
+        refusals.put("config/application-lab.yml", "400 ui.file.notDeletable");
+        refusals.put("scenarios", "400 ui.file.notDeletable");
+        refusals.put("secrets.env", "403 ui.file.secrets");
+        refusals.put("../outside.yaml", "400 ui.file.badPath");
+        refusals.put("scenarios/missing.yaml", "404 ui.file.notFound");
+        try {
+            Files.createSymbolicLink(ws.resolve("scenarios/out.yaml"), temp.resolve("outside.yaml"));
+            refusals.put("scenarios/out.yaml", "400 ui.file.badPath");
+        } catch (UnsupportedOperationException | IOException e) {
+            // no symbolic links on this system: the other refusals are still checked
+        }
+        for (Map.Entry<String, String> refusal : refusals.entrySet()) {
+            Response response = delete(refusal.getKey(), WorkspaceFiles.version("x: 1\n".getBytes(StandardCharsets.UTF_8)));
+            assertThat(response.status() + " " + json(response).get("key").asString()).as(refusal.getKey())
+                    .isEqualTo(refusal.getValue());
+            assertThat(response.body()).doesNotContain("fake-not-a-real-value");
+        }
+        Response notDeletable = delete("config/application-lab.yml", "0".repeat(64));
+        assertThat(json(notDeletable).get("message").asString())
+                .isEqualTo("only scenario files under scenarios/ can be deleted.");
+        Response spanish = UiHttp.send(server, "DELETE", "/api/files?path=config/application-lab.yml&version=x", null,
+                Map.of("Accept-Language", "es"));
+        assertThat(json(spanish).get("message").asString())
+                .isEqualTo("solo se pueden eliminar archivos de escenario de scenarios/.");
+
+        for (String query : new String[] {"", "&version=", "&version=%20"}) {
+            Response noVersion = UiHttp.send(server, "DELETE", "/api/files?path=scenarios/example.yaml" + query, null);
+            assertThat(noVersion.status()).as(query).isEqualTo(400);
+            assertThat(json(noVersion).get("key").asString()).isEqualTo("ui.request.invalid");
+            assertThat(json(noVersion).get("message").asString()).contains("version");
+        }
+
+        assertThat(Files.readString(ws.resolve("config/application-lab.yml"))).isEqualTo(lab);
+        assertThat(ws.resolve("secrets.env")).exists();
+        assertThat(temp.resolve("outside.yaml")).exists();
+        assertThat(json(get("scenarios/example.yaml")).get("version").asString()).isEqualTo(example);
+    }
+
+    @Test
+    @DisplayName("DELETE of a scenario of the run that is going: 409 ui.file.inRun, kept; one not in that run is deleted")
+    void testDeleteRefusedDuringItsRun() throws Exception {
+        try (LabFixture lab = LabFixture.start();
+             UiServer running = UiCommand.start(0, Locale.ENGLISH, null, Map.of())) {
+            // a run that waits 60 s for a value it never sees, until it is stopped
+            Path x = lab.workspace(temp.resolve("running-ws"), LabFixture.database(temp.resolve("db")), null);
+            Path settings = x.resolve("config/application-lab.yml");
+            Files.writeString(settings, Files.readString(settings)
+                    .replace("default-timeout-seconds: 2", "default-timeout-seconds: 60"));
+            LabFixture.scenario(x, "users/wrong-sn.yaml", LabFixture.WRONG_SN);
+            LabFixture.scenario(x, "other.yaml", "name: other\n");
+            assertThat(UiHttp.send(running, "POST", "/api/workspaces/open",
+                    JSON.writeValueAsString(Map.of("path", x.toString()))).status()).isEqualTo(200);
+            Response started = UiHttp.send(running, "POST", "/api/runs", JSON.writeValueAsString(
+                    Map.of("profile", "lab", "scenarios", List.of("scenarios/users/wrong-sn.yaml"))));
+            assertThat(started.status()).as(started.body()).isEqualTo(202);
+            try (RunEventStream stream = new RunEventStream(running)) {
+                stream.until("attempt");
+                String version = WorkspaceFiles.version(LabFixture.WRONG_SN.getBytes(StandardCharsets.UTF_8));
+
+                Response refused = UiHttp.send(running, "DELETE",
+                        "/api/files?path=scenarios/users/wrong-sn.yaml&version=" + version, null);
+                assertThat(refused.status()).as(refused.body()).isEqualTo(409);
+                JsonNode body = json(refused);
+                assertThat(body.propertyNames()).containsExactlyInAnyOrder("key", "message");
+                assertThat(body.get("key").asString()).isEqualTo("ui.file.inRun");
+                assertThat(body.get("message").asString()).isEqualTo(
+                        "scenarios/users/wrong-sn.yaml is part of the run that is going; wait for it to finish or stop it.");
+                Response spanish = UiHttp.send(running, "DELETE",
+                        "/api/files?path=scenarios/users/wrong-sn.yaml&version=" + version, null,
+                        Map.of("Accept-Language", "es"));
+                assertThat(json(spanish).get("message").asString()).isEqualTo(
+                        "scenarios/users/wrong-sn.yaml forma parte de la ejecución en curso; espere a que termine o deténgala.");
+                assertThat(x.resolve("scenarios/users/wrong-sn.yaml")).exists();
+
+                Response other = UiHttp.send(running, "DELETE", "/api/files?path=scenarios/other.yaml&version="
+                        + WorkspaceFiles.version("name: other\n".getBytes(StandardCharsets.UTF_8)), null);
+                assertThat(other.status()).as(other.body()).isEqualTo(204);
+                assertThat(x.resolve("scenarios/other.yaml")).doesNotExist();
+
+                assertThat(UiHttp.send(running, "POST", "/api/runs/current/stop", null).status()).isEqualTo(202);
+                assertThat(stream.all().getLast().name()).isEqualTo("runFinished");
+            }
+            // the run is over: its scenario can go now
+            Response after = UiHttp.send(running, "DELETE", "/api/files?path=scenarios/users/wrong-sn.yaml&version="
+                    + WorkspaceFiles.version(LabFixture.WRONG_SN.getBytes(StandardCharsets.UTF_8)), null);
+            assertThat(after.status()).as(after.body()).isEqualTo(204);
+        }
+    }
+
+    // --- git state ------------------------------------------------------------------------------
+
+    @Test
+    @DisplayName("GET /api/files/git: none without .git, then clean, changed and untracked; it changes nothing")
+    void testGitState() throws Exception {
+        assertThat(gitState("scenarios/example.yaml")).isEqualTo("none");
+        Response secrets = UiHttp.get(server, "/api/files/git?path=secrets.env");
+        assertThat(secrets.status()).isEqualTo(403);
+        assertThat(UiHttp.get(server, "/api/files/git?path=../x.yaml").status()).isEqualTo(400);
+
+        org.junit.jupiter.api.Assumptions.assumeTrue(gitAvailable(), "git is not installed");
+        git("init", "--quiet");
+        git("add", "-A");
+        git("-c", "user.name=Test", "-c", "user.email=test@example.invalid", "-c", "commit.gpgsign=false",
+                "commit", "--quiet", "--no-verify", "-m", "first");
+        Files.writeString(ws.resolve("scenarios/new.yaml"), "name: new\n");
+        assertThat(gitState("scenarios/example.yaml")).isEqualTo("clean");
+        assertThat(gitState("scenarios/new.yaml")).isEqualTo("untracked");
+        Files.writeString(ws.resolve("scenarios/example.yaml"), "name: edited\n");
+        List<String> before = listing(ws);
+        assertThat(gitState("scenarios/example.yaml")).isEqualTo("changed");
+        assertThat(listing(ws)).as("nothing in the workspace or its .git changed").isEqualTo(before);
+    }
+
+    private static String gitState(String path) throws IOException {
+        Response response = UiHttp.get(server, "/api/files/git?path=" + URLEncoder.encode(path, StandardCharsets.UTF_8));
+        assertThat(response.status()).as(response.body()).isEqualTo(200);
+        JsonNode body = json(response);
+        assertThat(body.propertyNames()).containsExactly("state");
+        return body.get("state").asString();
+    }
+
+    private static boolean gitAvailable() {
+        try {
+            Process process = new ProcessBuilder("git", "--version").redirectErrorStream(true)
+                    .redirectOutput(ProcessBuilder.Redirect.DISCARD).start();
+            return process.waitFor(10, TimeUnit.SECONDS) && process.exitValue() == 0;
+        } catch (IOException e) {
+            return false;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return false;
+        }
+    }
+
+    private void git(String... args) throws Exception {
+        List<String> command = new ArrayList<>(List.of("git"));
+        command.addAll(List.of(args));
+        ProcessBuilder builder = new ProcessBuilder(command).directory(ws.toFile()).redirectErrorStream(true);
+        builder.environment().keySet().removeIf(name -> name.toUpperCase(Locale.ROOT).startsWith("GIT_"));
+        Process process = builder.start();
+        String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        assertThat(process.waitFor(30, TimeUnit.SECONDS)).isTrue();
+        assertThat(process.exitValue()).as("git " + String.join(" ", args) + ": " + output).isZero();
+    }
+
+    private static Response delete(String path, String version) throws IOException {
+        return UiHttp.send(server, "DELETE", "/api/files?path=" + URLEncoder.encode(path, StandardCharsets.UTF_8)
+                + "&version=" + URLEncoder.encode(version, StandardCharsets.UTF_8), null);
+    }
+
     // --- no workspace ---------------------------------------------------------------------------
 
     @Test
@@ -467,6 +681,8 @@ class FilesControllerTest {
                     UiHttp.send(bare, "PUT", "/api/files?path=scenarios/example.yaml",
                             "{\"content\":\"x\",\"version\":\"y\"}"),
                     UiHttp.get(bare, "/api/files/events"),
+                    UiHttp.get(bare, "/api/files/git?path=scenarios/example.yaml"),
+                    UiHttp.send(bare, "DELETE", "/api/files?path=scenarios/example.yaml&version=y", null),
                     UiHttp.get(bare, "/api/files/tree", Map.of("Accept-Language", "es"))}) {
                 assertThat(response.status()).as(response.body()).isEqualTo(400);
                 assertThat(json(response).get("key").asString()).isEqualTo("ui.workspace.none");

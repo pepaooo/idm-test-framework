@@ -31,6 +31,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.Predicate;
 import java.util.regex.Pattern;
 
 /**
@@ -47,7 +48,8 @@ import java.util.regex.Pattern;
  * version cannot both win. A save writes a temp file in the same folder and moves it over the file
  * (atomically where the file system can), with the content exactly as the UTF-8 bytes of the text
  * sent — line endings and a byte order mark included. Saves never create files: new files come only
- * through {@link #add} and {@link #createScenario}, under {@code scenarios/}, never replacing one.
+ * through {@link #add} and {@link #createScenario}, under {@code scenarios/}, never replacing one;
+ * only scenario files are deleted ({@link #delete}), with the same version check.
  * <p>
  * The tree has {@code scenarios/} and {@code config/} (all their levels) and the workspace's
  * top-level files; it leaves out every other folder ({@code reports/}, {@code drivers/}, {@code .git},
@@ -83,7 +85,7 @@ public final class WorkspaceFiles {
     }
 
     /** What is wrong with a request for a file. */
-    public enum Problem { BAD_PATH, BAD_NAME, SECRETS, NOT_FOUND, TOO_LARGE, NOT_TEXT, NOT_YAML, EXISTS }
+    public enum Problem { BAD_PATH, BAD_NAME, SECRETS, NOT_FOUND, TOO_LARGE, NOT_TEXT, NOT_YAML, EXISTS, NOT_DELETABLE, IN_RUN }
 
     /** A file request that cannot be done; {@link #subject()} is the path or file name it was about. */
     public static final class FileException extends RuntimeException {
@@ -514,6 +516,99 @@ public final class WorkspaceFiles {
             failure.addSuppressed(e);
         }
         return failure;
+    }
+
+    // --- delete ---------------------------------------------------------------------------------
+
+    /** As {@link #delete(String, String, Predicate)}, with no run to refuse for. */
+    public void delete(String path, String version) {
+        delete(path, version, scenario -> false);
+    }
+
+    /**
+     * Deletes the scenario file {@code path} if it is still at {@code version}. Only a {@code .yaml} or
+     * {@code .yml} file under {@code scenarios/} — as given and where it really is — can be deleted
+     * ({@link Problem#NOT_DELETABLE}; folders neither); the path checks of every path apply first. A
+     * symbolic link is deleted itself, never the file it points to. {@code inRun} is asked with the
+     * path as given and as it really is (workspace-relative); when it says yes the file is kept
+     * ({@link Problem#IN_RUN}). The version is checked and the file deleted under the lock saves of it
+     * take, so a save and a delete of one file wait in turn.
+     *
+     * @throws ChangedException         when the file on disk is not at {@code version}
+     * @throws IllegalArgumentException when {@code version} is null
+     */
+    public void delete(String path, String version, Predicate<String> inRun) {
+        if (version == null) {
+            throw new IllegalArgumentException("version");
+        }
+        Path file = resolve(path);
+        if (!path.startsWith(SCENARIOS + "/") || !isScenarioName(path)) {
+            throw new FileException(Problem.NOT_DELETABLE, path);
+        }
+        Path entry;
+        try {
+            Path scenarios = root.resolve(SCENARIOS);
+            if (!Files.isDirectory(scenarios)) {
+                throw new FileException(Problem.NOT_FOUND, path);
+            }
+            Path realScenarios = scenarios.toRealPath();
+            Path given = root.resolve(path);
+            entry = given.getParent().toRealPath().resolve(given.getFileName().toString());
+            if (!file.startsWith(realScenarios) || !isScenarioName(file.getFileName().toString())
+                    || !entry.getParent().startsWith(realScenarios)) {
+                throw new FileException(Problem.NOT_DELETABLE, path);
+            }
+        } catch (NoSuchFileException e) {
+            throw new FileException(Problem.NOT_FOUND, path);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+        if (Files.isDirectory(file)) {
+            throw new FileException(Problem.NOT_DELETABLE, path);
+        }
+        if (!Files.isRegularFile(file)) {
+            throw new FileException(Problem.NOT_FOUND, path);
+        }
+        if (inRun.test(path) || inRun.test(relative(file))) {
+            throw new FileException(Problem.IN_RUN, path);
+        }
+        ReentrantLock lock = LOCKS.computeIfAbsent(file.toString(), k -> new ReentrantLock());
+        lock.lock();
+        try {
+            String current = version(Files.readAllBytes(file));
+            if (!current.equals(version)) {
+                throw new ChangedException(path, current);
+            }
+            Files.delete(entry);
+        } catch (NoSuchFileException e) {
+            throw new FileException(Problem.NOT_FOUND, path);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /** A {@code .yaml} or {@code .yml} name, as the tree tells scenarios. */
+    private static boolean isScenarioName(String name) {
+        return name.endsWith(".yaml") || name.endsWith(".yml");
+    }
+
+    /**
+     * The workspace-relative path, with {@code /}, of where {@code path} really is (symbolic links
+     * resolved), after the checks of every path ({@link Problem#BAD_PATH}, {@link Problem#SECRETS}).
+     * The file need not exist.
+     */
+    public String relative(String path) {
+        return relative(resolve(path));
+    }
+
+    private String relative(Path real) {
+        try {
+            return root.toRealPath().relativize(real).toString().replace('\\', '/');
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
     }
 
     // --- paths ----------------------------------------------------------------------------------

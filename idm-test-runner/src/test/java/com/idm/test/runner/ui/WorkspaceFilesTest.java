@@ -427,6 +427,119 @@ class WorkspaceFilesTest {
         assertThat(child(child(files.tree(), "scenarios"), "scenarios/c.yaml").lastResult()).isEqualTo("passed");
     }
 
+    // --- delete ---------------------------------------------------------------------------------
+
+    @Test
+    @DisplayName("Delete with the version read removes the scenario file, in a subfolder too")
+    void testDelete() throws Exception {
+        Files.writeString(ws.resolve("scenarios/sub/b.yml"), "name: b\n");
+
+        files.delete("scenarios/a.yaml", files.read("scenarios/a.yaml").version());
+        files.delete("scenarios/sub/b.yml", files.read("scenarios/sub/b.yml").version());
+
+        assertThat(ws.resolve("scenarios/a.yaml")).doesNotExist();
+        assertThat(ws.resolve("scenarios/sub/b.yml")).doesNotExist();
+        assertThat(ws.resolve("scenarios/sub")).isDirectory();
+        assertProblem(() -> files.delete("scenarios/a.yaml", "0".repeat(64)), Problem.NOT_FOUND);
+        assertThatThrownBy(() -> files.delete("scenarios/sub/c.yaml", null))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    @DisplayName("Delete with an old version is refused with the current version, and the file is kept")
+    void testDeleteStaleVersionRefused() throws Exception {
+        String old = files.read("scenarios/a.yaml").version();
+        Files.writeString(ws.resolve("scenarios/a.yaml"), "name: from git pull\n");
+
+        assertThatThrownBy(() -> files.delete("scenarios/a.yaml", old)).isInstanceOfSatisfying(ChangedException.class,
+                e -> assertThat(e.currentVersion())
+                        .isEqualTo(WorkspaceFiles.version("name: from git pull\n".getBytes(StandardCharsets.UTF_8))));
+        assertThat(Files.readString(ws.resolve("scenarios/a.yaml"))).isEqualTo("name: from git pull\n");
+    }
+
+    @Test
+    @DisplayName("Delete refuses a scenario of the run that is going and keeps it; another scenario can go")
+    void testDeleteRefusedDuringItsRun() throws Exception {
+        Files.writeString(ws.resolve("scenarios/sub/b.yaml"), "name: b\n");
+        List<String> asked = new ArrayList<>();
+        java.util.function.Predicate<String> inRun = path -> {
+            asked.add(path);
+            return path.equals("scenarios/a.yaml");
+        };
+
+        assertProblem(() -> files.delete("scenarios/a.yaml", files.read("scenarios/a.yaml").version(), inRun),
+                Problem.IN_RUN);
+        assertThat(ws.resolve("scenarios/a.yaml")).exists();
+        assertThat(asked).contains("scenarios/a.yaml");
+
+        files.delete("scenarios/sub/b.yaml", files.read("scenarios/sub/b.yaml").version(), inRun);
+        assertThat(ws.resolve("scenarios/sub/b.yaml")).doesNotExist();
+    }
+
+    @Test
+    @DisplayName("Delete refuses config, secrets.env, folders, other files, escapes and links out; nothing is deleted")
+    void testDeleteRefusals() throws Exception {
+        Files.writeString(ws.resolve("config/application-lab.yml"), "x: 1\n");
+        Files.writeString(ws.resolve("secrets.env"), "IDM_TEST_X=fake-value\n");
+        Files.writeString(ws.resolve("scenarios/notes.txt"), "notes\n");
+        Files.writeString(ws.resolve("top.yaml"), "x: 1\n");
+        Files.createDirectories(ws.resolve("scenarios/folder.yaml"));
+        Files.writeString(temp.resolve("outside.yaml"), "x: 1\n");
+        String any = "0".repeat(64);
+
+        assertProblem(() -> files.delete("config/application-lab.yml", version("x: 1\n")), Problem.NOT_DELETABLE);
+        assertProblem(() -> files.delete("top.yaml", version("x: 1\n")), Problem.NOT_DELETABLE);
+        assertProblem(() -> files.delete("scenarios/notes.txt", version("notes\n")), Problem.NOT_DELETABLE);
+        assertProblem(() -> files.delete("scenarios", any), Problem.NOT_DELETABLE);
+        assertProblem(() -> files.delete("scenarios/sub", any), Problem.NOT_DELETABLE);
+        assertProblem(() -> files.delete("scenarios/folder.yaml", any), Problem.NOT_DELETABLE);
+        assertProblem(() -> files.delete("secrets.env", any), Problem.SECRETS);
+        assertProblem(() -> files.delete("scenarios/secrets.env", any), Problem.SECRETS);
+        assertProblem(() -> files.delete("../outside.yaml", version("x: 1\n")), Problem.BAD_PATH);
+        assertProblem(() -> files.delete("scenarios/../../outside.yaml", version("x: 1\n")), Problem.BAD_PATH);
+        assertProblem(() -> files.delete("scenarios/missing.yaml", any), Problem.NOT_FOUND);
+        boolean links = true;
+        try {
+            Files.createSymbolicLink(ws.resolve("scenarios/out.yaml"), temp.resolve("outside.yaml"));
+            Files.createSymbolicLink(ws.resolve("scenarios/cfg.yaml"), ws.resolve("config/application-lab.yml"));
+            Files.createSymbolicLink(ws.resolve("scenarios/env.yaml"), ws.resolve("secrets.env"));
+        } catch (UnsupportedOperationException | IOException e) {
+            links = false;
+        }
+        if (links) {
+            assertProblem(() -> files.delete("scenarios/out.yaml", version("x: 1\n")), Problem.BAD_PATH);
+            assertProblem(() -> files.delete("scenarios/cfg.yaml", version("x: 1\n")), Problem.NOT_DELETABLE);
+            assertProblem(() -> files.delete("scenarios/env.yaml", any), Problem.SECRETS);
+            assertThat(ws.resolve("scenarios/out.yaml")).exists();
+            assertThat(ws.resolve("scenarios/cfg.yaml")).exists();
+        }
+
+        assertThat(ws.resolve("config/application-lab.yml")).exists();
+        assertThat(ws.resolve("secrets.env")).exists();
+        assertThat(ws.resolve("scenarios/notes.txt")).exists();
+        assertThat(ws.resolve("top.yaml")).exists();
+        assertThat(ws.resolve("scenarios/folder.yaml")).isDirectory();
+        assertThat(ws.resolve("scenarios/sub")).isDirectory();
+        assertThat(temp.resolve("outside.yaml")).exists();
+    }
+
+    @Test
+    @DisplayName("Deleting a link inside scenarios/ to another scenario removes the link, not the scenario")
+    void testDeleteLinkKeepsTarget() throws Exception {
+        try {
+            Files.createSymbolicLink(ws.resolve("scenarios/alias.yaml"), ws.resolve("scenarios/a.yaml"));
+        } catch (UnsupportedOperationException | IOException e) {
+            Assumptions.abort("no symbolic links here");
+        }
+        files.delete("scenarios/alias.yaml", files.read("scenarios/alias.yaml").version());
+        assertThat(Files.exists(ws.resolve("scenarios/alias.yaml"), java.nio.file.LinkOption.NOFOLLOW_LINKS)).isFalse();
+        assertThat(Files.readString(ws.resolve("scenarios/a.yaml"))).isEqualTo("name: a\n");
+    }
+
+    private static String version(String content) {
+        return WorkspaceFiles.version(content.getBytes(StandardCharsets.UTF_8));
+    }
+
     // --- helpers --------------------------------------------------------------------------------
 
     private static Node child(Node parent, String path) {

@@ -373,9 +373,10 @@ export function Workbench({ workspace, warning, lockWait = 300, runPanel, lab, r
                 void refreshTree();
                 void store.open(path);
               }}
-              onDelete={async (path) => {
+              prepareDelete={(path) => store.prepareDelete(path)}
+              onDelete={async (path, version) => {
                 try {
-                  await store.deleteFile(path);
+                  await store.deleteFile(path, version);
                 } catch (e) {
                   return e instanceof ApiProblem ? e.message : String(e);
                 }
@@ -421,12 +422,14 @@ export function Workbench({ workspace, warning, lockWait = 300, runPanel, lab, r
       )}
       {conflicted?.conflict && !state.readOnly && switched === null && (
         <ChangedOnDiskDialog
-          key={`${conflicted.path}:${conflicted.conflict.diskVersion}`}
+          key={`${conflicted.path}:${conflicted.conflict.deleted ? 'deleted' : conflicted.conflict.diskVersion}`}
           path={conflicted.path}
           mine={conflicted.content}
           disk={conflicted.conflict.diskContent}
           error={conflicted.error}
           busy={conflicted.saving}
+          deleted={conflicted.conflict.deleted ?? false}
+          onDiscard={() => store.discardDeleted(conflicted.path)}
           onRetry={() => void store.retryDisk(conflicted.path)}
           onKeepMine={() => void store.keepMine(conflicted.path)}
           onLoadFromDisk={() => void store.loadFromDisk(conflicted.path)}

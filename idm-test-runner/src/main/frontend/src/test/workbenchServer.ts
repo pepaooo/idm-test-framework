@@ -88,7 +88,7 @@ export function workbenchServer({ files, validate, gitState = () => 'clean', rou
       if (file && file.version !== body.version) {
         return {
           status: 409,
-          body: { key: 'runner.ui.file.changed', message: `${path} changed on disk`, currentVersion: file.version },
+          body: { key: 'ui.file.changed', message: `${path} changed on disk`, currentVersion: file.version },
         };
       }
       counter += 1;

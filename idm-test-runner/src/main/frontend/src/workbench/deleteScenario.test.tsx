@@ -2,7 +2,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Workbench } from './Workbench';
-import { readDraft } from './drafts';
+import { WorkbenchStore } from './store';
+import { readDraft, writeDraft } from './drafts';
 import { emitServerEvent } from '../test/browserFakes';
 import { WORKSPACE, workbenchServer, type GitState, type WorkbenchServerOptions } from '../test/workbenchServer';
 import { setLanguage } from '../i18n';
@@ -15,6 +16,7 @@ const EVENTS = '/api/files/events';
 const CONFIRM = `Delete ${A}? This cannot be undone in the workbench.`;
 const UNSAVED = 'It has unsaved edits, which will be lost.';
 const NOT_IN_GIT = 'This file is not in git yet, so it cannot be recovered.';
+const B = 'scenarios/b.yaml';
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -136,19 +138,123 @@ describe('Delete a scenario', () => {
     await waitFor(() => expect(server.disk.has(A)).toBe(false));
   });
 
-  it('delete from another tab closes the file', async () => {
+  it('delete from another tab closes a file without edits silently', async () => {
     const server = await start();
-    const editor = await openA();
-    await editA(editor);
+    await openA();
 
     server.removeOnDisk(A);
     act(() => emitServerEvent(EVENTS, { type: 'deleted', path: A }));
 
     await waitFor(() => expect(screen.queryByLabelText(`Edit ${A}`)).not.toBeInTheDocument());
-    await waitFor(async () => expect(await readDraft(WORKSPACE.path, A)).toBeNull());
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     await waitFor(() => expect(screen.queryByRole('button', { name: 'a.yaml' })).not.toBeInTheDocument());
     expect(server.puts()).toHaveLength(0);
+  });
+
+  /** A has unsaved edits (kept as a draft), then another program deletes it. */
+  async function deletedUnderEdits() {
+    const server = await start();
+    const editor = await openA();
+    await editA(editor);
+    server.removeOnDisk(A);
+    act(() => emitServerEvent(EVENTS, { type: 'deleted', path: A }));
+    const dialog = await screen.findByRole('dialog', { name: 'a.yaml was deleted on disk' });
+    return { server, editor, dialog };
+  }
+
+  it('an outside delete of a file with unsaved edits keeps the tab and its draft, and asks', async () => {
+    const { server, editor, dialog } = await deletedUnderEdits();
+    expect(dialog).toHaveTextContent(`${A} was deleted on disk. Keep your version (the file is created again) or discard it?`);
+    expect(editor).toHaveValue('name: mine\n');
+    expect((await readDraft(WORKSPACE.path, A))?.content).toBe('name: mine\n');
+    expect(within(dialog).getByRole('button', { name: 'Keep mine' })).toBeEnabled();
+    expect(within(dialog).getByRole('button', { name: 'Discard' })).toBeEnabled();
+    expect(within(dialog).queryByRole('button', { name: 'Compare' })).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole('button', { name: 'Load from disk' })).not.toBeInTheDocument();
+    // a save cannot go over the missing file
+    await userEvent.keyboard('{Control>}s{/Control}');
+    expect(server.puts()).toHaveLength(0);
+  });
+
+  it('Keep mine creates the file again with the tab\'s text, never overwriting; the tab becomes clean', async () => {
+    const { server, editor, dialog } = await deletedUnderEdits();
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Keep mine' }));
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(server.creates().map((r) => r.body)).toEqual([{ path: A, content: 'name: mine\n' }]);
+    expect(server.disk.get(A)?.content).toBe('name: mine\n');
+    expect(editor).toHaveValue('name: mine\n');
+    await waitFor(() => expect(screen.queryAllByRole('img', { name: 'unsaved' })).toHaveLength(0));
+    await waitFor(async () => expect(await readDraft(WORKSPACE.path, A)).toBeNull());
+  });
+
+  it('Keep mine when the file is back meanwhile does not overwrite it: the changed-on-disk choice opens', async () => {
+    const { server, editor, dialog } = await deletedUnderEdits();
+    server.disk.set(A, { content: 'name: back\n', version: 'v9' });
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Keep mine' }));
+
+    expect(await screen.findByRole('dialog', { name: 'a.yaml changed on disk' })).toBeInTheDocument();
+    expect(server.disk.get(A)?.content).toBe('name: back\n');
+    expect(editor).toHaveValue('name: mine\n');
+  });
+
+  it('Discard closes the tab and drops the draft', async () => {
+    const { dialog } = await deletedUnderEdits();
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Discard' }));
+
+    await waitFor(() => expect(screen.queryByLabelText(`Edit ${A}`)).not.toBeInTheDocument());
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    await waitFor(async () => expect(await readDraft(WORKSPACE.path, A)).toBeNull());
+  });
+
+  it('a read-only tab keeps the edits of a deleted file too: the deleted choice waits until it holds the workspace', async () => {
+    const server = workbenchServer({ files: { [A]: 'name: A\n' } });
+    const store = new WorkbenchStore(WORKSPACE.path, { validateDelay: 5, draftDelay: 5 });
+    await store.open(A); // read-only: another tab holds the workspace, whose edits are this draft
+    await writeDraft(WORKSPACE.path, A, { content: 'name: theirs edits\n', baseVersion: 'v1', savedAt: 1 });
+
+    server.removeOnDisk(A);
+    await store.fileDeleted(A);
+    expect(store.doc(A)?.conflict).toEqual({ diskContent: null, diskVersion: '', deleted: true });
+    expect((await readDraft(WORKSPACE.path, A))?.content).toBe('name: theirs edits\n');
+
+    store.setReadOnly(false); // this tab holds it now: the draft comes back, still as a deleted file
+    await waitFor(() => expect(store.doc(A)?.content).toBe('name: theirs edits\n'));
+    expect(store.doc(A)?.conflict?.deleted).toBe(true);
+    await expect(store.save(A)).rejects.toThrow();
+    expect(server.puts()).toHaveLength(0);
+    store.dispose();
+  });
+
+  it('a draft of a file not open in this tab survives a deleted event', async () => {
+    const server = await start();
+    await writeDraft(WORKSPACE.path, B, { content: 'name: kept\n', baseVersion: 'v1', savedAt: 1 });
+    server.removeOnDisk(B);
+    act(() => emitServerEvent(EVENTS, { type: 'deleted', path: B }));
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'b.yaml' })).not.toBeInTheDocument());
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect((await readDraft(WORKSPACE.path, B))?.content).toBe('name: kept\n');
+  });
+
+  it('a closed file is deleted at the version read when the dialog opened: a change meanwhile is refused', async () => {
+    const server = await start();
+    const dialog = await askToDelete();
+    await waitFor(() => expect(server.calls()).toContain(`GET /api/files?path=${encodeURIComponent(A)}`));
+    server.changeOnDisk(A, 'name: changed while asking\n'); // v2
+
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
+
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(`${A} changed on disk`);
+    expect(server.disk.get(A)?.content).toBe('name: changed while asking\n');
+    expect(server.deletes().map((r) => r.url)).toEqual([`/api/files?path=${encodeURIComponent(A)}&version=v1`]);
+  });
+
+  it('a stored draft of a file not open here is mentioned as unsaved edits', async () => {
+    await start();
+    await writeDraft(WORKSPACE.path, B, { content: 'name: drafted\n', baseVersion: 'v1', savedAt: 1 });
+    await userEvent.click(screen.getByRole('button', { name: 'Delete b.yaml' }));
+    const dialog = screen.getByRole('dialog', { name: 'Delete' });
+    expect(await within(dialog).findByText(UNSAVED)).toBeInTheDocument();
   });
 
   it('a deleted event for a file that is back (an atomic save elsewhere) is a change, not a delete', async () => {

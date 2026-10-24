@@ -237,7 +237,7 @@ describe('FileTree', () => {
     const dialog = screen.getByRole('dialog', { name: 'Delete' });
     expect(within(dialog).getByRole('button', { name: 'Cancel' })).toHaveFocus();
     await userEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
-    expect(onDelete).toHaveBeenCalledWith('scenarios/roles-grant.yaml');
+    expect(onDelete).toHaveBeenCalledWith('scenarios/roles-grant.yaml', null);
     expect(await within(dialog).findByRole('alert')).toHaveTextContent('roles-grant.yaml is part of the run that is going');
     rerender(<FileTree {...props} readOnly />);
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();

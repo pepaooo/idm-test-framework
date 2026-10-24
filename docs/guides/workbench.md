@@ -289,15 +289,20 @@ entries of the Run menu say why when you point at them.
   is not in git yet, so it cannot be recovered." — that line can appear a moment after the question;
   you do not have to wait for it to delete.
 - The file is removed from disk (not moved to the system's trash). Its tab closes, its unsaved edits
-  kept in the browser are removed, and the tree updates. Other browser tabs with the file open close
-  it too, without asking — there is nothing left on disk to keep or compare. The same happens when
-  another program deletes an open file; a file that is back at once (some editors save by deleting
-  and renaming) is treated as changed, not deleted.
+  kept in the browser are removed, and the tree updates.
+- **Deleted elsewhere** (another browser tab, another program, `git checkout`): a tab with the file
+  open and no unsaved edits closes quietly. A tab with unsaved edits (or edits kept in the browser)
+  stays as it is and asks: "<path> was deleted on disk. Keep your version (the file is created again)
+  or discard it?" **Keep mine** creates the file again with the tab's text (never over a file that is
+  back meanwhile: then you get the changed-on-disk choice); **Discard** closes the tab and drops the
+  edits. Until you choose, nothing is saved. A read-only (second) tab keeps its edits too and asks once
+  it holds the workspace. Edits kept in the browser for a file not open are left alone. A file that is
+  back at once (some editors save by deleting and renaming) is treated as changed, not deleted.
 - Only scenario files under `scenarios/` offer **Delete**: not `config/`, `secrets.env`, other files
   or folders. In a read-only (second) tab it is disabled.
 - **Refused**, with the reason in the dialog and the file kept: while the run that is going includes
   the scenario (wait for it to finish, or stop it), and when the file changed on disk since the
-  workbench read it. Then an open file with unsaved edits shows the [changed-on-disk
+  workbench read it (for a file that is not open: since the question was shown). Then an open file with unsaved edits shows the [changed-on-disk
   choice](#edit-and-save) (one without edits simply reloads); look at what is on disk now, and press
   **Delete** again if you still want it gone.
 - **Getting a file back** is git's job: `git restore <path>` brings back a committed file (`git

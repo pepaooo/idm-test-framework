@@ -5,6 +5,7 @@ import { t } from '../i18n';
 import { DeleteDialog } from './DeleteDialog';
 import { NewScenarioDialog } from './NewScenarioDialog';
 import { scenarioTemplate } from './scenarioTemplate';
+import type { DeletePrep } from './store';
 import type { TreeNode } from './types';
 
 const RESULT_BADGE: Record<'passed' | 'finding' | 'setup', BadgeStatus> = {
@@ -36,7 +37,12 @@ interface Props {
    * Deletes a scenario (after the user confirmed): resolves to null when done, else to the reason it
    * was refused. Scenario rows offer Delete only when this is given.
    */
-  onDelete?(path: string): Promise<string | null>;
+  onDelete?(path: string, version: string | null): Promise<string | null>;
+  /**
+   * Asked when the delete dialog opens: the version to delete a file not open here at (null: the
+   * open tab's), and whether a draft of it is stored (said as unsaved edits).
+   */
+  prepareDelete?(path: string): Promise<DeletePrep>;
 }
 
 /** What the name dialog is for: a new scenario, or a copy of `source`. */
@@ -76,6 +82,7 @@ export function FileTree({
   textOf = () => undefined,
   onCreated = () => undefined,
   onDelete,
+  prepareDelete = async () => ({ version: null, hasDraft: false }),
 }: Props) {
   const [toggled, setToggled] = useState<ReadonlySet<string>>(new Set());
   const [messages, setMessages] = useState<{ text: string; problem: boolean }[]>([]);
@@ -84,6 +91,9 @@ export function FileTree({
   const [creating, setCreating] = useState<Creating | null>(null);
   // the scenario the delete dialog asks about
   const [deleting, setDeleting] = useState<string | null>(null);
+  // what the delete dialog learnt when it opened (the version of a closed file, a stored draft)
+  const prep = useRef<Promise<DeletePrep> | null>(null);
+  const [hasDraft, setHasDraft] = useState(false);
   // the button that opened the name dialog: it gets the focus back when the dialog closes
   const opener = useRef<HTMLButtonElement | null>(null);
   // a create of the name dialog is on its way
@@ -135,6 +145,14 @@ export function FileTree({
     }
     opener.current = button;
     setCreating(null);
+    setHasDraft(false);
+    const asked = prepareDelete(path).catch(() => ({ version: null, hasDraft: false }));
+    prep.current = asked;
+    void asked.then((answer) => {
+      if (prep.current === asked) {
+        setHasDraft(answer.hasDraft);
+      }
+    });
     setDeleting(path);
   };
 
@@ -163,7 +181,9 @@ export function FileTree({
     }
     sending.current = true;
     try {
-      const refused = await onDelete(path);
+      // Delete never waits for git, but for the version read when the question was shown
+      const version = (await prep.current)?.version ?? null;
+      const refused = await onDelete(path, version);
       if (refused === null) {
         // its row is gone: the focus goes back to the tree
         setDeleting(null);
@@ -400,7 +420,7 @@ export function FileTree({
         <DeleteDialog
           key={deleting}
           path={deleting}
-          unsaved={dirty.has(deleting)}
+          unsaved={dirty.has(deleting) || hasDraft}
           onDelete={() => remove(deleting)}
           onCancel={stopDeleting}
         />

@@ -179,11 +179,13 @@ names several directories but no `idm.test.default-directory` (or one that names
 opens on a first ✕ **Default directory** tab, and the chip reads "Lab: choose a default directory":
 the tab names the scenarios with such steps, lists the configured directories, and **Save** writes
 `default-directory` under `idm.test` in `config/application-<profile>.yml` (uncommenting the
-template's line when there is one). An invalid value reads `default-directory is "nope", which is not
-one of the configured directories.` A value set through `IDM_TEST_DEFAULTDIRECTORY` shows "from the
-environment" and cannot be changed here. Until it is chosen, runs that include those scenarios are
-blocked with the chip's message; an invalid value blocks every run, as `idmtest run` refuses it before
-it starts.
+template's line when there is one). A `default-directory` that names none of the configured
+directories is reported whether or not any step lacks `directory:`, because every run fails to start
+on it; the tab then reads `default-directory is "nope", which is not one of the configured
+directories.` A value set through an environment variable (`IDM_TEST_DEFAULTDIRECTORY`, or a `${…}`
+reference the environment sets) shows "from the environment" and cannot be changed here. Until it is
+chosen, runs that include those scenarios are blocked with the chip's message; an invalid value blocks
+every run.
 
 **Test connection** tests the form's current values, saved or not, after the same checks a run makes
 before it contacts anything (no placeholder URL, no in-memory database):

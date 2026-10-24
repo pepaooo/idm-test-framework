@@ -187,7 +187,7 @@
   "ui.lab.defaultDirectory.invalid": "default-directory is \"{value}\", which is not one of the configured directories.",
   "ui.lab.defaultDirectory.choice": "Directory",
   "ui.lab.defaultDirectory.placeholder": "Choose a directory",
-  "ui.lab.defaultDirectory.environment": "Set by the environment variable IDM_TEST_DEFAULTDIRECTORY: change or remove it there.",
+  "ui.lab.defaultDirectory.environment": "Set through an environment variable: change it there.",
   "ui.lab.defaultDirectory.where.before": "Saves default-directory to ",
   "ui.lab.defaultDirectory.where.after": " — the file idmtest run reads.",
   "ui.unit.seconds": "{n} s",

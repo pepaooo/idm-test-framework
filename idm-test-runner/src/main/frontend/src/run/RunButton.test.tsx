@@ -282,6 +282,21 @@ describe('Run button', () => {
     expect(runButton()).toHaveAttribute('title', 'Run is blocked: Lab: choose a default directory');
   });
 
+  it('an invalid default directory no scenario points at still blocks every run', async () => {
+    runServer({
+      lab: {
+        systems: [namedDirectory('ad'), { ...hrDatabase('ready'), usedByScenarios: ['hr-sync.yaml'] }],
+        defaultDirectory: defaultDirectoryNeeded({ usedByScenarios: [], value: 'nope', source: 'profile', state: 'invalid' }),
+      },
+    });
+    render(<Workbench workspace={WORKSPACE} lockWait={10} />);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Lab: choose a default directory' })).toBeInTheDocument());
+    await userEvent.click(await screen.findByRole('button', { name: /^hr-sync\.yaml/ }));
+    await waitFor(() => expect((screen.getByLabelText('Edit scenarios/hr-sync.yaml') as HTMLTextAreaElement).value).toContain('name: HR'));
+    expect(runButton()).toBeDisabled();
+    expect(runButton()).toHaveAttribute('title', 'Run is blocked: Lab: choose a default directory');
+  });
+
   it('a failed lab reload does not block Run but shows a warning line', async () => {
     let fail = false;
     const server = runServer({

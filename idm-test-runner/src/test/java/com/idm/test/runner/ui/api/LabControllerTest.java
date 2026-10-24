@@ -620,6 +620,45 @@ class LabControllerTest {
     }
 
     @Test
+    @DisplayName("An invalid default-directory is reported even when no scenario has an ldap.* step, as every run fails to start")
+    void testInvalidDefaultWithoutLdapSteps() throws IOException {
+        Path ws = openWorkspace(server);
+        Files.delete(ws.resolve("scenarios/example.yaml"));
+        Files.writeString(ws.resolve("config/application.yml"), twoDirectories("    default-directory: nope\n"));
+
+        JsonNode view = lab(server, "lab");
+
+        JsonNode choice = view.get("defaultDirectory");
+        assertThat(choice.isObject()).as(view.toString()).isTrue();
+        assertThat(choice.get("state").asString()).isEqualTo("invalid");
+        assertThat(choice.get("value").asString()).isEqualTo("nope");
+        assertThat(strings(choice.get("choices"))).containsExactly("ad", "edirectory");
+        assertThat(choice.get("usedByScenarios").size()).isZero();
+    }
+
+    @Test
+    @DisplayName("A profile default-directory that is a ${VAR} reference set by the environment cannot be saved over")
+    void testDefaultDirectoryReferenceFromEnvironment() throws Exception {
+        try (UiServer withEnv = UiCommand.start(0, Locale.ENGLISH, null, Map.of("IDM_FAKE_DEFAULT_DIR", "nope"))) {
+            Path ws = openWorkspace(withEnv);
+            Files.writeString(ws.resolve("config/application.yml"), twoDirectories(""));
+            Files.writeString(ws.resolve("config/application-lab.yml"),
+                    "idm:\n  test:\n    default-directory: ${IDM_FAKE_DEFAULT_DIR}\n");
+            List<String> before = snapshot(ws);
+
+            JsonNode choice = lab(withEnv, "lab").get("defaultDirectory");
+            assertThat(choice.get("source").asString()).isEqualTo("environment");
+
+            Response saved = UiHttp.send(withEnv, "PUT", "/api/lab/default-directory?profile=lab",
+                    JSON.writeValueAsString(Map.of("name", "edirectory")));
+            assertThat(saved.status()).as(saved.body()).isEqualTo(400);
+            assertThat(JSON.readTree(saved.body()).get("key").asString()).isEqualTo("ui.lab.fromEnvironment");
+            assertThat(saved.body()).contains("IDM_FAKE_DEFAULT_DIR");
+            assertThat(snapshot(ws)).isEqualTo(before);
+        }
+    }
+
+    @Test
     @DisplayName("A default that resolves (one directory, the old block's URL, a valid default) asks for nothing new")
     void testResolvableDefaultUnchanged() throws IOException {
         Path ws = openWorkspace(server);

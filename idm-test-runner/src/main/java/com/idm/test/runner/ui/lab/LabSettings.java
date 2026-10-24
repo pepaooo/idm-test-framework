@@ -295,10 +295,11 @@ public final class LabSettings {
         for (SystemRef ref : systems.values()) {
             views.add(view(snapshot, ref, new ArrayList<>(users.get(ref.id())), soapUse, locale, mask));
         }
-        // a run refuses an invalid default-directory before any step, even when every step names its directory
-        Set<String> refused = !needDefault.isEmpty() ? needDefault
-                : "invalid".equals(defaultChoice.state()) ? ldapUsers : Set.of();
-        DefaultDirectory defaultDirectory = refused.isEmpty() ? null : new DefaultDirectory(
+        // a run fails to start on an invalid default-directory (the directories are built up front), even
+        // when every step names its directory or no scenario has an ldap.* step: then usedByScenarios may be empty
+        boolean invalid = "invalid".equals(defaultChoice.state());
+        Set<String> refused = !needDefault.isEmpty() ? needDefault : invalid ? ldapUsers : Set.of();
+        DefaultDirectory defaultDirectory = refused.isEmpty() && !invalid ? null : new DefaultDirectory(
                 List.copyOf(refused), defaultChoice.choices(), mask.apply(defaultChoice.value()),
                 defaultChoice.source(), defaultChoice.state());
         return new View(views, defaultDirectory);
@@ -634,9 +635,9 @@ public final class LabSettings {
             throw ApiError.badRequest("runner.ui.lab.badDefaultDirectory", String.valueOf(name), choice.choices());
         }
         String property = "idm.test.default-directory";
-        String variable = RealEnvironmentGuards.variableFor(property);
-        if (environment.containsKey(variable)) {
-            throw ApiError.badRequest("runner.ui.lab.fromEnvironment", "default-directory", variable);
+        // set by the environment: its own variable, or a ${VAR} reference in the files that the environment sets
+        if (ENVIRONMENT.equals(resolve(snapshot, property).state())) {
+            throw ApiError.badRequest("runner.ui.lab.fromEnvironment", "default-directory", variableOf(snapshot, property));
         }
         Map<String, String> yaml = new LinkedHashMap<>();
         yaml.put(property, name);
@@ -874,7 +875,11 @@ public final class LabSettings {
     /** The environment variable that sets a field: the property's own name, or the one its ${…} reads. */
     private String variableOf(Snapshot snapshot, SystemRef ref, String key) {
         String client = ref.kind() == Kind.REST ? resolve(snapshot, ref.property("oauth-client-name", null)).value() : null;
-        String property = ref.property(key, client);
+        return variableOf(snapshot, ref.property(key, client));
+    }
+
+    /** The environment variable that sets {@code property}: its own, else the first one its value refers to. */
+    private String variableOf(Snapshot snapshot, String property) {
         String variable = RealEnvironmentGuards.variableFor(property);
         if (environment.containsKey(variable)) {
             return variable;

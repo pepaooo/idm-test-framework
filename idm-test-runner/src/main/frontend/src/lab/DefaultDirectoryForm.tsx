@@ -30,6 +30,12 @@ export function DefaultDirectoryForm({ block, profile, readOnly, hidden, panelId
   const editable = !readOnly && !fromEnvironment && !busy;
   const dirty = choice !== '';
 
+  // a refreshed view that no longer offers the chosen directory drops it (and with it the unsaved flag)
+  useEffect(() => {
+    if (choice !== '' && !block.choices.includes(choice)) {
+      setChoice('');
+    }
+  }, [block.choices, choice]);
   useEffect(() => onDirty(dirty), [dirty, onDirty]);
   useEffect(() => () => onDirty(false), [onDirty]); // a tab that is gone has nothing unsaved
 
@@ -54,7 +60,10 @@ export function DefaultDirectoryForm({ block, profile, readOnly, hidden, panelId
   const profileFile = `config/application-${profile}.yml`;
   return (
     <div role="tabpanel" id={panelId} aria-label={t('ui.lab.defaultDirectory.title')} hidden={hidden} className="lab-form-panel">
-      <p className="lab-used">{t('ui.lab.defaultDirectory.explain', { scenarios: block.usedByScenarios.join(', ') })}</p>
+      {/* invalid: a run refuses it even when every step names its directory, so the scenarios are not the reason */}
+      {block.state === 'missing' && block.usedByScenarios.length > 0 && (
+        <p className="lab-used">{t('ui.lab.defaultDirectory.explain', { scenarios: block.usedByScenarios.join(', ') })}</p>
+      )}
       {block.state === 'invalid' && (
         <p className="lab-used">
           <Badge status="missing" /> {t('ui.lab.defaultDirectory.invalid', { value: block.value ?? '' })}

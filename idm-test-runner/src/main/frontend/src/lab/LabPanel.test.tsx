@@ -431,7 +431,41 @@ describe('Lab panel', () => {
       const form = within(await openPanel()).getByRole('tabpanel');
       expect(form).toHaveAccessibleName('Default directory');
       expect(form).toHaveTextContent('default-directory is "nope", which is not one of the configured directories.');
+      // every step may name its directory: the "steps without directory:" sentence would not be true
+      expect(form).not.toHaveTextContent('use steps without directory:');
       expect(within(form).getByLabelText('Directory')).toHaveValue('');
+    });
+
+    it('an invalid default-directory with no scenario using ldap.* steps names no scenario', async () => {
+      start({ views: { lab: needing({ usedByScenarios: [], value: 'nope', source: 'profile', state: 'invalid' }) } });
+      await screen.findByRole('button', { name: 'Lab: choose a default directory' });
+      const form = within(await openPanel()).getByRole('tabpanel');
+      expect(form).toHaveAccessibleName('Default directory');
+      expect(form).toHaveTextContent('default-directory is "nope", which is not one of the configured directories.');
+      expect(form).not.toHaveTextContent('use steps without directory:');
+    });
+
+    it('a chosen directory that a refreshed view no longer offers is dropped, and nothing is left unsaved', async () => {
+      const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+      let current = needing();
+      const { server } = start({ views: { lab: () => current } });
+      const form = within(await openPanel()).getByRole('tabpanel');
+      await userEvent.selectOptions(within(form).getByLabelText('Directory'), 'edirectory');
+      expect(within(form).getByRole('button', { name: 'Save' })).toBeEnabled();
+      current = { systems: [ad()], defaultDirectory: defaultDirectoryNeeded({ choices: ['ad', 'openldap'] }) };
+      const reads = server.calls().filter((c) => c.startsWith('GET /api/lab')).length;
+      emitServerEvent('/api/files/events', { type: 'changed', path: 'config/application.yml' });
+      await waitFor(() => expect(server.calls().filter((c) => c.startsWith('GET /api/lab')).length).toBeGreaterThan(reads));
+      await waitFor(() => expect(within(form).getByLabelText('Directory')).toHaveValue(''));
+      expect(within(within(form).getByLabelText('Directory')).getAllByRole('option').map((o) => o.textContent)).toEqual([
+        'Choose a directory',
+        'ad',
+        'openldap',
+      ]);
+      expect(within(form).getByRole('button', { name: 'Save' })).toBeDisabled();
+      await userEvent.click(screen.getByRole('button', { name: 'Close the lab panel' }));
+      expect(confirm).not.toHaveBeenCalled();
+      expect(screen.queryByRole('dialog', { name: /Lab connection/ })).not.toBeInTheDocument();
     });
 
     it('a value set by the environment is shown read-only, with where to change it', async () => {
@@ -439,7 +473,9 @@ describe('Lab panel', () => {
       const form = within(await openPanel()).getByRole('tabpanel');
       expect(within(form).getByLabelText('Directory')).toBeDisabled();
       expect(within(form).getByText('from the environment')).toBeInTheDocument();
-      expect(form).toHaveTextContent('IDM_TEST_DEFAULTDIRECTORY');
+      // the profile may hold a ${VAR} reference: the variable is not always IDM_TEST_DEFAULTDIRECTORY
+      expect(form).toHaveTextContent('Set through an environment variable: change it there.');
+      expect(form).not.toHaveTextContent('IDM_TEST_DEFAULTDIRECTORY');
       expect(within(form).getByRole('button', { name: 'Save' })).toBeDisabled();
       expect(defaultPuts(server)).toHaveLength(0);
     });

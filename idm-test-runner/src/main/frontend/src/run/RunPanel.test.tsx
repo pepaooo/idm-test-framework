@@ -88,7 +88,7 @@ describe('Run panel', () => {
     server.tree.results = { 'scenarios/users/create-user.yaml': 'passed' };
     await waitFor(() => expect(server.treeReads()).toBeGreaterThan(readsBefore));
     const tree = screen.getByRole('navigation', { name: 'Workspace files' });
-    await waitFor(() => expect(within(tree).getByRole('button', { name: /create-user.yaml/ })).toContainElement(within(tree).getByRole('img', { name: /passed/i })));
+    await waitFor(() => expect(within(tree).getByRole('button', { name: /^create-user\.yaml/ })).toContainElement(within(tree).getByRole('img', { name: /passed/i })));
     act(() => {
       playScenario(finding(NAMES[1]));
       playScenario(passed(NAMES[2]));
@@ -169,7 +169,7 @@ describe('Run panel', () => {
     render(<Workbench workspace={WORKSPACE} lockWait={10} />);
     await runAll(server);
     const tree = screen.getByRole('navigation', { name: 'Workspace files' });
-    const createUser = () => within(tree).getByRole('button', { name: /create-user.yaml/ });
+    const createUser = () => within(tree).getByRole('button', { name: /^create-user\.yaml/ });
     await waitFor(() => expect(within(createUser()).getByRole('img', { name: 'last run passed' })).toBeInTheDocument());
     const readsBefore = server.treeReads();
     act(() => {

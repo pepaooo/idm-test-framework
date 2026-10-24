@@ -132,7 +132,9 @@ this computer only".
   finding), and a scenario with no finished run has no badge; files
   with unsaved edits show ●; `secrets.env` shows a lock and never opens. **Add files**, or dropping
   `.yaml`/`.yml` files on the tree, copies them into `scenarios/` (up to 2 MB each); a file of the same
-  name is never overwritten: the copy becomes `name (2).yaml`.
+  name is never overwritten: the copy becomes `name (2).yaml`. **New scenario** and **Duplicate**
+  create a scenario from scratch or from another one (see [Create and duplicate
+  scenarios](#create-and-duplicate-scenarios)).
 - **Middle, the editor**: one tab per open file, with YAML highlighting, autocomplete and hover help for
   the step vocabulary, and errors marked inline. The **Problems** panel underneath lists what
   `idmtest validate` would say about the open scenario, as you type, with a link to each line. Only
@@ -251,6 +253,26 @@ entries of the Run menu say why when you point at them.
   tab — its saves, lab saves and runs are refused instead of landing in the other workspace — and its
   unsaved edits stay where they were: in the tab, and in their drafts, which come back when you open
   that workspace again. Reload opens the workspace that is open now.
+
+## Create and duplicate scenarios
+
+- **New scenario** (next to **Add files** above the tree) asks for a file name and creates it in the
+  folder selected in the tree; with no folder selected, in the folder of the open scenario; with
+  neither, in `scenarios/`. A new file always lands in `scenarios/` or a folder below it (selecting
+  `config/` does not count). `.yaml` is added when the name ends in neither `.yaml` nor `.yml`. The file
+  opens in the editor and starts from a short template that validates with no problems: a `name:`
+  (the file name without its extension) and `description:`, a `random-user` fixture, one `set` step
+  (it touches no system), and a commented `ldap.create`/`ldap.verify` example with a commented
+  `cleanup:` block to start from. The folder must already exist.
+- **Duplicate** (the ⧉ button on a scenario row, shown on hover, on keyboard focus and on the open
+  file) asks for the copy's name, suggesting `<name>-copy.yaml` in the same folder, and opens the copy.
+  It copies **what the editor shows**, unsaved edits included; the original is neither saved nor
+  changed, and keeps its unsaved edits in its tab. The copy is exact: its `name:` is not changed, and
+  a password written in plain text in the original is in the copy too, with the same warning.
+- **Names.** An empty name, or one with `/`, `\`, `..` or `:`, is refused before anything is sent. A
+  name that already exists is refused with "<path> already exists; choose another name.": the dialog
+  stays open for another name, and **nothing is ever overwritten**. Enter creates, Escape cancels.
+- In a read-only (second) tab both are disabled.
 
 ## Run
 

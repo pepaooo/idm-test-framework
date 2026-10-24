@@ -1,0 +1,23 @@
+name: disable-user
+description: Describe what this scenario checks.
+
+fixtures:
+  user:
+    generate: random-user
+
+steps:
+  - set:
+      userDn: "cn=${user.userId},ou=users,o=data"
+#  - ldap.create:
+#      dn: "${userDn}"
+#      as: createdDn
+#      attributes:
+#        cn: "${user.userId}"
+#        sn: "${user.lastName}"
+#  - ldap.verify:
+#      dn: "${createdDn}"
+#      exists: true
+
+#cleanup:
+#  - ldap.delete:
+#      dn: "${createdDn}"

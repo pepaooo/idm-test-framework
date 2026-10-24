@@ -92,6 +92,20 @@ export function workbenchServer({ files, validate, routes = {} }: WorkbenchServe
       disk.set(path, { content: body.content, version });
       return { body: { version } };
     },
+    // like WorkspaceFiles.createScenario: never overwrites (the real one also checks the name and folder)
+    'POST /api/files/new': (request) => {
+      const body = request.body as { path: string; content: string };
+      if (disk.has(body.path)) {
+        return {
+          status: 409,
+          body: { key: 'ui.file.exists', message: `${body.path} already exists; choose another name.` },
+        };
+      }
+      counter += 1;
+      const version = `v${counter}`;
+      disk.set(body.path, { content: body.content, version });
+      return { status: 201, body: { path: body.path, version } };
+    },
     'POST /api/validate': async (request) => {
       const body = request.body as { path: string; content: string };
       return { body: { problems: validate ? await validate(body.path, body.content) : [] } };
@@ -111,6 +125,7 @@ export function workbenchServer({ files, validate, routes = {} }: WorkbenchServe
       failReads = count;
     },
     puts: () => server.sent.filter((r) => r.method === 'PUT'),
+    creates: () => server.sent.filter((r) => r.url === '/api/files/new'),
     validations: () => server.sent.filter((r) => r.url === '/api/validate'),
   };
 }

@@ -182,6 +182,65 @@
   color: var(--muted);
 }
 
+.tree-head-actions {
+  display: flex;
+  gap: 6px;
+}
+
+/* a scenario row and its Duplicate action, shown on hover, on keyboard focus and on the open file */
+.tree-file {
+  position: relative;
+}
+
+.tree-file .tree-row {
+  padding-right: 28px;
+}
+
+.tree-action {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 0 5px;
+  color: var(--muted);
+  cursor: pointer;
+  opacity: 0;
+}
+
+.tree-file:hover .tree-action,
+.tree-file:focus-within .tree-action,
+.tree-active + .tree-action {
+  opacity: 1;
+}
+
+.tree-action:hover:not(:disabled) {
+  color: var(--accent);
+}
+
+.tree-action:disabled {
+  cursor: not-allowed;
+}
+
+.new-scenario label {
+  display: block;
+  margin: 10px 0 4px;
+}
+
+.new-scenario-name {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+.new-scenario-name input {
+  flex: 1;
+  min-width: 0;
+}
+
 .tree-message {
   margin: 8px 10px;
   font-size: 12px;

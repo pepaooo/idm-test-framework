@@ -5,6 +5,7 @@ import { FileTree } from './FileTree';
 import { setLanguage } from '../i18n';
 import { fakeServer } from '../test/fakeServer';
 import { treeOf } from '../test/workbenchServer';
+import { scenarioTemplate } from './scenarioTemplate';
 
 const TREE = treeOf(
   [
@@ -199,5 +200,115 @@ describe('FileTree', () => {
   it('a read-only tab cannot add files', () => {
     renderTree({ readOnly: true });
     expect(screen.getByRole('button', { name: 'Add files' })).toBeDisabled();
+  });
+
+  it('a read-only tab cannot create or duplicate scenarios', () => {
+    renderTree({ readOnly: true });
+    expect(screen.getByRole('button', { name: 'New scenario' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Duplicate roles-grant.yaml' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Duplicate create-user.yaml' })).toBeDisabled();
+  });
+
+  it('the name dialog closes when the tab turns read-only', async () => {
+    const props = {
+      tree: TREE,
+      active: null,
+      dirty: new Set<string>(),
+      onOpen: vi.fn(),
+      onAdded: vi.fn(),
+    };
+    const { rerender } = render(<FileTree {...props} readOnly={false} />);
+    await userEvent.click(screen.getByRole('button', { name: 'New scenario' }));
+    expect(screen.getByRole('dialog', { name: 'New scenario' })).toBeInTheDocument();
+    rerender(<FileTree {...props} readOnly />);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    rerender(<FileTree {...props} readOnly={false} />);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('only scenario rows can be duplicated', async () => {
+    renderTree();
+    await userEvent.click(screen.getByRole('button', { name: 'config' }));
+    expect(screen.queryByRole('button', { name: /^Duplicate application-lab/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Duplicate secrets/ })).not.toBeInTheDocument();
+  });
+
+  it.each(['', '   ', 'x/y', 'x\\y', '..', 'a..b', 'c:x'])('refuses the name %j before sending anything', async (name) => {
+    const server = fakeServer({ 'POST /api/files/new': { status: 201, body: { path: 'scenarios/x.yaml', version: 'v1' } } });
+    const onCreated = vi.fn();
+    renderTree({ onCreated });
+    await userEvent.click(screen.getByRole('button', { name: 'New scenario' }));
+    const dialog = screen.getByRole('dialog', { name: 'New scenario' });
+    const input = within(dialog).getByLabelText('Name of the new scenario');
+    if (name) {
+      fireEvent.change(input, { target: { value: name } });
+    }
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Create' }));
+    expect(within(dialog).getByRole('alert')).toHaveTextContent(
+      `'${name.trim()}' is not a file name: use letters, digits, spaces, - and _, without / \\ .. or :.`,
+    );
+    expect(server.sent).toHaveLength(0);
+    expect(onCreated).not.toHaveBeenCalled();
+  });
+
+  it('adds .yaml to a name without it and creates the file in the given folder', async () => {
+    const server = fakeServer({ 'POST /api/files/new': { status: 201, body: { path: 'scenarios/users/x.yaml', version: 'v1' } } });
+    const onCreated = vi.fn();
+    renderTree({ onCreated, newFolder: 'scenarios/users' });
+    await userEvent.click(screen.getByRole('button', { name: 'New scenario' }));
+    const dialog = screen.getByRole('dialog', { name: 'New scenario' });
+    expect(dialog).toHaveTextContent('scenarios/users/');
+    await userEvent.type(within(dialog).getByLabelText('Name of the new scenario'), ' x {Enter}');
+    await waitFor(() => expect(onCreated).toHaveBeenCalledWith('scenarios/users/x.yaml'));
+    expect(server.sent.map((r) => r.body)).toEqual([{ path: 'scenarios/users/x.yaml', content: scenarioTemplate('x') }]);
+  });
+
+  it('Escape cancels and gives the focus back to the button that opened the dialog', async () => {
+    const server = fakeServer({});
+    renderTree();
+    const button = screen.getByRole('button', { name: 'New scenario' });
+    await userEvent.click(button);
+    expect(within(screen.getByRole('dialog')).getByLabelText('Name of the new scenario')).toHaveFocus();
+    await userEvent.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(button).toHaveFocus();
+
+    const duplicate = screen.getByRole('button', { name: 'Duplicate roles-grant.yaml' });
+    await userEvent.click(duplicate);
+    await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(duplicate).toHaveFocus();
+    expect(server.sent).toHaveLength(0);
+  });
+
+  it('duplicate copies the text it is given for an open file, without reading the disk', async () => {
+    const server = fakeServer({ 'POST /api/files/new': { status: 201, body: { path: 'scenarios/roles-grant-copy.yaml', version: 'v1' } } });
+    const onCreated = vi.fn();
+    renderTree({ onCreated, textOf: (path) => (path === 'scenarios/roles-grant.yaml' ? 'name: mine\n' : undefined) });
+    await userEvent.click(screen.getByRole('button', { name: 'Duplicate roles-grant.yaml' }));
+    await userEvent.keyboard('{Enter}');
+    await waitFor(() => expect(onCreated).toHaveBeenCalledWith('scenarios/roles-grant-copy.yaml'));
+    expect(server.calls()).toEqual(['POST /api/files/new']);
+    expect(server.sent[0].body).toEqual({ path: 'scenarios/roles-grant-copy.yaml', content: 'name: mine\n' });
+  });
+
+  it('speaks Spanish for new and duplicate', async () => {
+    setLanguage('es', false);
+    fakeServer({});
+    renderTree();
+    expect(screen.getByRole('button', { name: 'Duplicar roles-grant.yaml' })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Nuevo escenario' }));
+    const dialog = screen.getByRole('dialog', { name: 'Nuevo escenario' });
+    const input = within(dialog).getByLabelText('Nombre del nuevo escenario');
+    fireEvent.change(input, { target: { value: 'a:b' } });
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Crear' }));
+    expect(within(dialog).getByRole('alert')).toHaveTextContent(
+      "'a:b' no es un nombre de archivo: use letras, dígitos, espacios, - y _, sin / \\ .. ni :.",
+    );
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Cancelar' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Duplicar roles-grant.yaml' }));
+    expect(within(screen.getByRole('dialog', { name: 'Duplicar' })).getByLabelText('Nombre de la copia')).toHaveValue(
+      'roles-grant-copy.yaml',
+    );
   });
 });

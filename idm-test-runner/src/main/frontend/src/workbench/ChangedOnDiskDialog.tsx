@@ -12,17 +12,33 @@ interface Props {
   disk: string | null;
   error: string | null;
   busy: boolean;
+  /** The file is gone from disk: Keep mine creates it again, Discard drops the edits. */
+  deleted?: boolean;
   onRetry(): void;
   onKeepMine(): void;
   onLoadFromDisk(): void;
+  onDiscard?(): void;
 }
 
 /**
  * A file changed on disk while this tab has unsaved edits (a `changed` event, a 409 on Save, or a
  * draft made over an older version). Nothing is overwritten until the user chooses: Keep mine
  * (overwrites the disk, after a confirm), Load from disk (drops the edits), or Compare first.
+ * When the file was deleted on disk instead (`deleted`), there is nothing to load or compare: Keep
+ * mine creates it again (nothing is overwritten, so no confirm), Discard closes the tab.
  */
-export function ChangedOnDiskDialog({ path, mine, disk, error, busy, onRetry, onKeepMine, onLoadFromDisk }: Props) {
+export function ChangedOnDiskDialog({
+  path,
+  mine,
+  disk,
+  error,
+  busy,
+  deleted = false,
+  onRetry,
+  onKeepMine,
+  onLoadFromDisk,
+  onDiscard = () => undefined,
+}: Props) {
   const [confirming, setConfirming] = useState(false);
   const [comparing, setComparing] = useState(false);
   const first = useRef<HTMLButtonElement>(null);
@@ -31,6 +47,32 @@ export function ChangedOnDiskDialog({ path, mine, disk, error, busy, onRetry, on
   useEffect(() => {
     first.current?.focus();
   }, [confirming]);
+
+  if (deleted) {
+    return (
+      <div className="modal-backdrop">
+        <div className="modal disk-dialog" role="dialog" aria-modal="true" aria-labelledby="disk-title">
+          <h2 id="disk-title">{t('ui.disk.deletedTitle', { name })}</h2>
+          <p className="mono muted">{path}</p>
+          <p>{t('ui.disk.deletedText', { path })}</p>
+          {error && (
+            <p role="alert" className="notice">
+              <Badge status="error" /> {error}
+            </p>
+          )}
+          <div className="actions">
+            <span className="spacer" />
+            <button ref={first} type="button" className="secondary" disabled={busy} onClick={onDiscard}>
+              {t('ui.disk.discard')}
+            </button>
+            <button type="button" className="primary" disabled={busy} onClick={onKeepMine}>
+              {t('ui.disk.keepMine')}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="modal-backdrop">

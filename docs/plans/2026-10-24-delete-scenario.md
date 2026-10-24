@@ -17,6 +17,7 @@
 - Only files under `scenarios/` can be deleted; `config/`, `secrets.env` and other files do not offer it. Folders are out of scope.
 - Refused: while a run that includes this scenario is going; when the file changed on disk since it was read (the user re-checks first); in a read-only (second) tab.
 - Recovery is through git (the user's answer). **Call made by Claude, accepted:** when the workspace is a git repository and the file is untracked or has changes since its last commit, the confirmation adds: "This file is not in git yet, so it cannot be recovered." No undo button in this version.
+- **Note (Task 2 ruling):** an outside delete (another program or another tab) keeps a tab's unsaved edits and drafts and offers Keep mine (create the file again) / Discard; only this tab's own confirmed delete drops them.
 
 ## Global Constraints
 

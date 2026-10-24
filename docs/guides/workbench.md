@@ -134,7 +134,8 @@ this computer only".
   `.yaml`/`.yml` files on the tree, copies them into `scenarios/` (up to 2 MB each); a file of the same
   name is never overwritten: the copy becomes `name (2).yaml`. **New scenario** and **Duplicate**
   create a scenario from scratch or from another one (see [Create and duplicate
-  scenarios](#create-and-duplicate-scenarios)).
+  scenarios](#create-and-duplicate-scenarios)); **Delete** removes one (see [Delete a
+  scenario](#delete-a-scenario)).
 - **Middle, the editor**: one tab per open file, with YAML highlighting, autocomplete and hover help for
   the step vocabulary, and errors marked inline. The **Problems** panel underneath lists what
   `idmtest validate` would say about the open scenario, as you type, with a link to each line. Only
@@ -278,6 +279,36 @@ entries of the Run menu say why when you point at them.
   name that already exists is refused with "<path> already exists; choose another name.": the dialog
   stays open for another name, and **nothing is ever overwritten**. Enter creates, Escape cancels.
 - In a read-only (second) tab both are disabled.
+
+## Delete a scenario
+
+- **Delete** (the 🗑 button on a scenario row, next to ⧉, shown the same way) always asks first:
+  "Delete scenarios/users/disable-user.yaml? This cannot be undone in the workbench." When the file
+  has unsaved edits, the question says they will be lost. When the workspace is a git repository and
+  the file is not committed as it is (new, or changed since its last commit), it also says "This file
+  is not in git yet, so it cannot be recovered." — that line can appear a moment after the question;
+  you do not have to wait for it to delete.
+- The file is removed from disk (not moved to the system's trash). Its tab closes, its unsaved edits
+  kept in the browser are removed, and the tree updates.
+- **Deleted elsewhere** (another browser tab, another program, `git checkout`): a tab with the file
+  open and no unsaved edits closes quietly. A tab with unsaved edits (or edits kept in the browser)
+  stays as it is and asks: "<path> was deleted on disk. Keep your version (the file is created again)
+  or discard it?" **Keep mine** creates the file again with the tab's text (never over a file that is
+  back meanwhile: then you get the changed-on-disk choice); **Discard** closes the tab and drops the
+  edits. Until you choose, nothing is saved. A read-only (second) tab keeps its edits too and asks once
+  it holds the workspace. Edits kept in the browser for a file not open are left alone; when the
+  workbench next opens the workspace (or the page is reloaded), such a file opens with the same
+  question. A file that is
+  back at once (some editors save by deleting and renaming) is treated as changed, not deleted.
+- Only scenario files under `scenarios/` offer **Delete**: not `config/`, `secrets.env`, other files
+  or folders. In a read-only (second) tab it is disabled.
+- **Refused**, with the reason in the dialog and the file kept: while the run that is going includes
+  the scenario (wait for it to finish, or stop it), and when the file changed on disk since the
+  workbench read it (for a file that is not open: since the question was shown). Then an open file with unsaved edits shows the [changed-on-disk
+  choice](#edit-and-save) (one without edits simply reloads); look at what is on disk now, and press
+  **Delete** again if you still want it gone.
+- **Getting a file back** is git's job: `git restore <path>` brings back a committed file (`git
+  checkout -- <path>` in older git). There is no undo in the workbench.
 
 ## Run
 

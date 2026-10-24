@@ -317,6 +317,42 @@ class RunSessionsTest {
         }
     }
 
+    @Test
+    @DisplayName("Should tell whether the active run includes a scenario: every one while it starts, its own after")
+    void testIncludes() throws Exception {
+        CountDownLatch named = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        RunSessions sessions = new RunSessions((request, events, stop) -> {
+            events.runFolder("20261024-101530-lab");
+            try {
+                named.await(10, TimeUnit.SECONDS);
+                events.runStarted("20261024-101530-lab", List.of("users/a.yaml", "b.yml"), Locale.ENGLISH);
+                release.await(10, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            return new RunOutcome("20261024-101530-lab", null, 2, 2, 0, 0, 0, false, 0);
+        }, Map.of());
+        assertThat(sessions.includes("scenarios/users/a.yaml")).as("no run").isFalse();
+
+        sessions.start(ws, "lab", List.of(), Locale.ENGLISH, () -> ws);
+        assertThat(sessions.includes("scenarios/other.yaml")).as("starting: its scenarios are not known yet").isTrue();
+        named.countDown();
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+        while (sessions.includes("scenarios/other.yaml") && System.nanoTime() < deadline) {
+            Thread.sleep(10);
+        }
+
+        assertThat(sessions.includes("scenarios/other.yaml")).isFalse();
+        assertThat(sessions.includes("scenarios/users/a.yaml")).isTrue();
+        assertThat(sessions.includes("scenarios/b.yml")).isTrue();
+        assertThat(sessions.includes("users/a.yaml")).as("workspace-relative paths only").isFalse();
+        assertThat(sessions.includes("config/b.yml")).isFalse();
+        release.countDown();
+        waitIdle(sessions);
+        assertThat(sessions.includes("scenarios/users/a.yaml")).as("the run ended").isFalse();
+    }
+
     private static void waitIdle(RunSessions sessions) throws InterruptedException {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
         while (sessions.active() && System.nanoTime() < deadline) {

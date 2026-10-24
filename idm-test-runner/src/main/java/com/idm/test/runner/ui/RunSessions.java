@@ -63,6 +63,8 @@ public final class RunSessions {
     private static final Set<String> ALWAYS_KEPT = Set.of("runStarted", "scenarioStarted", "scenarioFinished",
             "runFinished", "refused", "warning");
     private static final JsonMapper JSON = JsonMappers.builder().build();
+    /** The folder a run's scenario names are relative to, as the start of a workspace-relative path. */
+    private static final String SCENARIOS = "scenarios/";
 
     /** Runs a request: {@link RunService#run} in the workbench; a stand-in in tests. */
     @FunctionalInterface
@@ -226,6 +228,21 @@ public final class RunSessions {
     /** Whether a run is active. */
     public boolean active() {
         return active.get() != null;
+    }
+
+    /**
+     * Whether the active run includes the scenario at the workspace-relative {@code scenarioPath}
+     * ({@code scenarios/users/a.yaml}): true for every scenario while the run is starting and its
+     * scenarios are not known yet, false when no run is active or the path is not under
+     * {@code scenarios/}.
+     */
+    public boolean includes(String scenarioPath) {
+        Run run = active.get();
+        if (run == null || scenarioPath == null || !scenarioPath.startsWith(SCENARIOS)) {
+            return false;
+        }
+        List<String> names = run.scenarios;
+        return names == null || names.contains(scenarioPath.substring(SCENARIOS.length()));
     }
 
     /** The active run's workspace (its real path), or null when no run is active. */
@@ -397,6 +414,8 @@ public final class RunSessions {
         /** The workspace the run was started for, as a real path. */
         final Path workspace;
         volatile String runId;
+        /** The run's scenarios (relative to {@code scenarios/}) once it said them; null while it starts. */
+        volatile List<String> scenarios;
         private final List<Event> events = new ArrayList<>();
         private boolean finished;
 
@@ -477,6 +496,7 @@ public final class RunSessions {
 
         @Override
         public void runStarted(String id, List<String> scenarios, Locale runLocale) {
+            this.scenarios = List.copyOf(scenarios);
             add("runStarted", new RunStarted(id, scenarios, runLocale.toLanguageTag()));
         }
 

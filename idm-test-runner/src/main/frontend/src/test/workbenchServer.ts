@@ -47,8 +47,12 @@ export function treeOf(paths: string[], results: Record<string, TreeNode['lastRe
   return root;
 }
 
+export type GitState = 'clean' | 'changed' | 'untracked' | 'none';
+
 export interface WorkbenchServerOptions {
   files: Record<string, string>;
+  /** What `GET /api/files/git` answers for a path (default `clean`). */
+  gitState?: (path: string) => GitState;
   validate?: (path: string, content: string) => Problem[] | Promise<Problem[]>;
   routes?: Record<string, Answer | ((request: { url: string; body: unknown }) => Answer | Promise<Answer>)>;
 }
@@ -57,7 +61,7 @@ export interface WorkbenchServerOptions {
  * A fake workbench server over an in-memory workspace: files with versions (v1, then v2, v3… on
  * each change), saves refused with 409 over another version, validation by a test function.
  */
-export function workbenchServer({ files, validate, routes = {} }: WorkbenchServerOptions) {
+export function workbenchServer({ files, validate, gitState = () => 'clean', routes = {} }: WorkbenchServerOptions) {
   let counter = 1;
   let failReads = 0;
   const disk = new Map(Object.entries(files).map(([path, content]) => [path, { content, version: 'v1' }]));
@@ -84,7 +88,7 @@ export function workbenchServer({ files, validate, routes = {} }: WorkbenchServe
       if (file && file.version !== body.version) {
         return {
           status: 409,
-          body: { key: 'runner.ui.file.changed', message: `${path} changed on disk`, currentVersion: file.version },
+          body: { key: 'ui.file.changed', message: `${path} changed on disk`, currentVersion: file.version },
         };
       }
       counter += 1;
@@ -106,6 +110,27 @@ export function workbenchServer({ files, validate, routes = {} }: WorkbenchServe
       disk.set(body.path, { content: body.content, version });
       return { status: 201, body: { path: body.path, version } };
     },
+    'GET /api/files/git': (request) => ({ body: { state: gitState(param(request.url, 'path')) } }),
+    // like WorkspaceFiles.delete: only at the version read (the real one also refuses non-scenarios and a run's own)
+    'DELETE /api/files': (request) => {
+      const path = param(request.url, 'path');
+      const version = param(request.url, 'version');
+      const file = disk.get(path);
+      if (!version) {
+        return { status: 400, body: { key: 'ui.request.invalid', message: 'version is missing' } };
+      }
+      if (!file) {
+        return { status: 404, body: { key: 'ui.file.notFound', message: `not found: ${path}` } };
+      }
+      if (file.version !== version) {
+        return {
+          status: 409,
+          body: { key: 'ui.file.changed', message: `${path} changed on disk`, currentVersion: file.version },
+        };
+      }
+      disk.delete(path);
+      return { status: 204 };
+    },
     'POST /api/validate': async (request) => {
       const body = request.body as { path: string; content: string };
       return { body: { problems: validate ? await validate(body.path, body.content) : [] } };
@@ -124,6 +149,11 @@ export function workbenchServer({ files, validate, routes = {} }: WorkbenchServe
     failNextReads(count: number) {
       failReads = count;
     },
+    /** Another program (or tab) deleted the file. */
+    removeOnDisk(path: string) {
+      disk.delete(path);
+    },
+    deletes: () => server.sent.filter((r) => r.method === 'DELETE'),
     puts: () => server.sent.filter((r) => r.method === 'PUT'),
     creates: () => server.sent.filter((r) => r.url === '/api/files/new'),
     validations: () => server.sent.filter((r) => r.url === '/api/validate'),

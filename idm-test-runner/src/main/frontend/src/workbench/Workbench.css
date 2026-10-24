@@ -187,13 +187,13 @@
   gap: 6px;
 }
 
-/* a scenario row and its Duplicate action, shown on hover, on keyboard focus and on the open file */
+/* a scenario row and its Duplicate and Delete actions, shown on hover, on keyboard focus and on the open file */
 .tree-file {
   position: relative;
 }
 
 .tree-file .tree-row {
-  padding-right: 28px;
+  padding-right: 56px;
 }
 
 .tree-action {
@@ -210,9 +210,14 @@
   opacity: 0;
 }
 
+/* Duplicate moves left when Delete follows it at the row's end */
+.tree-action-shifted {
+  right: 30px;
+}
+
 .tree-file:hover .tree-action,
 .tree-file:focus-within .tree-action,
-.tree-active + .tree-action {
+.tree-active ~ .tree-action {
   opacity: 1;
 }
 
@@ -371,7 +376,7 @@
   padding: 0 12px;
 }
 
-/* changed-on-disk dialog */
+/* changed-on-disk, name and delete dialogs */
 .modal-backdrop {
   position: fixed;
   inset: 0;

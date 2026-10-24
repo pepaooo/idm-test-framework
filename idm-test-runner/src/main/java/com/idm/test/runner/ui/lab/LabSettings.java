@@ -220,12 +220,17 @@ public final class LabSettings {
     }
 
     /**
-     * The default directory, when steps without {@code directory:} need one and the runner could not pick
-     * it: the scenarios with such steps, the directories to choose from (sorted, as the runner names them),
-     * the configured {@code idm.test.default-directory} (null when unset), and {@code missing} (unset, and
-     * several directories) or {@code invalid} (it names none of the choices).
+     * The default directory, when a run would refuse the scenarios over it: steps without {@code directory:}
+     * and no default the runner can pick ({@code missing}: unset, and several directories), or a configured
+     * {@code idm.test.default-directory} that names none of the directories ({@code invalid}) while any
+     * ldap.* step is used — a run checks it before any step. {@code usedByScenarios} are the scenarios with
+     * steps without {@code directory:}, or, when there are none, those with any ldap.* step; {@code choices}
+     * the directories to choose from (sorted, as the runner names them); {@code value} the configured name
+     * (null when unset) and {@code source} where it comes from: {@code profile}, {@code application.yml} or
+     * {@code environment} (null when unset).
      */
-    public record DefaultDirectory(List<String> usedByScenarios, List<String> choices, String value, String state) {
+    public record DefaultDirectory(List<String> usedByScenarios, List<String> choices, String value, String source,
+                                   String state) {
     }
 
     /** The lab: its systems, and {@code defaultDirectory} null unless one has to be chosen. */
@@ -249,10 +254,14 @@ public final class LabSettings {
         SecretMask mask = mask(snapshot, List.of());
         Map<String, Set<String>> users = new LinkedHashMap<>();
         Set<String> needDefault = new TreeSet<>();
+        Set<String> ldapUsers = new TreeSet<>();
         DefaultChoice defaultChoice = defaultChoice(snapshot);
         boolean[] soapUse = new boolean[2];
         for (Map.Entry<String, ScenarioNeeds> entry : scenarioNeeds(snapshot).entrySet()) {
             ScenarioNeeds needs = entry.getValue();
+            if (!needs.directories().isEmpty()) {
+                ldapUsers.add(entry.getKey());
+            }
             for (String directory : needs.directories()) {
                 if (!ScenarioNeeds.DEFAULT_DIRECTORY.equals(directory)) {
                     use(users, directoryId(snapshot, directory), entry.getKey());
@@ -286,9 +295,12 @@ public final class LabSettings {
         for (SystemRef ref : systems.values()) {
             views.add(view(snapshot, ref, new ArrayList<>(users.get(ref.id())), soapUse, locale, mask));
         }
-        DefaultDirectory defaultDirectory = needDefault.isEmpty() ? null : new DefaultDirectory(
-                List.copyOf(needDefault), defaultChoice.choices(), mask.apply(defaultChoice.value()),
-                defaultChoice.state());
+        // a run refuses an invalid default-directory before any step, even when every step names its directory
+        Set<String> refused = !needDefault.isEmpty() ? needDefault
+                : "invalid".equals(defaultChoice.state()) ? ldapUsers : Set.of();
+        DefaultDirectory defaultDirectory = refused.isEmpty() ? null : new DefaultDirectory(
+                List.copyOf(refused), defaultChoice.choices(), mask.apply(defaultChoice.value()),
+                defaultChoice.source(), defaultChoice.state());
         return new View(views, defaultDirectory);
     }
 
@@ -448,24 +460,32 @@ public final class LabSettings {
      * The default directory as {@code idmtest run} picks it: {@code systemId} the system steps without
      * {@code directory:} use, or null when the runner refuses them — {@code state} then says why
      * ({@code missing} or {@code invalid}). {@code choices} are the directories the runner knows,
-     * {@code value} the configured {@code idm.test.default-directory} (null when unset).
+     * {@code value} the configured {@code idm.test.default-directory} (null when unset) and {@code source}
+     * where it comes from, as a field's state says it.
      */
-    private record DefaultChoice(String systemId, List<String> choices, String value, String state) {
+    private record DefaultChoice(String systemId, List<String> choices, String value, String source, String state) {
     }
 
     private DefaultChoice defaultChoice(Snapshot snapshot) {
         Set<String> named = directoryNames(snapshot);
         Set<String> names = RealEnvironmentGuards.directoryCandidates(named, resolve(snapshot, "idm.test.ldap.url").value());
         List<String> choices = List.copyOf(names);
-        String configured = resolve(snapshot, "idm.test.default-directory").value();
+        Resolved resolved = resolve(snapshot, "idm.test.default-directory");
+        String configured = resolved.value();
         String value = blank(configured) ? null : configured;
+        String source = value == null ? null : switch (resolved.state()) {
+            case SET -> "profile";
+            case APPLICATION_YML -> "application.yml";
+            case ENVIRONMENT -> "environment";
+            default -> null;
+        };
         try {
             return LdapDirectories.resolveDefault(configured, names)
                     .map(chosen -> new DefaultChoice(LdapDirectories.DEFAULT.equals(chosen) && !named.contains(chosen)
-                            ? "ldap" : "directory:" + chosen, choices, value, null))
-                    .orElseGet(() -> new DefaultChoice(null, choices, value, "missing"));
+                            ? "ldap" : "directory:" + chosen, choices, value, source, null))
+                    .orElseGet(() -> new DefaultChoice(null, choices, value, source, "missing"));
         } catch (IllegalStateException e) {
-            return new DefaultChoice(null, choices, value, "invalid");
+            return new DefaultChoice(null, choices, value, source, "invalid");
         }
     }
 

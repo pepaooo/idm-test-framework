@@ -546,6 +546,7 @@ class LabControllerTest {
         assertThat(strings(choice.get("usedByScenarios"))).containsExactly("example.yaml");
         assertThat(strings(choice.get("choices"))).containsExactly("ad", "edirectory");
         assertThat(choice.get("value").isNull()).isTrue();
+        assertThat(choice.get("source").isNull()).isTrue();
         assertThat(choice.get("state").asString()).isEqualTo("missing");
         assertThat(system(view, "directory:ad").get("usedByScenarios").size()).isZero();
         assertThat(system(view, "directory:edirectory").get("usedByScenarios").size()).isZero();
@@ -564,8 +565,58 @@ class LabControllerTest {
         assertThat(choice.isObject()).as(view.toString()).isTrue();
         assertThat(choice.get("state").asString()).isEqualTo("invalid");
         assertThat(choice.get("value").asString()).isEqualTo("nope");
+        assertThat(choice.get("source").asString()).isEqualTo("application.yml");
         assertThat(strings(choice.get("choices"))).containsExactly("ad", "edirectory");
         assertThat(strings(choice.get("usedByScenarios"))).containsExactly("example.yaml");
+    }
+
+    @Test
+    @DisplayName("An invalid default-directory is reported even when every ldap.* step names its directory, as a run refuses it")
+    void testInvalidDefaultWithNamedSteps() throws IOException {
+        Path ws = openWorkspace(server);
+        Path example = ws.resolve("scenarios/example.yaml");
+        String named = Files.readString(example).replaceAll("(?m)^(  - ldap\\.\\w+:\n)", "$1      directory: edirectory\n");
+        assertThat(named).contains("  - ldap.create:\n      directory: edirectory\n",
+                "  - ldap.delete:\n      directory: edirectory\n");
+        Files.writeString(example, named);
+        Files.writeString(ws.resolve("config/application-lab.yml"), "idm:\n  test:\n    default-directory: nope\n");
+        Files.writeString(ws.resolve("config/application.yml"), twoDirectories(""));
+
+        JsonNode view = lab(server, "lab");
+
+        JsonNode choice = view.get("defaultDirectory");
+        assertThat(choice.isObject()).as(view.toString()).isTrue();
+        assertThat(choice.get("state").asString()).isEqualTo("invalid");
+        assertThat(choice.get("value").asString()).isEqualTo("nope");
+        assertThat(choice.get("source").asString()).isEqualTo("profile");
+        assertThat(strings(choice.get("choices"))).containsExactly("ad", "edirectory");
+        assertThat(strings(choice.get("usedByScenarios"))).containsExactly("example.yaml");
+        assertThat(strings(system(view, "directory:edirectory").get("usedByScenarios"))).containsExactly("example.yaml");
+
+        Files.writeString(ws.resolve("config/application-lab.yml"), "idm:\n  test:\n    default-directory: ad\n");
+        assertThat(lab(server, "lab").get("defaultDirectory").isNull()).isTrue();
+    }
+
+    @Test
+    @DisplayName("A default-directory from the environment says so, and saving over it is refused")
+    void testDefaultDirectoryFromEnvironment() throws Exception {
+        try (UiServer withEnv = UiCommand.start(0, Locale.ENGLISH, null, Map.of("IDM_TEST_DEFAULTDIRECTORY", "nope"))) {
+            Path ws = openWorkspace(withEnv);
+            Files.writeString(ws.resolve("config/application.yml"), twoDirectories(""));
+            List<String> before = snapshot(ws);
+
+            JsonNode choice = lab(withEnv, "lab").get("defaultDirectory");
+            assertThat(choice.get("state").asString()).isEqualTo("invalid");
+            assertThat(choice.get("value").asString()).isEqualTo("nope");
+            assertThat(choice.get("source").asString()).isEqualTo("environment");
+
+            Response saved = UiHttp.send(withEnv, "PUT", "/api/lab/default-directory?profile=lab",
+                    JSON.writeValueAsString(Map.of("name", "edirectory")));
+            assertThat(saved.status()).as(saved.body()).isEqualTo(400);
+            assertThat(JSON.readTree(saved.body()).get("key").asString()).isEqualTo("ui.lab.fromEnvironment");
+            assertThat(saved.body()).contains("IDM_TEST_DEFAULTDIRECTORY");
+            assertThat(snapshot(ws)).isEqualTo(before);
+        }
     }
 
     @Test

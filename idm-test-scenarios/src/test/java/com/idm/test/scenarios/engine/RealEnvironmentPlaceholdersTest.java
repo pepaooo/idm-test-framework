@@ -23,8 +23,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * The guard tests that read this module's own resources: application.yml's fallbacks (the
- * placeholder tables in {@link RealEnvironmentGuards} are pinned to them), the shipped
- * scenarios-real directory and the vocabulary fixture. The rest live with the guards in
+ * placeholder tables in {@link RealEnvironmentGuards} are pinned to them) and the vocabulary
+ * fixture. The rest live with the guards in
  * idm-test-wiring.
  */
 @DisplayName("Real-environment placeholders and fixtures")
@@ -50,20 +50,6 @@ class RealEnvironmentPlaceholdersTest {
                 .contains("${" + prefixes.get(name) + "_URL:" + placeholder.jdbcUrl() + "}")
                 .contains("${" + prefixes.get(name) + "_USER:" + placeholder.username() + "}")
                 .contains("${" + prefixes.get(name) + "_PASSWORD:" + placeholder.password() + "}"));
-    }
-
-    @Test
-    @DisplayName("The shipped scenarios-real directory is empty, so a first run hits the guard")
-    void testShippedDirectoryHasNoScenarios() throws Exception {
-        // Pins spec section 7: the directory ships with a README only. If someone copies the
-        // embedded corpus in, which writes straight to LDAP and would create entries IdM does
-        // not know about, this fails and makes them read the README first.
-        // This is a deliberate tripwire, not a permanent invariant: when the first real
-        // scenario is added here, delete this test.
-        assertThat(ScenarioSupport.scenarioFiles(RealEnvironmentGuards.DEFAULT_SCENARIO_DIR)).isEmpty();
-        assertThat(getClass().getClassLoader().getResource(RealEnvironmentGuards.DEFAULT_SCENARIO_DIR + "/README.md"))
-                .as("scenarios-real/README.md must ship so the directory exists on the classpath")
-                .isNotNull();
     }
 
     private static RestProperties restTarget(String target, String baseUrl) {

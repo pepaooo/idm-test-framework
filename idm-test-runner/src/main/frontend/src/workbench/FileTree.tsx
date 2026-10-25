@@ -19,6 +19,7 @@ interface Props {
   active: string | null;
   dirty: ReadonlySet<string>;
   readOnly: boolean;
+  onCollapse?(): void;
   /** The folder selected for Run folder (workspace-relative), marked as the selected row. */
   selectedFolder?: string | null;
   /** The scenarios of the current run still to finish, by workspace-relative path. */
@@ -73,6 +74,7 @@ export function FileTree({
   active,
   dirty,
   readOnly,
+  onCollapse,
   selectedFolder = null,
   runStates = NO_RUN,
   onOpen,
@@ -363,6 +365,7 @@ export function FileTree({
         <div className="pane-head">
           <span>{t('ui.tree.title')}</span>
           <span className="tree-head-actions">
+            {onCollapse && <button type="button" className="pane-icon" aria-label={t('ui.layout.collapseWorkspace')} onClick={onCollapse}>◂</button>}
             <button
               type="button"
               className="pill"

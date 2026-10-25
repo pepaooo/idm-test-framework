@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from 'react';
 import { api, ApiProblem, setPageWorkspace, workspaceSwitch, type OpenWorkspace, type ServerMessage } from '../api/client';
 import { Badge } from '../components/Badge';
 import { t } from '../i18n';
@@ -17,6 +17,8 @@ import { isRunFolder, RunButton } from '../run/RunButton';
 import { RunPanel } from '../run/RunPanel';
 import { readScenarioFile, RunStore } from '../run/runStore';
 import type { TreeNode } from './types';
+import { clampPanelLayout, usePanelLayout } from './panelLayout';
+import { PanelSplitter } from './PanelSplitter';
 import './Workbench.css';
 
 interface Props {
@@ -78,6 +80,14 @@ export function Workbench({ workspace, warning, lockWait = 300, runPanel, lab, r
   const [showWarning, setShowWarning] = useState(Boolean(warning));
   const labStore = useMemo(() => new LabStore(), [workspace.path]);
   const labView = useSyncExternalStore(labStore.subscribe, labStore.getState);
+  const { layout, update: updateLayout, reset: resetLayout } = usePanelLayout(workspace.path);
+  const [viewport, setViewport] = useState(() => ({ width: window.innerWidth, height: window.innerHeight }));
+  useEffect(() => {
+    const measure = () => setViewport({ width: window.innerWidth, height: window.innerHeight });
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+  }, []);
+  const shownLayout = clampPanelLayout(layout, viewport.width, viewport.height);
 
   useEffect(() => {
     void labStore.setProfile(profile);
@@ -127,6 +137,12 @@ export function Workbench({ workspace, warning, lockWait = 300, runPanel, lab, r
       }
     }
     return marks;
+  }, [runState.phase, runState.scenarios]);
+  const runProgress = useMemo(() => {
+    if (runState.phase === 'starting') return '…';
+    if (runState.phase !== 'running' || runState.scenarios.length === 0) return null;
+    const count = runState.scenarios.filter((row) => row.state !== 'waiting' && row.state !== 'notRun').length;
+    return `${count}/${runState.scenarios.length}`;
   }, [runState.phase, runState.scenarios]);
   // the folder Run folder runs: the last folder clicked in the tree, until a file is opened from it
   const [runFolder, setRunFolder] = useState<string | null>(null);
@@ -308,6 +324,7 @@ export function Workbench({ workspace, warning, lockWait = 300, runPanel, lab, r
           canSave={!state.readOnly && active !== null && isDirty(active)}
           saving={active?.saving ?? false}
           onSave={() => void store.save().catch(() => undefined)}
+          onResetLayout={resetLayout}
           lab={lab === undefined ? <LabChip store={labStore} /> : lab}
           run={run === undefined ? <RunButton store={runStore} runFolder={runFolder} /> : run}
         />
@@ -342,8 +359,18 @@ export function Workbench({ workspace, warning, lockWait = 300, runPanel, lab, r
             </button>
           </p>
         )}
-        <div className="wb-grid">
-          <div className="wb-col wb-tree">
+        <div className="wb-grid" style={{
+          '--workspace-width': `${shownLayout.workspaceWidth}px`,
+          '--run-width': `${shownLayout.runWidth}px`,
+          '--workspace-handle': layout.workspaceCollapsed ? '0px' : '6px',
+          '--run-handle': layout.runCollapsed ? '0px' : '6px',
+        } as CSSProperties}>
+          <div className={`wb-col wb-tree${layout.workspaceCollapsed ? ' wb-rail' : ''}`}>
+            {layout.workspaceCollapsed ? (
+              <button type="button" className="rail-button" aria-label={t('ui.layout.expandWorkspace')} onClick={() => updateLayout({ workspaceCollapsed: false })}>
+                <span aria-hidden="true">▸</span><span className="rail-name">{t('ui.tree.title')}</span>
+              </button>
+            ) : <>
             {treeError && (
               <p role="alert" className="tree-message">
                 <Badge status="error" /> {treeError}
@@ -354,6 +381,7 @@ export function Workbench({ workspace, warning, lockWait = 300, runPanel, lab, r
               active={state.active}
               dirty={dirty}
               readOnly={state.readOnly}
+              onCollapse={() => updateLayout({ workspaceCollapsed: true })}
               // a folder Run folder cannot run (scenarios/, config/…) is not shown as selected
               selectedFolder={isRunFolder(runFolder) ? runFolder : null}
               runStates={runStates}
@@ -384,7 +412,9 @@ export function Workbench({ workspace, warning, lockWait = 300, runPanel, lab, r
                 return null;
               }}
             />
+            </>}
           </div>
+          {!layout.workspaceCollapsed && <div className="wb-divider wb-divider-tree"><PanelSplitter orientation="vertical" label={t('ui.layout.resizeWorkspace')} value={shownLayout.workspaceWidth} min={170} max={Math.max(170, viewport.width - shownLayout.runWidth - 332)} onChange={(workspaceWidth) => updateLayout({ workspaceWidth })} /></div>}
           <div className="wb-col wb-editor">
             <EditorPane
               tabs={state.tabs}
@@ -397,11 +427,20 @@ export function Workbench({ workspace, warning, lockWait = 300, runPanel, lab, r
               onGoTo={(path, line, column) => store.focus(path, line, column)}
             />
           </div>
-          <aside className="wb-col wb-run" aria-labelledby="run-title">
+          {!layout.runCollapsed && <div className="wb-divider wb-divider-run"><PanelSplitter orientation="vertical" reverse label={t('ui.layout.resizeRun')} value={shownLayout.runWidth} min={220} max={Math.max(220, viewport.width - shownLayout.workspaceWidth - 332)} onChange={(runWidth) => updateLayout({ runWidth })} /></div>}
+          <aside className={`wb-col wb-run${layout.runCollapsed ? ' wb-rail' : ''}`} aria-labelledby="run-title">
+            {layout.runCollapsed ? (
+              <button type="button" className="rail-button" aria-label={t('ui.layout.expandRun')} onClick={() => updateLayout({ runCollapsed: false })}>
+                <span aria-hidden="true">◂</span><span className="rail-name" id="run-title">{t('ui.run.title')}</span>
+                {runProgress && <span className="rail-progress" aria-label={t('ui.layout.runProgress')}>{runProgress}</span>}
+              </button>
+            ) : <>
             <div className="pane-head">
               <span id="run-title">{t('ui.run.title')}</span>
+              <button type="button" className="pane-icon" aria-label={t('ui.layout.collapseRun')} onClick={() => updateLayout({ runCollapsed: true })}>▸</button>
             </div>
             {runPanel === undefined ? <RunPanel store={runStore} /> : runPanel}
+            </>}
           </aside>
         </div>
       </div>

@@ -8,6 +8,8 @@ import { IDBObjectStore as FakeObjectStore } from 'fake-indexeddb';
 import { setLanguage } from '../i18n';
 import { WORKSPACE, workbenchServer } from '../test/workbenchServer';
 import type { Problem } from './types';
+import { DEFAULT_LAYOUT, readPanelLayout, writePanelLayout } from './panelLayout';
+import { emit, openRunStreams, playScenario, runServer, RUN_ID, scenario, step } from '../test/runServer';
 
 vi.mock('./monaco/CodeEditor', async () => ({ default: (await import('../test/fakeCodeEditor')).FakeCodeEditor }));
 vi.mock('./monaco/DiffView', async () => ({ default: (await import('../test/fakeCodeEditor')).FakeDiffView }));
@@ -35,6 +37,52 @@ afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
   setLanguage('en', false);
+});
+
+describe('workbench side panels', () => {
+  it('collapses and restores Workspace and Run', async () => {
+    workbenchServer({ files: FILES });
+    renderWorkbench();
+    await screen.findByRole('navigation', { name: 'Workspace files' });
+    await userEvent.click(screen.getByRole('button', { name: 'Collapse Workspace' }));
+    expect(screen.getByRole('button', { name: 'Expand Workspace' })).toBeVisible();
+    expect(screen.queryByRole('navigation', { name: 'Workspace files' })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Expand Workspace' }));
+    expect(screen.getByRole('navigation', { name: 'Workspace files' })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Collapse Run' }));
+    expect(screen.getByRole('button', { name: 'Expand Run' })).toBeVisible();
+    await userEvent.click(screen.getByRole('button', { name: 'Expand Run' }));
+    expect(screen.getByRole('complementary', { name: 'Run' })).toBeInTheDocument();
+  });
+
+  it('shows live run progress in a collapsed rail', async () => {
+    runServer();
+    renderWorkbench();
+    await waitFor(() => expect(openRunStreams()).toHaveLength(1));
+    await userEvent.click(screen.getByRole('button', { name: 'Collapse Run' }));
+    const names = ['a.yaml', 'b.yaml', 'c.yaml', 'd.yaml', 'e.yaml'];
+    act(() => {
+      emit('runStarted', { runId: RUN_ID, scenarios: names, locale: 'en' });
+      playScenario(scenario(names[0], [step(0, 'ldap.create')]));
+      playScenario(scenario(names[1], [step(0, 'ldap.create')]));
+      emit('scenarioStarted', { name: names[2] });
+    });
+    expect(screen.getByLabelText('Run progress')).toHaveTextContent('3/5');
+  });
+
+  it('resets saved layout and clamps oversized widths for a narrow viewport', async () => {
+    vi.stubGlobal('innerWidth', 800);
+    writePanelLayout(WORKSPACE.path, { ...DEFAULT_LAYOUT, workspaceWidth: 600, runWidth: 500 });
+    workbenchServer({ files: FILES });
+    const page = renderWorkbench();
+    await screen.findByRole('navigation', { name: 'Workspace files' });
+    const grid = page.container.querySelector('.wb-grid') as HTMLElement;
+    const tree = Number.parseInt(grid.style.getPropertyValue('--workspace-width'), 10);
+    const run = Number.parseInt(grid.style.getPropertyValue('--run-width'), 10);
+    expect(tree + run).toBeLessThanOrEqual(480);
+    await userEvent.click(screen.getByRole('button', { name: 'Reset panel layout' }));
+    expect(readPanelLayout(WORKSPACE.path)).toEqual(DEFAULT_LAYOUT);
+  });
 });
 
 describe('Workbench editor', () => {

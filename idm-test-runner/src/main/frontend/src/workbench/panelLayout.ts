@@ -46,7 +46,7 @@ export function writePanelLayout(workspacePath: string, layout: PanelLayout): vo
 export function clampPanelLayout(layout: PanelLayout, viewportWidth: number, viewportHeight: number): PanelLayout {
   const minTree = layout.workspaceCollapsed ? 36 : 170;
   const minRun = layout.runCollapsed ? 44 : 220;
-  const available = Math.max(minTree + minRun, viewportWidth - 320);
+  const available = Math.max(minTree + minRun, viewportWidth - 332);
   let tree = layout.workspaceCollapsed ? 36 : Math.max(minTree, layout.workspaceWidth);
   let run = layout.runCollapsed ? 44 : Math.max(minRun, layout.runWidth);
   if (tree + run > available) {

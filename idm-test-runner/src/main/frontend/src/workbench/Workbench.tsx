@@ -425,6 +425,9 @@ export function Workbench({ workspace, warning, lockWait = 300, runPanel, lab, r
               onChange={(path, content) => store.edit(path, content)}
               onSave={() => void store.save().catch(() => undefined)}
               onGoTo={(path, line, column) => store.focus(path, line, column)}
+              tree={tree}
+              dirty={dirty}
+              onOpenFile={(path) => { setRunFolder(null); void store.open(path); }}
               problemsHeight={shownLayout.problemsHeight}
               problemsCollapsed={layout.problemsCollapsed}
               onProblemsHeight={(problemsHeight) => updateLayout({ problemsHeight })}

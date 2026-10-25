@@ -5,6 +5,8 @@ import { ProblemsPanel } from './ProblemsPanel';
 import { isDirty, type Doc } from './store';
 import { languageOf } from './types';
 import { PanelSplitter } from './PanelSplitter';
+import { WorkspaceFilePicker } from './WorkspaceFilePicker';
+import type { TreeNode } from './types';
 
 /** Monaco is loaded on first use, in its own chunk (the start page stays light). */
 const CodeEditor = lazy(() => import('./monaco/CodeEditor'));
@@ -22,12 +24,15 @@ interface Props {
   problemsCollapsed?: boolean;
   onProblemsHeight?(value: number): void;
   onProblemsCollapsed?(value: boolean): void;
+  tree?: TreeNode | null;
+  dirty?: ReadonlySet<string>;
+  onOpenFile?(path: string): void;
 }
 
 const nameOf = (path: string) => path.split('/').pop() ?? path;
 
 /** The editor column: a tab per open file, the active file's editor, and Problems underneath. */
-export function EditorPane({ tabs, active, readOnly, onActivate, onClose, onChange, onSave, onGoTo, problemsHeight = 180, problemsCollapsed = false, onProblemsHeight = () => undefined, onProblemsCollapsed = () => undefined }: Props) {
+export function EditorPane({ tabs, active, readOnly, onActivate, onClose, onChange, onSave, onGoTo, problemsHeight = 180, problemsCollapsed = false, onProblemsHeight = () => undefined, onProblemsCollapsed = () => undefined, tree = null, dirty = new Set(), onOpenFile = () => undefined }: Props) {
   const doc = tabs.find((tab) => tab.path === active) ?? null;
   const [narrow, setNarrow] = useState(() => window.matchMedia?.('(max-width: 760px)').matches ?? window.innerWidth <= 760);
   useEffect(() => {
@@ -42,7 +47,8 @@ export function EditorPane({ tabs, active, readOnly, onActivate, onClose, onChan
   }, []);
   return (
     <section className="editor-pane">
-      {tabs.length > 0 && (
+      <div className="editor-tabs-row">
+      {tabs.length > 0 ? (
         <div className="tabs" role="tablist" aria-label={t('ui.editor.tabs')}>
           {tabs.map((tab) => (
             <div key={tab.path} className={`tab${tab.path === active ? ' tab-on' : ''}`}>
@@ -71,7 +77,9 @@ export function EditorPane({ tabs, active, readOnly, onActivate, onClose, onChan
             </div>
           ))}
         </div>
-      )}
+      ) : <div className="tabs-spacer" />}
+      <WorkspaceFilePicker tree={tree} active={active} dirty={dirty} onOpen={onOpenFile} />
+      </div>
       <div className="editor-body">
         {!doc && <p className="muted editor-empty">{t('ui.editor.empty')}</p>}
         {doc?.error && (

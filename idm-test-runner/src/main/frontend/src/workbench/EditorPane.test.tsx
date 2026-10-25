@@ -127,6 +127,25 @@ describe('Problems layout', () => {
   });
 });
 
+describe('editor workspace chooser', () => {
+  it('opens a closed workspace file and reactivates an open tab without duplicating it', async () => {
+    workbenchServer({ files: FILES });
+    renderWorkbench();
+    await screen.findByRole('navigation', { name: 'Workspace files' });
+    await userEvent.click(screen.getByRole('button', { name: 'Collapse Workspace' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Open workspace file' }));
+    await userEvent.click(screen.getByRole('option', { name: 'scenarios/users/b.yaml' }));
+    expect(await screen.findByRole('tab', { name: 'b.yaml', selected: true })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Open workspace file' }));
+    await userEvent.click(screen.getByRole('option', { name: 'scenarios/a.yaml' }));
+    expect(await screen.findByRole('tab', { name: 'a.yaml', selected: true })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Open workspace file' }));
+    await userEvent.click(screen.getByRole('option', { name: 'scenarios/users/b.yaml' }));
+    expect(screen.getAllByRole('tab')).toHaveLength(2);
+    expect(screen.getByRole('tab', { name: 'b.yaml', selected: true })).toBeInTheDocument();
+  });
+});
+
 describe('Workbench editor', () => {
   it('lays out the top bar, file tree, editor with Problems, and the run panel', async () => {
     workbenchServer({ files: FILES });

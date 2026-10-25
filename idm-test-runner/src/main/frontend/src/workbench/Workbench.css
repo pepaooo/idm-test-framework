@@ -332,10 +332,57 @@
 
 .tabs {
   display: flex;
+  flex: 1;
+  min-width: 0;
   overflow-x: auto;
+  background: var(--surface);
+}
+
+.editor-tabs-row {
+  display: flex;
+  min-height: 34px;
   background: var(--surface);
   border-bottom: 1px solid var(--line);
 }
+
+.tabs-spacer { flex: 1; }
+
+.workspace-file-picker { position: relative; flex: none; display: flex; align-items: center; padding: 2px 6px; }
+.file-picker-trigger { white-space: nowrap; }
+.file-picker-popover {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 8;
+  width: min(390px, calc(100vw - 24px));
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 22%);
+}
+.file-picker-search { width: 100%; padding: 7px 9px; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); }
+.file-picker-list { max-height: min(360px, 55vh); overflow: auto; padding-top: 4px; }
+.file-picker-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  padding: 6px 9px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.file-picker-highlight,
+.file-picker-option:hover:not(.file-picker-locked) { background: var(--raised); }
+.file-picker-locked { color: var(--muted); cursor: not-allowed; }
+.file-picker-empty { margin: 7px 9px; }
 
 .tab {
   display: flex;

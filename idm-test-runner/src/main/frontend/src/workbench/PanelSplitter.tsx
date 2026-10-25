@@ -58,8 +58,8 @@ export function PanelSplitter({ orientation, label, value, min, max, onChange, r
         event.currentTarget.setPointerCapture?.(event.pointerId);
       }}
       onKeyDown={(event) => {
-        const forward = orientation === 'vertical' ? 'ArrowRight' : 'ArrowDown';
-        const backward = orientation === 'vertical' ? 'ArrowLeft' : 'ArrowUp';
+        const forward = orientation === 'vertical' ? 'ArrowRight' : 'ArrowUp';
+        const backward = orientation === 'vertical' ? 'ArrowLeft' : 'ArrowDown';
         if (event.key === forward) clamp(value + (reverse ? -16 : 16));
         else if (event.key === backward) clamp(value + (reverse ? 16 : -16));
         else if (event.key === 'Home') clamp(min);

@@ -85,6 +85,48 @@ describe('workbench side panels', () => {
   });
 });
 
+describe('Problems layout', () => {
+  it('collapses Problems without stopping validation', async () => {
+    workbenchServer({ files: FILES, validate: (path) => path === A ? [
+      { severity: 'error', line: 1, column: 1, message: 'first problem', key: 'first' },
+      { severity: 'warning', line: 2, column: 1, message: 'second problem', key: 'second' },
+    ] : [] });
+    renderWorkbench();
+    await openA();
+    const panel = screen.getByRole('region', { name: 'Problems' });
+    expect(await within(panel).findByText('first problem')).toBeInTheDocument();
+    await userEvent.click(within(panel).getByRole('button', { name: 'Collapse Problems' }));
+    expect(within(panel).getByRole('button', { name: 'Expand Problems' })).toBeVisible();
+    expect(panel).toHaveTextContent('2');
+    expect(within(panel).queryByText('first problem')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'b.yaml' }));
+    await screen.findByLabelText('Edit scenarios/users/b.yaml');
+    expect(panel).not.toHaveTextContent('2');
+  });
+
+  it('restores Problems height and resizes upward by keyboard', async () => {
+    workbenchServer({ files: FILES });
+    renderWorkbench();
+    const divider = screen.getByRole('separator', { name: 'Resize Problems' });
+    expect(divider).toHaveAttribute('aria-valuenow', '180');
+    fireEvent.keyDown(divider, { key: 'ArrowUp' });
+    expect(divider).toHaveAttribute('aria-valuenow', '196');
+    await userEvent.click(screen.getByRole('button', { name: 'Collapse Problems' }));
+    expect(screen.queryByRole('separator', { name: 'Resize Problems' })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Expand Problems' }));
+    expect(screen.getByRole('separator', { name: 'Resize Problems' })).toHaveAttribute('aria-valuenow', '196');
+  });
+
+  it('hides the Problems divider in narrow stacked layout', async () => {
+    vi.stubGlobal('matchMedia', () => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() }));
+    workbenchServer({ files: FILES });
+    renderWorkbench();
+    expect(screen.queryByRole('separator', { name: 'Resize Problems' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Collapse Problems' })).toBeVisible();
+    expect(screen.getByRole('region', { name: 'Problems' })).toBeInTheDocument();
+  });
+});
+
 describe('Workbench editor', () => {
   it('lays out the top bar, file tree, editor with Problems, and the run panel', async () => {
     workbenchServer({ files: FILES });

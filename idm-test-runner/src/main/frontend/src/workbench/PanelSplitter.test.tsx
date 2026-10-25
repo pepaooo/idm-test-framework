@@ -22,7 +22,7 @@ describe('PanelSplitter', () => {
     render(<PanelSplitter orientation="horizontal" label="Resize Problems" value={200} min={100} max={300} onChange={onChange} />);
     const splitter = screen.getByRole('separator', { name: 'Resize Problems' });
     fireEvent.keyDown(splitter, { key: 'ArrowUp' });
-    expect(onChange).toHaveBeenLastCalledWith(184);
+    expect(onChange).toHaveBeenLastCalledWith(216);
     fireEvent.pointerDown(splitter, { pointerId: 1, clientY: 150 });
     fireEvent.pointerMove(window, { pointerId: 1, clientY: 50 });
     expect(onChange).toHaveBeenLastCalledWith(300);

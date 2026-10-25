@@ -1,9 +1,10 @@
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { Badge } from '../components/Badge';
 import { t } from '../i18n';
 import { ProblemsPanel } from './ProblemsPanel';
 import { isDirty, type Doc } from './store';
 import { languageOf } from './types';
+import { PanelSplitter } from './PanelSplitter';
 
 /** Monaco is loaded on first use, in its own chunk (the start page stays light). */
 const CodeEditor = lazy(() => import('./monaco/CodeEditor'));
@@ -17,13 +18,28 @@ interface Props {
   onChange(path: string, content: string): void;
   onSave(): void;
   onGoTo(path: string, line: number, column: number): void;
+  problemsHeight?: number;
+  problemsCollapsed?: boolean;
+  onProblemsHeight?(value: number): void;
+  onProblemsCollapsed?(value: boolean): void;
 }
 
 const nameOf = (path: string) => path.split('/').pop() ?? path;
 
 /** The editor column: a tab per open file, the active file's editor, and Problems underneath. */
-export function EditorPane({ tabs, active, readOnly, onActivate, onClose, onChange, onSave, onGoTo }: Props) {
+export function EditorPane({ tabs, active, readOnly, onActivate, onClose, onChange, onSave, onGoTo, problemsHeight = 180, problemsCollapsed = false, onProblemsHeight = () => undefined, onProblemsCollapsed = () => undefined }: Props) {
   const doc = tabs.find((tab) => tab.path === active) ?? null;
+  const [narrow, setNarrow] = useState(() => window.matchMedia?.('(max-width: 760px)').matches ?? window.innerWidth <= 760);
+  useEffect(() => {
+    const media = window.matchMedia?.('(max-width: 760px)');
+    const update = () => setNarrow(media?.matches ?? window.innerWidth <= 760);
+    media?.addEventListener?.('change', update);
+    window.addEventListener('resize', update);
+    return () => {
+      media?.removeEventListener?.('change', update);
+      window.removeEventListener('resize', update);
+    };
+  }, []);
   return (
     <section className="editor-pane">
       {tabs.length > 0 && (
@@ -92,11 +108,16 @@ export function EditorPane({ tabs, active, readOnly, onActivate, onClose, onChan
           </div>
         )}
       </div>
-      <ProblemsPanel
-        path={doc?.path ?? null}
-        problems={doc?.problems ?? []}
-        onGoTo={(line, column) => doc && onGoTo(doc.path, line, column)}
-      />
+      {!problemsCollapsed && !narrow && <div className="problems-divider"><PanelSplitter orientation="horizontal" label={t('ui.layout.resizeProblems')} value={problemsHeight} min={90} max={Math.max(90, window.innerHeight - 190)} onChange={onProblemsHeight} /></div>}
+      <div className={`problems-slot${problemsCollapsed ? ' problems-slot-collapsed' : ''}`} style={{ height: problemsCollapsed ? 34 : problemsHeight }}>
+        <ProblemsPanel
+          path={doc?.path ?? null}
+          problems={doc?.problems ?? []}
+          collapsed={problemsCollapsed}
+          onCollapsed={onProblemsCollapsed}
+          onGoTo={(line, column) => doc && onGoTo(doc.path, line, column)}
+        />
+      </div>
     </section>
   );
 }

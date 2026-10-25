@@ -425,6 +425,10 @@ export function Workbench({ workspace, warning, lockWait = 300, runPanel, lab, r
               onChange={(path, content) => store.edit(path, content)}
               onSave={() => void store.save().catch(() => undefined)}
               onGoTo={(path, line, column) => store.focus(path, line, column)}
+              problemsHeight={shownLayout.problemsHeight}
+              problemsCollapsed={layout.problemsCollapsed}
+              onProblemsHeight={(problemsHeight) => updateLayout({ problemsHeight })}
+              onProblemsCollapsed={(problemsCollapsed) => updateLayout({ problemsCollapsed })}
             />
           </div>
           {!layout.runCollapsed && <div className="wb-divider wb-divider-run"><PanelSplitter orientation="vertical" reverse label={t('ui.layout.resizeRun')} value={shownLayout.runWidth} min={220} max={Math.max(220, viewport.width - shownLayout.workspaceWidth - 332)} onChange={(runWidth) => updateLayout({ runWidth })} /></div>}

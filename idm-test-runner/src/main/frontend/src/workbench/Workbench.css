@@ -400,12 +400,15 @@
 
 /* Problems */
 .problems {
-  border-top: 1px solid var(--line);
-  max-height: 32%;
-  min-height: 90px;
+  height: 100%;
+  min-height: 0;
   overflow: auto;
   background: var(--surface);
 }
+
+.problems-slot { flex: none; min-height: 0; }
+.problems-slot-collapsed { border-top: 1px solid var(--line); }
+.problems-divider { height: 6px; flex: none; background: var(--line); }
 
 .problems .count {
   margin-right: auto;
@@ -521,6 +524,8 @@
   .wb-run { grid-column: 1; }
 
   .wb-divider { display: none; }
+
+  .problems-divider { display: none; }
 
   .wb-col {
     border-right: none;

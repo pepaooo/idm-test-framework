@@ -55,7 +55,8 @@ final class ScenarioReferenceScan {
         return new Inspection(Map.copyOf(entries), List.copyOf(invalid));
     }
 
-    static Result scan(Inspection inspection, LabSettings.SystemRef ref, String defaultDirectoryId) {
+    static Result scan(Inspection inspection, LabSettings.SystemRef ref, String defaultDirectoryId,
+                       boolean hasNamedDefaultDirectory) {
         List<String> referenced = new ArrayList<>();
         List<String> uncertain = new ArrayList<>(inspection.invalid());
         for (Map.Entry<String, List<StepSpec>> scenario : inspection.entries().entrySet()) {
@@ -86,7 +87,8 @@ final class ScenarioReferenceScan {
                         continue;
                     }
                     String id = target == null ? defaultDirectoryId : "directory:" + target;
-                    used |= ref.id().equals(id) || target != null && "default".equals(String.valueOf(target))
+                    used |= ref.id().equals(id) || !hasNamedDefaultDirectory && target != null
+                            && "default".equals(String.valueOf(target))
                             && ref.id().equals("ldap");
                 } else if (target == null) {
                     uncertain.add(name);

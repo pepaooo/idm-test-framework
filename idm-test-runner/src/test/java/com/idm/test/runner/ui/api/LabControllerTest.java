@@ -277,6 +277,22 @@ class LabControllerTest {
     }
 
     @Test
+    @DisplayName("A named default directory reference does not retain an unused legacy LDAP block")
+    void testDeleteLegacyLdapWithNamedDefault() throws IOException {
+        Path ws = openWorkspace(server);
+        Files.delete(ws.resolve("scenarios/example.yaml"));
+        Files.writeString(ws.resolve("config/application-lab.yml"), "idm:\n  test:\n    ldap:\n      url: ldap://legacy:389\n"
+                + "    directories:\n      default:\n        url: ldap://named:389\n");
+        Files.writeString(ws.resolve("scenarios/named-default.yaml"),
+                "name: Named default\nsteps:\n  - ldap.search:\n      directory: default\n      filter: (uid=example)\n");
+
+        JsonNode view = lab(server, "lab");
+        assertThat(system(view, "directory:default").get("deletion").get("reason").asString())
+                .isEqualTo("referenced");
+        assertThat(system(view, "ldap").get("deletion").get("allowed").asBoolean()).isTrue();
+    }
+
+    @Test
     @DisplayName("Delete rechecks scenarios after the panel was read")
     void testDeleteRechecksScenario() throws IOException {
         Path ws = openWorkspace(server);

@@ -373,7 +373,8 @@ public final class LabSettings {
         if (configuredDefault) {
             return new Deletion(false, "default-directory", List.of());
         }
-        ScenarioReferenceScan.Result scan = ScenarioReferenceScan.scan(inspection, ref, defaultChoice.systemId());
+        ScenarioReferenceScan.Result scan = ScenarioReferenceScan.scan(inspection, ref, defaultChoice.systemId(),
+                directoryNames(snapshot).contains("default"));
         if (!scan.referenced().isEmpty()) return new Deletion(false, "referenced", scan.referenced());
         if (!scan.uncertain().isEmpty()) return new Deletion(false, "invalid-scenario", scan.uncertain());
         return new Deletion(true, null, List.of());

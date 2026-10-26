@@ -7,6 +7,7 @@ import { NewScenarioDialog } from './NewScenarioDialog';
 import { scenarioTemplate } from './scenarioTemplate';
 import type { DeletePrep } from './store';
 import type { TreeNode } from './types';
+import { WorkspaceIcon } from './WorkspaceIcon';
 
 const RESULT_BADGE: Record<'passed' | 'finding' | 'setup', BadgeStatus> = {
   passed: 'ok',
@@ -269,7 +270,8 @@ export function FileTree({
               onSelectFolder?.(node.path);
             }}
           >
-            <span aria-hidden="true" className="tree-caret">{open ? '▾' : '▸'} </span>
+            <span aria-hidden="true" className={`tree-caret${open ? ' tree-caret-open' : ''}`}><WorkspaceIcon name="chevron" /></span>
+            {(node.path === 'config' || node.path === 'scenarios') && <WorkspaceIcon name={node.path} />}
             {node.name}
           </button>
           {open && node.children && node.children.length > 0 && (
@@ -364,35 +366,35 @@ export function FileTree({
       >
         <div className="pane-head">
           <span>{t('ui.tree.title')}</span>
-          <span className="tree-head-actions">
-            {onCollapse && <button type="button" className="pane-icon" aria-label={t('ui.layout.collapseWorkspace')} onClick={onCollapse}>◂</button>}
-            <button
-              type="button"
-              className="pill"
-              disabled={readOnly}
-              onClick={(event) => startCreating({ kind: 'new' }, event.currentTarget)}
-            >
-              {t('ui.tree.new')}
-            </button>
-            <button type="button" className="pill" disabled={readOnly} onClick={() => input.current?.click()} title={t('ui.tree.dropHint')}>
-              {t('ui.tree.add')}
-            </button>
-          </span>
-          <input
-            ref={input}
-            type="file"
-            multiple
-            accept=".yaml,.yml"
-            hidden
-            aria-label={t('ui.tree.add')}
-            disabled={readOnly}
-            onChange={(event) => {
-              const files = Array.from(event.target.files ?? []);
-              event.target.value = '';
-              void add(files);
-            }}
-          />
+          {onCollapse && <button type="button" className="pane-icon workspace-panel-button" aria-label={t('ui.layout.collapseWorkspace')} title={t('ui.layout.collapseWorkspace')} onClick={onCollapse}><WorkspaceIcon name="collapse" /></button>}
         </div>
+        <div className="tree-actions">
+          <button
+            type="button"
+            className="tree-action-button"
+            disabled={readOnly}
+            onClick={(event) => startCreating({ kind: 'new' }, event.currentTarget)}
+          >
+            <WorkspaceIcon name="new" />{t('ui.tree.new')}
+          </button>
+          <button type="button" className="tree-action-button" disabled={readOnly} onClick={() => input.current?.click()} title={t('ui.tree.dropHint')}>
+            <WorkspaceIcon name="upload" />{t('ui.tree.add')}
+          </button>
+        </div>
+        <input
+          ref={input}
+          type="file"
+          multiple
+          accept=".yaml,.yml"
+          hidden
+          aria-label={t('ui.tree.add')}
+          disabled={readOnly}
+          onChange={(event) => {
+            const files = Array.from(event.target.files ?? []);
+            event.target.value = '';
+            void add(files);
+          }}
+        />
         <span id={runFolderNote} hidden>
           {t('ui.tree.runFolder')}
         </span>

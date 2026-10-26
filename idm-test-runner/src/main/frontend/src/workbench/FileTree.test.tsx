@@ -46,6 +46,36 @@ afterEach(() => {
 });
 
 describe('FileTree', () => {
+  it('shows outline panel and distinct top-level folder icons', async () => {
+    renderTree({ onCollapse: vi.fn() });
+    const collapse = screen.getByRole('button', { name: 'Collapse Workspace' });
+    const config = screen.getByRole('button', { name: 'config' });
+    const scenarios = screen.getByRole('button', { name: 'scenarios' });
+    const reports = screen.getByRole('button', { name: 'reports' });
+    expect(collapse.querySelector('svg')).not.toBeNull();
+    expect(config.querySelectorAll('svg')).toHaveLength(2);
+    expect(scenarios.querySelectorAll('svg')).toHaveLength(2);
+    expect(reports.querySelector('svg')).not.toBeNull();
+    expect(config.querySelectorAll('svg')[1].innerHTML).not.toBe(scenarios.querySelectorAll('svg')[1].innerHTML);
+    expect(config).toHaveAttribute('aria-expanded', 'false');
+    await userEvent.click(config);
+    expect(config).toHaveAttribute('aria-expanded', 'true');
+    expect(scenarios).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it('keeps labeled file actions in a separate row', () => {
+    renderTree();
+    const create = screen.getByRole('button', { name: 'New scenario' });
+    const add = screen.getByRole('button', { name: 'Add files' });
+    expect(create).toBeEnabled();
+    expect(add).toBeEnabled();
+    expect(create.closest('.tree-actions')).not.toBeNull();
+    expect(add.closest('.tree-actions')).toBe(create.closest('.tree-actions'));
+    expect(create.closest('.pane-head')).toBeNull();
+    expect(create.querySelector('svg')).not.toBeNull();
+    expect(add.querySelector('svg')).not.toBeNull();
+  });
+
   it('shows the workspace with scenarios expanded, last-result badges and ● for unsaved files', () => {
     renderTree();
     const nav = screen.getByRole('navigation', { name: 'Workspace files' });

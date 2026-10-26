@@ -121,6 +121,22 @@
 
 .pane-icon:hover { color: var(--text); }
 
+.workspace-icon { width: 18px; height: 18px; flex: none; }
+.workspace-folder-icon { width: 19px; height: 19px; }
+.workspace-chevron-icon { width: 12px; height: 12px; }
+.workspace-action-icon { width: 14px; height: 14px; }
+.workspace-panel-button {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+}
+.workspace-panel-button:hover { color: var(--accent); border-color: var(--accent); }
+
 .wb-rail {
   overflow: hidden;
   background: var(--surface);
@@ -233,8 +249,12 @@
 
 .tree-caret {
   width: 1em;
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
+.tree-caret .workspace-icon { transition: transform 150ms ease; }
+.tree-caret-open .workspace-icon { transform: rotate(90deg); }
 
 .tree-locked {
   color: var(--muted);
@@ -249,9 +269,31 @@
   color: var(--muted);
 }
 
-.tree-head-actions {
+.tree-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
+  padding: 7px 10px 6px;
+}
+.tree-action-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 30px;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.tree-action-button:hover:not(:disabled) { color: var(--accent); border-color: var(--accent); }
+.tree-action-button:disabled { opacity: .55; cursor: not-allowed; }
+@media (prefers-reduced-motion: reduce) {
+  .tree-caret .workspace-icon { transition: none; }
 }
 
 /* a scenario row and its Duplicate and Delete actions, shown on hover, on keyboard focus and on the open file */

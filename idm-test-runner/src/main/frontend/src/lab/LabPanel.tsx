@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { Badge, type BadgeStatus } from '../components/Badge';
 import { t } from '../i18n';
+import { useWorkbench } from '../workbench/context';
 import { DefaultDirectoryForm } from './DefaultDirectoryForm';
 import { DEFAULT_DIRECTORY_TAB } from './labState';
 import { SystemForm } from './SystemForm';
@@ -38,6 +39,8 @@ function domId(systemId: string) {
  * is not saved.
  */
 export function LabPanel({ view, error, profile, readOnly, selected, onSelect, onClose, onSaved, onTested, onDirtyChange }: Props) {
+  const { refreshTree } = useWorkbench();
+  const panelRef = useRef<HTMLDivElement>(null);
   const systems = view?.systems ?? [];
   const defaultDirectory = view?.defaultDirectory ?? null;
   /** The tabs in order: the default directory's (when asked for), then the systems'. */
@@ -48,9 +51,23 @@ export function LabPanel({ view, error, profile, readOnly, selected, onSelect, o
   const adding = selected === ADD;
   const current = adding ? ADD : (tabs.find((tab) => tab.id === selected)?.id ?? tabs[0]?.id ?? (view ? ADD : null));
   const tabRefs = useRef(new Map<string, HTMLButtonElement>());
+  const focusAfterDelete = useRef<string | null>(null);
   const dirty = useRef(new Set<string>());
   const [addKey, setAddKey] = useState(0);
   const [search, setSearch] = useState('');
+  useLayoutEffect(() => {
+    const placePanel = () => {
+      const panel = panelRef.current;
+      if (!panel) return;
+      panel.style.left = '';
+      if (window.innerWidth <= 760) return;
+      const overflow = panel.getBoundingClientRect().right - (window.innerWidth - 16);
+      if (overflow > 0) panel.style.left = `-${Math.ceil(overflow)}px`;
+    };
+    placePanel();
+    window.addEventListener('resize', placePanel);
+    return () => window.removeEventListener('resize', placePanel);
+  }, []);
   const filteredTabs = tabs.filter((tab) => {
     const system = systems.find((item) => item.id === tab.id);
     const query = search.trim().toLocaleLowerCase();
@@ -88,6 +105,27 @@ export function LabPanel({ view, error, profile, readOnly, selected, onSelect, o
     }
   }, []); // only when the panel opens: focus starts on its tab
 
+  useEffect(() => {
+    if (focusAfterDelete.current) {
+      const target = focusAfterDelete.current;
+      focusAfterDelete.current = null;
+      if (target === ADD) document.getElementById('lab-tab-add')?.focus();
+      else tabRefs.current.get(target)?.focus();
+    }
+  }, [view, selected]);
+
+  const deleted = (nextView: LabView, systemId: string) => {
+    markDirty(systemId, false);
+    const index = systems.findIndex((system) => system.id === systemId);
+    const next = nextView.systems[Math.min(index, nextView.systems.length - 1)]?.id ?? ADD;
+    if (next === ADD && addKey === 0) setAddKey(1);
+    setSearch('');
+    focusAfterDelete.current = next;
+    onSaved(nextView);
+    onSelect(next);
+    void refreshTree();
+  };
+
   const onTabKey = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
     let next = -1;
     if (event.key === 'ArrowDown' || event.key === 'ArrowRight') next = (index + 1) % filteredTabs.length;
@@ -103,6 +141,7 @@ export function LabPanel({ view, error, profile, readOnly, selected, onSelect, o
 
   return (
     <div
+      ref={panelRef}
       id="lab-panel"
       className="lab-panel"
       role="dialog"
@@ -209,6 +248,7 @@ export function LabPanel({ view, error, profile, readOnly, selected, onSelect, o
               label={system.name}
               panelId={`lab-tabpanel-${domId(system.id)}`}
               onSaved={onSaved}
+              onDeleted={deleted}
               onTested={onTested}
               onDirty={onDirtyFor(system.id)}
             />
@@ -229,6 +269,7 @@ export function LabPanel({ view, error, profile, readOnly, selected, onSelect, o
                 onSelect(systemId);
                 setAddKey((k) => k + 1); // the next "+ add" starts empty
               }}
+              onDeleted={deleted}
               onTested={onTested}
               onDirty={onDirtyFor(ADD)}
             />

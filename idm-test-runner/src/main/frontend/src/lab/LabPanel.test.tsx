@@ -46,6 +46,74 @@ afterEach(() => {
 });
 
 describe('Lab panel', () => {
+  it('blocks deletion of a referenced connection and names the scenario', async () => {
+    start({ systems: [{ ...directory('ready'), deletion: { allowed: false, reason: 'referenced', files: ['use-directory.yaml'] } }] });
+    const form = within(await openPanel()).getByRole('tabpanel');
+    expect(within(form).getByRole('button', { name: 'Delete connection' })).toBeDisabled();
+    expect(form).toHaveTextContent('use-directory.yaml');
+  });
+
+  it('confirms deletion, sends the stable ID and profile, then selects Add', async () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true);
+    const { server } = start({ systems: [{ ...directory('ready'), usedByScenarios: [],
+      deletion: { allowed: true, reason: null, files: [] } }],
+      onDelete: () => ({ body: { systems: [] } }),
+    });
+    const panel = await openPanel();
+    await userEvent.click(within(panel).getByRole('button', { name: 'Delete connection' }));
+    expect(server.sent.filter((request) => request.method === 'DELETE')).toHaveLength(0);
+    await userEvent.click(within(panel).getByRole('button', { name: 'Delete connection' }));
+    await waitFor(() => expect(server.sent.filter((request) => request.method === 'DELETE')).toHaveLength(1));
+    expect(server.sent.find((request) => request.method === 'DELETE')?.url).toBe('/api/lab?profile=lab&systemId=ldap');
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('config/application-lab.yml'));
+    await waitFor(() => expect(within(panel).queryByRole('tab', { name: /eDirectory/ })).not.toBeInTheDocument());
+    expect(within(panel).getByRole('button', { name: '+ add' })).toHaveFocus();
+  });
+
+  it.each([
+    ['shared', 'Configured in shared application.yml'],
+    ['environment', 'Configured by the environment'],
+    ['default-directory', 'Selected as the default directory'],
+    ['invalid-scenario', 'Check unreadable or dynamic scenarios before deleting'],
+  ])('explains the %s deletion gate', async (reason, explanation) => {
+    start({ systems: [{ ...directory('ready'), deletion: { allowed: false, reason, files: ['blocked.yaml'] } }] });
+    const form = within(await openPanel()).getByRole('tabpanel');
+    expect(within(form).getByRole('button', { name: 'Delete connection' })).toBeDisabled();
+    expect(form).toHaveTextContent(explanation);
+    expect(form).toHaveTextContent('blocked.yaml');
+  });
+
+  it('keeps the form when a stale server check refuses deletion', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    start({ systems: [{ ...directory('ready'), usedByScenarios: [],
+      deletion: { allowed: true, reason: null, files: [] } }],
+      onDelete: () => ({ status: 400, body: { key: 'ui.lab.deleteBlocked', message: 'Now used by new.yaml' } }),
+    });
+    const panel = await openPanel();
+    await userEvent.click(within(panel).getByRole('button', { name: 'Delete connection' }));
+    expect(await within(panel).findByRole('alert')).toHaveTextContent('Now used by new.yaml');
+    expect(within(panel).getByRole('tab', { name: /eDirectory/ })).toBeInTheDocument();
+  });
+
+  it('disables Delete while the form has unsaved edits', async () => {
+    start({ systems: [{ ...directory('ready'), usedByScenarios: [],
+      deletion: { allowed: true, reason: null, files: [] } }] });
+    const form = within(await openPanel()).getByRole('tabpanel');
+    await userEvent.type(within(form).getByLabelText('Label'), 'edited');
+    expect(within(form).getByRole('button', { name: 'Delete connection' })).toBeDisabled();
+  });
+
+  it('names the deletion gate in Spanish', async () => {
+    setLanguage('es', false);
+    start({ systems: [{ ...directory('ready'), deletion: { allowed: false, reason: 'referenced', files: ['uso.yaml'] } }] });
+    const chip = await screen.findByRole('button', { name: /^Lab[: ]/ });
+    await userEvent.click(chip);
+    const panel = await screen.findByRole('dialog');
+    const form = within(panel).getByRole('tabpanel');
+    expect(within(form).getByRole('button', { name: 'Eliminar conexión' })).toBeDisabled();
+    expect(form).toHaveTextContent('La usan los escenarios');
+    expect(form).toHaveTextContent('uso.yaml');
+  });
   it('keeps the form visible beside a searchable bounded connection list', async () => {
     const systems = Array.from({ length: 25 }, (_, index) => ({
       ...hrDatabase('untested'), id: `database:db${index}`, name: `Database ${index}`,
@@ -178,6 +246,7 @@ describe('Lab panel', () => {
     start({ systems: [directory('ready')] });
     const form = within(await openPanel()).getByRole('tabpanel');
     expect(within(form).getByRole('button', { name: 'Save' })).toBeDisabled();
+    expect(within(form).getByRole('button', { name: 'Delete connection' })).toBeDisabled();
     await userEvent.type(within(form).getByLabelText(/^URL/), '9');
     expect(within(form).getByRole('button', { name: 'Save' })).toBeEnabled();
   });
@@ -262,6 +331,7 @@ describe('Lab panel', () => {
     expect(within(form).queryByRole('button', { name: 'Change Password' })).not.toBeInTheDocument();
     expect(within(form).getByRole('button', { name: 'Save' })).toBeDisabled();
     expect(within(form).getByRole('button', { name: 'Test connection' })).toBeEnabled();
+    expect(within(form).getByRole('button', { name: 'Delete connection' })).toBeDisabled();
     expect(panel).toHaveTextContent('This workspace is open in another tab: the lab settings are read-only here.');
   });
 

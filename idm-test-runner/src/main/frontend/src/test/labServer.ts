@@ -88,13 +88,14 @@ export interface LabRoutesOptions {
   onTest?: (body: unknown) => TestResult | Answer;
   /** What `PUT /api/lab/default-directory` answers; default the profile's view as it is. */
   onSaveDefault?: (profile: string, body: unknown) => Answer;
+  onDelete?: (profile: string, systemId: string) => Answer;
 }
 
 function profileOf(url: string) {
   return new URL(url, 'http://127.0.0.1').searchParams.get('profile') ?? '';
 }
 
-export function labRoutes({ views, onSave, onTest, onSaveDefault }: LabRoutesOptions) {
+export function labRoutes({ views, onSave, onTest, onSaveDefault, onDelete }: LabRoutesOptions) {
   const view = (profile: string): Answer => {
     const found = views[profile];
     if (!found) {
@@ -112,5 +113,8 @@ export function labRoutes({ views, onSave, onTest, onSaveDefault }: LabRoutesOpt
       const answer = onTest ? onTest(request.body) : { ok: true, message: 'Connected · bind OK', millis: 112 };
       return 'ok' in answer ? { body: answer } : answer;
     },
+    'DELETE /api/lab': (request: { url: string }) =>
+      onDelete ? onDelete(profileOf(request.url), new URL(request.url, 'http://127.0.0.1').searchParams.get('systemId') ?? '')
+        : view(profileOf(request.url)),
   };
 }

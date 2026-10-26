@@ -18,6 +18,7 @@ interface Props {
   panelId: string;
   /** A save answered with the lab as it is now. */
   onSaved(view: LabView, systemId: string): void;
+  onDeleted(view: LabView, systemId: string): void;
   /** A test finished (the server now knows whether these values are ready). */
   onTested(): void;
   onDirty(dirty: boolean): void;
@@ -37,7 +38,7 @@ function hasSavedSecret(field: LabField) {
  * when Save or Test connection sends it and is emptied as soon as that finishes, whatever the answer
  * — so a typed secret never outlives the request that needs it, and is never in the DOM's markup.
  */
-export function SystemForm({ system, existingIds, profile, readOnly, hidden, label: panelLabel, panelId, onSaved, onTested, onDirty }: Props) {
+export function SystemForm({ system, existingIds, profile, readOnly, hidden, label: panelLabel, panelId, onSaved, onDeleted, onTested, onDirty }: Props) {
   const uid = useId();
   const [kind, setKind] = useState<Kind>(() => (existingIds.includes('ldap') ? 'database' : 'ldap'));
   const [name, setName] = useState('');
@@ -48,7 +49,7 @@ export function SystemForm({ system, existingIds, profile, readOnly, hidden, lab
   const [typed, setTyped] = useState<ReadonlySet<string>>(new Set());
   /** Secrets emptied after a test or a save that did not keep them. */
   const [cleared, setCleared] = useState<ReadonlySet<string>>(new Set());
-  const [busy, setBusy] = useState<'saving' | 'testing' | null>(null);
+  const [busy, setBusy] = useState<'saving' | 'testing' | 'deleting' | null>(null);
   const [result, setResult] = useState<TestResult | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const secretInputs = useRef(new Map<string, HTMLInputElement>());
@@ -184,6 +185,26 @@ export function SystemForm({ system, existingIds, profile, readOnly, hidden, lab
       forgetSecrets(Object.keys(secrets).length > 0);
       setBusy(null);
       onTested();
+    }
+  };
+
+  const deletion = system?.deletion;
+  const deletionReason = deletion?.reason
+    ? t(`ui.lab.delete.reason.${deletion.reason}`) + (deletion.files.length ? ` · ${deletion.files.join(', ')}` : '')
+    : null;
+  const remove = async () => {
+    if (!system || !deletion?.allowed || readOnly || dirty || busy) return;
+    if (!window.confirm(t('ui.lab.delete.confirm', { name: system.name, id: system.id,
+      path: `config/application-${profile}.yml` }))) return;
+    setBusy('deleting');
+    setSaveError(null);
+    try {
+      const view = await api.del<LabView>(withQuery('/api/lab', { profile, systemId: system.id }));
+      onDeleted(view, system.id);
+    } catch (e) {
+      setSaveError(e instanceof ApiProblem ? e.message : String(e));
+    } finally {
+      setBusy(null);
     }
   };
 
@@ -383,6 +404,10 @@ export function SystemForm({ system, existingIds, profile, readOnly, hidden, lab
         })}
       </div>
       <div className="lab-actions">
+        {system && <button type="button" className="secondary lab-delete"
+          disabled={!deletion?.allowed || readOnly || dirty || busy !== null}
+          title={deletionReason ?? undefined}
+          onClick={() => void remove()}>{t('ui.lab.delete.button')}</button>}
         <button type="button" className="secondary" disabled={busy !== null || Boolean(nameProblem)} onClick={() => void test()}>
           {busy === 'testing' ? t('ui.lab.testing') : t('ui.lab.test')}
         </button>
@@ -417,6 +442,7 @@ export function SystemForm({ system, existingIds, profile, readOnly, hidden, lab
           {busy === 'saving' ? t('ui.top.saving') : t('ui.lab.save')}
         </button>
       </div>
+      {system && deletionReason && <p className="lab-delete-note">{deletionReason}</p>}
       {saveError && (
         <p role="alert" className="lab-error">
           <Badge status="error" /> {saveError}

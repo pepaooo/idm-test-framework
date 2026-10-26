@@ -197,6 +197,8 @@
   padding: 10px 14px;
   border-top: 1px solid var(--line);
 }
+.lab-delete { color: var(--error); }
+.lab-delete-note { margin: 0; padding: 0 14px 9px; color: var(--muted); font-size: 12px; }
 
 .lab-result {
   display: inline-flex;

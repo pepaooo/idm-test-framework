@@ -23,6 +23,7 @@ export interface LabSystem {
   fields: LabField[];
   status: 'ready' | 'untested' | 'missing';
   lastTest: TestResult | null;
+  deletion?: { allowed: boolean; reason: string | null; files: string[] };
 }
 
 /**

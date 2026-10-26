@@ -41,7 +41,9 @@ public final class ProfileFiles {
         Path temporary = Files.createTempFile(config, ".application-", ".tmp");
         try {
             Files.writeString(temporary, InitCommand.profileTemplate(name), StandardCharsets.UTF_8);
-            Files.move(temporary, target);
+            // A hard link publishes the complete file with CREATE_NEW semantics: even a concurrent
+            // creator cannot make us replace its profile after the case-insensitive check.
+            Files.createLink(target, temporary);
         } finally {
             Files.deleteIfExists(temporary);
         }

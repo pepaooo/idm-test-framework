@@ -9,6 +9,8 @@ interface Props {
   profiles: readonly string[];
   profile: string | null;
   onProfile(profile: string): void;
+  onNewProfile(): void;
+  canCreateProfile: boolean;
   unsaved: number;
   canSave: boolean;
   saving: boolean;
@@ -21,7 +23,7 @@ interface Props {
 }
 
 /** Mockup B's top bar: workspace · profile · lab chip · unsaved · Save · Run, then language and theme. */
-export function TopBar({ name, path, profiles, profile, onProfile, unsaved, canSave, saving, onSave, onResetLayout, lab, run }: Props) {
+export function TopBar({ name, path, profiles, profile, onProfile, onNewProfile, canCreateProfile, unsaved, canSave, saving, onSave, onResetLayout, lab, run }: Props) {
   return (
     <header className="top">
       <span className="logo">{t('ui.app.name')}</span>
@@ -39,6 +41,7 @@ export function TopBar({ name, path, profiles, profile, onProfile, unsaved, canS
           ))}
         </select>
       </label>
+      <button type="button" className="secondary new-profile-button" disabled={!canCreateProfile} onClick={onNewProfile}>{t('ui.profile.new')}</button>
       <div className="slot-lab">{lab}</div>
       <span className="spacer" />
       {unsaved > 0 && <span className="unsaved-count">{t('ui.top.unsaved', { count: unsaved })}</span>}

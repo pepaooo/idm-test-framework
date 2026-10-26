@@ -11,6 +11,7 @@ import { isDirty, WorkbenchStore } from './store';
 import { openDrafts } from './drafts';
 import { createTabLock, type LockState, type TabLock } from './tabLock';
 import { TopBar } from './TopBar';
+import { NewProfileDialog } from './NewProfileDialog';
 import { LabChip } from '../lab/LabChip';
 import { deriveLabState } from '../lab/labState';
 import { LabStore } from '../lab/labStore';
@@ -79,6 +80,10 @@ export function Workbench({ workspace, warning, lockWait = 300, runPanel, lab, r
   const [treeError, setTreeError] = useState<string | null>(null);
   const [revealFolder, setRevealFolder] = useState<'config' | 'scenarios' | null>(null);
   const [profile, setProfile] = useState<string | null>(workspace.profiles[0] ?? null);
+  const [profiles, setProfiles] = useState<string[]>(workspace.profiles);
+  const [newProfileOpen, setNewProfileOpen] = useState(false);
+  const [newProfileBusy, setNewProfileBusy] = useState(false);
+  const [newProfileError, setNewProfileError] = useState<string | null>(null);
   const [showWarning, setShowWarning] = useState(Boolean(warning));
   const labStore = useMemo(() => new LabStore(), [workspace.path]);
   const labView = useSyncExternalStore(labStore.subscribe, labStore.getState);
@@ -313,8 +318,14 @@ export function Workbench({ workspace, warning, lockWait = 300, runPanel, lab, r
         <TopBar
           name={workspace.name}
           path={workspace.path}
-          profiles={workspace.profiles}
+          profiles={profiles}
           profile={profile}
+          canCreateProfile={!state.readOnly && switched === null}
+          onNewProfile={() => {
+            if (labStore.hasUnsaved() && !window.confirm(t('ui.lab.confirmProfile'))) return;
+            setNewProfileError(null);
+            setNewProfileOpen(true);
+          }}
           onProfile={(next) => {
             // the lab panel's typing belongs to the profile it was typed for
             if (labStore.hasUnsaved() && !window.confirm(t('ui.lab.confirmProfile'))) {
@@ -330,6 +341,21 @@ export function Workbench({ workspace, warning, lockWait = 300, runPanel, lab, r
           lab={lab === undefined ? <LabChip store={labStore} /> : lab}
           run={run === undefined ? <RunButton store={runStore} runFolder={runFolder} /> : run}
         />
+        <NewProfileDialog open={newProfileOpen} busy={newProfileBusy} error={newProfileError}
+          profiles={profiles} onCancel={() => setNewProfileOpen(false)} onCreate={(name) => {
+            setNewProfileBusy(true);
+            setNewProfileError(null);
+            void api.post<{ name: string; path: string; profiles: string[] }>('/api/workspaces/profiles', { name })
+              .then((created) => {
+                setProfiles(created.profiles);
+                setProfile(created.name);
+                setNewProfileOpen(false);
+                void refreshTree();
+                labStore.openPanel();
+              })
+              .catch((error: unknown) => setNewProfileError(error instanceof Error ? error.message : String(error)))
+              .finally(() => setNewProfileBusy(false));
+          }} />
         {lockState === 'readOnly' && (
           <div className="lock-banner" role="status">
             <Badge status="warn" />

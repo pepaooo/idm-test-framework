@@ -19,6 +19,10 @@
   gap: 6px;
 }
 
+.new-profile-button { white-space: nowrap; }
+.new-profile input { width: 100%; margin-top: 6px; }
+.profile-preview { margin: 8px 0; overflow-wrap: anywhere; }
+
 .slot-lab:empty,
 .slot-run:empty {
   display: none;

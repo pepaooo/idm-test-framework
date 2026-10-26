@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Badge } from '../components/Badge';
 import { t } from '../i18n';
 import { ProblemsPanel } from './ProblemsPanel';
@@ -34,6 +34,8 @@ const nameOf = (path: string) => path.split('/').pop() ?? path;
 /** The editor column: a tab per open file, the active file's editor, and Problems underneath. */
 export function EditorPane({ tabs, active, readOnly, onActivate, onClose, onChange, onSave, onGoTo, problemsHeight = 180, problemsCollapsed = false, onProblemsHeight = () => undefined, onProblemsCollapsed = () => undefined, tree = null, dirty = new Set(), onOpenFile = () => undefined }: Props) {
   const doc = tabs.find((tab) => tab.path === active) ?? null;
+  const paneRef = useRef<HTMLElement>(null);
+  const [paneHeight, setPaneHeight] = useState(0);
   const [narrow, setNarrow] = useState(() => window.matchMedia?.('(max-width: 760px)').matches ?? window.innerWidth <= 760);
   useEffect(() => {
     const media = window.matchMedia?.('(max-width: 760px)');
@@ -45,8 +47,20 @@ export function EditorPane({ tabs, active, readOnly, onActivate, onClose, onChan
       window.removeEventListener('resize', update);
     };
   }, []);
+  useLayoutEffect(() => {
+    const pane = paneRef.current;
+    if (!pane) return;
+    const measure = () => setPaneHeight(pane.getBoundingClientRect().height);
+    measure();
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
+    observer?.observe(pane);
+    window.addEventListener('resize', measure);
+    return () => { observer?.disconnect(); window.removeEventListener('resize', measure); };
+  }, []);
+  const maxProblemsHeight = Math.max(90, (paneHeight || (narrow ? window.innerHeight * 0.7 : window.innerHeight - 60)) - 130);
+  const visibleProblemsHeight = Math.min(problemsHeight, maxProblemsHeight);
   return (
-    <section className="editor-pane">
+    <section className="editor-pane" ref={paneRef}>
       <div className="editor-tabs-row">
       {tabs.length > 0 ? (
         <div className="tabs" role="tablist" aria-label={t('ui.editor.tabs')}>
@@ -116,8 +130,8 @@ export function EditorPane({ tabs, active, readOnly, onActivate, onClose, onChan
           </div>
         )}
       </div>
-      {!problemsCollapsed && !narrow && <div className="problems-divider"><PanelSplitter orientation="horizontal" label={t('ui.layout.resizeProblems')} value={problemsHeight} min={90} max={Math.max(90, window.innerHeight - 190)} onChange={onProblemsHeight} /></div>}
-      <div className={`problems-slot${problemsCollapsed ? ' problems-slot-collapsed' : ''}`} style={{ height: problemsCollapsed ? 34 : problemsHeight }}>
+      {!problemsCollapsed && !narrow && <div className="problems-divider"><PanelSplitter orientation="horizontal" label={t('ui.layout.resizeProblems')} value={visibleProblemsHeight} min={90} max={maxProblemsHeight} onChange={onProblemsHeight} /></div>}
+      <div className={`problems-slot${problemsCollapsed ? ' problems-slot-collapsed' : ''}`} style={{ height: problemsCollapsed ? 34 : visibleProblemsHeight }}>
         <ProblemsPanel
           path={doc?.path ?? null}
           problems={doc?.problems ?? []}

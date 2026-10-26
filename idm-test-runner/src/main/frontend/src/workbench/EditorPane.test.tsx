@@ -86,6 +86,21 @@ describe('workbench side panels', () => {
 });
 
 describe('Problems layout', () => {
+  it('bounds a saved Problems height to leave the editor usable on a narrow screen', async () => {
+    vi.stubGlobal('matchMedia', () => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() }));
+    const rect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      return { height: this.classList.contains('editor-pane') ? 700 : 0 } as DOMRect;
+    });
+    try {
+      writePanelLayout(WORKSPACE.path, { ...DEFAULT_LAYOUT, problemsHeight: 810 });
+      workbenchServer({ files: FILES });
+      renderWorkbench();
+      const slot = screen.getByRole('region', { name: 'Problems' }).closest('.problems-slot') as HTMLElement;
+      await waitFor(() => expect(Number.parseInt(slot.style.height, 10)).toBeLessThanOrEqual(570));
+    } finally {
+      rect.mockRestore();
+    }
+  });
   it('collapses Problems without stopping validation', async () => {
     workbenchServer({ files: FILES, validate: (path) => path === A ? [
       { severity: 'error', line: 1, column: 1, message: 'first problem', key: 'first' },

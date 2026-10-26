@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { t } from '../i18n';
 import type { TreeNode } from './types';
 
@@ -22,12 +22,33 @@ export function WorkspaceFilePicker({ tree, active, dirty, onOpen }: Props) {
   const container = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const search = useRef<HTMLInputElement>(null);
+  const listId = useId();
+  const [popoverWidth, setPopoverWidth] = useState<number | null>(null);
   const files = useMemo(() => filesOf(tree), [tree]);
   const matches = useMemo(() => files.filter((file) => file.path.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())), [files, query]);
 
   useEffect(() => {
     if (open) search.current?.focus();
   }, [open]);
+  useLayoutEffect(() => {
+    if (!open) return;
+    const pane = container.current?.closest('.editor-pane');
+    if (!pane) return;
+    const measure = () => {
+      const width = pane.getBoundingClientRect().width;
+      if (width > 0) setPopoverWidth(Math.min(390, Math.max(120, width - 12)));
+    };
+    measure();
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
+    observer?.observe(pane);
+    window.addEventListener('resize', measure);
+    return () => { observer?.disconnect(); window.removeEventListener('resize', measure); };
+  }, [open]);
+  useEffect(() => {
+    if (open && matches[highlight]?.kind !== 'secrets') {
+      document.getElementById(`${listId}-option-${highlight}`)?.scrollIntoView?.({ block: 'nearest' });
+    }
+  }, [open, highlight, matches, listId]);
   useEffect(() => {
     if (!open) return;
     const outside = (event: PointerEvent) => {
@@ -78,10 +99,10 @@ export function WorkspaceFilePicker({ tree, active, dirty, onOpen }: Props) {
         aria-expanded={open}
         onClick={() => {
           if (open) close(false);
-          else { setQuery(''); setHighlight(0); setOpen(true); }
+          else { setQuery(''); setHighlight(Math.max(0, files.findIndex((file) => file.path === active && file.kind !== 'secrets'))); setOpen(true); }
         }}
       >{t('ui.editor.openWorkspaceFile')} ▾</button>
-      {open && <div className="file-picker-popover">
+      {open && <div className="file-picker-popover" style={popoverWidth ? { width: popoverWidth } : undefined}>
         <input
           ref={search}
           type="search"
@@ -89,6 +110,8 @@ export function WorkspaceFilePicker({ tree, active, dirty, onOpen }: Props) {
           aria-label={t('ui.editor.findWorkspaceFile')}
           placeholder={t('ui.editor.findWorkspaceFile')}
           value={query}
+          aria-controls={listId}
+          aria-activedescendant={matches[highlight]?.kind !== 'secrets' ? `${listId}-option-${highlight}` : undefined}
           onChange={(event) => { setQuery(event.target.value); setHighlight(0); }}
           onKeyDown={(event) => {
             if (event.key === 'Escape') { event.preventDefault(); close(true); }
@@ -101,14 +124,14 @@ export function WorkspaceFilePicker({ tree, active, dirty, onOpen }: Props) {
             }
           }}
         />
-        <div className="file-picker-list" role="listbox" aria-label={t('ui.tree.label')}>
+        <div id={listId} className="file-picker-list" role="listbox" aria-label={t('ui.tree.label')}>
           {matches.length === 0 && <p className="muted file-picker-empty">{t('ui.editor.noWorkspaceFiles')}</p>}
           {matches.map((file, index) => file.kind === 'secrets' ? (
-            <div key={file.path} role="option" aria-label={`${file.path} ${t('ui.tree.locked')}`} aria-disabled="true" aria-selected="false" className="file-picker-option file-picker-locked">
+            <div key={file.path} id={`${listId}-option-${index}`} role="option" aria-label={`${file.path} ${t('ui.tree.locked')}`} aria-disabled="true" aria-selected="false" className="file-picker-option file-picker-locked">
               <span>{file.path}</span><span aria-hidden="true">🔒</span>
             </div>
           ) : (
-            <button key={file.path} type="button" role="option" aria-label={file.path} aria-selected={file.path === active} className={`file-picker-option${index === highlight ? ' file-picker-highlight' : ''}`} onMouseEnter={() => setHighlight(index)} onClick={() => choose(file)}>
+            <button key={file.path} id={`${listId}-option-${index}`} type="button" role="option" aria-label={file.path} aria-selected={index === highlight} className={`file-picker-option${index === highlight ? ' file-picker-highlight' : ''}`} onMouseEnter={() => setHighlight(index)} onClick={() => choose(file)}>
               <span>{file.path}</span>
               {dirty.has(file.path) && <span className="unsaved-dot" role="img" aria-label={t('ui.tree.unsaved')}>●</span>}
             </button>

@@ -63,4 +63,36 @@ describe('Workspace file picker', () => {
     expect(screen.queryByRole('option', { name: 'scenarios/users/b.yaml' })).not.toBeInTheDocument();
     expect(screen.getByRole('option', { name: 'README.md' })).toBeInTheDocument();
   });
+
+  it('keeps the chooser inside a narrow editor', async () => {
+    const rect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      return { width: this.classList.contains('editor-pane') ? 320 : 0 } as DOMRect;
+    });
+    try {
+      render(<div className="editor-pane"><WorkspaceFilePicker tree={files} active={null} dirty={new Set()} onOpen={vi.fn()} /></div>);
+      await userEvent.click(screen.getByRole('button', { name: 'Open workspace file' }));
+      expect(screen.getByRole('listbox').parentElement).toHaveStyle({ width: '308px' });
+    } finally {
+      rect.mockRestore();
+    }
+  });
+
+  it('announces and scrolls to the keyboard-highlighted result', async () => {
+    const scroll = vi.fn();
+    const original = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = scroll;
+    try {
+      render(<WorkspaceFilePicker tree={files} active={null} dirty={new Set()} onOpen={vi.fn()} />);
+      await userEvent.click(screen.getByRole('button', { name: 'Open workspace file' }));
+      const search = screen.getByRole('searchbox', { name: 'Find a workspace file' });
+      const beforeMove = scroll.mock.calls.length;
+      await userEvent.type(search, '{ArrowDown}');
+      const options = screen.getAllByRole('option');
+      expect(search).toHaveAttribute('aria-activedescendant', options[1].id);
+      expect(options[1]).toHaveAttribute('aria-selected', 'true');
+      expect(scroll.mock.calls.length).toBeGreaterThan(beforeMove);
+    } finally {
+      Element.prototype.scrollIntoView = original;
+    }
+  });
 });

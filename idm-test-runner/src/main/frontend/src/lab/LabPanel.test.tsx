@@ -46,6 +46,43 @@ afterEach(() => {
 });
 
 describe('Lab panel', () => {
+  it('keeps the form visible beside a searchable bounded connection list', async () => {
+    const systems = Array.from({ length: 25 }, (_, index) => ({
+      ...hrDatabase('untested'), id: `database:db${index}`, name: `Database ${index}`,
+    }));
+    start({ systems });
+    const panel = await openPanel();
+    expect(panel.querySelector('.lab-list-scroll')).toBeInTheDocument();
+    expect(within(panel).getAllByRole('tab')).toHaveLength(25);
+    expect(within(panel).getByRole('tabpanel')).toBeVisible();
+    await userEvent.type(within(panel).getByRole('searchbox', { name: 'Find connections' }), 'db24');
+    expect(within(panel).getAllByRole('tab')).toHaveLength(1);
+    expect(within(panel).getByRole('tabpanel')).toBeVisible();
+    await userEvent.click(within(panel).getByRole('tab', { name: /Database 24/ }));
+    expect(within(panel).getByRole('tabpanel')).toHaveAccessibleName('Database 24');
+    expect(within(within(panel).getByRole('tabpanel')).getByLabelText('Identifier')).toHaveValue('database:db24');
+  });
+
+  it('saves a display label and updates the list without renaming the identifier', async () => {
+    let named = directory('ready');
+    const { server } = start({
+      views: { lab: () => ({ systems: [named] }) },
+      onSave: (_profile, body) => {
+        const value = (body as { values: { label: string } }).values.label;
+        named = { ...named, name: value || 'Directory', fields: named.fields.map((field) =>
+          field.key === 'label' ? { ...field, value, state: 'set' } : field) };
+        return { body: { systems: [named] } };
+      },
+    });
+    const panel = await openPanel();
+    const form = within(panel).getByRole('tabpanel');
+    await userEvent.type(within(form).getByLabelText('Label'), 'Primary directory');
+    await userEvent.click(within(form).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(within(panel).getByRole('tab', { name: /Primary directory/ })).toBeInTheDocument());
+    expect(within(within(panel).getByRole('tabpanel')).getByLabelText('Identifier')).toHaveValue('ldap');
+    expect(puts(server)[0].body).toEqual({ systemId: 'ldap', values: { label: 'Primary directory' }, secrets: {} });
+  });
+
   it('has one tab per system with its badge, opens on the missing one, and names the files it saves to', async () => {
     start();
     const panel = await openPanel();

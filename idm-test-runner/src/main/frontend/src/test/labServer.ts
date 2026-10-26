@@ -18,6 +18,7 @@ export function directory(status: LabSystem['status'] = 'ready'): LabSystem {
     name: 'eDirectory',
     usedByScenarios: ['create-user.yaml'],
     fields: [
+      field('label', 'Label', null, 'not set'),
       field('url', 'URL', 'ldaps://edir.lab:636', 'set', { required: true }),
       field('base-dn', 'Base DN', 'o=data', 'application.yml'),
       field('user-dn', 'Bind DN', 'cn=admin,o=system', 'environment'),
@@ -35,6 +36,7 @@ export function rest(status: LabSystem['status'] = 'untested'): LabSystem {
     name: 'IdM REST',
     usedByScenarios: ['create-user.yaml'],
     fields: [
+      field('label', 'Label', null, 'not set'),
       field('base-url', 'Base URL', 'https://idm.lab/api', 'set', { required: true }),
       field('username', 'Username', null, 'not set'),
       secret('password', 'Password', 'not set', false),
@@ -57,6 +59,7 @@ export function hrDatabase(status: LabSystem['status'] = 'missing'): LabSystem {
     name: 'HR database',
     usedByScenarios: ['hr-sync.yaml'],
     fields: [
+      field('label', 'Label', null, 'not set'),
       field('jdbc-url', 'JDBC URL', 'jdbc:postgresql://hr.lab/hr', 'set', { required: true }),
       field('username', 'Username', 'hr_reader', 'set'),
       secret('password', 'Password', status === 'missing' ? 'not set' : 'set'),

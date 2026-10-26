@@ -50,6 +50,12 @@ export function LabPanel({ view, error, profile, readOnly, selected, onSelect, o
   const tabRefs = useRef(new Map<string, HTMLButtonElement>());
   const dirty = useRef(new Set<string>());
   const [addKey, setAddKey] = useState(0);
+  const [search, setSearch] = useState('');
+  const filteredTabs = tabs.filter((tab) => {
+    const system = systems.find((item) => item.id === tab.id);
+    const query = search.trim().toLocaleLowerCase();
+    return !query || [tab.name, tab.id, system?.kind ?? ''].some((value) => value.toLocaleLowerCase().includes(query));
+  });
 
   const markDirty = useCallback(
     (id: string, isDirty: boolean) => {
@@ -84,14 +90,14 @@ export function LabPanel({ view, error, profile, readOnly, selected, onSelect, o
 
   const onTabKey = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
     let next = -1;
-    if (event.key === 'ArrowRight') next = (index + 1) % tabs.length;
-    else if (event.key === 'ArrowLeft') next = (index - 1 + tabs.length) % tabs.length;
+    if (event.key === 'ArrowDown' || event.key === 'ArrowRight') next = (index + 1) % filteredTabs.length;
+    else if (event.key === 'ArrowUp' || event.key === 'ArrowLeft') next = (index - 1 + filteredTabs.length) % filteredTabs.length;
     else if (event.key === 'Home') next = 0;
-    else if (event.key === 'End') next = tabs.length - 1;
+    else if (event.key === 'End') next = filteredTabs.length - 1;
     if (next >= 0) {
       event.preventDefault();
-      onSelect(tabs[next].id);
-      tabRefs.current.get(tabs[next].id)?.focus();
+      onSelect(filteredTabs[next].id);
+      tabRefs.current.get(filteredTabs[next].id)?.focus();
     }
   };
 
@@ -130,9 +136,32 @@ export function LabPanel({ view, error, profile, readOnly, selected, onSelect, o
       {!view && !error && <p className="muted lab-loading">{t('ui.loading')}</p>}
       {view && (
         <>
-          <div className="lab-tabs">
-            <div role="tablist" aria-label={t('ui.lab.systems')}>
-              {tabs.map((tab, index) => (
+          <div className="lab-body">
+          <div className="lab-navigator">
+            <div className="lab-navigator-head">
+              <strong>{t('ui.lab.systems')}</strong>
+              <button
+                type="button"
+                id="lab-tab-add"
+                className={adding ? 'lab-add on' : 'lab-add'}
+                aria-pressed={adding}
+                aria-controls="lab-tabpanel-add"
+                disabled={readOnly}
+                title={readOnly ? t('ui.lab.readOnly') : t('ui.lab.add.hint')}
+                onClick={() => {
+                  if (addKey === 0) setAddKey(1);
+                  onSelect(ADD);
+                }}
+              >
+                {t('ui.lab.add')}
+              </button>
+            </div>
+            <label className="lab-search">
+              <input type="search" value={search} aria-label={t('ui.lab.search')} placeholder={t('ui.lab.search')} onChange={(event) => setSearch(event.target.value)} />
+            </label>
+            <div className="lab-list-scroll">
+            <div role="tablist" aria-orientation="vertical" aria-label={t('ui.lab.systems')}>
+              {filteredTabs.map((tab, index) => (
                 <button
                   key={tab.id}
                   ref={(button) => {
@@ -153,22 +182,10 @@ export function LabPanel({ view, error, profile, readOnly, selected, onSelect, o
                 </button>
               ))}
             </div>
-            <button
-              type="button"
-              id="lab-tab-add"
-              className={adding ? 'lab-tab lab-add on' : 'lab-tab lab-add'}
-              aria-pressed={adding}
-              aria-controls="lab-tabpanel-add"
-              disabled={readOnly}
-              title={readOnly ? t('ui.lab.readOnly') : t('ui.lab.add.hint')}
-              onClick={() => {
-                if (addKey === 0) setAddKey(1);
-                onSelect(ADD);
-              }}
-            >
-              {t('ui.lab.add')}
-            </button>
+            {filteredTabs.length === 0 && <p className="muted lab-empty-search">{t('ui.lab.search.empty')}</p>}
+            </div>
           </div>
+          <div className="lab-detail">
           {tabs.length === 0 && !adding && <p className="muted lab-loading">{t('ui.lab.none')}</p>}
           {defaultDirectory && (
             <DefaultDirectoryForm
@@ -216,6 +233,8 @@ export function LabPanel({ view, error, profile, readOnly, selected, onSelect, o
               onDirty={onDirtyFor(ADD)}
             />
           )}
+          </div>
+          </div>
         </>
       )}
     </div>

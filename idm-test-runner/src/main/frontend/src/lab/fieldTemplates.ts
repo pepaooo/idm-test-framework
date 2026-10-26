@@ -10,18 +10,21 @@ type Kind = LabSystem['kind'];
  */
 const TEMPLATES: Record<Kind, [key: string, label: string, secret?: boolean][]> = {
   ldap: [
+    ['label', 'ui.lab.field.label'],
     ['url', 'ui.lab.field.url'],
     ['base-dn', 'ui.lab.field.baseDn'],
     ['user-dn', 'ui.lab.field.userDn'],
     ['password', 'ui.lab.field.password', true],
   ],
   database: [
+    ['label', 'ui.lab.field.label'],
     ['jdbc-url', 'ui.lab.field.jdbcUrl'],
     ['username', 'ui.lab.field.username'],
     ['password', 'ui.lab.field.password', true],
     ['driver-class-name', 'ui.lab.field.driverClassName'],
   ],
   rest: [
+    ['label', 'ui.lab.field.label'],
     ['base-url', 'ui.lab.field.baseUrl'],
     ['username', 'ui.lab.field.username'],
     ['password', 'ui.lab.field.password', true],
@@ -33,6 +36,7 @@ const TEMPLATES: Record<Kind, [key: string, label: string, secret?: boolean][]> 
     ['scope', 'ui.lab.field.scope'],
   ],
   soap: [
+    ['label', 'ui.lab.field.label'],
     ['url', 'ui.lab.field.roleServiceUrl'],
     ['resource-url', 'ui.lab.field.resourceServiceUrl'],
     ['username', 'ui.lab.field.username'],

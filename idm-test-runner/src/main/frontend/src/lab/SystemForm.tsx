@@ -193,6 +193,10 @@ export function SystemForm({ system, existingIds, profile, readOnly, hidden, lab
 
   return (
     <div role="tabpanel" id={panelId} aria-label={panelLabel} hidden={hidden} className="lab-form-panel">
+      {system && <div className="lab-identity">
+        <label htmlFor={`${uid}-identifier`}>{t('ui.lab.identifier')}</label>
+        <input id={`${uid}-identifier`} value={system.id} readOnly />
+      </div>}
       {adding && (
         <div className="lab-form">
           <label htmlFor={`${uid}-kind`}>{t('ui.lab.add.kind')}</label>

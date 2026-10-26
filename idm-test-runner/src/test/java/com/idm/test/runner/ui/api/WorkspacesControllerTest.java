@@ -210,6 +210,52 @@ class WorkspacesControllerTest {
     }
 
     @Test
+    @DisplayName("A new profile uses the commented starter and lists profiles without changing secrets")
+    void testCreateProfile() throws Exception {
+        Path ws = temp.resolve("profile-ws");
+        InitCommand.run(ws, new PrintStream(OutputStream.nullOutputStream()));
+        Files.writeString(ws.resolve("secrets.env"), "SHARED_SECRET=keep\n");
+        post("/api/workspaces/open", Map.of("path", ws.toString()));
+
+        Response created = post("/api/workspaces/profiles", Map.of("name", "uat"));
+
+        assertThat(created.status()).as(created.body()).isEqualTo(200);
+        Path file = ws.resolve("config/application-uat.yml");
+        assertThat(json(created).get("name").asString()).isEqualTo("uat");
+        assertThat(json(created).get("path").asString()).isEqualTo(file.toString());
+        assertThat(json(created).get("profiles")).extracting(p -> p.asString()).containsExactly("lab", "uat");
+        assertThat(Files.readString(file)).startsWith("# Settings for the \"uat\" profile: idmtest run --profile uat");
+        assertThat(Files.readAllLines(file)).allMatch(line -> line.isBlank() || line.stripLeading().startsWith("#"));
+        assertThat(Files.readString(ws.resolve("secrets.env"))).isEqualTo("SHARED_SECRET=keep\n");
+    }
+
+    @Test
+    @DisplayName("Profile creation rejects collisions, unsafe names, and symlink targets")
+    void testCreateProfileRefusals() throws Exception {
+        try (UiServer unopenedServer = UiCommand.start(0, Locale.ENGLISH)) {
+            Response unopened = UiHttp.send(unopenedServer, "POST", "/api/workspaces/profiles",
+                    JSON.writeValueAsString(Map.of("name", "uat")));
+            assertThat(unopened.status()).isEqualTo(400);
+            assertError(unopened, "ui.workspace.none");
+        }
+
+        Path ws = temp.resolve("profile-refusals");
+        InitCommand.run(ws, new PrintStream(OutputStream.nullOutputStream()));
+        post("/api/workspaces/open", Map.of("path", ws.toString()));
+        for (String name : new String[] {"LAB", "../evil", "a/b", "", "a b"}) {
+            Response refused = post("/api/workspaces/profiles", Map.of("name", name));
+            assertThat(refused.status()).as(name + " " + refused.body()).isEqualTo(400);
+        }
+        Path outside = temp.resolve("outside.yml");
+        Files.writeString(outside, "do not change");
+        Files.createSymbolicLink(ws.resolve("config/application-link.yml"), outside);
+        Response linked = post("/api/workspaces/profiles", Map.of("name", "link"));
+        assertThat(linked.status()).as(linked.body()).isEqualTo(400);
+        assertThat(Files.readString(outside)).isEqualTo("do not change");
+        assertThat(ws.resolve("config/application-uat.yml")).doesNotExist();
+    }
+
+    @Test
     @DisplayName("Open refuses a folder without scenarios/, in the request's language")
     void testOpenRefusesNonWorkspace() throws Exception {
         Path plain = Files.createDirectories(temp.resolve("plain"));

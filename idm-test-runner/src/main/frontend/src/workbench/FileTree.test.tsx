@@ -46,6 +46,16 @@ afterEach(() => {
 });
 
 describe('FileTree', () => {
+  it('reveals a requested folder without selecting it for Run', () => {
+    const onSelectFolder = vi.fn();
+    renderTree({ revealFolder: 'config', onSelectFolder });
+    const config = screen.getByRole('button', { name: 'config' });
+    expect(config).toHaveAttribute('aria-expanded', 'true');
+    expect(config).toHaveFocus();
+    expect(screen.getByRole('button', { name: 'application-lab.yml' })).toBeInTheDocument();
+    expect(onSelectFolder).not.toHaveBeenCalled();
+  });
+
   it('shows outline panel and distinct top-level folder icons', async () => {
     renderTree({ onCollapse: vi.fn() });
     const collapse = screen.getByRole('button', { name: 'Collapse Workspace' });

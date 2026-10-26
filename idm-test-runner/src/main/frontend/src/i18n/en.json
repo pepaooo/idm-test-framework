@@ -66,6 +66,8 @@
   "ui.top.saving": "Saving…",
   "ui.layout.collapseWorkspace": "Collapse Workspace",
   "ui.layout.expandWorkspace": "Expand Workspace",
+  "ui.tree.showConfigFolder": "Show config folder",
+  "ui.tree.showScenariosFolder": "Show scenarios folder",
   "ui.layout.resizeWorkspace": "Resize Workspace",
   "ui.layout.collapseRun": "Collapse Run",
   "ui.layout.expandRun": "Expand Run",

@@ -21,6 +21,8 @@ interface Props {
   dirty: ReadonlySet<string>;
   readOnly: boolean;
   onCollapse?(): void;
+  /** Open and focus this root folder after a shortcut expands the Workspace rail. */
+  revealFolder?: 'config' | 'scenarios' | null;
   /** The folder selected for Run folder (workspace-relative), marked as the selected row. */
   selectedFolder?: string | null;
   /** The scenarios of the current run still to finish, by workspace-relative path. */
@@ -76,6 +78,7 @@ export function FileTree({
   dirty,
   readOnly,
   onCollapse,
+  revealFolder = null,
   selectedFolder = null,
   runStates = NO_RUN,
   onOpen,
@@ -88,6 +91,7 @@ export function FileTree({
   prepareDelete = async () => ({ version: null, hasDraft: false }),
 }: Props) {
   const [toggled, setToggled] = useState<ReadonlySet<string>>(new Set());
+  const folderButtons = useRef(new Map<string, HTMLButtonElement>());
   const [messages, setMessages] = useState<{ text: string; problem: boolean }[]>([]);
   const [dropping, setDropping] = useState(false);
   const input = useRef<HTMLInputElement>(null);
@@ -105,6 +109,20 @@ export function FileTree({
   const runFolderNote = useId();
 
   const isOpen = (path: string) => startsOpen(path) !== toggled.has(path);
+  useEffect(() => {
+    if (!revealFolder) return;
+    setToggled((current) => {
+      const open = startsOpen(revealFolder) !== current.has(revealFolder);
+      if (open) return current;
+      const next = new Set(current);
+      if (startsOpen(revealFolder)) next.delete(revealFolder);
+      else next.add(revealFolder);
+      return next;
+    });
+    const button = folderButtons.current.get(revealFolder);
+    button?.focus();
+    button?.scrollIntoView?.({ block: 'nearest' });
+  }, [revealFolder]);
   const toggle = (path: string) =>
     setToggled((current) => {
       const next = new Set(current);
@@ -260,6 +278,10 @@ export function FileTree({
         <li key={node.path}>
           <button
             type="button"
+            ref={(button) => {
+              if (button) folderButtons.current.set(node.path, button);
+              else folderButtons.current.delete(node.path);
+            }}
             className={`tree-row tree-dir${selected ? ' tree-selected' : ''}`}
             style={indent}
             aria-expanded={open}

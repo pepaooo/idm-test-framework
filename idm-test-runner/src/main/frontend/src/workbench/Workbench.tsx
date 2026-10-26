@@ -5,6 +5,7 @@ import { t } from '../i18n';
 import { ChangedOnDiskDialog } from './ChangedOnDiskDialog';
 import { EditorPane } from './EditorPane';
 import { FileTree } from './FileTree';
+import { WorkspaceIcon } from './WorkspaceIcon';
 import { WorkbenchContext, type WorkbenchApi } from './context';
 import { isDirty, WorkbenchStore } from './store';
 import { openDrafts } from './drafts';
@@ -76,6 +77,7 @@ export function Workbench({ workspace, warning, lockWait = 300, runPanel, lab, r
   const [takingOver, setTakingOver] = useState(false);
   const [tree, setTree] = useState<TreeNode | null>(null);
   const [treeError, setTreeError] = useState<string | null>(null);
+  const [revealFolder, setRevealFolder] = useState<'config' | 'scenarios' | null>(null);
   const [profile, setProfile] = useState<string | null>(workspace.profiles[0] ?? null);
   const [showWarning, setShowWarning] = useState(Boolean(warning));
   const labStore = useMemo(() => new LabStore(), [workspace.path]);
@@ -367,9 +369,21 @@ export function Workbench({ workspace, warning, lockWait = 300, runPanel, lab, r
         } as CSSProperties}>
           <div className={`wb-col wb-tree${layout.workspaceCollapsed ? ' wb-rail' : ''}`}>
             {layout.workspaceCollapsed ? (
-              <button type="button" className="rail-button" aria-label={t('ui.layout.expandWorkspace')} onClick={() => updateLayout({ workspaceCollapsed: false })}>
-                <span aria-hidden="true">▸</span><span className="rail-name">{t('ui.tree.title')}</span>
-              </button>
+              <div className="workspace-rail" role="toolbar" aria-label={t('ui.tree.title')}>
+                <button type="button" className="workspace-rail-button workspace-rail-expand" aria-label={t('ui.layout.expandWorkspace')} title={t('ui.layout.expandWorkspace')} onClick={() => { setRevealFolder(null); updateLayout({ workspaceCollapsed: false }); }}>
+                  <WorkspaceIcon name="expand" />
+                </button>
+                {tree?.children?.some((node) => node.dir && node.path === 'config') && (
+                  <button type="button" className="workspace-rail-button" aria-label={t('ui.tree.showConfigFolder')} title={t('ui.tree.showConfigFolder')} onClick={() => { setRevealFolder('config'); updateLayout({ workspaceCollapsed: false }); }}>
+                    <WorkspaceIcon name="config" />
+                  </button>
+                )}
+                {tree?.children?.some((node) => node.dir && node.path === 'scenarios') && (
+                  <button type="button" className="workspace-rail-button" aria-label={t('ui.tree.showScenariosFolder')} title={t('ui.tree.showScenariosFolder')} onClick={() => { setRevealFolder('scenarios'); updateLayout({ workspaceCollapsed: false }); }}>
+                    <WorkspaceIcon name="scenarios" />
+                  </button>
+                )}
+              </div>
             ) : <>
             {treeError && (
               <p role="alert" className="tree-message">
@@ -382,6 +396,7 @@ export function Workbench({ workspace, warning, lockWait = 300, runPanel, lab, r
               dirty={dirty}
               readOnly={state.readOnly}
               onCollapse={() => updateLayout({ workspaceCollapsed: true })}
+              revealFolder={revealFolder}
               // a folder Run folder cannot run (scenarios/, config/…) is not shown as selected
               selectedFolder={isRunFolder(runFolder) ? runFolder : null}
               runStates={runStates}

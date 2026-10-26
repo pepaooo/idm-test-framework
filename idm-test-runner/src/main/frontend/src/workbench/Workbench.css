@@ -173,6 +173,31 @@
   font-size: 11px;
 }
 
+.workspace-rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 0;
+}
+
+.workspace-rail-button {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.workspace-rail-button:hover,
+.workspace-rail-button:focus-visible { background: var(--raised); color: var(--accent); }
+.workspace-rail-expand { margin-bottom: 7px; }
+
 .wb-editor {
   overflow: hidden;
 }
@@ -594,6 +619,9 @@
 }
 
 @media (max-width: 760px) {
+  .workspace-rail { flex-direction: row; padding: 3px 8px; }
+  .workspace-rail-expand { margin: 0 7px 0 0; }
+  .workspace-rail-button { width: 38px; height: 38px; }
   .workbench {
     height: auto;
     min-height: 100vh;

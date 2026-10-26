@@ -7,6 +7,7 @@ import { readDraft, writeDraft } from './drafts';
 import { IDBObjectStore as FakeObjectStore } from 'fake-indexeddb';
 import { setLanguage } from '../i18n';
 import { WORKSPACE, workbenchServer } from '../test/workbenchServer';
+import { emitServerEvent } from '../test/browserFakes';
 import type { Problem } from './types';
 import { DEFAULT_LAYOUT, readPanelLayout, writePanelLayout } from './panelLayout';
 import { emit, openRunStreams, playScenario, runServer, RUN_ID, scenario, step } from '../test/runServer';
@@ -40,6 +41,62 @@ afterEach(() => {
 });
 
 describe('workbench side panels', () => {
+  it.each([
+    [{ 'config/application-lab.yml': 'x: 1\n', 'scenarios/a.yaml': 'name: A\n' }, true, true],
+    [{ 'scenarios/a.yaml': 'name: A\n' }, false, true],
+    [{ 'README.md': 'hello\n' }, false, false],
+  ])('rail shows only current Config and Scenarios folders', async (files, config, scenarios) => {
+    workbenchServer({ files });
+    renderWorkbench();
+    await screen.findByRole('navigation', { name: 'Workspace files' });
+    await userEvent.click(screen.getByRole('button', { name: 'Collapse Workspace' }));
+    expect(Boolean(screen.queryByRole('button', { name: 'Show config folder' }))).toBe(config);
+    expect(Boolean(screen.queryByRole('button', { name: 'Show scenarios folder' }))).toBe(scenarios);
+    expect(screen.getByRole('button', { name: 'Expand Workspace' })).toBeInTheDocument();
+  });
+
+  it('rail Config shortcut reveals folded folder without changing Run folder', async () => {
+    workbenchServer({ files: FILES });
+    renderWorkbench();
+    const users = await screen.findByRole('button', { name: 'users' });
+    await userEvent.click(users);
+    expect(users).toHaveAttribute('aria-current', 'true');
+    await userEvent.click(screen.getByRole('button', { name: 'Collapse Workspace' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Show config folder' }));
+    const config = screen.getByRole('button', { name: 'config' });
+    expect(config).toHaveAttribute('aria-expanded', 'true');
+    expect(config).toHaveFocus();
+    expect(screen.getByRole('button', { name: 'users' })).toHaveAttribute('aria-current', 'true');
+    expect(config).not.toHaveAttribute('aria-current');
+  });
+
+  it('rail follows tree refresh while collapsed', async () => {
+    const server = workbenchServer({ files: { 'config/application-lab.yml': 'x: 1\n' } });
+    renderWorkbench();
+    await screen.findByRole('navigation', { name: 'Workspace files' });
+    await userEvent.click(screen.getByRole('button', { name: 'Collapse Workspace' }));
+    expect(screen.getByRole('button', { name: 'Show config folder' })).toBeInTheDocument();
+    server.removeOnDisk('config/application-lab.yml');
+    server.changeOnDisk('scenarios/a.yaml', 'name: A\n');
+    act(() => emitServerEvent('/api/files/events', { type: 'overflow', path: '' }));
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Show config folder' })).not.toBeInTheDocument());
+    expect(screen.getByRole('button', { name: 'Show scenarios folder' })).toBeInTheDocument();
+  });
+
+  it('rail shortcuts are keyboard named and focus the revealed folder in Spanish', async () => {
+    setLanguage('es', false);
+    workbenchServer({ files: FILES });
+    renderWorkbench();
+    await screen.findByRole('navigation', { name: 'Archivos del espacio de trabajo' });
+    await userEvent.click(screen.getByRole('button', { name: 'Contraer espacio de trabajo' }));
+    const shortcut = screen.getByRole('button', { name: 'Mostrar carpeta de escenarios' });
+    shortcut.focus();
+    await userEvent.keyboard('{Enter}');
+    const scenarios = screen.getByRole('button', { name: 'scenarios' });
+    expect(scenarios).toHaveFocus();
+    expect(scenarios).toHaveAttribute('aria-expanded', 'true');
+  });
+
   it('collapses and restores Workspace and Run', async () => {
     workbenchServer({ files: FILES });
     renderWorkbench();

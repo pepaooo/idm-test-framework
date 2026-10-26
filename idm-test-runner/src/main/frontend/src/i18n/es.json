@@ -66,6 +66,8 @@
   "ui.top.saving": "Guardando…",
   "ui.layout.collapseWorkspace": "Contraer espacio de trabajo",
   "ui.layout.expandWorkspace": "Expandir espacio de trabajo",
+  "ui.tree.showConfigFolder": "Mostrar carpeta de configuración",
+  "ui.tree.showScenariosFolder": "Mostrar carpeta de escenarios",
   "ui.layout.resizeWorkspace": "Cambiar tamaño del espacio de trabajo",
   "ui.layout.collapseRun": "Contraer ejecución",
   "ui.layout.expandRun": "Expandir ejecución",

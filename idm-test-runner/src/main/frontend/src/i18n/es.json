@@ -70,7 +70,7 @@
   "ui.lab.identifier": "Identificador",
   "ui.lab.field.label": "Etiqueta",
   "ui.lab.delete.button": "Eliminar conexión",
-  "ui.lab.delete.confirm": "¿Eliminar {name} ({id}) de {path}?",
+  "ui.lab.delete.confirm": "¿Eliminar {name} ({id}) de {path}? Los secretos guardados permanecen en secrets.env para revisarlos por separado.",
   "ui.lab.delete.reason.referenced": "La usan los escenarios",
   "ui.lab.delete.reason.shared": "Configurada en application.yml compartido",
   "ui.lab.delete.reason.environment": "Configurada por el entorno",

@@ -70,7 +70,7 @@
   "ui.lab.identifier": "Identifier",
   "ui.lab.field.label": "Label",
   "ui.lab.delete.button": "Delete connection",
-  "ui.lab.delete.confirm": "Delete {name} ({id}) from {path}?",
+  "ui.lab.delete.confirm": "Delete {name} ({id}) from {path}? Stored secrets remain in secrets.env for separate review.",
   "ui.lab.delete.reason.referenced": "Used by scenarios",
   "ui.lab.delete.reason.shared": "Configured in shared application.yml",
   "ui.lab.delete.reason.environment": "Configured by the environment",

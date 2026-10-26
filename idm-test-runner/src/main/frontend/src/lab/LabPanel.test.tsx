@@ -66,6 +66,7 @@ describe('Lab panel', () => {
     await waitFor(() => expect(server.sent.filter((request) => request.method === 'DELETE')).toHaveLength(1));
     expect(server.sent.find((request) => request.method === 'DELETE')?.url).toBe('/api/lab?profile=lab&systemId=ldap');
     expect(confirm).toHaveBeenCalledWith(expect.stringContaining('config/application-lab.yml'));
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('Stored secrets remain in secrets.env'));
     await waitFor(() => expect(within(panel).queryByRole('tab', { name: /eDirectory/ })).not.toBeInTheDocument());
     expect(within(panel).getByRole('button', { name: '+ add' })).toHaveFocus();
   });

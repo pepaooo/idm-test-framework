@@ -6,6 +6,7 @@ import com.idm.test.runner.ui.lab.LabSettings;
 import jakarta.annotation.PreDestroy;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -79,6 +80,14 @@ class LabController {
         Path workspace = workspace();
         String name = profile(profile);
         lab.saveDefaultDirectory(workspace, name, request.name());
+        return lab.read(workspace, name, locale(http));
+    }
+
+    @DeleteMapping("/api/lab")
+    LabSettings.View delete(@RequestParam String profile, @RequestParam String systemId, HttpServletRequest http) {
+        Path workspace = workspace();
+        String name = profile(profile);
+        lab.delete(workspace, name, systemId);
         return lab.read(workspace, name, locale(http));
     }
 

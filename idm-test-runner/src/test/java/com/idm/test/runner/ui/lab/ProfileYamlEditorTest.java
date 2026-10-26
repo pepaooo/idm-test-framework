@@ -227,4 +227,30 @@ class ProfileYamlEditorTest {
         assertThat(edited).isEqualTo("idm:\n  test:\n    ldap:\n      baseDn: o=new\n");
         assertThat(ProfileYamlEditor.get(ProfileYamlEditor.flatten(edited), "idm.test.ldap.base-dn")).isEqualTo("o=new");
     }
+
+    @Test
+    @DisplayName("Removing a connection subtree preserves neighboring keys, comments, BOM and CRLF")
+    void testRemoveSubtree() throws IOException {
+        Path profile = temp.resolve("application-lab.yml");
+        String original = "﻿# keep\r\nidm:\r\n  test:\r\n    databases:\r\n"
+                + "      hr:\r\n        label: People\r\n        jdbc-url: jdbc:postgresql://hr/db\r\n"
+                + "      spare:\r\n        jdbc-url: jdbc:postgresql://spare/db\r\n";
+        Files.writeString(profile, original);
+
+        ProfileYamlEditor.removeSubtree(profile, "idm.test.databases.hr");
+
+        assertThat(Files.readString(profile)).isEqualTo("﻿# keep\r\nidm:\r\n  test:\r\n    databases:\r\n"
+                + "      spare:\r\n        jdbc-url: jdbc:postgresql://spare/db\r\n");
+    }
+
+    @Test
+    @DisplayName("Removal retains comments immediately before the next sibling")
+    void testRemoveSubtreeKeepsFollowingComments() throws IOException {
+        Path profile = temp.resolve("application-lab.yml");
+        Files.writeString(profile, "idm:\n  test:\n    databases:\n      hr:\n        jdbc-url: jdbc:hr\n"
+                + "      # This documents spare\n      spare:\n        jdbc-url: jdbc:spare\n");
+        ProfileYamlEditor.removeSubtree(profile, "idm.test.databases.hr");
+        assertThat(Files.readString(profile)).contains("      # This documents spare\n      spare:\n")
+                .doesNotContain("jdbc:hr");
+    }
 }

@@ -10,6 +10,7 @@ import com.idm.test.runner.SecretMask;
 import com.idm.test.runner.SecretsEnv;
 import com.idm.test.runner.UsageException;
 import com.idm.test.runner.Workspace;
+import com.idm.test.runner.ui.WorkspaceFiles;
 import com.idm.test.runner.ui.api.ApiError;
 import com.idm.test.wiring.DirectoryScenarioSource;
 import com.idm.test.wiring.RealEnvironmentGuards;
@@ -24,6 +25,7 @@ import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -219,8 +221,11 @@ public final class LabSettings {
     public record Field(String key, String label, String value, boolean secret, String state, boolean required) {
     }
 
+    public record Deletion(boolean allowed, String reason, List<String> files) {
+    }
+
     public record SystemView(String id, String kind, String name, List<String> usedByScenarios, List<Field> fields,
-                             String status, ConnectionTester.Result lastTest) {
+                             String status, ConnectionTester.Result lastTest, Deletion deletion) {
     }
 
     /**
@@ -260,6 +265,7 @@ public final class LabSettings {
         Set<String> needDefault = new TreeSet<>();
         Set<String> ldapUsers = new TreeSet<>();
         DefaultChoice defaultChoice = defaultChoice(snapshot);
+        ScenarioReferenceScan.Inspection deletionScan = ScenarioReferenceScan.inspect(snapshot.workspace().scenarios());
         boolean[] soapUse = new boolean[2];
         for (Map.Entry<String, ScenarioNeeds> entry : scenarioNeeds(snapshot).entrySet()) {
             ScenarioNeeds needs = entry.getValue();
@@ -297,7 +303,8 @@ public final class LabSettings {
         }
         List<SystemView> views = new ArrayList<>();
         for (SystemRef ref : systems.values()) {
-            views.add(view(snapshot, ref, new ArrayList<>(users.get(ref.id())), soapUse, locale, mask));
+            views.add(view(snapshot, ref, new ArrayList<>(users.get(ref.id())), soapUse, locale, mask,
+                    defaultChoice, deletionScan));
         }
         // a run fails to start on an invalid default-directory (the directories are built up front), even
         // when every step names its directory or no scenario has an ldap.* step: then usedByScenarios may be empty
@@ -314,7 +321,7 @@ public final class LabSettings {
     }
 
     private SystemView view(Snapshot snapshot, SystemRef ref, List<String> usedBy, boolean[] soapUse, Locale locale,
-                            SecretMask mask) {
+                            SecretMask mask, DefaultChoice defaultChoice, ScenarioReferenceScan.Inspection deletionScan) {
         Map<String, Resolved> resolved = resolveAll(snapshot, ref);
         Map<String, String> effective = new LinkedHashMap<>();
         resolved.forEach((key, r) -> effective.put(key, r.value()));
@@ -335,7 +342,67 @@ public final class LabSettings {
         String status = missing ? "missing" : last != null && last.ok() ? "ready" : "untested";
         String display = blank(effective.get("label")) ? Messages.render(ref.displayName(), locale) : mask.apply(effective.get("label"));
         return new SystemView(ref.id(), ref.kind().json(), display, usedBy, fields,
-                status, last);
+                status, last, deletion(snapshot, ref, defaultChoice, deletionScan));
+    }
+
+    private Deletion deletion(Snapshot snapshot, SystemRef ref, DefaultChoice defaultChoice,
+                              ScenarioReferenceScan.Inspection inspection) {
+        String prefix = ProfileYamlEditor.uniform(ref.prefix() + ".");
+        boolean owned = snapshot.profileFlat().keySet().stream()
+                .anyMatch(key -> ProfileYamlEditor.uniform(key).startsWith(prefix));
+        if (!owned) return new Deletion(false, "not-configured", List.of());
+        boolean shared = snapshot.sharedFlat().keySet().stream()
+                .anyMatch(key -> ProfileYamlEditor.uniform(key).startsWith(prefix));
+        if (shared) return new Deletion(false, "shared", List.of());
+        String envPrefix = ref.prefix().toUpperCase(Locale.ROOT).replace('.', '_').replace('-', '_') + "_";
+        if (environment.keySet().stream().anyMatch(key -> key.startsWith(envPrefix))) {
+            return new Deletion(false, "environment", List.of());
+        }
+        Path file = snapshot.workspace().profileFile(snapshot.profile());
+        try {
+            if (!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS) || !Files.isWritable(file)
+                    || !file.toRealPath().startsWith(snapshot.workspace().root().toRealPath())) {
+                return new Deletion(false, "read-only", List.of());
+            }
+        } catch (IOException e) {
+            return new Deletion(false, "read-only", List.of());
+        }
+        boolean configuredDefault = ref.kind() == Kind.LDAP && defaultChoice.value() != null
+                && (defaultChoice.value().equals(ref.name()) || ref.id().equals("ldap")
+                    && defaultChoice.value().equals("default") && !directoryNames(snapshot).contains("default"));
+        if (configuredDefault) {
+            return new Deletion(false, "default-directory", List.of());
+        }
+        ScenarioReferenceScan.Result scan = ScenarioReferenceScan.scan(inspection, ref, defaultChoice.systemId());
+        if (!scan.referenced().isEmpty()) return new Deletion(false, "referenced", scan.referenced());
+        if (!scan.uncertain().isEmpty()) return new Deletion(false, "invalid-scenario", scan.uncertain());
+        return new Deletion(true, null, List.of());
+    }
+
+    /** Rechecks dependencies while holding the profile-file lock, then removes just this connection block. */
+    public void delete(Path root, String profile, String systemId) {
+        SystemRef ref = system(systemId);
+        Path file = new Workspace(root).profileFile(profile);
+        if (Files.isSymbolicLink(file)) {
+            throw ApiError.badRequest("runner.ui.lab.deleteBlocked", systemId, "read-only", "");
+        }
+        try {
+            WorkspaceFiles.locked(file, () -> {
+                Snapshot snapshot = snapshot(root, profile);
+                Deletion gate = deletion(snapshot, ref, defaultChoice(snapshot),
+                        ScenarioReferenceScan.inspect(snapshot.workspace().scenarios()));
+                if (!gate.allowed()) {
+                    throw ApiError.badRequest("runner.ui.lab.deleteBlocked", systemId, gate.reason(),
+                            String.join(", ", gate.files()));
+                }
+                ProfileYamlEditor.removeSubtree(file, ref.prefix(), snapshot.profileText());
+                return null;
+            });
+        } catch (ProfileYamlEditor.CannotEditException e) {
+            throw ApiError.badRequest("runner.ui.lab.deleteBlocked", systemId, "changed", "");
+        } catch (IOException e) {
+            throw ApiError.badRequest("runner.ui.lab.deleteBlocked", systemId, "read-only", "");
+        }
     }
 
     /** The fields a system needs: its URL, the OAuth client when it uses OAuth, a password when a user is given. */

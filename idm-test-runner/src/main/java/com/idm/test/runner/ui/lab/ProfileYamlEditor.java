@@ -103,6 +103,79 @@ public final class ProfileYamlEditor {
         });
     }
 
+    /** Removes one active mapping and its children, preserving every other setting and line ending. */
+    public static void removeSubtree(Path file, String dottedPrefix) throws IOException {
+        removeSubtree(file, dottedPrefix, null);
+    }
+
+    /** As above, refusing a profile file changed since {@code expectedText} was checked. */
+    public static void removeSubtree(Path file, String dottedPrefix, String expectedText) throws IOException {
+        if (file.getFileName().toString().equalsIgnoreCase(SHARED_FILE)) {
+            throw new IllegalArgumentException("the workbench never writes " + SHARED_FILE);
+        }
+        WorkspaceFiles.locked(file, () -> {
+            String text = decode(Files.readAllBytes(file));
+            if (expectedText != null && !expectedText.equals(text)) {
+                throw new CannotEditException("profile file changed on disk");
+            }
+            String changed = withoutSubtree(text, dottedPrefix);
+            WorkspaceFiles.writeAtomically(file, changed.getBytes(StandardCharsets.UTF_8),
+                    PosixFilePermissions.fromString("rw-r--r--"));
+            return null;
+        });
+    }
+
+    private static String withoutSubtree(String text, String dottedPrefix) {
+        Map<String, String> before = flatten(text);
+        String prefix = uniform(dottedPrefix);
+        Doc doc = Doc.parse(text);
+        Structure active = Structure.of(doc, false);
+        Integer first = active.lines.get(prefix);
+        if (first == null || !active.hasChildren(first)) {
+            throw new CannotEditException("connection block is absent or not a mapping");
+        }
+        int indent = active.indents.get(first);
+        int end = doc.texts.size();
+        for (int i = first + 1; i < doc.texts.size(); i++) {
+            Kind kind = active.kinds.get(i);
+            if (kind == Kind.DOC || (kind == Kind.KEY || kind == Kind.LIST) && active.indents.get(i) <= indent) {
+                end = i;
+                break;
+            }
+        }
+        // Comments immediately before the next sibling may describe that sibling; retain them.
+        while (end > first + 1 && (active.kinds.get(end - 1) == Kind.COMMENT
+                || active.kinds.get(end - 1) == Kind.BLANK)) {
+            end--;
+        }
+        doc.texts.subList(first, end).clear();
+        doc.endings.subList(first, end).clear();
+        String[] parts = dottedPrefix.split("\\.");
+        for (int depth = parts.length - 1; depth > 0; depth--) {
+            Structure remaining = Structure.of(doc, false);
+            Integer parent = remaining.lines.get(uniform(String.join(".", java.util.Arrays.copyOf(parts, depth))));
+            if (parent == null || remaining.hasChildren(parent)) break;
+            Matcher line = KEY_LINE.matcher(doc.texts.get(parent));
+            if (!line.matches() || !Rest.parse(line.group(3)).value.isEmpty()) break;
+            doc.texts.remove((int) parent);
+            doc.endings.remove((int) parent);
+        }
+        String changed = doc.join();
+        Map<String, String> expected = new HashMap<>();
+        before.forEach((key, value) -> {
+            String uniformKey = uniform(key);
+            if (!uniformKey.startsWith(prefix + ".") && !uniformKey.equals(prefix)) {
+                expected.put(uniformKey, value);
+            }
+        });
+        Map<String, String> actual = new HashMap<>();
+        flatten(changed).forEach((key, value) -> actual.put(uniform(key), value));
+        if (!actual.equals(expected)) {
+            throw new CannotEditException("removing the connection would change other settings");
+        }
+        return changed;
+    }
+
     /** The settings of {@code file}, flattened ({@link #flatten}); empty when it does not exist. */
     public static Map<String, String> read(Path file) throws IOException {
         if (!Files.isRegularFile(file)) {

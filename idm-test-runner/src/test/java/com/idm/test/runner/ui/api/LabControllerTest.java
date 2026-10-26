@@ -7,6 +7,7 @@ import com.idm.test.runner.ui.UiCommand;
 import com.idm.test.runner.ui.UiHttp;
 import com.idm.test.runner.ui.UiHttp.Response;
 import com.idm.test.runner.ui.UiServer;
+import com.idm.test.runner.ui.lab.ProfileYamlEditor;
 import com.idm.test.utils.ldap.EmbeddedLdapServer;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -225,6 +226,140 @@ class LabControllerTest {
             assertThat(connection.get("id").asString()).isEqualTo(entry.getKey());
             assertThat(connection.get("name").asString()).isEqualTo(entry.getValue());
         }
+    }
+
+    @Test
+    @DisplayName("An unused profile-owned connection can be deleted without changing its neighbors or secrets")
+    void testDeleteUnusedConnection() throws IOException {
+        Path ws = openWorkspace(server);
+        Path profile = ws.resolve("config/application-lab.yml");
+        Files.writeString(profile, "# Keep this header\r\nidm:\r\n  test:\r\n    databases:\r\n"
+                + "      hr:\r\n        jdbc-url: jdbc:postgresql://hr/db\r\n"
+                + "      spare:\r\n        jdbc-url: jdbc:postgresql://spare/db\r\n");
+        Files.writeString(ws.resolve("secrets.env"), "KEPT=fake\n");
+        JsonNode before = system(lab(server, "lab"), "database:hr");
+        assertThat(before.get("deletion").get("allowed").asBoolean()).isTrue();
+
+        Response removed = UiHttp.send(server, "DELETE", "/api/lab?profile=lab&systemId=database%3Ahr", null);
+
+        assertThat(removed.status()).as(removed.body()).isEqualTo(200);
+        assertThat(Files.readString(profile)).contains("# Keep this header\r\n", "spare:\r\n")
+                .doesNotContain("hr:\r\n");
+        assertThat(Files.readString(ws.resolve("secrets.env"))).isEqualTo("KEPT=fake\n");
+        assertThat(removed.body()).doesNotContain("database:hr");
+    }
+
+    @Test
+    @DisplayName("Deletion reports scenario, shared, default-directory and invalid-scenario blockers")
+    void testDeleteBlockers() throws IOException {
+        Path ws = openWorkspace(server);
+        Path profile = ws.resolve("config/application-lab.yml");
+        Files.writeString(profile, "idm:\n  test:\n    ldap:\n      url: ldap://test:389\n"
+                + "    directories:\n      edirectory:\n        url: ldap://edir:389\n"
+                + "    databases:\n      hr:\n        jdbc-url: jdbc:postgresql://hr/db\n"
+                + "      spare:\n        jdbc-url: jdbc:postgresql://spare/db\n");
+        Files.writeString(ws.resolve("config/application.yml"), "idm:\n  test:\n    databases:\n      hr:\n        username: shared\n");
+        assertThat(system(lab(server, "lab"), "ldap").get("deletion").get("reason").asString()).isEqualTo("referenced");
+        String before = Files.readString(profile);
+        Response refused = UiHttp.send(server, "DELETE", "/api/lab?profile=lab&systemId=ldap", null);
+        assertThat(refused.status()).isEqualTo(400);
+        assertThat(Files.readString(profile)).isEqualTo(before);
+
+        Files.writeString(profile, before.replace("    directories:", "    default-directory: edirectory\n    directories:"));
+        assertThat(system(lab(server, "lab"), "directory:edirectory").get("deletion").get("reason").asString())
+                .isEqualTo("default-directory");
+        assertThat(system(lab(server, "lab"), "database:hr").get("deletion").get("reason").asString()).isEqualTo("shared");
+
+        Files.writeString(ws.resolve("scenarios/broken.yaml"), "steps: [unterminated");
+        JsonNode blocked = system(lab(server, "lab"), "database:spare").get("deletion");
+        assertThat(blocked.get("reason").asString()).isEqualTo("invalid-scenario");
+        assertThat(blocked.get("files").get(0).asString()).contains("broken.yaml");
+    }
+
+    @Test
+    @DisplayName("Delete rechecks scenarios after the panel was read")
+    void testDeleteRechecksScenario() throws IOException {
+        Path ws = openWorkspace(server);
+        Path profile = ws.resolve("config/application-lab.yml");
+        Files.writeString(profile, "idm:\n  test:\n    databases:\n      hr:\n        jdbc-url: jdbc:postgresql://hr/db\n");
+        assertThat(system(lab(server, "lab"), "database:hr").get("deletion").get("allowed").asBoolean()).isTrue();
+        Files.writeString(ws.resolve("scenarios/use-hr.yaml"),
+                "name: Use HR\nsteps:\n  - db.query:\n      database: hr\n      sql: select 1\n");
+        String before = Files.readString(profile);
+        Response refused = UiHttp.send(server, "DELETE", "/api/lab?profile=lab&systemId=database%3Ahr", null);
+        assertThat(refused.status()).as(refused.body()).isEqualTo(400);
+        assertThat(refused.body()).contains("use-hr.yaml");
+        assertThat(Files.readString(profile)).isEqualTo(before);
+    }
+
+    @Test
+    @DisplayName("A dynamic target and an environment-owned connection cannot be deleted")
+    void testDeleteDynamicAndEnvironment() throws IOException {
+        Path ws = openWorkspace(server);
+        Files.writeString(ws.resolve("config/application-lab.yml"),
+                "idm:\n  test:\n    databases:\n      hr:\n        jdbc-url: jdbc:postgresql://hr/db\n");
+        Files.writeString(ws.resolve("scenarios/dynamic.yaml"),
+                "name: Dynamic\nsteps:\n  - db.query:\n      database: ${which}\n      sql: select 1\n");
+        JsonNode gate = system(lab(server, "lab"), "database:hr").get("deletion");
+        assertThat(gate.get("allowed").asBoolean()).isFalse();
+        assertThat(gate.get("reason").asString()).isEqualTo("invalid-scenario");
+        assertThat(gate.get("files").get(0).asString()).contains("dynamic.yaml");
+
+        Path envWs = openWorkspace(envServer);
+        Files.writeString(envWs.resolve("config/application-lab.yml"),
+                "idm:\n  test:\n    ldap:\n      label: Environment directory\n");
+        assertThat(system(lab(envServer, "lab"), "ldap").get("deletion").get("reason").asString())
+                .isEqualTo("environment");
+    }
+
+    @Test
+    @DisplayName("A profile label override cannot delete a connection owned by shared configuration")
+    void testDeleteSharedLabelOverride() throws IOException {
+        Path ws = openWorkspace(server);
+        Files.writeString(ws.resolve("config/application.yml"),
+                "idm:\n  test:\n    databases:\n      hr:\n        jdbc-url: jdbc:postgresql://shared/hr\n");
+        Files.writeString(ws.resolve("config/application-lab.yml"),
+                "idm:\n  test:\n    databases:\n      hr:\n        label: Lab people\n");
+        JsonNode gate = system(lab(server, "lab"), "database:hr").get("deletion");
+        assertThat(gate.get("reason").asString()).isEqualTo("shared");
+        assertThat(UiHttp.send(server, "DELETE", "/api/lab?profile=lab&systemId=database%3Ahr", null).status())
+                .isEqualTo(400);
+    }
+
+    @Test
+    @DisplayName("An unused block of each connection kind can be deleted")
+    void testDeleteEveryKind() throws IOException {
+        Path ws = openWorkspace(server);
+        Files.delete(ws.resolve("scenarios/example.yaml"));
+        Path profile = ws.resolve("config/application-lab.yml");
+        Files.writeString(profile, "idm:\n  test:\n    ldap:\n      url: ldap://test:389\n"
+                + "    directories:\n      ad:\n        url: ldap://ad:389\n"
+                + "    databases:\n      hr:\n        jdbc-url: jdbc:postgresql://hr/db\n"
+                + "    rest:\n      idm:\n        base-url: https://idm.test/api\n"
+                + "    soap:\n      url: https://idm.test/soap\n");
+        for (String id : List.of("ldap", "directory:ad", "database:hr", "rest:idm", "soap")) {
+            String encoded = URLEncoder.encode(id, StandardCharsets.UTF_8);
+            Response removed = UiHttp.send(server, "DELETE", "/api/lab?profile=lab&systemId=" + encoded, null);
+            assertThat(removed.status()).as(id + " " + removed.body()).isEqualTo(200);
+        }
+        assertThat(ProfileYamlEditor.flatten(Files.readString(profile))).isEmpty();
+    }
+
+    @Test
+    @DisplayName("A symlinked profile file outside the workspace is never changed by Delete")
+    void testDeleteRefusesSymlinkedProfile() throws IOException {
+        Path ws = openWorkspace(server);
+        Path profile = ws.resolve("config/application-lab.yml");
+        Path outside = temp.resolve("outside-profile.yml");
+        String content = "idm:\n  test:\n    databases:\n      hr:\n        jdbc-url: jdbc:postgresql://hr/db\n";
+        Files.writeString(outside, content);
+        Files.delete(profile);
+        Files.createSymbolicLink(profile, outside);
+
+        Response refused = UiHttp.send(server, "DELETE", "/api/lab?profile=lab&systemId=database%3Ahr", null);
+
+        assertThat(refused.status()).as(refused.body()).isEqualTo(400);
+        assertThat(Files.readString(outside)).isEqualTo(content);
     }
 
     @Test

@@ -95,16 +95,19 @@ public final class LabSettings {
     }
 
     private static final List<FieldSpec> LDAP_FIELDS = List.of(
+            new FieldSpec("label", "runner.ui.lab.field.label", false, false),
             new FieldSpec("url", "runner.ui.lab.field.url", false, false),
             new FieldSpec("base-dn", "runner.ui.lab.field.baseDn", false, false),
             new FieldSpec("user-dn", "runner.ui.lab.field.userDn", false, false),
             new FieldSpec("password", "runner.ui.lab.field.password", true, false));
     private static final List<FieldSpec> DATABASE_FIELDS = List.of(
+            new FieldSpec("label", "runner.ui.lab.field.label", false, false),
             new FieldSpec("jdbc-url", "runner.ui.lab.field.jdbcUrl", false, false),
             new FieldSpec("username", "runner.ui.lab.field.username", false, false),
             new FieldSpec("password", "runner.ui.lab.field.password", true, false),
             new FieldSpec("driver-class-name", "runner.ui.lab.field.driverClassName", false, false));
     private static final List<FieldSpec> REST_FIELDS = List.of(
+            new FieldSpec("label", "runner.ui.lab.field.label", false, false),
             new FieldSpec("base-url", "runner.ui.lab.field.baseUrl", false, false),
             new FieldSpec("username", "runner.ui.lab.field.username", false, false),
             new FieldSpec("password", "runner.ui.lab.field.password", true, false),
@@ -115,6 +118,7 @@ public final class LabSettings {
             new FieldSpec("token-uri", "runner.ui.lab.field.tokenUri", false, true),
             new FieldSpec("scope", "runner.ui.lab.field.scope", false, true));
     private static final List<FieldSpec> SOAP_FIELDS = List.of(
+            new FieldSpec("label", "runner.ui.lab.field.label", false, false),
             new FieldSpec("url", "runner.ui.lab.field.roleServiceUrl", false, false),
             new FieldSpec("resource-url", "runner.ui.lab.field.resourceServiceUrl", false, false),
             new FieldSpec("username", "runner.ui.lab.field.username", false, false),
@@ -329,7 +333,8 @@ public final class LabSettings {
         }
         ConnectionTester.Result last = results.get(fingerprint(snapshot.workspace().root(), ref, effective));
         String status = missing ? "missing" : last != null && last.ok() ? "ready" : "untested";
-        return new SystemView(ref.id(), ref.kind().json(), Messages.render(ref.displayName(), locale), usedBy, fields,
+        String display = blank(effective.get("label")) ? Messages.render(ref.displayName(), locale) : mask.apply(effective.get("label"));
+        return new SystemView(ref.id(), ref.kind().json(), display, usedBy, fields,
                 status, last);
     }
 
@@ -989,6 +994,7 @@ public final class LabSettings {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             digest.update((root.toString() + "\u0000" + ref.id()).getBytes(StandardCharsets.UTF_8));
             new TreeMap<>(effective).forEach((key, value) -> {
+                if (key.equals("label")) return;
                 digest.update(("\u0000" + key + "\u0001" + (value == null ? "\u0002" : value)).getBytes(StandardCharsets.UTF_8));
             });
             return HexFormat.of().formatHex(digest.digest());

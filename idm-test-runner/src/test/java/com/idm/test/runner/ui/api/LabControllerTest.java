@@ -181,6 +181,53 @@ class LabControllerTest {
     }
 
     @Test
+    @DisplayName("Connection labels are profile-specific display names, not scenario identifiers")
+    void testConnectionLabels() throws IOException {
+        Path ws = openWorkspace(server);
+        Files.writeString(ws.resolve("config/application.yml"),
+                "idm:\n  test:\n    ldap:\n      url: ldap://shared.test:389\n      label: Shared directory\n");
+        Files.writeString(ws.resolve("config/application-uat.yml"), "# UAT profile\n");
+
+        JsonNode inherited = system(lab(server, "uat"), "ldap");
+        assertThat(inherited.get("name").asString()).isEqualTo("Shared directory");
+        assertThat(field(inherited, "label").get("state").asString()).isEqualTo("application.yml");
+        assertThat(inherited.get("id").asString()).isEqualTo("ldap");
+
+        Response saved = put(server, "lab", "ldap", Map.of("label", "Lab directory"), Map.of());
+        assertThat(saved.status()).as(saved.body()).isEqualTo(200);
+        assertThat(Files.readString(ws.resolve("config/application-lab.yml"))).contains("label: Lab directory");
+        JsonNode labeled = system(lab(server, "lab"), "ldap");
+        assertThat(labeled.get("name").asString()).isEqualTo("Lab directory");
+        assertThat(field(labeled, "label").get("state").asString()).isEqualTo("set");
+        assertThat(labeled.get("usedByScenarios")).isEqualTo(inherited.get("usedByScenarios"));
+        assertThat(system(lab(server, "uat"), "ldap").get("name").asString()).isEqualTo("Shared directory");
+
+        assertThat(put(server, "uat", "ldap", Map.of("label", ""), Map.of()).status()).isEqualTo(200);
+        assertThat(system(lab(server, "uat"), "ldap").get("name").asString()).isEqualTo("Directory");
+    }
+
+    @Test
+    @DisplayName("Every connection kind accepts a label without changing its identifier")
+    void testLabelsForEveryKind() throws IOException {
+        openWorkspace(server);
+        Map<String, String> labels = Map.of(
+                "directory:edirectory", "Directory for staging",
+                "database:hr", "People database",
+                "rest:idm", "Identity API",
+                "soap", "SOAP services");
+        for (Map.Entry<String, String> entry : labels.entrySet()) {
+            Response saved = put(server, "lab", entry.getKey(), Map.of("label", entry.getValue()), Map.of());
+            assertThat(saved.status()).as(entry.getKey() + " " + saved.body()).isEqualTo(200);
+        }
+        JsonNode view = lab(server, "lab");
+        for (Map.Entry<String, String> entry : labels.entrySet()) {
+            JsonNode connection = system(view, entry.getKey());
+            assertThat(connection.get("id").asString()).isEqualTo(entry.getKey());
+            assertThat(connection.get("name").asString()).isEqualTo(entry.getValue());
+        }
+    }
+
+    @Test
     @DisplayName("A saved password goes to secrets.env and never comes back: not in the lab, tree, health or page")
     void testSecretNeverReturned() throws IOException {
         Path ws = openWorkspace(server);

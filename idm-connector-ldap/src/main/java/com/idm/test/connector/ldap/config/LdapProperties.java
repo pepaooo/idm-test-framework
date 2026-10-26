@@ -22,6 +22,12 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties(prefix = "idm.test.ldap")
 public class LdapProperties {
 
+    private String label;
+
+    public String getLabel() { return label; }
+
+    public void setLabel(String label) { this.label = label; }
+
     private String url;
     private String baseDn;
     private String userDn;

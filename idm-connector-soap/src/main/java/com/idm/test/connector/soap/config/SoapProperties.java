@@ -9,6 +9,12 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties(prefix = "idm.test.soap")
 public class SoapProperties {
 
+    private String label;
+
+    public String getLabel() { return label; }
+
+    public void setLabel(String label) { this.label = label; }
+
     /**
      * SOAP service endpoint URL (e.g., http://idm.company.com:8080/IDMProv/role/service)
      */

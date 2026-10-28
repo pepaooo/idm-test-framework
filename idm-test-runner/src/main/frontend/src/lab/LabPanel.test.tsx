@@ -53,22 +53,74 @@ describe('Lab panel', () => {
     expect(form).toHaveTextContent('use-directory.yaml');
   });
 
-  it('confirms deletion, sends the stable ID and profile, then selects Add', async () => {
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true);
+  it('confirms deletion in a dialog, sends the stable ID and profile, then selects Add', async () => {
+    const confirm = vi.spyOn(window, 'confirm');
     const { server } = start({ systems: [{ ...directory('ready'), usedByScenarios: [],
       deletion: { allowed: true, reason: null, files: [] } }],
       onDelete: () => ({ body: { systems: [] } }),
     });
     const panel = await openPanel();
-    await userEvent.click(within(panel).getByRole('button', { name: 'Delete connection' }));
+    const deleteButton = within(panel).getByRole('button', { name: 'Delete connection' });
+    await userEvent.click(deleteButton);
+    let dialog = screen.getByRole('dialog', { name: 'Delete connection' });
+    expect(dialog).toHaveTextContent('Delete eDirectory (ldap) from config/application-lab.yml?');
+    expect(dialog).toHaveTextContent('Its passwords stay in secrets.env');
+    expect(within(dialog).getByRole('button', { name: 'Cancel' })).toHaveFocus();
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByRole('dialog', { name: 'Delete connection' })).not.toBeInTheDocument();
+    expect(deleteButton).toHaveFocus();
     expect(server.sent.filter((request) => request.method === 'DELETE')).toHaveLength(0);
-    await userEvent.click(within(panel).getByRole('button', { name: 'Delete connection' }));
+
+    await userEvent.click(deleteButton);
+    dialog = screen.getByRole('dialog', { name: 'Delete connection' });
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Delete connection' }));
     await waitFor(() => expect(server.sent.filter((request) => request.method === 'DELETE')).toHaveLength(1));
     expect(server.sent.find((request) => request.method === 'DELETE')?.url).toBe('/api/lab?profile=lab&systemId=ldap');
-    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('config/application-lab.yml'));
-    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('Stored secrets remain in secrets.env'));
     await waitFor(() => expect(within(panel).queryByRole('tab', { name: /eDirectory/ })).not.toBeInTheDocument());
+    expect(screen.queryByRole('dialog', { name: 'Delete connection' })).not.toBeInTheDocument();
     expect(within(panel).getByRole('button', { name: '+ add' })).toHaveFocus();
+    expect(confirm).not.toHaveBeenCalled();
+  });
+
+  it('Escape cancels the delete dialog and leaves the lab panel open', async () => {
+    const { server } = start({ systems: [{ ...directory('ready'), usedByScenarios: [],
+      deletion: { allowed: true, reason: null, files: [] } }],
+    });
+    const panel = await openPanel();
+    await userEvent.click(within(panel).getByRole('button', { name: 'Delete connection' }));
+    await userEvent.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog', { name: 'Delete connection' })).not.toBeInTheDocument();
+    expect(panel).toBeInTheDocument();
+    expect(server.sent.filter((request) => request.method === 'DELETE')).toHaveLength(0);
+  });
+
+  it('asks in Spanish', async () => {
+    setLanguage('es', false);
+    start({ systems: [{ ...directory('ready'), usedByScenarios: [],
+      deletion: { allowed: true, reason: null, files: [] } }],
+    });
+    const chip = await screen.findByRole('button', { name: /^Lab[: ]/ });
+    await userEvent.click(chip);
+    const panel = await screen.findByRole('dialog');
+    await userEvent.click(within(panel).getByRole('button', { name: 'Eliminar conexión' }));
+    const dialog = screen.getByRole('dialog', { name: 'Eliminar conexión' });
+    expect(dialog).toHaveTextContent('¿Eliminar eDirectory (ldap) de config/application-lab.yml?');
+    expect(dialog).toHaveTextContent('Sus contraseñas permanecen en secrets.env');
+    expect(within(dialog).getByRole('button', { name: 'Cancelar' })).toBeInTheDocument();
+  });
+
+  it('keeps the dialog and the form when a stale server check refuses deletion', async () => {
+    start({ systems: [{ ...directory('ready'), usedByScenarios: [],
+      deletion: { allowed: true, reason: null, files: [] } }],
+      onDelete: () => ({ status: 400, body: { key: 'ui.lab.deleteBlocked.referenced', message: 'Now used by new.yaml' } }),
+    });
+    const panel = await openPanel();
+    await userEvent.click(within(panel).getByRole('button', { name: 'Delete connection' }));
+    const dialog = screen.getByRole('dialog', { name: 'Delete connection' });
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Delete connection' }));
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('Now used by new.yaml');
+    expect(within(dialog).getByRole('button', { name: 'Cancel' })).toBeEnabled();
+    expect(within(panel).getByRole('tab', { name: /eDirectory/ })).toBeInTheDocument();
   });
 
   it.each([
@@ -82,18 +134,6 @@ describe('Lab panel', () => {
     expect(within(form).getByRole('button', { name: 'Delete connection' })).toBeDisabled();
     expect(form).toHaveTextContent(explanation);
     expect(form).toHaveTextContent('blocked.yaml');
-  });
-
-  it('keeps the form when a stale server check refuses deletion', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
-    start({ systems: [{ ...directory('ready'), usedByScenarios: [],
-      deletion: { allowed: true, reason: null, files: [] } }],
-      onDelete: () => ({ status: 400, body: { key: 'ui.lab.deleteBlocked', message: 'Now used by new.yaml' } }),
-    });
-    const panel = await openPanel();
-    await userEvent.click(within(panel).getByRole('button', { name: 'Delete connection' }));
-    expect(await within(panel).findByRole('alert')).toHaveTextContent('Now used by new.yaml');
-    expect(within(panel).getByRole('tab', { name: /eDirectory/ })).toBeInTheDocument();
   });
 
   it('disables Delete while the form has unsaved edits', async () => {

@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { api, ApiProblem, withQuery } from '../api/client';
 import { Badge } from '../components/Badge';
 import { t } from '../i18n';
+import { DeleteConnectionDialog } from './DeleteConnectionDialog';
 import { newSystemId, OAUTH_KEYS, SYSTEM_NAME, templateFields } from './fieldTemplates';
 import type { LabField, LabSystem, LabView, TestResult } from './types';
 
@@ -50,6 +51,8 @@ export function SystemForm({ system, existingIds, profile, readOnly, hidden, lab
   /** Secrets emptied after a test or a save that did not keep them. */
   const [cleared, setCleared] = useState<ReadonlySet<string>>(new Set());
   const [busy, setBusy] = useState<'saving' | 'testing' | 'deleting' | null>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const deleteButton = useRef<HTMLButtonElement>(null);
   const [result, setResult] = useState<TestResult | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const secretInputs = useRef(new Map<string, HTMLInputElement>());
@@ -192,17 +195,18 @@ export function SystemForm({ system, existingIds, profile, readOnly, hidden, lab
   const deletionReason = deletion?.reason
     ? t(`ui.lab.delete.reason.${deletion.reason}`) + (deletion.files.length ? ` · ${deletion.files.join(', ')}` : '')
     : null;
-  const remove = async () => {
-    if (!system || !deletion?.allowed || readOnly || dirty || busy) return;
-    if (!window.confirm(t('ui.lab.delete.confirm', { name: system.name, id: system.id,
-      path: `config/application-${profile}.yml` }))) return;
+  /** Answers the confirmation: null when deleted, else the server's reason, which the dialog shows. */
+  const remove = async (): Promise<string | null> => {
+    if (!system) return null;
     setBusy('deleting');
     setSaveError(null);
     try {
       const view = await api.del<LabView>(withQuery('/api/lab', { profile, systemId: system.id }));
+      setConfirmingDelete(false);
       onDeleted(view, system.id);
+      return null;
     } catch (e) {
-      setSaveError(e instanceof ApiProblem ? e.message : String(e));
+      return e instanceof ApiProblem ? e.message : String(e);
     } finally {
       setBusy(null);
     }
@@ -404,10 +408,10 @@ export function SystemForm({ system, existingIds, profile, readOnly, hidden, lab
         })}
       </div>
       <div className="lab-actions">
-        {system && <button type="button" className="secondary lab-delete"
+        {system && <button ref={deleteButton} type="button" className="secondary lab-delete"
           disabled={!deletion?.allowed || readOnly || dirty || busy !== null}
           title={deletionReason ?? undefined}
-          onClick={() => void remove()}>{t('ui.lab.delete.button')}</button>}
+          onClick={() => setConfirmingDelete(true)}>{t('ui.lab.delete.button')}</button>}
         <button type="button" className="secondary" disabled={busy !== null || Boolean(nameProblem)} onClick={() => void test()}>
           {busy === 'testing' ? t('ui.lab.testing') : t('ui.lab.test')}
         </button>
@@ -443,6 +447,18 @@ export function SystemForm({ system, existingIds, profile, readOnly, hidden, lab
         </button>
       </div>
       {system && deletionReason && <p className="lab-delete-note">{deletionReason}</p>}
+      {system && confirmingDelete && (
+        <DeleteConnectionDialog
+          name={system.name}
+          id={system.id}
+          path={profileFile}
+          onDelete={remove}
+          onCancel={() => {
+            setConfirmingDelete(false);
+            deleteButton.current?.focus();
+          }}
+        />
+      )}
       {saveError && (
         <p role="alert" className="lab-error">
           <Badge status="error" /> {saveError}

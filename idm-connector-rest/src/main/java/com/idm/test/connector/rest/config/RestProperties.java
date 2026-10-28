@@ -53,6 +53,12 @@ public class RestProperties {
      * Configuration for a single REST API endpoint.
      */
     public static class RestApiConfig {
+        private String label;
+
+        public String getLabel() { return label; }
+
+        public void setLabel(String label) { this.label = label; }
+
         private String baseUrl;
         private String username;
         private String password;

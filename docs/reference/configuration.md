@@ -75,6 +75,14 @@ environment variables that override them, and every environment variable whose n
 same name rule as the report's parameter masking; `PWD` and `OLDPWD` excepted). Secret values shorter
 than 4 characters are not masked, so use real passwords.
 
+### Connection labels
+
+Every connection block (`ldap`, each entry of `directories`, `databases` and `rest`, and `soap`) may have an
+optional `label:`, the name the workbench's lab panel shows for it, such as `label: SAP database`. A label is
+set per profile: a profile without one shows the connection's usual name ("Database sap"), and a label in
+`config/application.yml` applies to every profile until a profile file sets its own. The label is never
+used to connect and never changes what scenarios name: steps keep using the connection's key (`database: sap`).
+
 ## Sensitive Data Management
 
 **NEVER commit passwords or secrets to version control!**

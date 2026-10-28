@@ -10,6 +10,7 @@ import com.idm.test.runner.ui.LastRuns;
 import com.idm.test.runner.ui.RecentWorkspaces;
 import com.idm.test.runner.ui.RunSessions;
 import com.idm.test.runner.ui.UiSession;
+import com.idm.test.runner.ui.lab.ProfileFiles;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -26,6 +27,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.DirectoryStream;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
@@ -72,6 +74,12 @@ class WorkspacesController {
     }
 
     record Opened(String path, List<String> profiles) {
+    }
+
+    record CreateProfileRequest(String name) {
+    }
+
+    record CreatedProfile(String name, String path, List<String> profiles) {
     }
 
     /** The workspace a run is going in. */
@@ -163,6 +171,24 @@ class WorkspacesController {
         }
         remember(workspace.root());
         return ResponseEntity.ok(new Opened(workspace.root().toString(), profiles(workspace)));
+    }
+
+    @PostMapping("/api/workspaces/profiles")
+    CreatedProfile createProfile(@RequestBody CreateProfileRequest request) {
+        Path root = session.workspace();
+        if (root == null) {
+            throw ApiError.badRequest("runner.ui.workspace.none");
+        }
+        String name = LabController.profile(request.name());
+        try {
+            Path file = ProfileFiles.create(root, name);
+            return new CreatedProfile(name, file.toString(), profiles(new Workspace(root)));
+        } catch (FileAlreadyExistsException e) {
+            throw ApiError.badRequest("runner.ui.profile.exists", name);
+        } catch (IOException e) {
+            throw new ApiError(HttpStatus.INTERNAL_SERVER_ERROR,
+                    Message.of("runner.ui.profile.createFailed", name, reason(e)));
+        }
     }
 
     @DeleteMapping("/api/workspaces/recent")

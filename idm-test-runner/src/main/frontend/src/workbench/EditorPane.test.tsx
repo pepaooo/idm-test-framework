@@ -41,6 +41,37 @@ afterEach(() => {
 });
 
 describe('workbench side panels', () => {
+  it('creates a profile, selects it, refreshes the tree, and opens Lab', async () => {
+    const server = workbenchServer({ files: FILES, routes: {
+      'POST /api/workspaces/profiles': ({ body }) => {
+        const name = (body as { name: string }).name;
+        server.changeOnDisk(`config/application-${name}.yml`, '# starter\n');
+        return { body: { name, path: `${WORKSPACE.path}/config/application-${name}.yml`, profiles: ['lab', 'uat', name] } };
+      },
+    } });
+    renderWorkbench();
+    await userEvent.click(await screen.findByRole('button', { name: 'New profile' }));
+    await userEvent.type(screen.getByRole('textbox', { name: 'Profile name' }), 'staging');
+    await userEvent.click(screen.getByRole('button', { name: 'Create profile' }));
+    await waitFor(() => expect(screen.getByRole('combobox', { name: 'Profile' })).toHaveValue('staging'));
+    await userEvent.click(screen.getByRole('button', { name: 'config' }));
+    expect(await screen.findByRole('button', { name: 'application-staging.yml' })).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: /Lab connection/ })).toBeInTheDocument();
+    expect(server.sent.filter((request) => request.url === '/api/workspaces/profiles')).toHaveLength(1);
+  });
+
+  it('cancels or rejects invalid profile names without sending a request', async () => {
+    const server = workbenchServer({ files: FILES });
+    renderWorkbench();
+    await userEvent.click(await screen.findByRole('button', { name: 'New profile' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByRole('dialog', { name: 'New profile' })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'New profile' }));
+    await userEvent.type(screen.getByRole('textbox', { name: 'Profile name' }), '../bad');
+    await userEvent.click(screen.getByRole('button', { name: 'Create profile' }));
+    expect(screen.getByRole('alert')).toBeInTheDocument();
+    expect(server.sent.filter((request) => request.url === '/api/workspaces/profiles')).toHaveLength(0);
+  });
   it.each([
     [{ 'config/application-lab.yml': 'x: 1\n', 'scenarios/a.yaml': 'name: A\n' }, true, true],
     [{ 'scenarios/a.yaml': 'name: A\n' }, false, true],

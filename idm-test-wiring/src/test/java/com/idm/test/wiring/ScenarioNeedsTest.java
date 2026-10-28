@@ -16,9 +16,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 class ScenarioNeedsTest {
 
     private static ScenarioNeeds needs(String yaml) {
-        Scenario scenario = ScenarioLoader.load(
-                new ByteArrayInputStream(yaml.getBytes(StandardCharsets.UTF_8)), "t.yaml");
-        return ScenarioNeeds.of(List.of(scenario));
+        return ScenarioNeeds.of(List.of(scenario(yaml)));
+    }
+
+    private static Scenario scenario(String yaml) {
+        return ScenarioLoader.load(new ByteArrayInputStream(yaml.getBytes(StandardCharsets.UTF_8)), "t.yaml");
     }
 
     @Test
@@ -160,5 +162,42 @@ class ScenarioNeedsTest {
 
         assertThat(needs.directories()).containsExactly(ScenarioNeeds.DEFAULT_DIRECTORY, "ad", "edir");
         assertThat(needs.ldap()).isTrue();
+    }
+
+    @Test
+    @DisplayName("A name known only at run time, or a missing db/rest name, leaves its kind unresolved")
+    void testUnresolvedKinds() {
+        Scenario dynamic = scenario("""
+                name: n
+                steps:
+                  - ldap.verify:
+                      directory: ${which}
+                      dn: cn=a
+                      exists: true
+                  - db.execute:
+                      statement: DELETE FROM t
+                cleanup:
+                  - rest.request:
+                      target: ${target}
+                      method: GET
+                      path: /x
+                """);
+        Scenario literal = scenario("""
+                name: n
+                steps:
+                  - ldap.verify:
+                      dn: cn=a
+                      exists: true
+                  - db.execute:
+                      database: hr
+                      statement: DELETE FROM t
+                  - roles.grant:
+                      user: cn=a
+                      role: cn=r
+                """);
+
+        assertThat(ScenarioNeeds.unresolvedKinds(List.of(dynamic)))
+                .containsExactly(ScenarioNeeds.DB, ScenarioNeeds.LDAP, ScenarioNeeds.REST);
+        assertThat(ScenarioNeeds.unresolvedKinds(List.of(literal))).isEmpty();
     }
 }

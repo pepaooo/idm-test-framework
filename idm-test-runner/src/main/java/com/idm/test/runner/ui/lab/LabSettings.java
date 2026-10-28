@@ -10,6 +10,7 @@ import com.idm.test.runner.SecretMask;
 import com.idm.test.runner.SecretsEnv;
 import com.idm.test.runner.UsageException;
 import com.idm.test.runner.Workspace;
+import com.idm.test.runner.ui.WorkspaceFiles;
 import com.idm.test.runner.ui.api.ApiError;
 import com.idm.test.wiring.DirectoryScenarioSource;
 import com.idm.test.wiring.RealEnvironmentGuards;
@@ -24,6 +25,7 @@ import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -95,16 +97,19 @@ public final class LabSettings {
     }
 
     private static final List<FieldSpec> LDAP_FIELDS = List.of(
+            new FieldSpec("label", "runner.ui.lab.field.label", false, false),
             new FieldSpec("url", "runner.ui.lab.field.url", false, false),
             new FieldSpec("base-dn", "runner.ui.lab.field.baseDn", false, false),
             new FieldSpec("user-dn", "runner.ui.lab.field.userDn", false, false),
             new FieldSpec("password", "runner.ui.lab.field.password", true, false));
     private static final List<FieldSpec> DATABASE_FIELDS = List.of(
+            new FieldSpec("label", "runner.ui.lab.field.label", false, false),
             new FieldSpec("jdbc-url", "runner.ui.lab.field.jdbcUrl", false, false),
             new FieldSpec("username", "runner.ui.lab.field.username", false, false),
             new FieldSpec("password", "runner.ui.lab.field.password", true, false),
             new FieldSpec("driver-class-name", "runner.ui.lab.field.driverClassName", false, false));
     private static final List<FieldSpec> REST_FIELDS = List.of(
+            new FieldSpec("label", "runner.ui.lab.field.label", false, false),
             new FieldSpec("base-url", "runner.ui.lab.field.baseUrl", false, false),
             new FieldSpec("username", "runner.ui.lab.field.username", false, false),
             new FieldSpec("password", "runner.ui.lab.field.password", true, false),
@@ -115,6 +120,7 @@ public final class LabSettings {
             new FieldSpec("token-uri", "runner.ui.lab.field.tokenUri", false, true),
             new FieldSpec("scope", "runner.ui.lab.field.scope", false, true));
     private static final List<FieldSpec> SOAP_FIELDS = List.of(
+            new FieldSpec("label", "runner.ui.lab.field.label", false, false),
             new FieldSpec("url", "runner.ui.lab.field.roleServiceUrl", false, false),
             new FieldSpec("resource-url", "runner.ui.lab.field.resourceServiceUrl", false, false),
             new FieldSpec("username", "runner.ui.lab.field.username", false, false),
@@ -215,8 +221,11 @@ public final class LabSettings {
     public record Field(String key, String label, String value, boolean secret, String state, boolean required) {
     }
 
+    public record Deletion(boolean allowed, String reason, List<String> files) {
+    }
+
     public record SystemView(String id, String kind, String name, List<String> usedByScenarios, List<Field> fields,
-                             String status, ConnectionTester.Result lastTest) {
+                             String status, ConnectionTester.Result lastTest, Deletion deletion) {
     }
 
     /**
@@ -252,13 +261,59 @@ public final class LabSettings {
     public View read(Path workspace, String profile, Locale locale) {
         Snapshot snapshot = snapshot(workspace, profile);
         SecretMask mask = mask(snapshot, List.of());
+        DefaultChoice defaultChoice = defaultChoice(snapshot);
+        Usage usage = usage(snapshot, defaultChoice);
+        Map<String, Set<String>> users = new LinkedHashMap<>(usage.users());
+        Set<String> needDefault = usage.needDefault();
+        Set<String> ldapUsers = usage.ldapUsers();
+        configuredSystems(snapshot).forEach(id -> users.computeIfAbsent(id, k -> new TreeSet<>()));
+
+        Map<String, SystemRef> systems = new TreeMap<>();
+        for (String id : users.keySet()) {
+            try {
+                SystemRef ref = SystemRef.parse(id);
+                systems.put(ref.order() + ":" + (ref.name() == null ? "" : ref.name()), ref);
+            } catch (IllegalArgumentException e) {
+                // a name the lab panel cannot address (e.g. with a dot): left out
+            }
+        }
+        List<SystemView> views = new ArrayList<>();
+        for (SystemRef ref : systems.values()) {
+            views.add(view(snapshot, ref, new ArrayList<>(users.get(ref.id())), usage.soapUse(), locale, mask,
+                    defaultChoice, usage));
+        }
+        // a run fails to start on an invalid default-directory (the directories are built up front), even
+        // when every step names its directory or no scenario has an ldap.* step: then usedByScenarios may be empty
+        boolean invalid = "invalid".equals(defaultChoice.state());
+        Set<String> refused = !needDefault.isEmpty() ? needDefault : invalid ? ldapUsers : Set.of();
+        DefaultDirectory defaultDirectory = refused.isEmpty() && !invalid ? null : new DefaultDirectory(
+                List.copyOf(refused), defaultChoice.choices(), mask.apply(defaultChoice.value()),
+                defaultChoice.source(), defaultChoice.state());
+        return new View(views, defaultDirectory);
+    }
+
+    /**
+     * Which scenarios use each system, as {@code idmtest run} resolves their steps ({@code users}, by
+     * system id); {@code needDefault} the scenarios with directory-less ldap.* steps the runner refuses
+     * (no default directory), {@code ldapUsers} every scenario with an ldap.* step, and {@code soapUse}
+     * whether roles.* and resources.* steps are used. {@code unresolved} holds, by scenario, the kinds
+     * it names only at run time ({@link ScenarioNeeds#unresolvedKinds}); {@code unreadable} the
+     * scenarios that do not load. Delete needs both: a connection may be used by them.
+     */
+    private record Usage(Map<String, Set<String>> users, Set<String> needDefault, Set<String> ldapUsers,
+                         boolean[] soapUse, Map<String, Set<String>> unresolved, List<String> unreadable) {
+    }
+
+    private Usage usage(Snapshot snapshot, DefaultChoice defaultChoice) {
         Map<String, Set<String>> users = new LinkedHashMap<>();
         Set<String> needDefault = new TreeSet<>();
         Set<String> ldapUsers = new TreeSet<>();
-        DefaultChoice defaultChoice = defaultChoice(snapshot);
         boolean[] soapUse = new boolean[2];
-        for (Map.Entry<String, ScenarioNeeds> entry : scenarioNeeds(snapshot).entrySet()) {
-            ScenarioNeeds needs = entry.getValue();
+        Map<String, Set<String>> unresolved = new LinkedHashMap<>();
+        List<String> unreadable = new ArrayList<>();
+        for (Map.Entry<String, Scenario> entry : scenarios(snapshot, unreadable).entrySet()) {
+            ScenarioNeeds needs = ScenarioNeeds.of(List.of(entry.getValue()));
+            unresolved.put(entry.getKey(), ScenarioNeeds.unresolvedKinds(List.of(entry.getValue())));
             if (!needs.directories().isEmpty()) {
                 ldapUsers.add(entry.getKey());
             }
@@ -280,29 +335,7 @@ public final class LabSettings {
                 soapUse[1] |= needs.resources();
             }
         }
-        configuredSystems(snapshot).forEach(id -> users.computeIfAbsent(id, k -> new TreeSet<>()));
-
-        Map<String, SystemRef> systems = new TreeMap<>();
-        for (String id : users.keySet()) {
-            try {
-                SystemRef ref = SystemRef.parse(id);
-                systems.put(ref.order() + ":" + (ref.name() == null ? "" : ref.name()), ref);
-            } catch (IllegalArgumentException e) {
-                // a name the lab panel cannot address (e.g. with a dot): left out
-            }
-        }
-        List<SystemView> views = new ArrayList<>();
-        for (SystemRef ref : systems.values()) {
-            views.add(view(snapshot, ref, new ArrayList<>(users.get(ref.id())), soapUse, locale, mask));
-        }
-        // a run fails to start on an invalid default-directory (the directories are built up front), even
-        // when every step names its directory or no scenario has an ldap.* step: then usedByScenarios may be empty
-        boolean invalid = "invalid".equals(defaultChoice.state());
-        Set<String> refused = !needDefault.isEmpty() ? needDefault : invalid ? ldapUsers : Set.of();
-        DefaultDirectory defaultDirectory = refused.isEmpty() && !invalid ? null : new DefaultDirectory(
-                List.copyOf(refused), defaultChoice.choices(), mask.apply(defaultChoice.value()),
-                defaultChoice.source(), defaultChoice.state());
-        return new View(views, defaultDirectory);
+        return new Usage(users, needDefault, ldapUsers, soapUse, unresolved, unreadable);
     }
 
     private static void use(Map<String, Set<String>> users, String id, String scenario) {
@@ -310,7 +343,7 @@ public final class LabSettings {
     }
 
     private SystemView view(Snapshot snapshot, SystemRef ref, List<String> usedBy, boolean[] soapUse, Locale locale,
-                            SecretMask mask) {
+                            SecretMask mask, DefaultChoice defaultChoice, Usage usage) {
         Map<String, Resolved> resolved = resolveAll(snapshot, ref);
         Map<String, String> effective = new LinkedHashMap<>();
         resolved.forEach((key, r) -> effective.put(key, r.value()));
@@ -329,8 +362,94 @@ public final class LabSettings {
         }
         ConnectionTester.Result last = results.get(fingerprint(snapshot.workspace().root(), ref, effective));
         String status = missing ? "missing" : last != null && last.ok() ? "ready" : "untested";
-        return new SystemView(ref.id(), ref.kind().json(), Messages.render(ref.displayName(), locale), usedBy, fields,
-                status, last);
+        String display = blank(effective.get("label")) ? Messages.render(ref.displayName(), locale) : mask.apply(effective.get("label"));
+        return new SystemView(ref.id(), ref.kind().json(), display, usedBy, fields,
+                status, last, deletion(snapshot, ref, defaultChoice, usage));
+    }
+
+    private Deletion deletion(Snapshot snapshot, SystemRef ref, DefaultChoice defaultChoice, Usage usage) {
+        String prefix = ProfileYamlEditor.uniform(ref.prefix() + ".");
+        boolean owned = snapshot.profileFlat().keySet().stream()
+                .anyMatch(key -> ProfileYamlEditor.uniform(key).startsWith(prefix));
+        if (!owned) return new Deletion(false, "not-configured", List.of());
+        boolean shared = snapshot.sharedFlat().keySet().stream()
+                .anyMatch(key -> ProfileYamlEditor.uniform(key).startsWith(prefix));
+        if (shared) return new Deletion(false, "shared", List.of());
+        String envPrefix = ref.prefix().toUpperCase(Locale.ROOT).replace('.', '_').replace('-', '_') + "_";
+        if (environment.keySet().stream().anyMatch(key -> key.startsWith(envPrefix))) {
+            return new Deletion(false, "environment", List.of());
+        }
+        Path file = snapshot.workspace().profileFile(snapshot.profile());
+        try {
+            if (!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS) || !Files.isWritable(file)
+                    || !file.toRealPath().startsWith(snapshot.workspace().root().toRealPath())) {
+                return new Deletion(false, "read-only", List.of());
+            }
+        } catch (IOException e) {
+            return new Deletion(false, "read-only", List.of());
+        }
+        boolean configuredDefault = ref.kind() == Kind.LDAP && defaultChoice.value() != null
+                && (defaultChoice.value().equals(ref.name()) || ref.id().equals("ldap")
+                    && defaultChoice.value().equals("default") && !directoryNames(snapshot).contains("default"));
+        if (configuredDefault) {
+            return new Deletion(false, "default-directory", List.of());
+        }
+        Set<String> referenced = usage.users().getOrDefault(ref.id(), Set.of());
+        if (!referenced.isEmpty()) return new Deletion(false, "referenced", List.copyOf(referenced));
+        // never proof that it is unused: a scenario that does not load, or a step whose connection only the run knows
+        String kind = switch (ref.kind()) {
+            case LDAP -> ScenarioNeeds.LDAP;
+            case DATABASE -> ScenarioNeeds.DB;
+            case REST -> ScenarioNeeds.REST;
+            case SOAP -> null;
+        };
+        Set<String> uncertain = new TreeSet<>(usage.unreadable());
+        usage.unresolved().forEach((scenario, kinds) -> {
+            if (kind != null && kinds.contains(kind)) uncertain.add(scenario);
+        });
+        if (ref.kind() == Kind.LDAP) uncertain.addAll(usage.needDefault());
+        if (!uncertain.isEmpty()) return new Deletion(false, "invalid-scenario", List.copyOf(uncertain));
+        return new Deletion(true, null, List.of());
+    }
+
+    /** Rechecks dependencies while holding the profile-file lock, then removes just this connection block. */
+    public void delete(Path root, String profile, String systemId) {
+        SystemRef ref = system(systemId);
+        Path file = new Workspace(root).profileFile(profile);
+        if (Files.isSymbolicLink(file)) {
+            throw ApiError.badRequest("runner.ui.lab.deleteBlocked.readOnly", systemId);
+        }
+        try {
+            WorkspaceFiles.locked(file, () -> {
+                Snapshot snapshot = snapshot(root, profile);
+                DefaultChoice defaultChoice = defaultChoice(snapshot);
+                Deletion gate = deletion(snapshot, ref, defaultChoice, usage(snapshot, defaultChoice));
+                if (!gate.allowed()) {
+                    throw ApiError.badRequest(blockedKey(gate.reason()), systemId, String.join(", ", gate.files()));
+                }
+                ProfileYamlEditor.removeSubtree(file, ref.prefix(), snapshot.profileText());
+                return null;
+            });
+        } catch (ProfileYamlEditor.CannotEditException e) {
+            throw new ApiError(HttpStatus.CONFLICT, Message.of("runner.ui.lab.deleteChanged", systemId,
+                    "config/" + file.getFileName()));
+        } catch (IOException e) {
+            throw new ApiError(HttpStatus.INTERNAL_SERVER_ERROR, Message.of("runner.ui.file.writeFailed",
+                    "config/" + file.getFileName(), e.getClass().getSimpleName()));
+        }
+    }
+
+    /** The message for a {@link Deletion#reason()}. */
+    private static String blockedKey(String reason) {
+        return switch (reason) {
+            case "referenced" -> "runner.ui.lab.deleteBlocked.referenced";
+            case "shared" -> "runner.ui.lab.deleteBlocked.shared";
+            case "environment" -> "runner.ui.lab.deleteBlocked.environment";
+            case "default-directory" -> "runner.ui.lab.deleteBlocked.defaultDirectory";
+            case "invalid-scenario" -> "runner.ui.lab.deleteBlocked.invalidScenario";
+            case "not-configured" -> "runner.ui.lab.deleteBlocked.notConfigured";
+            default -> "runner.ui.lab.deleteBlocked.readOnly";
+        };
     }
 
     /** The fields a system needs: its URL, the OAuth client when it uses OAuth, a password when a user is given. */
@@ -430,25 +549,30 @@ public final class LabSettings {
         };
     }
 
-    /** Each scenario's needs, by its name; scenarios that do not load are left out. */
-    private static Map<String, ScenarioNeeds> scenarioNeeds(Snapshot snapshot) {
-        Map<String, ScenarioNeeds> needs = new LinkedHashMap<>();
+    /** Each scenario that loads, by its name; the names of those that do not are added to {@code unreadable}. */
+    private static Map<String, Scenario> scenarios(Snapshot snapshot, List<String> unreadable) {
+        Map<String, Scenario> scenarios = new LinkedHashMap<>();
         DirectoryScenarioSource source = new DirectoryScenarioSource(snapshot.workspace().scenarios());
+        List<String> names;
         try {
-            for (String name : source.names()) {
-                try (InputStream in = source.open(name)) {
-                    if (in != null) {
-                        Scenario scenario = ScenarioLoader.load(in, name);
-                        needs.put(name, ScenarioNeeds.of(List.of(scenario)));
-                    }
-                } catch (RuntimeException | IOException e) {
-                    // a scenario that does not load needs nothing the lab panel can show; the editor reports it
-                }
-            }
+            names = source.names();
         } catch (IOException e) {
-            throw new UncheckedIOException(e);
+            unreadable.add("scenarios/");
+            return scenarios;
         }
-        return needs;
+        for (String name : names) {
+            try (InputStream in = source.open(name)) {
+                if (in == null) {
+                    unreadable.add(name);
+                } else {
+                    scenarios.put(name, ScenarioLoader.load(in, name));
+                }
+            } catch (RuntimeException | IOException e) {
+                // the lab panel shows nothing it needs (the editor reports it); Delete treats it as a possible user
+                unreadable.add(name);
+            }
+        }
+        return scenarios;
     }
 
     /** The system an ldap.* step's named directory is: {@code default} is the old block unless one is named so. */
@@ -989,6 +1113,7 @@ public final class LabSettings {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             digest.update((root.toString() + "\u0000" + ref.id()).getBytes(StandardCharsets.UTF_8));
             new TreeMap<>(effective).forEach((key, value) -> {
+                if (key.equals("label")) return;
                 digest.update(("\u0000" + key + "\u0001" + (value == null ? "\u0002" : value)).getBytes(StandardCharsets.UTF_8));
             });
             return HexFormat.of().formatHex(digest.digest());

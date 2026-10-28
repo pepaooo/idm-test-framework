@@ -6,6 +6,7 @@ import com.idm.test.engine.model.StepSpec;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 
@@ -23,6 +24,14 @@ public record ScenarioNeeds(Set<String> directories, Set<String> databases, bool
     /** Stands for "the default directory" in {@link #directories()}: an ldap.* step that names none. */
     public static final String DEFAULT_DIRECTORY = "<default>";
 
+    public static final String LDAP = "ldap";
+    public static final String DB = "db";
+    public static final String REST = "rest";
+    private static final String ROLES = "roles";
+    private static final String RESOURCES = "resources";
+    /** The parameter that names the connection a step of each named kind uses. */
+    private static final Map<String, String> NAME_KEYS = Map.of(LDAP, "directory", DB, "database", REST, "target");
+
     public ScenarioNeeds {
         directories = Collections.unmodifiableSortedSet(new TreeSet<>(directories));
         databases = Collections.unmodifiableSortedSet(new TreeSet<>(databases));
@@ -35,30 +44,73 @@ public record ScenarioNeeds(Set<String> directories, Set<String> databases, bool
         boolean resources = false;
         Set<String> databases = new TreeSet<>();
         Set<String> targets = new TreeSet<>();
-        for (Scenario scenario : scenarios) {
-            List<StepSpec> entries = new ArrayList<>(scenario.steps());
-            entries.addAll(scenario.cleanup());
-            for (StepSpec step : entries) {
-                String type = step.type();
-                if (type.startsWith("ldap.")) {
-                    Object directory = step.params().get("directory");
-                    if (directory == null) {
+        for (StepSpec step : entries(scenarios)) {
+            String kind = kind(step.type());
+            if (kind == null) {
+                continue;
+            }
+            Object name = NAME_KEYS.containsKey(kind) ? step.params().get(NAME_KEYS.get(kind)) : null;
+            switch (kind) {
+                case LDAP -> {
+                    if (name == null) {
                         directories.add(DEFAULT_DIRECTORY);
                     } else {
-                        addLiteral(directories, directory);
+                        addLiteral(directories, name);
                     }
-                } else if (type.startsWith("db.")) {
-                    addLiteral(databases, step.params().get("database"));
-                } else if (type.startsWith("roles.")) {
-                    roles = true;
-                } else if (type.startsWith("resources.")) {
-                    resources = true;
-                } else if (type.startsWith("rest.") || type.startsWith("http.")) {
-                    addLiteral(targets, step.params().get("target"));
                 }
+                case DB -> addLiteral(databases, name);
+                case REST -> addLiteral(targets, name);
+                case ROLES -> roles = true;
+                default -> resources = true;
             }
         }
         return new ScenarioNeeds(directories, databases, roles, resources, targets);
+    }
+
+    /**
+     * The kinds of connection ({@value #LDAP}, {@value #DB}, {@value #REST}) that a step of the
+     * scenarios names only at run time: a name containing {@code ${}, or a db.* or rest.* step that
+     * names none. {@link #of} skips those names, so such a step may use any connection of its kind.
+     */
+    public static Set<String> unresolvedKinds(List<Scenario> scenarios) {
+        Set<String> kinds = new TreeSet<>();
+        for (StepSpec step : entries(scenarios)) {
+            String kind = kind(step.type());
+            String key = kind == null ? null : NAME_KEYS.get(kind);
+            if (key == null) {
+                continue;
+            }
+            Object name = step.params().get(key);
+            if (name == null ? !LDAP.equals(kind) : String.valueOf(name).contains("${")) {
+                kinds.add(kind);
+            }
+        }
+        return kinds;
+    }
+
+    private static List<StepSpec> entries(List<Scenario> scenarios) {
+        List<StepSpec> entries = new ArrayList<>();
+        for (Scenario scenario : scenarios) {
+            entries.addAll(scenario.steps());
+            entries.addAll(scenario.cleanup());
+        }
+        return entries;
+    }
+
+    /** The connection kind a step type uses, or null for a step that uses none. */
+    private static String kind(String type) {
+        if (type.startsWith("ldap.")) {
+            return LDAP;
+        } else if (type.startsWith("db.")) {
+            return DB;
+        } else if (type.startsWith("roles.")) {
+            return ROLES;
+        } else if (type.startsWith("resources.")) {
+            return RESOURCES;
+        } else if (type.startsWith("rest.") || type.startsWith("http.")) {
+            return REST;
+        }
+        return null;
     }
 
     /** Whether any ldap.* step is used. */

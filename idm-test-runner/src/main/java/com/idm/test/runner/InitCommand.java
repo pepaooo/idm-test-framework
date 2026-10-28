@@ -9,6 +9,7 @@ import java.io.PrintStream;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
@@ -23,6 +24,20 @@ public final class InitCommand {
     private static final Map<String, String> FILES = files();
 
     private InitCommand() {
+    }
+
+    /** The fully commented starter for a new named profile. */
+    public static String profileTemplate(String name) {
+        try (InputStream in = InitCommand.class.getResourceAsStream("init/application-lab.yml")) {
+            if (in == null) {
+                throw new IllegalStateException("missing template application-lab.yml");
+            }
+            String starter = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+            return starter.replace("# Settings for the \"lab\" profile: idmtest run --profile lab",
+                    "# Settings for the \"" + name + "\" profile: idmtest run --profile " + name);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
     }
 
     private static Map<String, String> files() {

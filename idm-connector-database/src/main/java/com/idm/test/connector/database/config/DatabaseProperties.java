@@ -43,6 +43,12 @@ public class DatabaseProperties {
      * Configuration for a single database connection.
      */
     public static class DatabaseConfig {
+        private String label;
+
+        public String getLabel() { return label; }
+
+        public void setLabel(String label) { this.label = label; }
+
         private String jdbcUrl;
         private String username;
         private String password;

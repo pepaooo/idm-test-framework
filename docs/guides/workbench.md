@@ -124,7 +124,8 @@ this computer only".
 ## The main screen
 
 - **Top bar**: the workspace name; the **Profile** picker (one entry per `config/application-<p>.yml`,
-  the first one by name chosen at the start); the **lab chip**; "● N unsaved"; **Save**; the **Run**
+  the first one by name chosen at the start) and **New profile** (see [Create a
+  profile](#create-a-profile)); the **lab chip**; "● N unsaved"; **Save**; the **Run**
   split button; language and theme.
 - **Left, the file tree**: `scenarios/` and `config/` and the files at the top of the workspace.
   Scenarios show the badge of their last run that finished (✓ passed, amber ✕ finding, red ✕ setup
@@ -149,11 +150,19 @@ Below about 760 px wide the columns stack.
 
 The lab chip shows whether the systems the workspace's scenarios use are ready, for the selected
 profile: "Lab ready", "Lab: 2 of 3 ready", or what is missing, such as "Lab: Directory needs a URL".
-Click it to open the **lab panel**: one tab per system the scenarios use (directories, databases, REST
-targets, the SOAP services), and **+ add** for one no scenario uses yet. Each tab's badge says ✓ ready,
-! not tested yet, or ✕ missing.
+Click it to open the **lab panel**: on the left, the list of the systems the scenarios use and the ones
+the profile configures (directories, databases, REST targets, the SOAP services), with **+ add** for
+one no scenario uses yet; on the right, the selected system's form. Each entry's badge says ✓ ready,
+! not tested yet, or ✕ missing. A long list scrolls on its own, and **Find connections** narrows it by
+name, kind or identifier (the form shown stays until you pick another entry); the arrow keys, Home and
+End move through the list. On a narrow window the list sits above the form.
 
-Each tab is a form for that system's settings: URL, base DN, bind DN, user and so on.
+Each form shows the system's **Identifier** (`directory:ad`, `database:sap`, `rest:idm`, `ldap`,
+`soap`: what scenarios and the profile file name it by, never changed here), then its settings: a
+**Label**, URL, base DN, bind DN, user and so on. The label is the name the list shows, for this profile
+only; leave it empty for the usual name ("Database sap"). A label in `config/application.yml` applies
+to every profile until the profile sets its own. Labels change nothing in runs (see [Connection
+labels](../reference/configuration.md#connection-labels)).
 
 - **Save** writes the plain settings to `config/application-<profile>.yml` and the passwords to
   `secrets.env`, the files `idmtest run` reads. The profile file is edited in place: its comments and
@@ -190,6 +199,20 @@ reference the environment sets) shows "from the environment" and cannot be chang
 chosen, runs that include those scenarios are blocked with the chip's message; an invalid value blocks
 every run.
 
+**Delete connection** removes a system's block from `config/application-<profile>.yml`, after you
+confirm, and keeps the file's comments and other settings; `secrets.env` is not changed, so review its
+passwords separately. It is refused, with the reason under the button, when:
+
+- a scenario uses the system (the scenarios are named), or it is the default directory;
+- a scenario does not load, or names its directory, database or target with `${…}`, so it might use
+  it (the scenarios are named);
+- `config/application.yml` or an environment variable configures it, even when the profile only sets
+  its label: deleting the profile's block would not remove it;
+- the profile has no settings for it, or its file cannot be written;
+- the form has unsaved edits, or the tab is read-only.
+
+The check is made again when you confirm, so a scenario saved in the meantime still stops the delete.
+
 **Test connection** tests the form's current values, saved or not, after the same checks a run makes
 before it contacts anything (no placeholder URL, no in-memory database):
 
@@ -214,6 +237,16 @@ scenarios of the run count — the active scenario for **Run**, the folder's for
 scenario for **Run all scenarios**, the ones with a finding or a setup problem for **Run only the ones
 that found something** — so a system that only other scenarios use does not stop it; the blocked
 entries of the Run menu say why when you point at them.
+
+### Create a profile
+
+**New profile**, next to the Profile picker, asks for a name (letters, digits, `.`, `-` and `_`) and
+shows the file it creates, `config/application-<name>.yml`. The file starts as the commented template
+`idmtest init` writes, with no settings of its own; nothing is copied from the selected profile, and
+the settings of `config/application.yml` still apply to it. A name already used by a profile, in any
+mix of capitals, is refused and no file is ever overwritten. The new profile is then selected and its
+lab panel opens. With unsaved edits in the lab panel, the workbench asks first, as when switching
+profiles. Not offered in a read-only tab.
 
 ## Edit and save
 

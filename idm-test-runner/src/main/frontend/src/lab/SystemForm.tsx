@@ -269,10 +269,9 @@ export function SystemForm({ system, existingIds, profile, readOnly, hidden, lab
           if (field.state === 'application.yml') notes.push(t('ui.lab.fromApplicationYml'));
           const needed = field.required && field.state === 'not set' && !(field.key in edits && edits[field.key] !== '') && !typed.has(field.key);
           const describedBy = `${id}-notes`;
-          const fieldLabel = field.key === 'label' ? t('ui.lab.field.label') : field.label;
           const label = (
             <label htmlFor={id}>
-              {fieldLabel}
+              {field.label}
               {field.secret && <span aria-hidden="true"> 🔒</span>}
             </label>
           );

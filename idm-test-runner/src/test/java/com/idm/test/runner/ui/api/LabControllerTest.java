@@ -304,8 +304,38 @@ class LabControllerTest {
         String before = Files.readString(profile);
         Response refused = UiHttp.send(server, "DELETE", "/api/lab?profile=lab&systemId=database%3Ahr", null);
         assertThat(refused.status()).as(refused.body()).isEqualTo(400);
-        assertThat(refused.body()).contains("use-hr.yaml");
+        assertThat(JSON.readTree(refused.body()).get("key").asString()).isEqualTo("ui.lab.deleteBlocked.referenced");
+        assertThat(JSON.readTree(refused.body()).get("message").asString())
+                .isEqualTo("cannot delete database:hr: these scenarios use it: use-hr.yaml");
+        Response spanish = UiHttp.send(server, "DELETE", "/api/lab?profile=lab&systemId=database%3Ahr", null,
+                Map.of("Accept-Language", "es"));
+        assertThat(JSON.readTree(spanish.body()).get("message").asString())
+                .isEqualTo("no se puede eliminar database:hr: estos escenarios la usan: use-hr.yaml");
         assertThat(Files.readString(profile)).isEqualTo(before);
+    }
+
+    @Test
+    @DisplayName("A block Delete cannot remove alone is a conflict, and a dynamic name is explained")
+    void testDeleteMessages() throws IOException {
+        Path ws = openWorkspace(server);
+        Files.delete(ws.resolve("scenarios/example.yaml"));
+        Path profile = ws.resolve("config/application-lab.yml");
+        Files.writeString(profile, "idm:\n  test:\n    databases:\n      hr: {jdbc-url: jdbc:postgresql://hr/db}\n");
+        String before = Files.readString(profile);
+
+        Response conflict = UiHttp.send(server, "DELETE", "/api/lab?profile=lab&systemId=database%3Ahr", null);
+
+        assertThat(conflict.status()).as(conflict.body()).isEqualTo(409);
+        assertThat(JSON.readTree(conflict.body()).get("message").asString()).isEqualTo("cannot delete database:hr: its settings"
+                + " cannot be removed from config/application-lab.yml without changing others; edit the file by hand");
+        assertThat(Files.readString(profile)).isEqualTo(before);
+
+        Files.writeString(ws.resolve("scenarios/dynamic.yaml"),
+                "name: Dynamic\nsteps:\n  - db.query:\n      database: ${which}\n      sql: select 1\n");
+        Response uncertain = UiHttp.send(server, "DELETE", "/api/lab?profile=lab&systemId=database%3Ahr", null);
+        assertThat(JSON.readTree(uncertain.body()).get("message").asString()).isEqualTo("cannot delete database:hr: whether"
+                + " these scenarios use it is not known, because they do not load or name connections with ${...}:"
+                + " dynamic.yaml");
     }
 
     @Test

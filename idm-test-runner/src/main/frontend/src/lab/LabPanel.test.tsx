@@ -112,7 +112,6 @@ describe('Lab panel', () => {
     const panel = await screen.findByRole('dialog');
     const form = within(panel).getByRole('tabpanel');
     expect(within(form).getByRole('button', { name: 'Eliminar conexión' })).toBeDisabled();
-    expect(within(form).getByLabelText('Etiqueta')).toBeInTheDocument();
     expect(form).toHaveTextContent('La usan los escenarios');
     expect(form).toHaveTextContent('uso.yaml');
   });

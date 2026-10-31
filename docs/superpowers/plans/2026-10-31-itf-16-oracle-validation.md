@@ -1,6 +1,6 @@
 # ITF-16 Oracle Validation Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Reproduce Oracle 21c XE connection validation failure and verify JDBC validation with a repeatable integration test.
 
@@ -42,9 +42,9 @@
 - Consumes: `DatabaseConfiguration.jdbcTemplates(DatabaseProperties): Map<String, JdbcTemplate>` and `DatabaseConfiguration.destroy(): void`.
 - Produces: `OracleConnectionValidationIT.validatesOracleConnectionOnFirstUse(): void`, executable with Surefire's `-Dtest` override.
 
-- [ ] **Step 1: Establish the execution environment.** Inspect the selected Docker daemon and Java version. Use an existing compatible x86 daemon/VM if available; obtain user input if its location is unknown. Do not provision a VM or change Docker contexts silently. If unavailable, continue implementation and default verification but mark real Oracle reproduction outstanding.
-- [ ] **Step 2: Add the fixture dependency.** Add test-scoped `org.testcontainers:testcontainers` using Spring Boot dependency management, consistent with the existing Testcontainers generation. Use `GenericContainer<?>` so no Oracle-specific module or version override is needed.
-- [ ] **Step 3: Write `validatesOracleConnectionOnFirstUse()`.** Start the pinned container with a disposable `ORACLE_PASSWORD`, expose 1521 dynamically, and wait for `DATABASE IS READY TO USE!` with a five-minute startup timeout. Connect to service `XEPDB1` using `system` and `oracle.jdbc.OracleDriver`. Derive the URL from `getHost()` and `getMappedPort(1521)`.
+- [x] **Step 1: Establish the execution environment.** Inspect the selected Docker daemon and Java version. Use an existing compatible x86 daemon/VM if available; obtain user input if its location is unknown. Do not provision a VM or change Docker contexts silently. If unavailable, continue implementation and default verification but mark real Oracle reproduction outstanding.
+- [x] **Step 2: Add the fixture dependency.** Add test-scoped `org.testcontainers:testcontainers` using Spring Boot dependency management, consistent with the existing Testcontainers generation. Use `GenericContainer<?>` so no Oracle-specific module or version override is needed.
+- [x] **Step 3: Write `validatesOracleConnectionOnFirstUse()`.** Start the pinned container with a disposable `ORACLE_PASSWORD`, expose 1521 dynamically, and wait for `DATABASE IS READY TO USE!` with a five-minute startup timeout. Connect to service `XEPDB1` using `system` and `oracle.jdbc.OracleDriver`. Derive the URL from `getHost()` and `getMappedPort(1521)`.
 
   Before exercising the pool, use `DriverManager.getConnection` to assert the server version is 21 and that direct `SELECT 1 FROM DUAL` returns 1. This distinguishes fixture and SQL errors from pool validation errors. Configure one named database through `DatabaseProperties`; then make this assertion through the production `JdbcTemplate`:
 
@@ -54,7 +54,7 @@
 
   Put production configuration cleanup in an inner `finally`, with container cleanup in the outer resource scope, so failures close resources in the correct order. Start the container within its cleanup scope as well. Use JUnit assertions, not assumptions or disabled-without-Docker annotations.
 
-- [ ] **Step 4: Run the integration test before changing production code.**
+- [x] **Step 4: Run the integration test before changing production code.**
 
   ```sh
   ./mvnw test -pl idm-connector-database -am -Dtest=OracleConnectionValidationIT -Dsurefire.failIfNoSpecifiedTests=false
@@ -62,8 +62,8 @@
 
   Expected on a compatible environment: direct Oracle probe succeeds, production pool fails with an Oracle SQL error attributable to `SELECT 1`. Record the actual exception and Oracle error code; do not assume a code or count an architecture/connectivity failure as reproduction. If the production pool unexpectedly passes, investigate before applying the proposed fix.
 
-- [ ] **Step 5: Document the fixture.** In the module README include the exact command above, Java 25, x86 Docker requirement, image pin, first-run download/startup cost, automatic cleanup, and how to use an already configured compatible Docker endpoint. Record observed before-fix evidence or explicitly state it remains unverified.
-- [ ] **Step 6: Commit only Task 1 files.** Use `test: add explicit Oracle 21c XE validation reproduction`.
+- [x] **Step 5: Document the fixture.** In the module README include the exact command above, Java 25, x86 Docker requirement, image pin, first-run download/startup cost, automatic cleanup, and how to use an already configured compatible Docker endpoint. Record observed before-fix evidence or explicitly state it remains unverified.
+- [x] **Step 6: Commit only Task 1 files.** Use `test: add explicit Oracle 21c XE validation reproduction`.
 
 ### Task 2: Switch validation to JDBC and verify
 
@@ -76,7 +76,7 @@
 - Consumes: Task 1's `OracleConnectionValidationIT` and production configuration API.
 - Produces: unchanged configuration API with `HikariDataSource.getConnectionTestQuery() == null`.
 
-- [ ] **Step 1: Add `testUsesJdbcValidationWithoutStartingPool()`.** Build an H2-backed template with the existing fixture helper, retrieve its `HikariDataSource`, and assert both configuration properties before any query:
+- [x] **Step 1: Add `testUsesJdbcValidationWithoutStartingPool()`.** Build an H2-backed template with the existing fixture helper, retrieve its `HikariDataSource`, and assert both configuration properties before any query:
 
   ```java
   assertThat(dataSource.getConnectionTestQuery()).isNull();
@@ -85,7 +85,7 @@
 
   Close the configuration in `finally`.
 
-- [ ] **Step 2: Verify the regression test fails.**
+- [x] **Step 2: Verify the regression test fails.**
 
   ```sh
   ./mvnw test -pl idm-connector-database -am -Dtest=DatabaseConfigurationTest -Dsurefire.failIfNoSpecifiedTests=false
@@ -93,12 +93,34 @@
 
   Expected: the new null-query assertion fails because the configured value is `SELECT 1`.
 
-- [ ] **Step 3: Apply the minimal fix.** Remove `hikariConfig.setConnectionTestQuery("SELECT 1")` in `createDataSource(String, DatabaseProperties.DatabaseConfig): DataSource`. Add a brief comment explaining JDBC validation avoids database-specific validation SQL. Preserve all other pool settings and lifecycle code.
-- [ ] **Step 4: Run the default connector tests and dependencies.** Run `./mvnw test -pl idm-connector-database -am`. Expected: all tests pass, including existing first-use/unreachable database and shutdown tests; `OracleConnectionValidationIT` does not run.
-- [ ] **Step 5: Rerun Task 1's explicit Oracle command.** Expected: the same server version and direct probe pass, and the production query returns 1. Inspect Surefire results to verify the integration test actually ran. If the environment is unavailable, record that limitation and leave this step unchecked.
-- [ ] **Step 6: Document results and review the diff.** Record the actual Oracle before/after outcome and commands in the module README. Confirm no unrelated changes or container credentials were included. Do not claim Oracle compatibility verified or mark ITF-16 resolved without the real run.
-- [ ] **Step 7: Commit only Task 2 files.** Use `fix: use JDBC connection validation for database pools`.
+- [x] **Step 3: Apply the minimal fix.** Remove `hikariConfig.setConnectionTestQuery("SELECT 1")` in `createDataSource(String, DatabaseProperties.DatabaseConfig): DataSource`. Add a brief comment explaining JDBC validation avoids database-specific validation SQL. Preserve all other pool settings and lifecycle code.
+- [x] **Step 4: Run the default connector tests and dependencies.** Run `./mvnw test -pl idm-connector-database -am`. Expected: all tests pass, including existing first-use/unreachable database and shutdown tests; `OracleConnectionValidationIT` does not run.
+- [x] **Step 5: Rerun Task 1's explicit Oracle command.** Expected: the same server version and direct probe pass, and the production query returns 1. Inspect Surefire results to verify the integration test actually ran. If the environment is unavailable, record that limitation and leave this step unchecked.
+- [x] **Step 6: Document results and review the diff.** Record the actual Oracle before/after outcome and commands in the module README. Confirm no unrelated changes or container credentials were included. Do not claim Oracle compatibility verified or mark ITF-16 resolved without the real run.
+- [x] **Step 7: Commit only Task 2 files.** Use `fix: use JDBC connection validation for database pools`.
 
 ## Self-review
 
 The two tasks cover the approved scope: real Oracle reproduction, minimal JDBC validation fix, default regression coverage, lazy lifecycle preservation, explicit execution documentation, bounded readiness, and cleanup. The x86 execution environment remains an external prerequisite, and no H2 result substitutes for Oracle evidence.
+
+## Execution results (2026-10-31)
+
+- Implemented on `codex/itf-16-oracle-validation` in an isolated managed worktree.
+- User supplied an existing Oracle 21c XE database. Added opt-in external mode
+  (`ORACLE_IT_JDBC_URL`, `ORACLE_IT_USERNAME`, `ORACLE_IT_PASSWORD_FILE`) to the
+  same integration test; the pinned container remains the default.
+- Oracle RED: direct probe succeeded; production pool failed with ORA-00923
+  (error 923) for validation SQL `SELECT 1`. Oracle GREEN: identical test passed
+  after removing the override. Default configuration regression also failed
+  before the fix and passed afterward.
+- Connector reactor tests passed. Full Maven run passed all 1,494 Java tests,
+  but frontend test `delete asks first and removes the file` exceeded 5 seconds
+  (385 other frontend tests passed). Its file passed alone (26/26), and the
+  entire frontend suite passed with `vitest run --maxWorkers=2` (386/386).
+  No frontend code or timeout settings were changed. The original full Maven
+  invocation therefore remains recorded as a failure, not a green full build.
+- Independent final review: no actionable findings; no behaviors declined.
+- Container mode remains unexecuted locally because the daemon is ARM64.
+- The reproduction commit intentionally precedes the fix; task completion was
+  recorded only once both verification runs passed. Checking out that
+  intermediate commit reproduces the defect.

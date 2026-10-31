@@ -47,3 +47,17 @@ After removing the hardcoded validation query, the same integration test passed
 reactor dependencies also passed, including the lazy-pool regression checks.
 Container mode has not been executed on the local ARM64 Docker environment;
 the before/after result was verified against an existing Oracle 21c XE database.
+
+Full-project verification on the same date passed all 1,494 Java tests. The
+initial frontend run had one 5-second timeout in `delete asks first and removes
+the file` (385 other tests passed). The affected file passed on its own (26/26),
+and all frontend tests passed with two workers (386/386), without source or
+assertion changes:
+
+```sh
+# From idm-test-runner/src/main/frontend, after Maven has installed its Node runtime:
+../../../target/node/node node_modules/vitest/vitest.mjs run --maxWorkers=2
+```
+
+The initial unmodified full Maven invocation is recorded as a failure due to
+that frontend timeout; it is not claimed as a green full build.

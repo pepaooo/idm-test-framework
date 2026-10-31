@@ -105,8 +105,7 @@ public class DatabaseConfiguration implements DisposableBean {
         hikariConfig.setIdleTimeout(config.getIdleTimeout());
         hikariConfig.setMaxLifetime(config.getMaxLifetime());
 
-        // Additional HikariCP settings for test stability
-        hikariConfig.setConnectionTestQuery("SELECT 1");
+        // Use JDBC Connection.isValid(): validation SQL differs between databases (ITF-16).
         hikariConfig.setValidationTimeout(5000);
         hikariConfig.setLeakDetectionThreshold(60000);
 

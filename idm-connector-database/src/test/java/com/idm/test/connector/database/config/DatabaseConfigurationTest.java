@@ -41,6 +41,22 @@ class DatabaseConfigurationTest {
     }
 
     @Test
+    @DisplayName("Pools use JDBC validation and stay unstarted until first use")
+    void testUsesJdbcValidationWithoutStartingPool() {
+        DatabaseProperties properties = new DatabaseProperties();
+        properties.setDatabases(Map.of("jdbc-validation", h2("jdbc:h2:mem:jdbc-validation")));
+        DatabaseConfiguration configuration = new DatabaseConfiguration();
+        try {
+            HikariDataSource dataSource = (HikariDataSource) configuration.jdbcTemplates(properties)
+                    .get("jdbc-validation").getDataSource();
+            assertThat(dataSource.getConnectionTestQuery()).isNull();
+            assertThat(dataSource.getHikariPoolMXBean()).isNull();
+        } finally {
+            configuration.destroy();
+        }
+    }
+
+    @Test
     @DisplayName("Pools are built without connecting, so an unreachable database does not stop startup")
     void testUnreachableDatabaseDoesNotFailStartup() {
         assertThatCode(() -> new DatabaseConfiguration().jdbcTemplates(properties()))

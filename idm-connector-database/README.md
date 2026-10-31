@@ -42,5 +42,8 @@ On 2026-10-31 the external-database mode reproduced the issue on Oracle 21c XE:
 the direct JDBC probe passed, then the production pool failed with
 `CannotGetJdbcConnectionException` caused by `ORA-00923: FROM keyword not found
 where expected`. Oracle reported error code 923 for validation SQL `SELECT 1`.
-After-fix verification is pending. Container mode has not been executed on the
-local ARM64 Docker environment.
+After removing the hardcoded validation query, the same integration test passed
+(1 test, no failures, errors, or skips). The default connector suite and its
+reactor dependencies also passed, including the lazy-pool regression checks.
+Container mode has not been executed on the local ARM64 Docker environment;
+the before/after result was verified against an existing Oracle 21c XE database.

@@ -4,10 +4,21 @@ This document explains how to configure the IdM Test Framework for your environm
 
 ## Configuration File Location
 
-The main configuration file is `application.yml` located in:
-- `idm-test-scenarios/src/test/resources/application.yml`
+The Maven/JUnit scenarios use these files in `idm-test-scenarios/src/test/resources/`:
 
-This file serves as the template for all environments.
+| File | Purpose |
+|---|---|
+| `application.yml` | Shared defaults and `spring.profiles.active: ${IDM_TEST_PROFILE:default}` |
+| `application-dev.yml` | Generic development overrides |
+| `application-test.yml` | Embedded/CI overrides |
+| `application-prod.yml` | Production-like overrides |
+| `application-local.yml.example` | Template for a personal lab profile |
+| `application-local.yml` | Your own lab connections; ignored by Git |
+
+Spring loads the shared file for every profile, then the matching `application-<profile>.yml`.
+Only keys in that profile file override the shared values. Keep a profile's settings in its own
+file: a `---` document with `spring.config.activate.on-profile` in `application.yml` would create
+a second source for the same profile and make precedence harder to review.
 
 ## Configuration Structure
 
@@ -25,26 +36,63 @@ idm:
 
 The framework supports multiple profiles:
 
-- **default** - Local development with embedded/mock services
+- **default** - Shared local/placeholder values; the embedded suite selects `test`
 - **dev** - Development environment with real services
 - **test** - CI/CD test environment (uses H2, WireMock)
 - **prod** - Production-like integration environment
+- **local** - Your own lab connections, inherited from shared defaults
 
-Activate a profile:
+Select a profile for the real-environment scenario runner:
 ```bash
 export IDM_TEST_PROFILE=dev
-mvn test
+./mvnw -pl idm-test-scenarios -am test -Dtest=RealEnvironmentScenarios -Dsurefire.failIfNoSpecifiedTests=false
 ```
 
-Or in your IDE/Maven command:
+Or pass the Spring profile in your Maven command:
 ```bash
-mvn test -Dspring.profiles.active=dev
+./mvnw -pl idm-test-scenarios -am test -Dtest=RealEnvironmentScenarios -Dsurefire.failIfNoSpecifiedTests=false -Dspring.profiles.active=dev
 ```
 
-## Workspace configuration
+For a personal lab, copy `application-local.yml.example` to `application-local.yml`, set only the
+connections your scenarios use, and run with `IDM_TEST_PROFILE=local`. This `local` file inherits
+shared timeouts, logging, OAuth clients, and other undeclared settings; it does not inherit the
+`dev` profile. Store passwords in environment variables, not in the file.
 
-The `idmtest` runner ([guide](../guides/runner.md)) reads its settings from the workspace's `config/`
-folder instead of `application.yml`, with the same `idm.test.*` keys:
+An overridden profile value still honors the same variables as the shared file. For example,
+`application-dev.yml` has `url: ${IDM_LDAP_URL:ldap://dev-edirectory.company.com:389}`: with
+`IDM_LDAP_URL` unset, it uses the development fallback; with it set, the variable wins. The same
+pattern applies to `test` and `prod`, including `SAP_DB_URL`, `IDM_SOAP_URL`, and REST URLs.
+Spring's direct property variable `IDM_TEST_LDAP_URL` also works and takes precedence over a YAML
+placeholder. The `test` profile keeps its embedded defaults when no variables are set.
+
+For configuration outside the repository, place `application-local.yml` in an external folder and
+add that folder to Spring's search path, for example:
+
+```bash
+IDM_TEST_PROFILE=local ./mvnw -pl idm-test-scenarios -am test \
+  -Dtest=RealEnvironmentScenarios -Dsurefire.failIfNoSpecifiedTests=false \
+  -Dspring.config.additional-location=optional:file:/path/to/private-config/
+```
+
+The directory path ends in `/`. Spring loads its `application-local.yml` after the classpath files,
+so the external profile file wins for duplicate keys. Alternatively, put this in your ignored
+`application-local.yml` to import a single external file:
+
+```yaml
+spring:
+  config:
+    import: optional:file:/path/to/private-lab.yml
+```
+
+The imported file wins over the file that declares the import. Keep external files with secrets
+outside version control. See [Spring Boot external configuration](https://docs.spring.io/spring-boot/reference/features/external-config.html).
+
+## Workspace configuration (runner and frontend workbench)
+
+The `idmtest` runner and frontend workbench ([guide](../guides/runner.md)) read settings from the
+selected workspace's `config/` folder, not the Maven/JUnit scenario files above. A repository
+`application-local.yml` does not automatically appear in the workbench. The workspace uses the
+same `idm.test.*` keys:
 
 - `config/application-<profile>.yml`: one file per environment, chosen with `--profile <profile>`
   (required for `run`; a profile name may not contain `/`, `\` or `..`)
@@ -452,75 +500,68 @@ In an IDE, add the same three `-Djavax.net.ssl.*` options to the run configurati
 
 ## Profile Examples
 
-### Local Development (default)
+### Shared defaults (`application.yml`)
 
 ```yaml
-# Uses embedded services, mocks, or localhost
+# Shared placeholders; the test profile overrides these for embedded runs
 idm:
   test:
     ldap:
-      url: ldap://localhost:389
+      url: ${IDM_LDAP_URL:ldap://localhost:389}
     databases:
       test-db:
         jdbc-url: jdbc:h2:mem:testdb
     soap:
-      url: http://localhost:8090  # WireMock
+      url: ${IDM_SOAP_URL:https://idm.company.com:8543/IDMProv/role/service}
 ```
 
-### Development Environment (dev)
+### Development Environment (`application-dev.yml`)
 
 ```yaml
-spring:
-  config:
-    activate:
-      on-profile: dev
-
 idm:
   test:
     ldap:
-      url: ldap://dev-edirectory.company.com:389
+      url: ${IDM_LDAP_URL:ldap://dev-edirectory.company.com:389}
     databases:
       sap:
-        jdbc-url: jdbc:postgresql://dev-db.company.com:5432/sap_dev
+        jdbc-url: ${SAP_DB_URL:jdbc:postgresql://dev-db.company.com:5432/sap_dev}
 ```
 
-### CI/CD Testing (test)
+### CI/CD Testing (`application-test.yml`)
 
 ```yaml
-spring:
-  config:
-    activate:
-      on-profile: test
-
-# Uses Testcontainers, H2, WireMock
+# Embedded H2/LDAP/WireMock fallbacks; ContainerScenarios supplies container endpoints
 idm:
   test:
     databases:
       sap:
-        jdbc-url: jdbc:h2:mem:sap_test;MODE=PostgreSQL
+        jdbc-url: ${SAP_DB_URL:jdbc:h2:mem:sap_test;MODE=PostgreSQL}
 ```
 
-### Production-Like (prod)
+### Production-Like (`application-prod.yml`)
 
 ```yaml
-spring:
-  config:
-    activate:
-      on-profile: prod
-
 idm:
   test:
     ldap:
-      url: ldaps://prod-edirectory.company.com:636  # Secure LDAP
+      url: ${IDM_LDAP_URL:ldaps://prod-edirectory.company.com:636}
     databases:
       sap:
-        jdbc-url: jdbc:postgresql://prod-db.company.com:5432/sap
+        jdbc-url: ${SAP_DB_URL:jdbc:postgresql://prod-db.company.com:5432/sap}
         max-pool-size: 10
 ```
 
+### Personal Lab (`application-local.yml`)
+
+Copy `application-local.yml.example`, replace its example connections with your lab addresses,
+and export the credential variables it references. Declare only the settings your lab changes.
+Run Maven/JUnit scenarios with `IDM_TEST_PROFILE=local`; the frontend workbench uses its own
+workspace `config/application-local.yml` instead.
+
 ## Adding a New Database
 
-1. Add configuration to `application.yml`:
+1. Add shared configuration to `application.yml`, or put a lab-only connection in
+   `application-local.yml`:
 
 ```yaml
 idm:
@@ -551,7 +592,8 @@ databaseConnector.executeQuery("my-new-app", "SELECT * FROM users WHERE id = ?",
 
 ## Adding a New REST API
 
-1. Add configuration to `application.yml`:
+1. Add shared configuration to `application.yml`, or put a lab-only target in
+   `application-local.yml`:
 
 ```yaml
 idm:
@@ -591,13 +633,18 @@ Test your configuration:
 ./mvnw -pl idm-test-scenarios -am test -Dtest=ConfigurationTest -Dsurefire.failIfNoSpecifiedTests=false
 ```
 
-This will verify all properties load correctly.
+This verifies the embedded `test` profile. `ProfileConfigurationTest` checks the shared,
+`dev`, `test`, `prod`, and example `local` configuration:
+
+```bash
+./mvnw -pl idm-test-scenarios -am test -Dtest=ProfileConfigurationTest -Dsurefire.failIfNoSpecifiedTests=false
+```
 
 ## Troubleshooting
 
 ### Configuration not loading
 
-- Check `application.yml` syntax (YAML is sensitive to indentation)
+- Check `application.yml` and the selected `application-<profile>.yml` syntax (YAML is sensitive to indentation)
 - Verify profile is active: add `-Dspring.profiles.active=yourprofile`
 - Check for typos in property names
 
@@ -623,8 +670,8 @@ This will verify all properties load correctly.
 ## Best Practices
 
 1. **Never commit secrets** - Always use environment variables
-2. **Use profiles** - Separate dev, test, and prod configurations
-3. **Document custom settings** - Add comments to application.yml
+2. **Use profiles** - Keep dev, test, prod, and local overrides in separate files
+3. **Document custom settings** - Add comments to the file that declares them
 4. **Test configurations** - Run ConfigurationTest after changes
 5. **Use defaults wisely** - Provide sensible defaults for local development
 6. **Keep timeouts reasonable** - Balance between waiting for provisioning and test speed

@@ -7,7 +7,7 @@ embedded LDAP, WireMock and H2 the rest of the suite uses. They are run by
 ## Running
 
 ```bash
-IDM_TEST_PROFILE=dev ./mvnw test -pl idm-test-scenarios -am \
+IDM_TEST_PROFILE=local ./mvnw test -pl idm-test-scenarios -am \
   -Dtest=RealEnvironmentScenarios -Dsurefire.failIfNoSpecifiedTests=false
 ```
 
@@ -89,39 +89,31 @@ When your scenarios use `ldap.*`, a real directory genuinely reachable at `ldap:
 is refused too, because that is the placeholder value — point it at `ldap://127.0.0.1:389`
 instead (or any other address) to run against it.
 
-### Profiles override the `IDM_*` variables — use `IDM_TEST_*` instead
+### Profile files and environment variables
 
-`application.yml` has three documents: the default one (where `idm.test.ldap.url`,
-`base-dn`, `user-dn`, `soap.url` and the REST/JDBC URLs are `${IDM_LDAP_URL:...}`-style
-placeholders), and `dev`/`prod` documents that load after it and hardcode those same keys.
-A later profile document overrides the default one, so under `IDM_TEST_PROFILE=dev` or
-`IDM_TEST_PROFILE=prod`, setting `IDM_LDAP_URL` or `IDM_SOAP_URL` has no effect:
+`application.yml` supplies shared defaults. `application-dev.yml`, `application-test.yml`,
+`application-prod.yml`, or the ignored `application-local.yml` supplies only the overrides for
+the active profile. Select your own lab with `IDM_TEST_PROFILE=local`; copy
+`application-local.yml.example` if you are starting a new one. The `local` file inherits the
+shared settings, not the `dev` profile. These are the Maven/JUnit scenario files, separate from
+the frontend workbench's workspace `config/` files.
 
-- Under `dev`, `idm.test.ldap.url`, `base-dn`, `user-dn`, `soap.url`, the `sap`/`oracle-hr`/
-  `workday` JDBC URLs, and the `idm`/`sap`/`workday` REST base URLs are all hardcoded in the
-  `dev` block.
-- Under `prod`, the same keys are hardcoded in the `prod` block — and `prod`'s `soap.url` is
-  exactly `https://idm.company.com:8543/IDMProv/role/service`, the placeholder value. That
-  means **a `prod` run whose scenarios use `roles.*` is refused by the LDAP/SOAP URL check
-  until you override it**, since the profile's own value is indistinguishable from nobody
-  having named a target. A `prod` run whose scenarios don't use `roles.*` is not affected,
-  since that check only looks at the SOAP URL when `roles.*` is used.
+An overridden connection value in the committed profile files uses the same variable as the
+shared file, with that profile's old value as its fallback. For example, `IDM_LDAP_URL` and
+`IDM_SOAP_URL` now work under `dev`, `test`, and `prod`. The database variables (`SAP_DB_URL`,
+`HR_DB_URL`, `WORKDAY_DB_URL`) and REST variables (`IDM_REST_URL`, `SAP_REST_URL`, etc.) do too.
+You can also set the Spring property directly with its relaxed-binding environment name,
+for example `IDM_TEST_LDAP_URL`, `IDM_TEST_SOAP_URL`, or `IDM_TEST_REST_IDM_BASEURL`;
+that takes precedence over the YAML value. For a named directory, use its own property
+(`IDM_TEST_DIRECTORIES_<NAME>_URL`) or a placeholder in your local file.
 
-To point at a different host without editing `application.yml`, set the Spring property
-itself as an environment variable, using its relaxed-binding form, for example
-`IDM_TEST_LDAP_URL`, `IDM_TEST_SOAP_URL` or `IDM_TEST_REST_IDM_BASEURL`. OS environment
-variables outrank every profile document, so these work under any profile, including `dev`
-and `prod`.
+The guards still reject values that equal their placeholders. In particular, `prod`'s SOAP URL
+and its `idm`, `sap`, and `workday` REST URLs have the same fallback values as the shared
+placeholders. Set a real target URL when a selected scenario uses one of them.
 
-The same applies to REST targets, for three of the four. `prod` hardcodes `idm`, `sap` and
-`workday`'s REST `base-url` to exactly their placeholder values, so a `prod` run whose
-scenarios use one of those targets is refused until that target's
-`IDM_TEST_REST_<TARGET>_BASEURL` is set, for example `IDM_TEST_REST_IDM_BASEURL`. `prod`'s
-`servicenow` base-url is `https://company.service-now.com/api`, which is not its placeholder
-(`https://instance.service-now.com/api`), so a `servicenow` target is not refused.
-
-Usernames and passwords still come from the `IDM_*`, `SAP_DB_*`, `HR_DB_*` and `WORKDAY_DB_*`
-variables listed below, since neither `dev` nor `prod` overrides those keys.
+Usernames and passwords that a profile does not override still come from the shared file's
+`IDM_*`, `SAP_DB_*`, `HR_DB_*`, and `WORKDAY_DB_*` placeholders. Keep actual credentials in
+environment variables, never in a committed profile file.
 
 The runner checks, and connects to, **only what the selected scenarios use**. A repository no
 scenario touches can stay as `application.yml`'s placeholder, and it is never contacted. The one
@@ -148,7 +140,7 @@ Database pools open on first use: a used database that cannot be reached fails t
 that touches it, not the whole run. A name written as `${...}` is only known at run time and is
 not checked in advance.
 
-Credentials come from the environment variables `application.yml` already references:
+Credentials come from the environment variables the shared and profile files reference:
 `IDM_LDAP_URL`, `IDM_LDAP_USER_DN`, `IDM_LDAP_PASSWORD`, `IDM_SOAP_URL`, `IDM_SOAP_USER`,
 `IDM_SOAP_PASSWORD`, `IDM_REST_URL`, `IDM_REST_USER`, `IDM_REST_PASSWORD`, `SAP_DB_*`,
 `HR_DB_*`, `WORKDAY_DB_*`, and the OAuth2 clients' `SAP_CLIENT_ID`/`SAP_CLIENT_SECRET`,

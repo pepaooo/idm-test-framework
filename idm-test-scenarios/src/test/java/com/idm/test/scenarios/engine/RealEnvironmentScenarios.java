@@ -44,8 +44,9 @@ import java.util.stream.Stream;
  * environment the active profile names: a real eDirectory, IdM and databases.
  * <p>
  * Deliberately unlike {@link YamlScenarioTest}. It extends nothing, pins no profile and
- * overrides no property, so every {@code idm.test.*} value comes from application.yml and
- * {@code IDM_TEST_PROFILE}. {@code BaseIntegrationTest} cannot be used here, because it pins
+ * overrides no property, so every {@code idm.test.*} value comes from the shared
+ * application.yml, the active {@code application-<profile>.yml}, and environment variables.
+ * {@code BaseIntegrationTest} cannot be used here, because it pins
  * the embedded infrastructure three ways and a profile change defeats none of them.
  * {@code RealEnvironmentScenariosStructureTest} keeps it that way.
  * <p>

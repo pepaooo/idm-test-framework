@@ -84,8 +84,13 @@ without Docker is never asked for one. It accepts `-Dscenario` too.
 ## Against a real lab
 
 ```bash
-IDM_TEST_PROFILE=dev ./mvnw -pl idm-test-scenarios -am test -Dtest=RealEnvironmentScenarios -Dsurefire.failIfNoSpecifiedTests=false
+IDM_TEST_PROFILE=local ./mvnw -pl idm-test-scenarios -am test -Dtest=RealEnvironmentScenarios -Dsurefire.failIfNoSpecifiedTests=false
 ```
+
+Copy `idm-test-scenarios/src/test/resources/application-local.yml.example` to the ignored
+`application-local.yml` in the same folder, then configure only your lab's connections. The
+shared `application.yml` supplies everything else. The committed `dev`, `test`, and `prod`
+profiles use their own files and the same environment-variable convention.
 
 `RealEnvironmentScenarios` runs the scenarios you put in
 `idm-test-scenarios/src/test/resources/scenarios-real/` against the environment your profile and
@@ -100,7 +105,8 @@ environment variables name. Before any scenario runs, it refuses:
 Nothing the selected scenarios don't use is checked or contacted.
 
 [scenarios-real/README.md](../../idm-test-scenarios/src/test/resources/scenarios-real/README.md)
-lists the variables to set and explains why profile values need the `IDM_TEST_*` form.
+lists the variables to set. Both the profile files' `${IDM_*:...}` placeholders and direct
+`IDM_TEST_*` environment overrides work.
 
 ## Without Maven
 

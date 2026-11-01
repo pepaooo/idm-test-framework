@@ -23,7 +23,7 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Tests that verify configuration properties are loaded correctly from application.yml.
+ * Tests that verify configuration properties are loaded from shared and test-profile YAML.
  * This ensures all connectors can access their required configuration.
  * <p>
  * Note: Auto-configurations are excluded to test only property binding without

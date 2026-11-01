@@ -121,8 +121,8 @@ public abstract class BaseIntegrationTest {
 
     /**
      * Point the connectors at the embedded infrastructure.
-     * Everything else comes from src/test/resources/application.yml, so switching to a
-     * real directory in phase (b) is a profile change rather than a code change.
+     * Everything else comes from the shared application.yml and application-test.yml,
+     * so switching to a real directory is a profile change rather than a code change.
      */
     @DynamicPropertySource
     static void configureProperties(DynamicPropertyRegistry registry) {

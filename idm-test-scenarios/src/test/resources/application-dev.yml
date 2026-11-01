@@ -1,0 +1,35 @@
+# =================================================================
+# DEVELOPMENT PROFILE
+# =================================================================
+idm:
+  test:
+    ldap:
+      url: ${IDM_LDAP_URL:ldap://dev-edirectory.company.com:389}
+      base-dn: ${IDM_LDAP_BASE_DN:dc=dev,dc=company,dc=com}
+      user-dn: ${IDM_LDAP_USER_DN:cn=idmadmin,dc=dev,dc=company,dc=com}
+
+    databases:
+      sap:
+        jdbc-url: ${SAP_DB_URL:jdbc:postgresql://dev-db.company.com:5432/sap_dev}
+      oracle-hr:
+        jdbc-url: ${HR_DB_URL:jdbc:oracle:thin:@dev-db.company.com:1521:HRDEV}
+      workday:
+        jdbc-url: ${WORKDAY_DB_URL:jdbc:postgresql://dev-db.company.com:5432/workday_dev}
+
+    soap:
+      url: ${IDM_SOAP_URL:https://dev-idm.company.com:8543/IDMProv/role/service}
+
+    rest:
+      idm:
+        base-url: ${IDM_REST_URL:https://dev-idm.company.com:8543/IDMProv}
+      sap:
+        base-url: ${SAP_REST_URL:https://dev-sap.company.com/api/v1}
+      workday:
+        base-url: ${WORKDAY_REST_URL:https://dev-workday.company.com/api/v1}
+
+logging:
+  level:
+    com.idm.test: TRACE
+    org.springframework.ldap: DEBUG
+    org.springframework.web.client: DEBUG
+    org.springframework.jdbc: DEBUG

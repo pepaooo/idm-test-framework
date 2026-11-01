@@ -1,0 +1,26 @@
+# Copy to application-local.yml in this folder, then set IDM_TEST_PROFILE=local.
+# The copied file is ignored by Git. Declare only connections for your lab;
+# all other settings come from application.yml. Keep passwords in environment variables.
+idm:
+  test:
+    default-directory: edirectory
+    directories:
+      edirectory:
+        url: ${IDM_LDAP_URL:ldaps://directory.example.invalid:636}
+        base-dn: ${IDM_LDAP_BASE_DN:dc=example,dc=invalid}
+        user-dn: ${IDM_LDAP_USER_DN:cn=admin,dc=example,dc=invalid}
+        password: ${IDM_LDAP_PASSWORD}
+    databases:
+      sap:
+        jdbc-url: ${SAP_DB_URL:jdbc:postgresql://database.example.invalid:5432/sap}
+        username: ${SAP_DB_USER:sapuser}
+        password: ${SAP_DB_PASSWORD}
+    soap:
+      url: ${IDM_SOAP_URL:https://idm.example.invalid:8543/IDMProv/role/service}
+      username: ${IDM_SOAP_USER}
+      password: ${IDM_SOAP_PASSWORD}
+    rest:
+      idm:
+        base-url: ${IDM_REST_URL:https://idm.example.invalid:8543/IDMProv}
+        username: ${IDM_REST_USER:idmadmin}
+        password: ${IDM_REST_PASSWORD}

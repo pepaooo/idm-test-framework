@@ -1,0 +1,44 @@
+# =================================================================
+# TEST / CI PROFILE
+# =================================================================
+idm:
+  test:
+    # Use Testcontainers or embedded services
+    ldap:
+      url: ${IDM_LDAP_URL:ldap://localhost:10389}
+      base-dn: ${IDM_LDAP_BASE_DN:dc=test,dc=com}
+      user-dn: ${IDM_LDAP_USER_DN:cn=admin,dc=test,dc=com}
+      password: ${IDM_LDAP_PASSWORD:test}
+
+    databases:
+      sap:
+        jdbc-url: ${SAP_DB_URL:jdbc:h2:mem:sap_test;MODE=PostgreSQL}
+        driver-class-name: org.h2.Driver
+        username: ${SAP_DB_USER:sa}
+        password:
+        max-pool-size: 5
+      oracle-hr:
+        jdbc-url: ${HR_DB_URL:jdbc:h2:mem:hr_test;MODE=Oracle}
+        driver-class-name: org.h2.Driver
+        username: ${HR_DB_USER:sa}
+        password:
+        max-pool-size: 5
+      workday:
+        jdbc-url: ${WORKDAY_DB_URL:jdbc:h2:mem:workday_test}
+        driver-class-name: org.h2.Driver
+        username: ${WORKDAY_DB_USER:sa}
+        password:
+        max-pool-size: 3
+
+    soap:
+      url: ${IDM_SOAP_URL:http://localhost:8090/IDMProv/role/service}  # WireMock
+      connection-timeout: 5000
+      read-timeout: 10000
+
+    executor:
+      default-timeout-seconds: 60  # Shorter timeouts for tests
+      default-poll-interval-seconds: 1
+
+logging:
+  level:
+    com.idm.test: DEBUG

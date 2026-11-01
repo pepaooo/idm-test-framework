@@ -1,0 +1,39 @@
+# =================================================================
+# PRODUCTION PROFILE
+# =================================================================
+idm:
+  test:
+    ldap:
+      url: ${IDM_LDAP_URL:ldaps://prod-edirectory.company.com:636}
+      base-dn: ${IDM_LDAP_BASE_DN:dc=company,dc=com}
+      user-dn: ${IDM_LDAP_USER_DN:cn=idmadmin,dc=company,dc=com}
+
+    databases:
+      sap:
+        jdbc-url: ${SAP_DB_URL:jdbc:postgresql://prod-db.company.com:5432/sap}
+        max-pool-size: 10
+      oracle-hr:
+        jdbc-url: ${HR_DB_URL:jdbc:oracle:thin:@prod-db.company.com:1521:HRPROD}
+        max-pool-size: 10
+      workday:
+        jdbc-url: ${WORKDAY_DB_URL:jdbc:postgresql://prod-db.company.com:5432/workday}
+        max-pool-size: 5
+
+    soap:
+      url: ${IDM_SOAP_URL:https://idm.company.com:8543/IDMProv/role/service}
+      message-logging: false
+
+    rest:
+      idm:
+        base-url: ${IDM_REST_URL:https://idm.company.com:8543/IDMProv}
+      sap:
+        base-url: ${SAP_REST_URL:https://sap.company.com/api/v1}
+      workday:
+        base-url: ${WORKDAY_REST_URL:https://workday.company.com/api/v1}
+      servicenow:
+        base-url: ${SERVICENOW_REST_URL:https://company.service-now.com/api}
+
+logging:
+  level:
+    root: WARN
+    com.idm.test: INFO

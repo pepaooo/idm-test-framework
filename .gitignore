@@ -37,6 +37,10 @@ build/
 
 # Brainstorming visual companion
 .superpowers/
+.worktrees
 
 ### Workbench front end (idm-test-runner/src/main/frontend) ###
 node_modules/
+
+# Personal Maven/JUnit scenario lab settings
+/idm-test-scenarios/src/test/resources/application-local.yml

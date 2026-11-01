@@ -97,6 +97,17 @@ class ProfileConfigurationTest {
     }
 
     @Test
+    void embeddedDatabasePasswordsHonorDocumentedVariables() throws IOException {
+        assertProperties("test", Map.of(
+                "SAP_DB_PASSWORD", "sap-override",
+                "HR_DB_PASSWORD", "hr-override",
+                "WORKDAY_DB_PASSWORD", "workday-override"), Map.of(
+                "idm.test.databases.sap.password", "sap-override",
+                "idm.test.databases.oracle-hr.password", "hr-override",
+                "idm.test.databases.workday.password", "workday-override"));
+    }
+
+    @Test
     void localExampleOverridesConnectionsAndInheritsSharedSettings() throws IOException {
         assertThat(RESOURCES.resolve("application-local.yml.example")).exists();
         assertProperties("local", Map.of(), Map.of(

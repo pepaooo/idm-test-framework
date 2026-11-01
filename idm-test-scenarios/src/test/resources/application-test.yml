@@ -15,19 +15,19 @@ idm:
         jdbc-url: ${SAP_DB_URL:jdbc:h2:mem:sap_test;MODE=PostgreSQL}
         driver-class-name: org.h2.Driver
         username: ${SAP_DB_USER:sa}
-        password:
+        password: ${SAP_DB_PASSWORD:}
         max-pool-size: 5
       oracle-hr:
         jdbc-url: ${HR_DB_URL:jdbc:h2:mem:hr_test;MODE=Oracle}
         driver-class-name: org.h2.Driver
         username: ${HR_DB_USER:sa}
-        password:
+        password: ${HR_DB_PASSWORD:}
         max-pool-size: 5
       workday:
         jdbc-url: ${WORKDAY_DB_URL:jdbc:h2:mem:workday_test}
         driver-class-name: org.h2.Driver
         username: ${WORKDAY_DB_USER:sa}
-        password:
+        password: ${WORKDAY_DB_PASSWORD:}
         max-pool-size: 3
 
     soap:

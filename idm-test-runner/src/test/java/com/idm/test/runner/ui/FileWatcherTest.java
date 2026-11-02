@@ -160,6 +160,51 @@ class FileWatcherTest {
         assertThat(completed.get()).isEqualTo(1);
     }
 
+    @Test
+    @DisplayName("Should complete a late subscription for the old workspace after the switch was processed")
+    void testLateSubscriptionEndsImmediately() throws Exception {
+        Path ws = workspace();
+        Path other = Files.createDirectories(temp.resolve("other/scenarios")).getParent().toRealPath();
+        UiSession session = new UiSession("t", Locale.ENGLISH, ws);
+        watcher = new FileWatcher(session, root -> root.getFileSystem().newWatchService(), RETRY);
+        AtomicInteger firstCompleted = new AtomicInteger();
+        Captured first = new Captured() {
+            @Override
+            public void complete() {
+                firstCompleted.incrementAndGet();
+            }
+        };
+        watcher.subscribe(first, ws);
+        watcher.start();
+
+        session.open(other);
+        long deadline = System.nanoTime() + WITHIN.toNanos();
+        while (firstCompleted.get() == 0 && System.nanoTime() < deadline) {
+            Thread.sleep(20);
+        }
+        assertThat(firstCompleted.get()).isEqualTo(1);
+
+        AtomicInteger lateCompleted = new AtomicInteger();
+        Captured late = new Captured() {
+            @Override
+            public void complete() {
+                lateCompleted.incrementAndGet();
+            }
+        };
+        watcher.subscribe(late, ws);
+        assertThat(lateCompleted.get()).isEqualTo(1);
+
+        AtomicInteger currentCompleted = new AtomicInteger();
+        Captured current = new Captured() {
+            @Override
+            public void complete() {
+                currentCompleted.incrementAndGet();
+            }
+        };
+        watcher.subscribe(current, other);
+        assertThat(currentCompleted.get()).isZero();
+    }
+
     /** A watch service that hands out the given keys once, then nothing; or fails on its first poll. */
     private static final class FakeWatchService implements WatchService {
         private final BlockingQueue<WatchKey> keys;

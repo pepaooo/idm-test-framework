@@ -106,6 +106,14 @@ class WorkspaceGuardTest {
                 .isEqualTo("This workspace is no longer the one open in the workbench (another tab opened y).");
     }
 
+    private static void assertMissing(Response response) {
+        assertThat(response.status()).as(response.body()).isEqualTo(409);
+        JsonNode body = JSON.readTree(response.body());
+        assertThat(body.get("key").asString()).isEqualTo("ui.workspace.missing");
+        assertThat(body.get("message").asString()).isEqualTo(
+                "This link or request does not identify a workspace. Open it from the workbench and try again.");
+    }
+
     /** Every file of {@code workspace} with its content (secrets.env and the profiles included). */
     private static String contents(Path workspace) throws IOException {
         StringBuilder all = new StringBuilder();
@@ -165,10 +173,15 @@ class WorkspaceGuardTest {
     @Test
     @DisplayName("Should refuse a workspace-scoped request that names no workspace")
     void testMissingRefused() throws Exception {
-        assertSwitched(bare("GET", "/api/files/tree", null));
-        assertSwitched(bare("GET", "/api/files?path=scenarios/example.yaml", null));
-        assertSwitched(bare("GET", "/api/lab?profile=lab", null));
-        assertSwitched(bare("GET", "/api/files/events", null));
+        assertMissing(bare("GET", "/api/files/tree", null));
+        assertMissing(bare("GET", "/api/files?path=scenarios/example.yaml", null));
+        assertMissing(bare("GET", "/api/lab?profile=lab", null));
+        assertMissing(bare("GET", "/api/files/events", null));
+        assertMissing(bare("GET", "/reports/20261019-101530-lab/report.html", null));
+
+        assertSwitched(bare("GET", "/api/files/tree?workspace=", null));
+        assertSwitched(UiHttp.request("GET", "/api/files/tree", "127.0.0.1:" + server.port(),
+                Map.of("Cookie", UiHttp.cookie(server), WorkspaceGuard.HEADER, "%ZZ"), null, server.port()));
     }
 
     @Test
@@ -202,5 +215,14 @@ class WorkspaceGuardTest {
         assertThat(response.status()).isEqualTo(409);
         assertThat(JSON.readTree(response.body()).get("message").asString()).isEqualTo(
                 "Este espacio de trabajo ya no es el que está abierto en el banco de trabajo (otra pestaña abrió y).");
+
+        Response missing = UiHttp.request("GET", "/reports/20261019-101530-lab/report.html",
+                "127.0.0.1:" + server.port(),
+                Map.of("Cookie", UiHttp.cookie(server), "Accept-Language", "es"), null, server.port());
+        assertThat(missing.status()).isEqualTo(409);
+        JsonNode body = JSON.readTree(missing.body());
+        assertThat(body.get("key").asString()).isEqualTo("ui.workspace.missing");
+        assertThat(body.get("message").asString()).isEqualTo(
+                "Este enlace o solicitud no identifica un espacio de trabajo. Ábralo desde el banco de trabajo e inténtelo de nuevo.");
     }
 }

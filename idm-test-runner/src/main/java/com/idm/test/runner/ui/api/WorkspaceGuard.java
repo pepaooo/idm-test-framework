@@ -21,8 +21,9 @@ import java.util.List;
  * which workspace it is for — header {@value #HEADER} (the URL-encoded path) on a fetch, query
  * parameter {@value #PARAMETER} where a browser cannot set headers (EventSource, a link) — and is
  * refused with 409 {@code ui.workspace.switched} when that is not the session's current workspace
- * (compared as real paths) or is missing. While no workspace is open, the endpoints answer
- * {@code ui.workspace.none} themselves. The start page's endpoints, health, the schema and
+ * (compared as real paths), or {@code ui.workspace.missing} when no workspace was named. While no
+ * workspace is open, the endpoints answer {@code ui.workspace.none} themselves. The start page's
+ * endpoints, health, the schema and
  * validation do not depend on the workspace and are not checked.
  */
 public final class WorkspaceGuard implements HandlerInterceptor {
@@ -47,7 +48,10 @@ public final class WorkspaceGuard implements HandlerInterceptor {
             return true;
         }
         String claimed = claimed(request);
-        if (claimed == null || !same(claimed, current)) {
+        if (claimed == null) {
+            throw new ApiError(HttpStatus.CONFLICT, Message.of("runner.ui.workspace.missing"));
+        }
+        if (!same(claimed, current)) {
             Path name = current.getFileName();
             throw new ApiError(HttpStatus.CONFLICT, Message.of("runner.ui.workspace.switched",
                     name == null ? current.toString() : name.toString()));
@@ -55,14 +59,14 @@ public final class WorkspaceGuard implements HandlerInterceptor {
         return true;
     }
 
-    /** The workspace the request is for: the header (decoded), else the query parameter; null when neither. */
+    /** The workspace the request is for: the header (decoded), else the query parameter; null only when neither. */
     private static String claimed(HttpServletRequest request) {
         String header = request.getHeader(HEADER);
         if (header != null) {
             try {
                 return URLDecoder.decode(header, StandardCharsets.UTF_8);
             } catch (IllegalArgumentException e) {
-                return null;
+                return "";
             }
         }
         return request.getParameter(PARAMETER);

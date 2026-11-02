@@ -113,6 +113,11 @@ public class FileWatcher implements SmartLifecycle {
         });
         emitter.onError(e -> emitters.remove(emitter));
         emitters.put(emitter, workspace);
+        if (!Objects.equals(workspace, session.workspace())) {
+            emitters.remove(emitter);
+            emitter.complete();
+            return;
+        }
         try {
             emitter.send(SseEmitter.event().comment("watching"));
         } catch (IOException | IllegalStateException e) {

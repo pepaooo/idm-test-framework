@@ -189,7 +189,8 @@ idmtest validate
 ```
 
 `validate` checks every scenario (YAML shape, step names and parameters, expressions) and connects to
-nothing. It prints `✔ <name>` or `✖ <name> — <problem>` for each scenario and a summary:
+nothing. It prints `✔ <name>` or `✖ <name> — <problem>` for each scenario (`[OK]` and `[FAIL]` when the
+console encoding cannot show `✔` and `✖`, as on a Windows console) and a summary:
 `<n> scenarios: <v> valid, <i> invalid`.
 
 ```bash

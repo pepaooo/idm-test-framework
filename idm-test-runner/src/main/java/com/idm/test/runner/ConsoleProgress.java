@@ -13,19 +13,24 @@ public final class ConsoleProgress {
 
     private final PrintStream out;
     private final Locale locale;
+    private final String ok;
+    private final String fail;
 
     public ConsoleProgress(PrintStream out, Locale locale) {
         this.out = out;
         this.locale = locale;
+        boolean unicode = out.charset().newEncoder().canEncode("✔✖");
+        this.ok = unicode ? "✔" : "[OK]";
+        this.fail = unicode ? "✖" : "[FAIL]";
     }
 
     public void passed(String name, long millis) {
-        out.println("✔ " + name + "  " + HtmlReportWriter.duration(millis, locale));
+        out.println(ok + " " + name + "  " + HtmlReportWriter.duration(millis, locale));
     }
 
     /** @param kind whether the failure is a finding or a setup problem; null adds nothing */
     public void failed(String name, long millis, String message, FailureKind kind) {
-        out.println("✖ " + name + "  " + HtmlReportWriter.duration(millis, locale) + " — " + message + kind(kind));
+        out.println(fail + " " + name + "  " + HtmlReportWriter.duration(millis, locale) + " — " + message + kind(kind));
     }
 
     private String kind(FailureKind kind) {
@@ -37,11 +42,11 @@ public final class ConsoleProgress {
     }
 
     public void validated(String name) {
-        out.println("✔ " + name);
+        out.println(ok + " " + name);
     }
 
     public void invalid(String name, String message) {
-        out.println("✖ " + name + " — " + message);
+        out.println(fail + " " + name + " — " + message);
     }
 
     /** @param reportPath the report's path for a run, or null for {@code validate} (which has none) */

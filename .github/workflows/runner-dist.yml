@@ -79,7 +79,9 @@ jobs:
           findstr /b /c:"idmtest " "%RUNNER_TEMP%\version.txt" || exit /b 1
           rem init writes a sample workspace; validate checks it without connecting (both exit 0).
           call "%RUNNER_TEMP%\smoke dir\idmtest\bin\idmtest.cmd" init "%RUNNER_TEMP%\smoke ws" || exit /b 1
-          call "%RUNNER_TEMP%\smoke dir\idmtest\bin\idmtest.cmd" validate --workspace "%RUNNER_TEMP%\smoke ws" || exit /b 1
+          call "%RUNNER_TEMP%\smoke dir\idmtest\bin\idmtest.cmd" validate --workspace "%RUNNER_TEMP%\smoke ws" > "%RUNNER_TEMP%\validate.txt" || exit /b 1
+          type "%RUNNER_TEMP%\validate.txt"
+          findstr /b /c:"[OK] example.yaml" /c:"✔ example.yaml" "%RUNNER_TEMP%\validate.txt" || exit /b 1
 
       - name: Upload the ZIP
         uses: actions/upload-artifact@v7

@@ -130,6 +130,7 @@ In a real run's log, lines such as `HikariPool-test-db … url=jdbc:h2:mem:testd
 | `roles.*` | `idm.test.soap.url` (`IDM_TEST_SOAP_URL`) and SOAP credentials |
 | `resources.*` | `idm.test.soap.resource-url` (`IDM_TEST_SOAP_RESOURCEURL`) and SOAP credentials |
 | `rest.*` / `http.request` with `target: <name>` | `idm.test.rest.<name>.base-url`, and credentials only if the target requires authentication |
+| `file.*` with `folder: <name>` | `idm.test.files.<name>.path` (`IDM_TEST_FILES_<NAME>_PATH`), an existing folder on this machine or a mounted share, and `access` allowing what the steps do there: `read` for `file.verify`, `write` for `file.write` and `file.delete` (`read-write` for both). Checked without creating anything in the folder |
 
 Database placeholders refused: `sap` `jdbc:postgresql://localhost:5432/sap` (`sapuser`/`sappass`),
 `oracle-hr` `jdbc:oracle:thin:@localhost:1521:HRDB` (`hruser`/`hrpass`), `workday`

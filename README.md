@@ -154,6 +154,9 @@ Actions change state; assertions check it and may retry.
 | `ldap.verify` | assertion | `dn`, and exactly one of `expect` (a value, a list as the exact set in any order, or `{equals, contains, excludes, count, matches, ignoreCase}`) or `exists` | `wait`, `directory` |
 | `db.execute` | action | `database`, `statement` | `params` |
 | `db.verify` | assertion | `database`, `query`, `expect` | `params`, `wait` |
+| `file.write` | action | `folder`, `file`, `rows` | `columns`, `delimiter`, `quote`, `encoding`, `lineEnding`, `header` |
+| `file.verify` | assertion | `folder`, `file` (an exact name or a glob), `expect` (`rowCount` and/or `row`) | `where`, `delimiter`, `quote`, `encoding`, `header`, `wait` |
+| `file.delete` | action | `folder`, `file` | — |
 | `roles.grant` | action | `user`, `roles` | `reason` |
 | `roles.revoke` | action | `assignments` | — |
 | `resources.grant` | action | `user`, `resource` | `reason` |
@@ -228,6 +231,7 @@ idm-test-framework/
 ├── idm-connector-database/  Multi-database JDBC connector (raw SQL)
 ├── idm-connector-rest/      REST connector, JDK HTTP client, target authentication (basic, OAuth2)
 ├── idm-connector-soap/      Role and Resource service connectors (NetIQ SOAP)
+├── idm-connector-file/      Delimited text files in named folders (Delimited Text driver)
 ├── idm-connector-idm/       Placeholder — no sources yet
 ├── idm-test-scenarios/      Java scenario tests, YAML scenarios, the JUnit adapter
 ├── docker-compose.yml       Optional local services; the test suite does not use them
@@ -298,7 +302,8 @@ Verified on 2026-10-20, after ITF-56 (the `idmtest ui` workbench), with `./mvnw 
 | **Total** | **1407** |
 
 The scenarios module holds the Java workflow tests (provisioning, role assignment, modification,
-deprovisioning and multi-system flows), a corpus of 21 YAML scenarios converted from them, and the
+deprovisioning and multi-system flows), a corpus of 22 YAML scenarios (21 converted from them, and a
+delimited text file round trip), and the
 tests of the runners and their guards.
 
 **Worth being explicit about:** the default suite *simulates* IdM. The Java and YAML scenarios

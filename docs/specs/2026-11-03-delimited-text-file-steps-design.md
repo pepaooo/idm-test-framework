@@ -174,28 +174,36 @@ idm:
 
 ## 6. How it is built
 
-- **New module `idm-connector-file`:** the configuration record `FileFolderProperties`, and
-  `DelimitedFileConnector`, which does path resolution and containment, access checks, the atomic
-  write, listing and choosing candidates, and reading and writing with Commons CSV. It returns
-  `OperationResult` and `ErrorType` like the other connectors, and has no Spring dependency in its
-  main code, matching how the engine uses the other connectors.
+- **New module `idm-connector-file`:** `FileProperties` (bound from `idm.test.files`) and
+  `FileConfiguration` in its `config` package, and `DelimitedFileConnector` in `client`, which does
+  path resolution and containment, access checks, the atomic write, listing and choosing candidates,
+  and reading and writing with Commons CSV. It returns `OperationResult` and `ErrorType` like the
+  other connectors, with a `FileProblem` that callers word in any language. As in the other
+  connectors, Spring appears only in `config`; the `client` package the engine uses has none.
 - **`idm-test-engine`:** `FileWriteStep`, `FileVerifyStep`, `FileDeleteStep` in `steps/`; a
-  `FileEvidence` record in `spi/`; message keys in the i18n bundles (English and the existing
-  locales). Shared expectation checks with `db.verify` are extracted rather than copied, if that can
-  be done without changing `db.verify`'s messages.
-- **`idm-test-wiring`:** registration in `StepRegistry` and `EngineFactory`; `ScenarioNeeds` gains a
-  `folders` set (keyed by `folder`); `RealEnvironmentGuards` refuses a run when a needed folder is
-  undeclared, missing, or lacks the access the scenario's steps need.
-- **`idm-test-runner`:** the settings loaded from the workspace `config/`; the lab panel gets a
-  **Folders** section (path, access, format fields), and the connection test checks that the folder
-  exists and is readable or writable as declared. Writability is checked by creating and deleting a
-  `<temp-suffix>` probe file. The YAML schema used by the workbench editor and by
-  `idmtest validate` learns the three steps.
+  `FileEvidence` record in `spi/`; message keys in the English and Spanish catalogs. `db.verify`'s
+  expectation checks moved to a shared `RowExpectations`, with each step's own message keys, so
+  `db.verify`'s messages are unchanged. Step instances are shared between scenarios, so
+  `file.verify` reads the scenario's start from a `StepContext`, which the engine passes to every
+  step through a default `execute` overload. A step may reject a literal parameter value before the
+  run through a default `StepType.literalProblem` hook, which is how a file name that leaves its
+  folder is caught by the validator.
+- **`idm-test-wiring`:** registration in `StepRegistry`; `ScenarioNeeds` gains `readFolders` and
+  `writeFolders`; `RealEnvironmentGuards` refuses a run when a needed folder is undeclared, missing,
+  or lacks the access the scenario's steps need, as declared and as the operating system allows. The
+  guard creates nothing in the folder: a driver may be watching it.
+- **`idm-test-runner`:** the settings loaded from the workspace `config/`; folders are lab systems
+  (`folder:<name>`, path, access and format fields), shown as tabs like the other systems, with
+  access as a choice. Saving refuses a value the runner could not bind. The connection test checks
+  that the folder exists and is readable or writable as declared; writability is checked by creating
+  and deleting a `<temp-suffix>` probe file. The YAML schema used by the workbench editor and by
+  `idmtest validate` comes from the registry, so it lists the three steps.
 - **Evidence (`FileEvidence`):** folder name (never the path), file name, size, row count, and the
   content as rows. Values are masked by the existing secret-name rules applied to column headers and
-  by the run's known secret values. Content is capped at 50 rows and 64 KiB, with a truncation note.
+  by the run's known secret values. Content is capped at 50 rows and 65,536 characters of values, with a truncation note.
   For `file.verify`, the selected rows are always included, even when beyond the cap. The HTML
-  report and the workbench finding panel show it like SQL evidence.
+  report shows it as a table with the selected rows marked; the workbench finding panel shows it as
+  text, as it does SQL evidence.
 
 ## 7. Verification
 

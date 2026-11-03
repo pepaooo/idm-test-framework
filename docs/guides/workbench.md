@@ -151,14 +151,15 @@ Below about 760 px wide the columns stack.
 The lab chip shows whether the systems the workspace's scenarios use are ready, for the selected
 profile: "Lab ready", "Lab: 2 of 3 ready", or what is missing, such as "Lab: Directory needs a URL".
 Click it to open the **lab panel**: on the left, the list of the systems the scenarios use and the ones
-the profile configures (directories, databases, REST targets, the SOAP services), with **+ add** for
+the profile configures (directories, databases, REST targets, folders, the SOAP services), with **+ add** for
 one no scenario uses yet; on the right, the selected system's form. Each entry's badge says ✓ ready,
 ! not tested yet, or ✕ missing. A long list scrolls on its own, and **Find connections** narrows it by
 name, kind or identifier (the form shown stays until you pick another entry); the arrow keys, Home and
 End move through the list. On a narrow window the list sits above the form.
 
-Each form shows the system's **Identifier** (`directory:ad`, `database:sap`, `rest:idm`, `ldap`,
-`soap`: what scenarios and the profile file name it by, never changed here), then its settings: a
+Each form shows the system's **Identifier** (`directory:ad`, `database:sap`, `rest:idm`,
+`folder:hr-in`, `ldap`, `soap`: what scenarios and the profile file name it by, never changed here),
+then its settings: a
 **Label**, URL, base DN, bind DN, user and so on. The label is the name the list shows, for this profile
 only; leave it empty for the usual name ("Database sap"). A label in `config/application.yml` applies
 to every profile until the profile sets its own. Labels change nothing in runs (see [Connection
@@ -181,6 +182,9 @@ labels](../reference/configuration.md#connection-labels)).
   written.
 - **Environment variables win**, as in a run: a value set through an environment variable shows "from
   the environment" and cannot be changed here.
+- **Folders** (for the file steps) have a path, an **Access** choice (read, write or read-write;
+  unset means read) and the file format; nothing in them is secret. A value `idmtest run` could not
+  read, such as `line-ending: CR` or `clock-skew: soon`, is refused before it is saved.
 - **Refused saves**, with the reason and nothing written: a value containing `${` (the workbench writes
   the references itself), a value with a line break, a profile file or `secrets.env` that is a link
   pointing outside the workspace, and a profile file that is a link to `config/application.yml`.
@@ -204,7 +208,7 @@ confirm, and keeps the file's comments and other settings; `secrets.env` is not 
 passwords separately. It is refused, with the reason under the button, when:
 
 - a scenario uses the system (the scenarios are named), or it is the default directory;
-- a scenario does not load, or names its directory, database or target with `${…}`, so it might use
+- a scenario does not load, or names its directory, database, target or folder with `${…}`, so it might use
   it (the scenarios are named);
 - `config/application.yml` or an environment variable configures it, even when the profile only sets
   its label: deleting the profile's block would not remove it;
@@ -222,6 +226,7 @@ before it contacts anything (no placeholder URL, no in-memory database):
 | Database | connects with the workspace's JDBC drivers and runs `SELECT 1` (`SELECT 1 FROM DUAL` on Oracle) |
 | REST target | fetches its OAuth token when it uses OAuth; otherwise a GET to its base URL: any HTTP answer means reachable, 401/403 means the credentials were rejected |
 | SOAP services | fetches the WSDL with the credentials |
+| Folder | checks that the folder exists; a read folder is listed, a write folder gets a probe file (with the folder's temporary suffix) that is deleted at once. The result names the folder, never its path |
 
 The result reads "✓ Connected · bind OK · 112 ms", or the reason ("credentials rejected", "could not
 reach …", "no answer"), with secrets masked. Each test gives up after 10 seconds. For a database the

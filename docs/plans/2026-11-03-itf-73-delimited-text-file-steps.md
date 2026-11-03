@@ -319,16 +319,22 @@ map to `folder:<name>`. The new-scenario template is unchanged: it is a short LD
 
 ### Task 9: Documentation
 
-- [ ] Authoring guide and `writing-scenarios.md`: the three steps, file selection rules (glob, start
+- [x] Authoring guide and `writing-scenarios.md`: the three steps, file selection rules (glob, start
   time, `clock-skew`, newest wins), the failure table, cleanup with `file.delete`, the Delimited Text
   driver example from the spec.
-- [ ] `configuration.md`: `idm.test.files` with every key and default, and the guidance to match
+- [x] `configuration.md`: `idm.test.files` with every key and default, and the guidance to match
   `temp-suffix` to the driver's ignore pattern.
-- [ ] Capability matrix, workbench guide (Folders), README step list, `CLAUDE.md` (module list, "17
+- [x] Capability matrix, workbench guide (Folders), README step list, `CLAUDE.md` (module list, "17
   step types").
-- [ ] Spec §6: replace "no Spring dependency in its main code" with the configuration-properties
+- [x] Spec §6: replace "no Spring dependency in its main code" with the configuration-properties
   arrangement above, and add `StepContext`.
-- [ ] Commit `docs: file steps (ITF-73)`.
+- [x] Commit `docs: file steps (ITF-73)`.
+
+**As built:** the step sections of `writing-scenarios.md` were written in Task 5; here sections 7
+and 8 gained folders and the two file-name validation messages. `configuration.md` has a
+"Delimited text folders" section; `running-tests.md` and the `scenarios-real` README list the folder
+guard. The README's dated test-count table is left as it is: it records a `./mvnw -B verify` run,
+which Task 10 is to repeat on Java 25.
 
 ### Task 10: Final check
 

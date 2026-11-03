@@ -1018,6 +1018,8 @@ reference; this section says where to look.
   relative to that directory's `base-dn`. See [LDAP configuration](configuration.md#ldap-configuration).
 - **SOAP:** `idm.test.soap.url` (roles) and `idm.test.soap.resource-url` (resources), with the SOAP
   username and password. SOAP steps take full DNs.
+- **Folders:** `folder: hr-in` means `idm.test.files.hr-in`: its path, what scenarios may do there
+  and the file format. See [delimited text folders](configuration.md#delimited-text-folders).
 - **TLS** (`ldaps://`, `https://`): the servers' CA must be in the test JVM's truststore. See
   [TLS certificates](configuration.md#tls-certificates-ldaps-https).
 - **A real lab:** what to set for each repository your scenarios use, and what the real-environment
@@ -1081,6 +1083,8 @@ waiting. Each message names the file and the step. Real examples:
 | a `set:` with nothing to bind | `demo.yaml, step 1 (set): a set: step needs at least one name to bind` |
 | `set:` in `cleanup:` | `demo.yaml: cleanup entry 1 (set): set: is not allowed in cleanup — nothing runs after cleanup to read a binding` |
 | an expression nested too deeply to compile | `demo.yaml, step 1 (ldap.create): invalid expression js:{ … }: it is nested too deeply` |
+| a file name that would leave its folder | `demo.yaml, step 1 (file.write): 'file: ../hr.csv' is not a plain file name: it must not contain /, \, :, .. or leading or trailing blanks, because a file stays inside its named folder` |
+| a pattern where one exact file is needed | `demo.yaml: cleanup entry 1 (file.delete): 'file: *.csv' is a pattern; this step needs one exact file name` |
 
 Some mistakes can only be found when the step runs: a misspelled property on a bound name
 (`${user.userid}`), a value of the wrong shape (`expect` as text instead of a map), or a DN the

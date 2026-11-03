@@ -102,29 +102,38 @@ The implementation follows the spec, with two clarifications that need no new de
 **Files:** create the module and the `config`/`client` classes in the file map; register the module
 and `commons-csv` in the parent `pom.xml`.
 
-**Interfaces produced:**
+**Interfaces produced** (as built; differs from the first draft in `FileLookup`, `ReadFile` and
+`folderNames`):
 
 ```java
 public final class DelimitedFileConnector {
-    DelimitedFileConnector(Map<String, FolderConfig> folders);
+    DelimitedFileConnector(Map<String, FolderSettings> folders);
+    Optional<FolderSettings> folder(String name);
+    Set<String> folderNames();
     OperationResult<WrittenFile> write(String folder, String file, List<String> columns,
                                        List<List<String>> rows, CsvFormat overrides);
-    OperationResult<ReadFile> readNewest(String folder, String pattern, Instant notBefore,
-                                         CsvFormat overrides);   // empty data = no candidate yet
+    OperationResult<FileLookup> readNewest(String folder, String pattern, Instant notBefore,
+                                           CsvFormat overrides);
     OperationResult<Boolean> delete(String folder, String file); // false = already absent
     OperationResult<Void> probe(String folder);                  // exists, access as declared
-    Optional<FolderConfig> folder(String name);
 }
 record WrittenFile(String folder, String name, int rows, long size) {}
-record ReadFile(String name, List<String> header, List<Map<String, String>> rows, long size,
-                int olderMatches) {}
+record ReadFile(String folder, String name, List<String> header, List<List<String>> rows, long size) {
+    OptionalInt columnIndex(String column);   // ignoring case
+    List<Map<String, String>> rowMaps();
+}
+record FileLookup(Optional<ReadFile> file, int olderMatches) {}  // empty file = no candidate yet
 ```
 
-Error mapping: unknown folder, missing directory, access refused, unsafe name → `CONFIGURATION_ERROR`
+A failed result carries a `FileProblem` (kind plus values, `english()`, `errorType()`), recovered with
+`FileProblem.of(result)`, so the engine can word it in any language, as `DatabaseProblem` does.
+Reading never follows symbolic links; writing and deleting refuse one that resolves outside the folder.
+
+Error mapping: unknown folder, missing directory, access refused, unsafe name, bad format → `CONFIGURATION_ERROR`
 (final). I/O errors → `NETWORK_ERROR` and parse errors → `VALIDATION_ERROR` (retryable by `file.verify`).
 Existing target on write → `CONFIGURATION_ERROR`.
 
-- [ ] **Step 1: Write failing tests** in `DelimitedFileConnectorTest` against `@TempDir`:
+- [x] **Step 1: Write failing tests** in `DelimitedFileConnectorTest` against `@TempDir`:
   round trip with commas, quotes, embedded delimiter and newline; header-only file; CRLF vs LF;
   `ISO-8859-1` and `UTF-8`; UTF-8 BOM tolerated on read, never written; `delete` of present and absent
   files; refusal on existing target; access enforcement for each mode; every Review Focus path-escape
@@ -132,16 +141,16 @@ Existing target on write → `CONFIGURATION_ERROR`.
   time, then name, ignoring files ending in `temp-suffix` and files older than `notBefore - clock-skew`,
   and reporting `olderMatches`; a glob never matching into a subfolder; `probe` on a missing folder, a
   read-only folder and a writable one (the probe file is removed).
-- [ ] **Step 2: Atomic write test:** after a write whose serialisation fails midway (inject a row
+- [x] **Step 2: Atomic write test:** after a write whose serialisation fails midway (inject a row
   value that the CSV printer rejects, or a closed stream via a package-private seam), no temporary file
   remains and no final file exists. On `AtomicMoveNotSupportedException`, the result is a setup error
   and the temporary file is deleted.
-- [ ] **Step 3: Implement** until green. Resolve the folder with `toRealPath()`, reject names that
+- [x] **Step 3: Implement** until green. Resolve the folder with `toRealPath()`, reject names that
   contain a separator, `..`, a drive or a root, then check `target.toRealPath()` (or its parent's for a
   not-yet-existing file) starts with the folder's real path.
-- [ ] **Step 4: Binding test:** `FilePropertiesTest` binds the YAML of spec §5 and checks the
+- [x] **Step 4: Binding test:** `FilePropertiesTest` binds the YAML of spec §5 and checks the
   defaults (`access: read`, `,`, `"`, UTF-8, CRLF, header, `.idmtest-tmp`, 5s).
-- [ ] **Step 5:** `./mvnw test -pl idm-connector-file -am`; commit `feat(file): delimited file connector (ITF-73)`.
+- [x] **Step 5:** `./mvnw test -pl idm-connector-file -am`; commit `feat(file): delimited file connector (ITF-73)`.
 
 ### Task 2: `StepContext` in the step SPI
 

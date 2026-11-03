@@ -355,6 +355,7 @@ public final class HtmlReportWriter {
             table.rows{border-collapse:collapse;margin:4px 0}table.rows th,table.rows td{border:1px solid var(--line);\
             padding:2px 6px;text-align:left;vertical-align:top;word-break:break-word;overflow-wrap:anywhere}
             .more,.sql-params,.dn{color:var(--muted);font-size:12px}
+            table.rows tr.selected td{font-weight:600}
             @media print{.controls{display:none}details.scenario{break-inside:avoid-page}}
             """;
 

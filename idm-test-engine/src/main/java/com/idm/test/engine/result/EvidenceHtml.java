@@ -2,6 +2,7 @@ package com.idm.test.engine.result;
 
 import com.idm.test.engine.spi.JsonMappers;
 import com.idm.test.engine.spi.Evidence;
+import com.idm.test.engine.spi.FileEvidence;
 import com.idm.test.engine.spi.HttpEvidence;
 import com.idm.test.engine.spi.LdapEvidence;
 import com.idm.test.engine.spi.SqlEvidence;
@@ -48,6 +49,7 @@ final class EvidenceHtml {
             case HttpEvidence http -> appendHttp(html, http, locale);
             case SqlEvidence sql -> appendSql(html, sql, locale);
             case LdapEvidence ldap -> appendLdap(html, ldap, locale);
+            case FileEvidence file -> appendFile(html, file, locale);
         }
         html.append("</details>\n");
     }
@@ -66,6 +68,7 @@ final class EvidenceHtml {
                     ? count(sql.totalRows(), "evidence.rows.one", "evidence.rows.other", locale)
                     : label("evidence.noResult", locale));
             case LdapEvidence ldap -> ldapSummary(ldap, locale);
+            case FileEvidence file -> fileSummary(file, locale);
         };
     }
 
@@ -165,6 +168,65 @@ final class EvidenceHtml {
         html.append("</table>\n");
         int total = sql.totalRows() != null ? sql.totalRows() : sql.rows().size();
         int more = total - sql.rows().size();
+        if (more > 0) {
+            html.append("<div class=\"more\">").append(esc(label("evidence.moreRows", locale, more)))
+                    .append("</div>\n");
+        }
+    }
+
+    private static String fileSummary(FileEvidence file, Locale locale) {
+        String summary = label("evidence.file", locale) + " · " + label(operationKey(file), locale) + " · "
+                + file.file();
+        if (Boolean.FALSE.equals(file.present())) {
+            return summary + " · " + label(FileEvidence.DELETE.equals(file.operation())
+                    ? "evidence.file.alreadyAbsent" : "evidence.file.notFound", locale);
+        }
+        if (file.totalRows() != null) {
+            summary += " · " + count(file.totalRows(), "evidence.rows.one", "evidence.rows.other", locale);
+        }
+        if (file.selectedRows() != null) {
+            summary += " · " + label("evidence.file.selected", locale, file.selectedRows());
+        }
+        return summary;
+    }
+
+    private static String operationKey(FileEvidence file) {
+        return switch (String.valueOf(file.operation())) {
+            case FileEvidence.WRITE -> "evidence.file.write";
+            case FileEvidence.DELETE -> "evidence.file.delete";
+            default -> "evidence.file.read";
+        };
+    }
+
+    private static void appendFile(StringBuilder html, FileEvidence file, Locale locale) {
+        html.append("<div class=\"dn\">").append(esc(file.file()))
+                .append(" · ").append(esc(label("evidence.file.folder", locale, file.folder())));
+        if (file.size() != null) {
+            html.append(" · ").append(esc(label("evidence.file.size", locale, file.size())));
+        }
+        html.append("</div>\n");
+        if (file.header().isEmpty()) {
+            return;
+        }
+        if (file.rows().isEmpty()) {
+            html.append("<div>").append(label("evidence.noRows", locale)).append("</div>\n");
+        } else {
+            html.append("<table class=\"rows\"><tr><th>#</th>");
+            file.header().forEach(column -> html.append("<th>").append(esc(column)).append("</th>"));
+            html.append("</tr>\n");
+            for (FileEvidence.Row row : file.rows()) {
+                html.append(row.selected() ? "<tr class=\"selected\">" : "<tr>")
+                        .append("<td>").append(row.number()).append("</td>");
+                for (String column : file.header()) {
+                    Object value = row.values().get(column);
+                    html.append("<td>").append(value == null ? "" : esc(String.valueOf(value))).append("</td>");
+                }
+                html.append("</tr>\n");
+            }
+            html.append("</table>\n");
+        }
+        int total = file.totalRows() != null ? file.totalRows() : file.rows().size();
+        int more = total - file.rows().size();
         if (more > 0) {
             html.append("<div class=\"more\">").append(esc(label("evidence.moreRows", locale, more)))
                     .append("</div>\n");

@@ -1,5 +1,6 @@
 package com.idm.test.engine.result;
 
+import com.idm.test.engine.spi.FileEvidence;
 import com.idm.test.engine.spi.LdapEvidence;
 import com.idm.test.engine.spi.Message;
 import com.idm.test.engine.spi.SqlEvidence;
@@ -119,6 +120,23 @@ class JsonResultWriterTest {
         assertThat(json).contains("\"kind\" : \"sql\"").contains("\"database\" : \"hr\"")
                 .contains("\"totalRows\" : 1").contains("\"STATUS\" : \"ACTIVE\"");
         assertThat(json.split("\"evidence\"", -1)).hasSize(2);
+    }
+
+    @Test
+    @DisplayName("Writes file evidence with its kind, rows and selection")
+    void testWritesFileEvidence(@TempDir Path dir) throws Exception {
+        StepResult step = new StepResult(0, "file.verify", Map.of(), true, 5, "ok", null, null, null,
+                FileEvidence.read("hr-out", "out.csv", 20, List.of("id", "password"),
+                        List.of(List.of("E1", "hunter2")), java.util.Set.of(0)));
+        ScenarioResult scenario = new ScenarioResult("S", "s.yaml", true, 10, List.of(step), null);
+
+        Path target = dir.resolve("r.json");
+        JsonResultWriter.write(List.of(scenario), target);
+
+        String json = Files.readString(target);
+        assertThat(json).contains("\"kind\" : \"file\"").contains("\"folder\" : \"hr-out\"")
+                .contains("\"selected\" : true").contains("\"number\" : 1").contains("\"selectedRows\" : 1")
+                .contains("\"password\" : \"***\"").doesNotContain("hunter2");
     }
 
     @Test

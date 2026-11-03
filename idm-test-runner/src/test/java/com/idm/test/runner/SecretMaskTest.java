@@ -8,6 +8,7 @@ import com.idm.test.engine.result.ScenarioResult;
 import com.idm.test.engine.result.StepResult;
 import com.idm.test.engine.spi.Check;
 import com.idm.test.engine.spi.HttpEvidence;
+import com.idm.test.engine.spi.FileEvidence;
 import com.idm.test.engine.spi.LdapEvidence;
 import com.idm.test.engine.spi.Message;
 import com.idm.test.engine.spi.SqlEvidence;
@@ -84,12 +85,15 @@ class SecretMaskTest {
                         List.of(Map.of("col", secret))), null, null);
         StepResult ldap = new StepResult(2, "ldap.verify", Map.of(), true, 1, null, null, null, null,
                 LdapEvidence.read(null, "cn=" + secret, Map.of("sn", secret)), null, null);
+        StepResult file = new StepResult(3, "file.verify", Map.of(), true, 1, null, null, null, null,
+                FileEvidence.read("hr-out", "out-" + secret + ".csv", 9, List.of("id", "col-" + secret),
+                        List.of(List.of("E1", "v-" + secret)), java.util.Set.of(0)), null, null);
         CleanupResult cleanup = new CleanupResult(0, "ldap.delete", Map.of("dn", secret), CleanupStatus.FAILED, 1,
                 "cleanup " + secret, "about " + secret, "cleanup.key", List.of(secret), "FINDING");
         CleanupResult skipped = new CleanupResult(0, "ldap.delete", Map.of("dn", "cn=" + secret),
                 CleanupStatus.SKIPPED, 0, "Stopped — cleanup did not run", "Remove cn=" + secret,
                 "engine.run.stopped", List.of(), null);
-        ScenarioResult result = new ScenarioResult("s.yaml", "s.yaml", false, 9, List.of(http, sql, ldap),
+        ScenarioResult result = new ScenarioResult("s.yaml", "s.yaml", false, 9, List.of(http, sql, ldap, file),
                 List.of(cleanup), "detail " + secret, "scenario " + secret, "detail.key", List.of(secret),
                 true, List.of(skipped));
 
@@ -105,6 +109,15 @@ class SecretMaskTest {
         assertThat(masked.steps().get(0).waitHistory()).extracting(WaitObservation::message)
                 .containsExactly("saw ****", "then ****");
         assertThat(masked.steps().get(0).waitHistory()).extracting(WaitObservation::attempt).containsExactly(1, 4);
+        assertThat(masked.steps().get(3).evidence()).isInstanceOfSatisfying(FileEvidence.class, evidence -> {
+            assertThat(evidence.folder()).isEqualTo("hr-out");
+            assertThat(evidence.file()).isEqualTo("out-****.csv");
+            assertThat(evidence.header()).containsExactly("id", "col-****");
+            assertThat(evidence.rows()).singleElement().satisfies(row -> {
+                assertThat(row.selected()).isTrue();
+                assertThat(row.values()).containsEntry("id", "E1").containsEntry("col-****", "v-****");
+            });
+        });
         assertThat(masked.stopped()).isTrue();
         assertThat(masked.skippedCleanup()).singleElement().satisfies(entry -> {
             assertThat(entry.resolvedParams()).containsEntry("dn", "cn=****");

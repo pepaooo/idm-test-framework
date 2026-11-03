@@ -171,15 +171,23 @@ Existing target on write → `CONFIGURATION_ERROR`.
 `result/EvidenceHtml.java`, the JSON writer, both message bundles; `EvidenceTest`,
 `HtmlReportWriterTest`, `JsonResultWriterTest`.
 
-- [ ] **Step 1: Failing tests:** `FileEvidence.written(folder, name, size, header, rows)`,
+- [x] **Step 1: Failing tests:** `FileEvidence.written(folder, name, size, header, rows)`,
   `.read(...)` with selected rows, and `.failed(folder, file)`. Masks secret-named columns (the same
   name rule `SqlEvidence` applies to result columns) and the run's known secrets. Caps at 50 rows and
   64 KiB with the existing truncation note, and always keeps the selected rows. Never holds a path.
   HTML and JSON render it like SQL evidence.
-- [ ] **Step 2: Implement**, reusing `EvidenceMasking` rather than copying. Add every `step.file.*`
+- [x] **Step 2: Implement**, reusing `EvidenceMasking` rather than copying. Add every `step.file.*`
   message key used in Tasks 4–5 to `messages.properties` and `messages_es.properties`; the existing
   bundle-completeness test must pass.
-- [ ] **Step 3:** run the engine tests; commit `feat(engine): file evidence (ITF-73)`.
+- [x] **Step 3:** run the engine tests; commit `feat(engine): file evidence (ITF-73)`.
+
+**As built:** `FileEvidence(folder, file, operation, present, size, header, rows, totalRows,
+selectedRows)` with `FileEvidence.Row(number, selected, values)`; factories `written`, `read`,
+`notFound`, `deleted`, `failed`. The 64 KiB budget counts characters of kept values. Only the
+`evidence.file.*` keys were added here: `CatalogTest` fails on a catalog key no code uses, so the
+`step.file.*` keys arrive in Task 4 with the steps that use them. `Evidence` is a sealed type that
+`SecretMask` switches over, so its `FileEvidence` case (masking column names as well as values, so
+a row's keys keep matching the header) was done here rather than in Task 7.
 
 ### Task 4: The three steps and their validation
 

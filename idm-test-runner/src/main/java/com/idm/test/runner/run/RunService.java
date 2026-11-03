@@ -36,6 +36,7 @@ import com.idm.test.runner.GitTracking;
 import com.idm.test.runner.RunLog;
 import com.idm.test.runner.RunnerApplication;
 import com.idm.test.runner.RunnerSettings;
+import com.idm.test.runner.commands.ApprovalStore;
 import com.idm.test.runner.SecretMask;
 import com.idm.test.runner.SecretsEnv;
 import com.idm.test.runner.SecretsInitializer;
@@ -529,12 +530,9 @@ public final class RunService {
             return new Loaded(scenarios, failures);
         }
 
-        /**
-         * The approvals of this machine for this workspace and profile. Until the runner keeps approvals
-         * (ITF-74, task 6) none: every command is refused.
-         */
+        /** The approvals of this machine for this workspace and profile (ADR 0008). */
         private CommandApproval commandApproval() {
-            return CommandApproval.NONE;
+            return ApprovalStore.inUserHome().forWorkspace(workspace.root(), request.profile());
         }
 
         private ScenarioEngine engine() {

@@ -29,6 +29,8 @@ public final class RunnerSettings {
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("spring.config.location",
                 "optional:classpath:/,optional:file:" + ws.config().toAbsolutePath().normalize() + "/");
+        // Where a registered command without working-dir starts (CommandConfiguration).
+        properties.put("idm.test.workspace", ws.root().toAbsolutePath().normalize().toString());
         return properties;
     }
 

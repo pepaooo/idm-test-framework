@@ -107,4 +107,20 @@ class CommandLineTest {
         assertThat(CommandLine.parse("validate", "--workspace", "tests/../lab").workspace())
                 .isEqualTo(Path.of("lab").toAbsolutePath());
     }
+
+    @Test
+    @DisplayName("Should parse idmtest commands: the action, the names after it, --yes and --profile")
+    void testCommands() {
+        CommandLine line = CommandLine.parse("commands", "approve", "driver-state", "restart", "--yes",
+                "--profile", "lab");
+
+        org.assertj.core.api.Assertions.assertThat(line.command()).isEqualTo("commands");
+        org.assertj.core.api.Assertions.assertThat(line.action()).isEqualTo("approve");
+        org.assertj.core.api.Assertions.assertThat(line.names()).containsExactly("driver-state", "restart");
+        org.assertj.core.api.Assertions.assertThat(line.yes()).isTrue();
+        org.assertj.core.api.Assertions.assertThat(line.profile()).isEqualTo("lab");
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> CommandLine.parse("run", "--yes"))
+                .isInstanceOf(UsageException.class);
+        org.assertj.core.api.Assertions.assertThat(CommandLine.parse("run", "--profile", "lab").names()).isEmpty();
+    }
 }

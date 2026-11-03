@@ -224,13 +224,22 @@ harmless command in Task 7. The guard names every unapproved command at once. Ve
 
 ### Task 6: Approvals in the runner
 
-- [ ] **Failing tests:** `ApprovalStore` over a temp `user.home` (atomic write, a corrupt file read as
+- [x] **Failing tests:** `ApprovalStore` over a temp `user.home` (atomic write, a corrupt file read as
   "nothing approved" with a warning, never as "everything"); keys use the workspace's real path, so a
   symlink to an approved workspace is a different key; `idmtest commands list|approve|revoke`
   (interactive y/N per new or changed definition, `--yes`, exit codes, Spanish); `idmtest run` refused
   for an unapproved command and running after approval; a changed definition refused again.
-- [ ] **Implement**, and pass the store as `CommandApprovals` in `RunService`.
-- [ ] Commit `feat(runner): command approvals and idmtest commands (ITF-74)`.
+- [x] **Implement**, and pass the store as `CommandApprovals` in `RunService`.
+- [x] Commit `feat(runner): command approvals and idmtest commands (ITF-74)`.
+
+**As built:** `ApprovalStore` in `~/.idmtest/command-approvals.json`, keyed by the workspace's real
+path, the profile and the command, with the definition's hash; a corrupt file approves nothing.
+`idmtest commands list|approve|revoke --profile <p> [--yes] [name …]` binds the profile's settings by
+starting the same lazy Spring context a run uses (logging off), and shows each definition as written:
+`RegisteredCommand` now keeps the definition as written beside the one that runs, so `${NAME}` shows
+by name and no secret value is printed. `approve` asks y/N (also s/sí) per new or changed command; end
+of input is no. `RunService` asks the store for its workspace and profile, and sets
+`idm.test.workspace`, where a command without `working-dir` starts.
 
 ### Task 7: Default-suite scenario
 

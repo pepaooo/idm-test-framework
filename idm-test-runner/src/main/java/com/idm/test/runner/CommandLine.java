@@ -3,16 +3,32 @@ package com.idm.test.runner;
 import com.idm.test.engine.spi.Message;
 
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.List;
 
 /**
  * The parsed {@code idmtest} command line. {@code --help}/{@code -h} and {@code --version} become
  * the commands {@code help} and {@code version}; no arguments at all is {@code help}. {@code port}
  * is {@code ui}'s {@code --port}, null when not given. {@code workspace} is the current folder when
- * {@code --workspace} is not given; {@code workspaceGiven} tells the two apart.
+ * {@code --workspace} is not given; {@code workspaceGiven} tells the two apart. For {@code commands},
+ * {@code action} is {@code list}, {@code approve} or {@code revoke}, {@code names} the commands named
+ * after it, and {@code yes} its {@code --yes}.
  */
 public record CommandLine(String command, Path workspace, String profile, String scenario, String locale,
-                          boolean verbose, Path initTarget, Integer port, boolean workspaceGiven) {
+                          boolean verbose, Path initTarget, Integer port, boolean workspaceGiven,
+                          String action, List<String> names, boolean yes) {
+
+    public CommandLine {
+        names = names == null ? List.of() : List.copyOf(names);
+    }
+
+    /** A command line without the {@code commands} parts. */
+    public CommandLine(String command, Path workspace, String profile, String scenario, String locale,
+                       boolean verbose, Path initTarget, Integer port, boolean workspaceGiven) {
+        this(command, workspace, profile, scenario, locale, verbose, initTarget, port, workspaceGiven, null,
+                List.of(), false);
+    }
 
     public static CommandLine parse(String... args) {
         if (args.length == 0) {
@@ -26,7 +42,7 @@ public record CommandLine(String command, Path workspace, String profile, String
             case "--version" -> {
                 return of("version", null, null, null, null, false, null, null, false);
             }
-            case "init", "validate", "run", "ui" -> {
+            case "init", "validate", "run", "ui", "commands" -> {
             }
             default -> throw new UsageException(first.startsWith("-")
                     ? Message.of("runner.cli.unknownOption", first)
@@ -39,6 +55,9 @@ public record CommandLine(String command, Path workspace, String profile, String
         boolean verbose = false;
         Path initTarget = null;
         Integer port = null;
+        String action = null;
+        List<String> names = new ArrayList<>();
+        boolean yes = false;
         Iterator<String> rest = java.util.Arrays.asList(args).subList(1, args.length).iterator();
         while (rest.hasNext()) {
             String arg = rest.next();
@@ -51,6 +70,12 @@ public record CommandLine(String command, Path workspace, String profile, String
                 case "--scenario" -> scenario = value(arg, rest);
                 case "--locale" -> locale = value(arg, rest);
                 case "--verbose" -> verbose = true;
+                case "--yes" -> {
+                    if (!first.equals("commands")) {
+                        throw new UsageException(Message.of("runner.cli.unknownOption", arg));
+                    }
+                    yes = true;
+                }
                 case "--port" -> {
                     if (!first.equals("ui")) {
                         throw new UsageException(Message.of("runner.cli.unknownOption", arg));
@@ -60,13 +85,21 @@ public record CommandLine(String command, Path workspace, String profile, String
                 default -> {
                     if (first.equals("init") && !arg.startsWith("-") && initTarget == null) {
                         initTarget = Path.of(arg);
+                    } else if (first.equals("commands") && !arg.startsWith("-")) {
+                        if (action == null) {
+                            action = arg;
+                        } else {
+                            names.add(arg);
+                        }
                     } else {
                         throw new UsageException(Message.of("runner.cli.unknownOption", arg));
                     }
                 }
             }
         }
-        return of(first, workspace, profile, scenario, locale, verbose, initTarget, port, workspace != null);
+        CommandLine line = of(first, workspace, profile, scenario, locale, verbose, initTarget, port, workspace != null);
+        return new CommandLine(line.command(), line.workspace(), line.profile(), line.scenario(), line.locale(),
+                line.verbose(), line.initTarget(), line.port(), line.workspaceGiven(), action, names, yes);
     }
 
     /** {@code value} as a TCP port, 0 to 65535 (0: any free port) but not 80. */

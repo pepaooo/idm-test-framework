@@ -60,7 +60,8 @@ GitHub Actions.
   leading `-` arrive as one literal argument or are refused by their pattern; a `{name}` inside a
   longer argument is literal (Task 1).
 - **Windows:** `.cmd`/`.bat` executables are refused (they run through `cmd.exe`, which reparses
-  arguments); `CreateProcess` quoting of spaces and quotes; `\r\n` output (Task 1).
+  arguments); a double quote in any argument is refused (a value could otherwise become several
+  arguments); `CreateProcess` quoting of spaces and backslashes; `\r\n` output (Task 1).
 - **Hangs:** a command that never ends, one that fills stdout without stopping, one that leaves a child
   running: each ends within the timeout and its tree is killed (Task 1).
 - **Masking:** a `${SECRET}` argument, a secret echoed on stdout, a secret-named parameter (Tasks 3, 7).
@@ -156,6 +157,12 @@ notice there.
   Windows quirk elsewhere cannot fail it), in `bash` on every runner. Keep the Ubuntu job unchanged.
 - [ ] Commit `ci: run the exec connector's tests on Windows and macOS (ITF-74)`; open a draft PR early so
   CI runs on all three systems before the steps are built on top.
+
+**Found by the first Windows run:** `ProcessBuilder` on Windows does not escape a double quote inside an
+argument, and the program re-parses its command line, so a value `a" "b` would arrive as two arguments.
+The connector now refuses a double quote in a parameter value (`PARAM_UNSAFE`) or a fixed argument
+(`BAD_DEFINITION`) on Windows. A Java program on Windows also reads its arguments in the system code
+page, so the tests' non-ASCII values stay within it, and the test program writes UTF-8.
 
 ### Task 3: `CommandEvidence` and messages
 

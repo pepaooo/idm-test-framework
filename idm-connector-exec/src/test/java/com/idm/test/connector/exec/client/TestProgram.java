@@ -30,6 +30,9 @@ public final class TestProgram {
     }
 
     public static void main(String[] args) throws Exception {
+        java.io.PrintStream utf8 = new java.io.PrintStream(
+                new java.io.FileOutputStream(java.io.FileDescriptor.out), true, java.nio.charset.StandardCharsets.UTF_8);
+        System.setOut(utf8);
         OutputStream out = System.out;
         for (int i = 0; i < args.length; i++) {
             switch (args[i]) {

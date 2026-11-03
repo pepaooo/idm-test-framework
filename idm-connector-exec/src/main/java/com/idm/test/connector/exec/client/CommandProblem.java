@@ -29,6 +29,8 @@ public record CommandProblem(Kind kind, List<Object> values) {
         MISSING_PARAM,
         /** values: command, parameter, pattern. */
         PARAM_REJECTED,
+        /** values: command, parameter, reason. */
+        PARAM_UNSAFE,
         /** values: command, executable. */
         NOT_FOUND,
         /** values: command. */
@@ -75,6 +77,8 @@ public record CommandProblem(Kind kind, List<Object> values) {
             case MISSING_PARAM -> "Command '" + text(0) + "' needs the parameter '" + text(1) + "'";
             case PARAM_REJECTED -> "The value of parameter '" + text(1) + "' of command '" + text(0)
                     + "' does not match its pattern " + text(2);
+            case PARAM_UNSAFE -> "The value of parameter '" + text(1) + "' of command '" + text(0)
+                    + "' cannot be passed safely: " + text(2);
             case NOT_FOUND -> "Command '" + text(0) + "': the executable '" + text(1) + "' was not found";
             case NO_WORKING_DIR -> "Command '" + text(0) + "': its working directory does not exist";
             case START_FAILED -> "Command '" + text(0) + "' could not be started: " + text(1);

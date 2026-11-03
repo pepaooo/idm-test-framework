@@ -32,7 +32,9 @@ import java.util.regex.PatternSyntaxException;
  * scenario's parameter fills only an argument that is exactly {@code {name}}, after its value has
  * matched the declared pattern in full, and is then exactly one argument; it never reaches the
  * executable, the environment or the working directory. On Windows a batch file ({@code .cmd},
- * {@code .bat}) is refused, because {@code cmd.exe} would parse its arguments again.
+ * {@code .bat}) is refused, because {@code cmd.exe} would parse its arguments again, and so is a double
+ * quote in any argument: Windows passes a command line, not a list, and {@code ProcessBuilder} does not
+ * escape an embedded quote, so the program would read {@code a" "b} as two arguments.
  * <p>
  * Every run has a closed stdin, stdout and stderr read on their own threads and capped, and a timeout
  * after which the process and its descendants are killed. A command that runs and exits, with any exit
@@ -44,6 +46,9 @@ import java.util.regex.PatternSyntaxException;
  * {@link RegisteredCommand#hash()} first (ADR 0008).
  */
 public final class CommandConnector {
+
+    /** Why a double quote cannot be passed on Windows. */
+    private static final String WINDOWS_QUOTE = "Windows does not pass a double quote inside an argument as written";
 
     /** How long to wait for the output readers once the process has ended or been killed. */
     private static final Duration DRAIN = Duration.ofSeconds(5);
@@ -116,6 +121,9 @@ public final class CommandConnector {
             if (!Pattern.compile(pattern).matcher(value).matches()) {
                 return CommandProblem.of(Kind.PARAM_REJECTED, name, parameter, pattern).toResult();
             }
+            if (windows && value.indexOf('"') >= 0) {
+                return CommandProblem.of(Kind.PARAM_UNSAFE, name, parameter, WINDOWS_QUOTE).toResult();
+            }
             argv.add(value);
         }
 
@@ -146,6 +154,14 @@ public final class CommandConnector {
             return Optional.of(CommandProblem.of(Kind.BAD_DEFINITION, name,
                     "a batch file (.cmd, .bat) runs through cmd.exe, which would parse its arguments again; "
                             + "register a program instead"));
+        }
+        if (windows) {
+            for (String arg : definition.args()) {
+                if (arg != null && arg.indexOf('"') >= 0) {
+                    return Optional.of(CommandProblem.of(Kind.BAD_DEFINITION, name,
+                            "the argument " + arg + " contains a double quote: " + WINDOWS_QUOTE));
+                }
+            }
         }
         Set<String> used = new HashSet<>();
         for (String arg : definition.args()) {

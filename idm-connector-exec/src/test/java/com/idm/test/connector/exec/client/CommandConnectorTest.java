@@ -48,8 +48,13 @@ class CommandConnectorTest {
         return args;
     }
 
+    /** On the machine running the tests, as the connector decides it. */
+    private static final boolean WINDOWS = System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT)
+            .startsWith("windows");
+
+    /** The test program writes UTF-8 (see {@link TestProgram}). */
     private static CommandDefinition definition(List<String> args, Map<String, String> params) {
-        return new CommandDefinition(JAVA, args, params, null, null, null, null, null, null);
+        return new CommandDefinition(JAVA, args, params, null, null, null, null, null, "UTF-8");
     }
 
     private CommandConnector connector(Map<String, CommandDefinition> definitions) {
@@ -81,9 +86,11 @@ class CommandConnectorTest {
     class Arguments {
 
         @ParameterizedTest
-        @ValueSource(strings = {"two words", "it's \"quoted\"", "a;rm -rf x", "x && echo hacked", "a|b", "$(id)",
-                "`id`", "%PATH%", "^caret^", "-flag", "--delete=all", "back\\slash\\", "trailing\\", "ñandú 日本",
-                "", " "})
+        // Non-ASCII limited to what Windows' default code page holds: a Java program there reads its arguments
+        // in that code page. Double quotes are tested apart: Windows refuses them (testDoubleQuotes).
+        @ValueSource(strings = {"two words", "it's", "a;rm -rf x", "x && echo hacked", "a|b", "$(id)",
+                "`id`", "%PATH%", "^caret^", "-flag", "--delete=all", "back\\slash\\", "trailing\\", "ñandú €",
+                "", " ", "a' 'b"})
         @DisplayName("Should pass each parameter value as one literal argument, never through a shell")
         void testValueIsOneLiteralArgument(String value) {
             CommandConnector connector = connector(Map.of("echo",
@@ -94,6 +101,25 @@ class CommandConnectorTest {
             assertThat(lines(result.stdout())).containsExactly("<fixed>", "<" + value + ">", "<end>");
             assertThat(result.exitCode()).isZero();
             assertThat(result.argv()).endsWith("fixed", value, "end");
+        }
+
+        @Test
+        @DisplayName("Should pass double quotes literally where the OS takes an argument list, and refuse them on Windows")
+        void testDoubleQuotes() {
+            Map<String, CommandDefinition> echo = Map.of("echo",
+                    definition(program("args", "{value}"), Map.of("value", "(?s).*")),
+                    "quoted", definition(program("args", "say \"hi\""), Map.of()));
+
+            // On Windows a quote would let a value become several arguments: a" "b.
+            CommandProblem value = problem(connector(echo, true).run("echo", Map.of("value", "a\" \"b")));
+            assertThat(value.kind()).isEqualTo(Kind.PARAM_UNSAFE);
+            assertThat(value.english()).contains("double quote").doesNotContain("a\" \"b");
+            assertThat(problem(connector(echo, true).run("quoted", Map.of())).kind()).isEqualTo(Kind.BAD_DEFINITION);
+
+            if (!WINDOWS) {
+                CommandResult literal = ran(connector(echo, false).run("echo", Map.of("value", "it's \"a\" \"b\"")));
+                assertThat(lines(literal.stdout())).containsExactly("<it's \"a\" \"b\">");
+            }
         }
 
         @Test
@@ -216,11 +242,11 @@ class CommandConnectorTest {
             CommandConnector connector = connector(Map.of(
                     "latin1", new CommandDefinition(JAVA, program("bytes", "ISO-8859-1", "Peña"), Map.of(),
                             null, null, null, null, null, "ISO-8859-1"),
-                    "utf8", new CommandDefinition(JAVA, program("bytes", "UTF-8", "Peña 日本"), Map.of(),
+                    "utf8", new CommandDefinition(JAVA, program("bytes", "UTF-8", "Peña ñandú €"), Map.of(),
                             null, null, null, null, null, "UTF-8")));
 
             assertThat(ran(connector.run("latin1", Map.of())).stdout()).isEqualTo("Peña");
-            assertThat(ran(connector.run("utf8", Map.of())).stdout()).isEqualTo("Peña 日本");
+            assertThat(ran(connector.run("utf8", Map.of())).stdout()).isEqualTo("Peña ñandú €");
         }
 
         @Test

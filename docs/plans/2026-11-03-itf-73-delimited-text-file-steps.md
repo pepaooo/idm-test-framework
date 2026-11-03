@@ -338,7 +338,18 @@ which Task 10 is to repeat on Java 25.
 
 ### Task 10: Final check
 
-- [ ] `./mvnw clean install` green.
-- [ ] Run the scenario from Task 6 through `idmtest run` and through the workbench; open the HTML
+- [ ] `./mvnw clean install` green on Java 25. (Green on JDK 21 with `-Djava.version=21 -Dmaven.compiler.release=21`, 2026-11-03: every module, 391 Vitest tests; a Java 25 JDK was not available in the build container.)
+- [x] Run the scenario from Task 6 through `idmtest run` and through the workbench; open the HTML
   report and confirm the file evidence, masking and absence of the folder path.
-- [ ] Re-read the Review Focus list against the tests that cover it.
+- [x] Re-read the Review Focus list against the tests that cover it.
+
+**As done:** a workspace from `idmtest init` with a `scratch` folder ran the round trip and a masking
+scenario (a `password` column, and a value equal to a `secrets.env` secret) through `idmtest run`:
+both passed, the folder was left empty, and `report.html`, `run.log` and `results.json` contain
+neither the folder path nor the secret; the report and the evidence mask the `password` column. In the
+workbench, the lab panel showed `folder:scratch` with the access choice and "Folder OK · read-write",
+and a run of the masking scenario passed. One observation outside this ticket: `results.json` keeps a
+step's `resolvedParams` unmasked by key (documented in the capability matrix), so a literal password
+written in a `file.write` row appears there, as an `ldap.create` `userPassword` does; the workbench
+already warns about a plain-text password in the scenario.
+

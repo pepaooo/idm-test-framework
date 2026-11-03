@@ -118,25 +118,36 @@ pattern, `.cmd`/`.bat` on Windows), `UNKNOWN_PARAM`, `MISSING_PARAM`, `PARAM_REJ
 match), `NOT_FOUND` (executable), `NO_WORKING_DIR`, `START_FAILED` — all `CONFIGURATION_ERROR`;
 `TIMED_OUT` — `TIMEOUT`.
 
-- [ ] **Step 1: Test program.** A small `TestProgram` main (in test sources) that, by argument, prints
+- [x] **Step 1: Test program.** A small `TestProgram` main (in test sources) that, by argument, prints
   each argument on its own line, writes N bytes to stdout or stderr, sleeps, exits with a code, prints
   an environment variable, or starts a child that sleeps. Tests run it as
   `ProcessHandle.current().info().command()` + `-cp` + test classes, so they need no OS tools.
-- [ ] **Step 2: Failing tests** (`CommandConnectorTest`): argument placement; each parameter value
+- [x] **Step 2: Failing tests** (`CommandConnectorTest`): argument placement; each parameter value
   arriving as one literal argument for every Review Focus injection string; `{x}` inside a longer
   argument staying literal; undeclared/unused/unknown/missing parameters; a value not matching in full
   (`^…$` implied); exit codes; stdout and stderr apart; `max-output` with the byte count kept;
   `encoding`; `env` added to the inherited environment; `working-dir` default and missing; a missing
   executable; timeout killing a sleeping child (assert the child is gone); a flood of output not
   blocking the process; `.cmd`/`.bat` refused on Windows only.
-- [ ] **Step 3: Hash tests** (`DefinitionHashTest`): stable across runs and map orders; changes with
+- [x] **Step 3: Hash tests** (`DefinitionHashTest`): stable across runs and map orders; changes with
   every field; unchanged when only a `${NAME}`'s value changes (hash the raw settings, not resolved
   values — `CommandProperties` keeps the raw text with references).
-- [ ] **Step 4: Implement** until green. Read both streams on their own threads; wait with the timeout;
+- [x] **Step 4: Implement** until green. Read both streams on their own threads; wait with the timeout;
   on timeout `descendants().forEach(destroyForcibly)` then `destroyForcibly`, then join the readers.
-- [ ] **Step 5: Binding test** (`CommandPropertiesTest`), including Spring's lenient binding of
+- [x] **Step 5: Binding test** (`CommandPropertiesTest`), including Spring's lenient binding of
   `timeout` and `max-output`.
-- [ ] **Step 6:** `./mvnw test -pl idm-connector-exec -am`; commit `feat(exec): command connector (ITF-74)`.
+- [x] **Step 6:** `./mvnw test -pl idm-connector-exec -am`; commit `feat(exec): command connector (ITF-74)`.
+
+**As built:** `CommandConnector(Map<String, RegisteredCommand>, Path)`; a `RegisteredCommand` holds the
+definition as it runs and the hash of the definition as written. A command that runs, whatever its exit
+code, or that times out, is a successful `OperationResult` whose `CommandResult` says so (`timedOut`,
+exit code `-1`): the steps decide what that means, so there is no `TIMED_OUT` problem kind. Settings are
+bound twice in `CommandConfiguration.registered`: normally, to run, and with a binder that resolves no
+placeholders, for the text fields the hash covers (executable, args, params, env, working-dir); the
+other fields are hashed as bound. The working directory defaults to the property `idm.test.workspace`,
+which the runner sets in Task 6. Tests set `LC_ALL=C.UTF-8` where non-ASCII arguments are passed (as the
+CI runners have); stderr assertions count bytes, because a JVM started with `JAVA_TOOL_OPTIONS` prints a
+notice there.
 
 ### Task 2: CI on Windows and macOS
 

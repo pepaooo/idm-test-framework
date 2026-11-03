@@ -47,6 +47,9 @@ describe('Registered commands in the lab', () => {
     expect(deriveLabState({ systems: [javaCommand('not-registered')] }, null).message).toBe(
       'Lab: Command java-version is not registered in the settings',
     );
+    expect(deriveLabState({ systems: [javaCommand('changed')] }, null).message).toBe(
+      'Lab: Command java-version changed since it was approved on this machine',
+    );
     expect(deriveLabState({ systems: [javaCommand('approved')] }, null).state).toBe('ready');
   });
 

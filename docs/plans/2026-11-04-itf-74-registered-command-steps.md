@@ -298,7 +298,21 @@ of input is no. `RunService` asks the store for its workspace and profile, and s
 
 ### Task 10: Final check
 
-- [ ] CI green on Ubuntu (full build), Windows and macOS (exec tests).
-- [ ] By hand: a workspace with a registered command — refused before approval, approved with
+- [x] CI green on Ubuntu (full build), Windows and macOS (exec tests).
+- [x] By hand: a workspace with a registered command — refused before approval, approved with
   `idmtest commands approve`, run, changed, refused again; the same in the workbench.
-- [ ] Re-read the Review Focus list against the tests that cover it.
+- [x] Re-read the Review Focus list against the tests that cover it.
+- As built: CI green on all three jobs (`c3bcc86`). By hand with the runner jar, against a scratch
+  workspace and home folder: `idmtest run` refused (exit 2) before approval; `commands list` showed the
+  definition with the secret by name; `approve` answered `n` left it unapproved, `y` approved it; the
+  run passed; after changing `args`, `list` said "changed since it was approved" and the run was
+  refused; rotating only the secret's value kept the approval; no secret value in reports or the
+  approvals file. The same in the workbench (headless Chromium): chip and run panel blocked, ⚙ in
+  the tree, the panel showed the definition and approved it, the chip turned ready and the run panel
+  named the command; a change on disk blocked it again; no secret in the DOM. Found and fixed: the
+  help text dropped the apostrophe in "the profile's" and did not list `--yes`; the chip now says
+  "changed since it was approved" for a changed definition; the command panel uses the form grid.
+  Review Focus: approval bypass (`ApprovalStoreTest`, the hash tests in `CommandConnectorTest` and
+  `CommandConfigurationTest`), injection and Windows (`CommandConnectorTest` injection strings, quotes,
+  batch files), hangs (timeout, child killed, output flood), masking (`CommandEvidenceTest`,
+  `SecretMaskTest`, `ExecStepsTest`).

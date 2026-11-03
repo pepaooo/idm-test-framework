@@ -81,7 +81,8 @@ export function CommandPanel({ system, profile, readOnly, hidden, panelId, onSav
   return (
     <div role="tabpanel" id={panelId} aria-label={system.name} hidden={hidden} className="lab-form-panel lab-command">
       <div className="lab-identity">
-        <span>{t('ui.lab.identifier')}</span> <code>{system.id}</code>
+        <span className="muted">{t('ui.lab.identifier')}</span>
+        <code>{system.id}</code>
       </div>
       {system.usedByScenarios.length === 0 ? (
         <p className="muted lab-used">{t('ui.lab.unused')}</p>
@@ -92,11 +93,11 @@ export function CommandPanel({ system, profile, readOnly, hidden, panelId, onSav
         <Badge status={APPROVAL_BADGE[approval]} /> {t(`ui.lab.command.state.${approval}`)}
       </p>
       {rows.length > 0 && (
-        <dl className="lab-command-definition">
+        <dl className="lab-form lab-command-definition">
           {rows.map(([label, value]) => (
             <div key={label} className="lab-row">
               <dt>{label}</dt>
-              <dd>
+              <dd className="lab-cell">
                 <code>{value}</code>
               </dd>
             </div>

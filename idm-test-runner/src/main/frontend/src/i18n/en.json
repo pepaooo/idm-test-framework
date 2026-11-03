@@ -393,5 +393,6 @@
   "ui.lab.command.approving": "Approving…",
   "ui.system.command": "The command {name}",
   "ui.tree.commands": "runs commands: {names}",
-  "ui.run.commands": "This run starts commands on this machine: {names}"
+  "ui.run.commands": "This run starts commands on this machine: {names}",
+  "ui.lab.chip.commandChanged": "Lab: {system} changed since it was approved on this machine"
 }

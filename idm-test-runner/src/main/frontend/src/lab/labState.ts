@@ -41,7 +41,9 @@ export function deriveLabState(view: LabView | null, error: string | null, hasPr
 
 function missingState(missing: LabSystem): LabState {
   if (missing.kind === 'command') {
-    const key = missing.command?.approval === 'not-registered' ? 'ui.lab.chip.commandUnknown' : 'ui.lab.chip.commandNotApproved';
+    const approval = missing.command?.approval;
+    const key =
+      approval === 'not-registered' ? 'ui.lab.chip.commandUnknown' : approval === 'changed' ? 'ui.lab.chip.commandChanged' : 'ui.lab.chip.commandNotApproved';
     return { state: 'missing', missingSystemId: missing.id, message: t(key, { system: missing.name }) };
   }
   const field = missingField(missing);

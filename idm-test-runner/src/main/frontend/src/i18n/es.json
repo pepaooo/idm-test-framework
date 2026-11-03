@@ -393,5 +393,6 @@
   "ui.lab.command.approving": "Aprobando…",
   "ui.system.command": "El comando {name}",
   "ui.tree.commands": "ejecuta comandos: {names}",
-  "ui.run.commands": "Esta ejecución inicia comandos en este equipo: {names}"
+  "ui.run.commands": "Esta ejecución inicia comandos en este equipo: {names}",
+  "ui.lab.chip.commandChanged": "Lab: {system} cambió desde que se aprobó en este equipo"
 }

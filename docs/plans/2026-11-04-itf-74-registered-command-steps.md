@@ -205,16 +205,22 @@ secret-named parameter's value (4 characters or more) is also masked in stdout a
 
 ### Task 5: Wiring, guard, reference docs
 
-- [ ] `CommandApprovals` interface (`approved(workspace, profile, command, hash)`), with
+- [x] `CommandApprovals` interface (`approved(workspace, profile, command, hash)`), with
   `CommandApprovals.NONE` (approves nothing).
-- [ ] `StepRegistry.of` takes the connector and the approvals: update every caller, including the
+- [x] `StepRegistry.of` takes the connector and the approvals: update every caller, including the
   reflective one in `ScenarioSupportIsolationTest`; 19 step types.
-- [ ] `ScenarioNeeds` gains `commands`; the guard refuses an undefined or unapproved command, naming
+- [x] `ScenarioNeeds` gains `commands`; the guard refuses an undefined or unapproved command, naming
   each and the `idmtest commands approve` line; tests for both and for a workspace without
   `idm.test.commands`.
-- [ ] Write the `exec.run` and `exec.verify` sections of `docs/reference/writing-scenarios.md`
+- [x] Write the `exec.run` and `exec.verify` sections of `docs/reference/writing-scenarios.md`
   (`ScenarioReferenceTest`).
-- [ ] Commit `feat(wiring): register exec steps and the command guard (ITF-74)`.
+- [x] Commit `feat(wiring): register exec steps and the command guard (ITF-74)`.
+
+**As built:** no second interface: the wiring takes the engine's `CommandApproval` (`approved(command,
+hash)`), which the runner will bind to its workspace and profile in Task 6. Until then `RunService`
+passes `CommandApproval.NONE`, as the scenario module's runners do; the embedded suite will approve its
+harmless command in Task 7. The guard names every unapproved command at once. Verified locally: wiring
+88, scenarios 104, runner 393 Java and 391 Vitest tests.
 
 ### Task 6: Approvals in the runner
 

@@ -151,8 +151,9 @@ notice there.
 
 ### Task 2: CI on Windows and macOS
 
-- [ ] Add a job `exec-on-os` to `ci.yml`, matrix `windows-latest`, `macos-latest`, Java 25 Temurin:
-  `./mvnw -B test -pl idm-connector-exec -am`. Keep the Ubuntu job unchanged.
+- [x] Add a job `exec-on-os` to `ci.yml`, matrix `windows-latest`, `macos-latest`, Java 25 Temurin:
+  `./mvnw -B test -pl idm-connector-exec -am -Dtest='Command*Test'` (only the exec tests, so a
+  Windows quirk elsewhere cannot fail it), in `bash` on every runner. Keep the Ubuntu job unchanged.
 - [ ] Commit `ci: run the exec connector's tests on Windows and macOS (ITF-74)`; open a draft PR early so
   CI runs on all three systems before the steps are built on top.
 

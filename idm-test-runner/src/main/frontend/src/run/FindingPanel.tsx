@@ -46,7 +46,8 @@ function headers(lines: string[], values: Record<string, string[]> | null) {
 
 /**
  * A step's evidence as plain text, in the shape the HTML report shows it (EvidenceHtml): the HTTP
- * request and response, the SQL with its rows, the LDAP entry's attributes. Already masked.
+ * request and response, the SQL with its rows, the LDAP entry's attributes, the file's rows (those
+ * `where:` selected marked ▸). Already masked; a file is named by its folder, never its path.
  */
 export function evidenceText(evidence: Evidence): string {
   const lines: string[] = [];
@@ -89,6 +90,25 @@ export function evidenceText(evidence: Evidence): string {
         lines.push(`${name}: ${Array.isArray(value) ? value.map(valueText).join(', ') : valueText(value)}`),
       );
       break;
+    case 'file': {
+      const absent = evidence.present === false ? (evidence.operation === 'delete' ? '(already absent)' : '(no matching file yet)') : null;
+      lines.push(
+        [`${evidence.operation} ${evidence.file}`, `folder ${evidence.folder}`,
+          evidence.size !== null && evidence.size !== undefined ? `${evidence.size} bytes` : null, absent]
+          .filter(Boolean)
+          .join(' · '),
+      );
+      (evidence.rows ?? []).forEach((row) =>
+        lines.push(
+          `${row.selected ? '▸' : ' '} ${row.number}  ` +
+            Object.entries(row.values).map(([column, value]) => `${column}: ${valueText(value)}`).join(' · '),
+        ),
+      );
+      if (evidence.totalRows !== null && evidence.totalRows !== undefined && evidence.totalRows > (evidence.rows ?? []).length) {
+        lines.push(`… +${evidence.totalRows - (evidence.rows ?? []).length}`);
+      }
+      break;
+    }
   }
   return lines.join('\n');
 }

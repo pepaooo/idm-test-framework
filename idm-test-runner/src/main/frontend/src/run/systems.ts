@@ -6,7 +6,8 @@ import type { StepResult } from './types';
  * The lab system a step talked to, by the same rule the server uses for "used by" (ScenarioNeeds /
  * LabSettings): `ldap.*` → `directory:<directory>` when the step names one the lab has, else the
  * ldap system this scenario uses (the default directory, `ldap`); `db.*` → `database:<database>`;
- * `rest.*` and `http.*` → `rest:<target>`; `roles.*` and `resources.*` → `soap`.
+ * `rest.*` and `http.*` → `rest:<target>`; `roles.*` and `resources.*` → `soap`; `file.*` →
+ * `folder:<folder>`.
  */
 export function systemIdOf(step: Pick<StepResult, 'type' | 'resolvedParams'>, scenario: string, lab: LabView | null): string | null {
   const params = step.resolvedParams ?? {};
@@ -32,6 +33,8 @@ export function systemIdOf(step: Pick<StepResult, 'type' | 'resolvedParams'>, sc
     case 'roles':
     case 'resources':
       return 'soap';
+    case 'file':
+      return typeof params.folder === 'string' ? `folder:${params.folder}` : null;
     default:
       return null;
   }

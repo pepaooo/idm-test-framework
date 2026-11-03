@@ -279,28 +279,43 @@ checks that cleanup left the folder empty and that the evidence names `scratch`,
 (if needed), `SecretMask.java`, runner message bundles; `UiServerTest`, `LabSettings` and
 `ConnectionTester` tests.
 
-- [ ] **Step 1: Failing tests:** an `idmtest run` of a workspace scenario using a folder from
+- [x] **Step 1: Failing tests:** an `idmtest run` of a workspace scenario using a folder from
   `config/application-<profile>.yml`; the lab view lists `folder:<name>` systems with `path`,
   `access` and format fields, the scenarios that use them, and save/delete behaving as for databases
   (versioned save, 409 on a stale file); the connection test reports missing, not readable and not
   writable, and removes its probe file; no response, event or log contains the folder path except the
   lab field the user edits.
-- [ ] **Step 2: Implement:** `Kind.FOLDER` with prefix `idm.test.files.<name>`; the connector bean
+- [x] **Step 2: Implement:** `Kind.FOLDER` with prefix `idm.test.files.<name>`; the connector bean
   from `FileProperties`; masking for `FileEvidence` in `SecretMask`.
-- [ ] **Step 3: Schema:** `StepSchema` is generated from the registry; add a test asserting the three
+- [x] **Step 3: Schema:** `StepSchema` is generated from the registry; add a test asserting the three
   steps and their parameters appear and that `file.delete` is allowed in cleanup.
-- [ ] **Step 4:** `./mvnw test -pl idm-test-runner -am`; commit `feat(runner): folder settings and file evidence (ITF-73)`.
+- [x] **Step 4:** `./mvnw test -pl idm-test-runner -am`; commit `feat(runner): folder settings and file evidence (ITF-73)`.
+
+**As built:** `LabSettings.Kind.FOLDER`, id `folder:<name>`, prefix `idm.test.files.<name>`; fields
+label, path (required), access and the format keys, none secret. Saving binds each folder value with
+Spring's binder and refuses one the runner could not bind (Spring's enum binding is lenient:
+`readwrite` is accepted, as a run would accept it). The connection test uses
+`DelimitedFileConnector.probe` and names the folder, never its path. `RunService` already passed the
+connector since Task 5; `SecretMask` was done in Task 3. The runner's test resources keep their own
+copy of `files-delimited-round-trip.yaml`, as they do of two other corpus scenarios.
 
 ### Task 8: Workbench front end
 
 **Files:** `src/run/types.ts`, the evidence view in the finding panel, the lab panel's system list and
 editor, the new-scenario template comment, i18n strings, their Vitest tests.
 
-- [ ] **Step 1: Failing Vitest tests:** `FileEvidence` renders as a table with the masked values and
+- [x] **Step 1: Failing Vitest tests:** `FileEvidence` renders as a table with the masked values and
   the truncation note; the lab panel shows a **Folders** group, edits path, access (select) and
   format fields, and runs the connection test; the template's commented example mentions `file.write`.
-- [ ] **Step 2: Implement**; `npm test` and `npm run build` from the front-end folder, then
+- [x] **Step 2: Implement**; `npm test` and `npm run build` from the front-end folder, then
   `./mvnw test -pl idm-test-runner -am`. Commit `feat(workbench): folders in the lab panel (ITF-73)`.
+
+**As built:** a folder is a lab tab like any other system (the panel has no per-kind groups), with
+Folder in "+ add" and access as a select (`read`, `write`, `read-write`, or unset). The finding panel
+shows evidence as text, as it does for SQL: the file and folder name, one line per row with `▸` on the
+rows `where:` selected, and what was left out; the folder's path is never in it, and `file.*` steps
+map to `folder:<name>`. The new-scenario template is unchanged: it is a short LDAP example, and a
+`file.write` comment would only add noise.
 
 ### Task 9: Documentation
 

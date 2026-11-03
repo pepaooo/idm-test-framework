@@ -3,7 +3,7 @@ import { api, ApiProblem, withQuery } from '../api/client';
 import { Badge } from '../components/Badge';
 import { t } from '../i18n';
 import { DeleteConnectionDialog } from './DeleteConnectionDialog';
-import { newSystemId, OAUTH_KEYS, SYSTEM_NAME, templateFields } from './fieldTemplates';
+import { FOLDER_ACCESS, newSystemId, OAUTH_KEYS, SYSTEM_NAME, templateFields } from './fieldTemplates';
 import type { LabField, LabSystem, LabView, TestResult } from './types';
 
 interface Props {
@@ -239,6 +239,7 @@ export function SystemForm({ system, existingIds, profile, readOnly, hidden, lab
             <option value="database">{t('ui.lab.kind.database')}</option>
             <option value="rest">{t('ui.lab.kind.rest')}</option>
             {!existingIds.includes('soap') && <option value="soap">{t('ui.lab.kind.soap')}</option>}
+            <option value="folder">{t('ui.lab.kind.folder')}</option>
           </select>
           {kind !== 'soap' && (
             <>
@@ -310,6 +311,32 @@ export function SystemForm({ system, existingIds, profile, readOnly, hidden, lab
                       setValue(field.key, event.target.checked ? 'true' : original(field) === '' ? '' : 'false')
                     }
                   />
+                  {noteLine}
+                </div>
+              </div>
+            );
+          }
+          if ((system?.kind ?? kind) === 'folder' && field.key === 'access') {
+            const value = current(field).trim();
+            return (
+              <div key={`${kind}:${field.key}`} className="lab-row">
+                {label}
+                <div className="lab-cell">
+                  <select
+                    id={id}
+                    value={value}
+                    disabled={!editable(field)}
+                    aria-describedby={describedBy}
+                    onChange={(event) => setValue(field.key, event.target.value)}
+                  >
+                    <option value="">{t('ui.lab.access.default')}</option>
+                    {FOLDER_ACCESS.map((access) => (
+                      <option key={access} value={access}>
+                        {t(`ui.lab.access.${access}`)}
+                      </option>
+                    ))}
+                    {value !== '' && !(FOLDER_ACCESS as readonly string[]).includes(value) && <option value={value}>{value}</option>}
+                  </select>
                   {noteLine}
                 </div>
               </div>

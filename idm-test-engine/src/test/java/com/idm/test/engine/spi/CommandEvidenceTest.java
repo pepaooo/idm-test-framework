@@ -34,6 +34,16 @@ class CommandEvidenceTest {
     }
 
     @Test
+    @DisplayName("Should mask a secret parameter's value where the command echoed it, but not a very short one")
+    void testMasksEchoedSecrets() {
+        CommandEvidence evidence = CommandEvidence.ran("set-pw", List.of("tool", "fake-new-pw", "abc"),
+                Set.of(1, 2), 0, 5, false, "set fake-new-pw for abc", "error: fake-new-pw rejected", 0, 0);
+
+        assertThat(evidence.stdout()).isEqualTo("set *** for abc");
+        assertThat(evidence.stderr()).isEqualTo("error: *** rejected");
+    }
+
+    @Test
     @DisplayName("Should keep the exit code, duration, time-out and byte counts, and say when output was cut")
     void testResultFields() {
         String big = "x".repeat(Evidence.MAX_BODY_CHARS + 500);

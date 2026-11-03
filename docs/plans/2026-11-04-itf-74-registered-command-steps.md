@@ -185,16 +185,23 @@ with Task 8.
 
 ### Task 4: The two steps
 
-- [ ] **Failing `ExecStepsTest`** over a real connector and the test program: every row of the spec's
+- [x] **Failing `ExecStepsTest`** over a real connector and the test program: every row of the spec's
   §5 failure table; `exec.run` capture; `exec.verify` `exitCode` (number or list), `stdout`/`stderr`
   `equals`/`contains`/`matches`/`ignoreCase`, `\r\n` and trailing line breaks normalised; the
   vacuous-`expect` safeguards; a wait through the engine that passes when the program's output changes
   (the program reads a file the test rewrites); cleanup allows `exec.run` only.
-- [ ] **Implement** `ExecRunStep`, `ExecVerifyStep`, `OutputExpectations`, `CommandProblems`, and the
+- [x] **Implement** `ExecRunStep`, `ExecVerifyStep`, `OutputExpectations`, `CommandProblems`, and the
   `step.exec.*` keys in both catalogs. The steps take an approval check (a function from command name
   and hash to yes/no) and refuse an unapproved command as a final setup failure, so a missed guard
   still cannot run anything.
-- [ ] Commit `feat(engine): exec.run and exec.verify (ITF-74)`.
+- [x] Commit `feat(engine): exec.run and exec.verify (ITF-74)`.
+
+**As built:** the approval check is `CommandApproval` (engine `spi`, `approved(command, hash)`, with
+`NONE`), passed to both steps; Task 5 adapts the wiring's approvals to it. Both steps check `params` and
+`expect` before the approval, so a malformed scenario is reported as such, not as unapproved, and before
+anything runs. `matches` must match the whole normalised output and `ignoreCase` applies only to
+`equals`/`contains`, as in `ldap.verify`. Found while testing: a tool may echo its arguments, so a
+secret-named parameter's value (4 characters or more) is also masked in stdout and stderr.
 
 ### Task 5: Wiring, guard, reference docs
 

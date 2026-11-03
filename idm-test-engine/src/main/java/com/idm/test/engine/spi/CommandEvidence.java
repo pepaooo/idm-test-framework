@@ -13,7 +13,7 @@ import java.util.Set;
  * <p>
  * The constructor masks an argument that follows a secret-looking option ({@code -password x}) and the
  * value of one written as {@code --token=x} or {@code /ApiKey:x}; the factory also masks the arguments a
- * secret-named parameter filled. Known secret values ({@code secrets.env}) are masked by the runner, as
+ * secret-named parameter filled, and those values wherever the command echoed them in its output. Known secret values ({@code secrets.env}) are masked by the runner, as
  * for all evidence. Output is cut at {@link Evidence#MAX_BODY_CHARS} characters per stream. Applying the
  * constructor again to its own output changes nothing.
  *
@@ -46,13 +46,32 @@ public record CommandEvidence(String command, List<String> argv, Integer exitCod
                                       long durationMillis, boolean timedOut, String stdout, String stderr,
                                       long stdoutBytes, long stderrBytes) {
         List<String> shown = new ArrayList<>(argv);
+        List<String> secrets = new ArrayList<>();
         for (int position : secretPositions) {
             if (position >= 0 && position < shown.size()) {
+                secrets.add(shown.get(position));
                 shown.set(position, Secrets.MASK);
             }
         }
-        return new CommandEvidence(command, shown, exitCode, durationMillis, timedOut, stdout, stderr,
-                stdoutBytes, stderrBytes);
+        // A tool may echo what it was given: a secret parameter's value is masked in its output too.
+        return new CommandEvidence(command, shown, exitCode, durationMillis, timedOut, without(stdout, secrets),
+                without(stderr, secrets), stdoutBytes, stderrBytes);
+    }
+
+    /** Values shorter than this are not masked in output: they would mask ordinary text. */
+    private static final int MIN_SECRET_LENGTH = 4;
+
+    private static String without(String text, List<String> secrets) {
+        if (text == null) {
+            return null;
+        }
+        String masked = text;
+        for (String secret : secrets) {
+            if (secret != null && secret.length() >= MIN_SECRET_LENGTH) {
+                masked = masked.replace(secret, Secrets.MASK);
+            }
+        }
+        return masked;
     }
 
     /** A command that could not be started (unknown, not approved, a bad parameter). */

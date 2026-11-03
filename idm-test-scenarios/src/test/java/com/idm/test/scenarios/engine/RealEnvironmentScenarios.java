@@ -94,8 +94,6 @@ public class RealEnvironmentScenarios {
     @Autowired
     private CommandConnector commandConnector;
 
-    /** This runner keeps no approvals: every command is refused (ADR 0008). */
-    private final CommandApproval commandApproval = CommandApproval.NONE;
 
     @Autowired
     private ObjectProvider<RoleServiceConnector> roleServiceConnector;
@@ -127,6 +125,16 @@ public class RealEnvironmentScenarios {
     @Autowired
     private TestDataGenerator testDataGenerator;
 
+    /** This runner keeps no approvals: every command is refused (ADR 0008). ContainerScenarios overrides it. */
+    CommandApproval commandApproval() {
+        return CommandApproval.NONE;
+    }
+
+    /** The command connector, for ContainerScenarios's approval. */
+    CommandConnector commandConnector() {
+        return commandConnector;
+    }
+
     /** The catalog key of the runner's name in the report; ContainerScenarios overrides it. */
     String runnerName() {
         return "runner.name.realEnvironment";
@@ -146,6 +154,7 @@ public class RealEnvironmentScenarios {
         RealEnvironmentGuards.requireNotEmbedded(environment, locale);
         RealEnvironmentGuards.requireScenarios(source.names(), scenarioDir, locale);
         List<String> selected = ScenarioSupport.selectedScenarioFiles(scenarioDir);
+        CommandApproval commandApproval = commandApproval();
         RealEnvironmentGuards.check(environment, source, selected, locale, restProperties, databaseProperties,
                 soapProperties, fileConnector, commandConnector, commandApproval);
 

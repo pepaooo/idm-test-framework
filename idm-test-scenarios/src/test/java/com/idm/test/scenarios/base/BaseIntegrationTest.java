@@ -162,6 +162,7 @@ public abstract class BaseIntegrationTest {
         // (@ConditionalOnProperty), so it must be non-null here too, even though no scenario
         // executed by this module drives a resource grant/revoke against it.
         registry.add("idm.test.files.scratch.path", FILES_SCRATCH::toString);
+        registry.add(TestCommands.EXECUTABLE_PROPERTY, TestCommands::javaExecutable);
         registry.add("idm.test.soap.resource-url",
                 () -> "http://localhost:" + WIREMOCK_SERVER.port() + "/IDMProv/resource/service");
     }
@@ -188,8 +189,12 @@ public abstract class BaseIntegrationTest {
     @Autowired
     protected CommandConnector commandConnector;
 
-    /** The commands the embedded suite may run: none until a test approves one (ADR 0008). */
-    protected CommandApproval commandApproval = CommandApproval.NONE;
+    /**
+     * The commands the embedded suite may run (ADR 0008): only {@code java-version}, and only as
+     * application-test.yml defines it now. A test that needs the refusal sets this to
+     * {@link CommandApproval#NONE}.
+     */
+    protected CommandApproval commandApproval = TestCommands.approving(() -> commandConnector, TestCommands.JAVA_VERSION);
 
     @Autowired
     protected RoleServiceConnector roleServiceConnector;

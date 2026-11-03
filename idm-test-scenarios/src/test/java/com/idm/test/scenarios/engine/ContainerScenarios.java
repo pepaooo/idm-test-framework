@@ -16,6 +16,8 @@ import org.testcontainers.images.builder.Transferable;
 import org.testcontainers.utility.MountableFile;
 
 import com.idm.test.connector.ldap.config.LdapProperties;
+import com.idm.test.engine.spi.CommandApproval;
+import com.idm.test.scenarios.base.TestCommands;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -152,6 +154,15 @@ public class ContainerScenarios extends RealEnvironmentScenarios {
         return super.scenarios();
     }
 
+    /**
+     * Approves the corpus's one command, {@code java-version}, as {@link #publish} registers it: the
+     * same test approval the embedded suite gives it (ADR 0008).
+     */
+    @Override
+    CommandApproval commandApproval() {
+        return TestCommands.approving(this::commandConnector, TestCommands.JAVA_VERSION);
+    }
+
     @Override
     String scenarioDirectory() {
         return CORPUS_DIR;
@@ -244,6 +255,13 @@ public class ContainerScenarios extends RealEnvironmentScenarios {
             throw new UncheckedIOException("Could not create the scratch folder for the file steps", e);
         }
         set("idm.test.files.scratch.access", "read-write");
+
+        // The corpus's exec.* scenario runs java-version, which application-test.yml registers for
+        // the embedded suite; this runner has no profile, so it registers the same definition here.
+        set(TestCommands.EXECUTABLE_PROPERTY, TestCommands.javaExecutable());
+        set("idm.test.commands." + TestCommands.JAVA_VERSION + ".args[0]", "-version");
+        set("idm.test.commands." + TestCommands.JAVA_VERSION + ".exit-codes[0]", "0");
+        set("idm.test.commands." + TestCommands.JAVA_VERSION + ".timeout", "30s");
 
         // The default profile waits up to 5 minutes, polling every 5 seconds; the corpus was
         // written against the test profile's 60 seconds and 1 second.

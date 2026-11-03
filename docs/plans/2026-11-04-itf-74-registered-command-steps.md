@@ -243,13 +243,21 @@ of input is no. `RunService` asks the store for its workspace and profile, and s
 
 ### Task 7: Default-suite scenario
 
-- [ ] `application-test.yml` registers `java-version` (executable: the current JVM's `java`, set by
+- [x] `application-test.yml` registers `java-version` (executable: the current JVM's `java`, set by
   `BaseIntegrationTest`; args `["-version"]`; `exit-codes: [0]`); `BaseIntegrationTest` approves it in
   a test approvals object.
-- [ ] `scenarios/exec-harmless-command.yaml`: `exec.verify` that stderr contains `version` (Java prints
+- [x] `scenarios/exec-harmless-command.yaml`: `exec.verify` that stderr contains `version` (Java prints
   its version on stderr) and `exec.run` capturing it; a test that the same scenario is refused with
   `CommandApprovals.NONE`. Copy it to the runner's test resources if a runner test uses it.
-- [ ] Commit `test(scenarios): harmless registered command (ITF-74)`.
+- [x] Commit `test(scenarios): harmless registered command (ITF-74)`.
+- As built: the executable comes from `TestCommands.javaExecutable()` (`java.home`/bin/java, by
+  absolute path), set by `BaseIntegrationTest`'s `@DynamicPropertySource`. `TestCommands.approving`
+  approves the named commands only with the hash the context's connector holds, so the test approval
+  cannot cover a different definition. `ExecScenarioTest` runs the scenario approved and with
+  `CommandApproval.NONE` (refused, nothing started). `ContainerScenarios` runs the same corpus without
+  the test profile, so it registers the same definition as system properties and overrides
+  `RealEnvironmentScenarios.commandApproval()`; not run here (no Docker). No runner test uses the
+  scenario, so it is not copied.
 
 ### Task 8: Workbench
 

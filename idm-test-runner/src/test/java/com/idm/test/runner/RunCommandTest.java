@@ -381,6 +381,35 @@ class RunCommandTest {
     }
 
     @Test
+    @DisplayName("Should mask a parameter under a secret-looking key in results.json and report.html")
+    void testSecretNamedParameterIsMasked() throws Exception {
+        String password = "hunter2-plain";
+        Path ws = workspace("ws");
+        scenario(ws, "secret-param.yaml", """
+                name: Password in parameters
+                steps:
+                  - ldap.create:
+                      dn: "cn=secret-param,ou=users"
+                      as: createdDn
+                      attributes:
+                        cn: secret-param
+                        sn: Param
+                        userPassword: %s
+                cleanup:
+                  - ldap.delete:
+                      dn: "${createdDn}"
+                """.formatted(password));
+
+        int exit = run(ws, "--profile", "lab", "--scenario", "secret-param.yaml");
+
+        assertThat(exit).as(out() + err()).isEqualTo(ExitCodes.OK);
+        Path folder = runFolder(ws);
+        String results = Files.readString(folder.resolve("results.json"));
+        assertThat(results).doesNotContain(password).contains("\"userPassword\" : \"***\"", "secret-param");
+        assertThat(Files.readString(folder.resolve("report.html"))).doesNotContain(password);
+    }
+
+    @Test
     @DisplayName("Should keep a secrets.env value in a REST URL out of results.json, report.html, run.log and the console")
     void testSecretInReportsIsMasked() throws Exception {
         String secret = "Zq9xLeakProbe";

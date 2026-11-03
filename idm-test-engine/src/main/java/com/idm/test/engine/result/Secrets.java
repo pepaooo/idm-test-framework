@@ -10,8 +10,8 @@ import java.util.Locale;
 import java.util.Map;
 
 /**
- * The one rule for what counts as a secret, shared by the report's parameter masking and by step
- * evidence, so the two can never disagree.
+ * The one rule for what counts as a secret, shared by the results file's and the report's parameter
+ * masking and by step evidence, so they can never disagree.
  */
 public final class Secrets {
 
@@ -61,5 +61,41 @@ public final class Secrets {
             return Collections.unmodifiableList(copy);
         }
         return value;
+    }
+
+    /**
+     * {@code result} with every resolved parameter under a secret-looking key, at any depth, in its
+     * steps, cleanup entries and skipped cleanup entries replaced by {@value #MASK}; everything else
+     * as it is. Null stays null.
+     */
+    public static ScenarioResult paramsMasked(ScenarioResult result) {
+        if (result == null) {
+            return null;
+        }
+        return new ScenarioResult(result.name(), result.sourceName(), result.success(), result.durationMillis(),
+                result.steps() == null ? null : result.steps().stream().map(Secrets::paramsMasked).toList(),
+                result.cleanup().stream().map(Secrets::paramsMasked).toList(), result.failureDetail(),
+                result.description(), result.failureDetailKey(), result.failureDetailArgs(), result.stopped(),
+                result.skippedCleanup().stream().map(Secrets::paramsMasked).toList());
+    }
+
+    /** {@code step} with its resolved parameters masked by key, as in {@link #paramsMasked(ScenarioResult)}. */
+    public static StepResult paramsMasked(StepResult step) {
+        return new StepResult(step.index(), step.type(), byKey(step.resolvedParams()), step.success(),
+                step.durationMillis(), step.message(), step.attempts(), step.waitedMillis(), step.description(),
+                step.evidence(), step.messageKey(), step.messageArgs(), step.failureKind(), step.waitHistory(),
+                step.checks());
+    }
+
+    /** {@code entry} with its resolved parameters masked by key, as in {@link #paramsMasked(ScenarioResult)}. */
+    public static CleanupResult paramsMasked(CleanupResult entry) {
+        return new CleanupResult(entry.index(), entry.type(), byKey(entry.resolvedParams()), entry.status(),
+                entry.durationMillis(), entry.message(), entry.description(), entry.messageKey(),
+                entry.messageArgs(), entry.failureKind());
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> byKey(Map<String, Object> params) {
+        return params == null ? null : (Map<String, Object>) maskByKey(params);
     }
 }

@@ -57,7 +57,7 @@ The DN is relative to the LDAP base configured by the test context. In the embed
 
 `${user.firstName}` looks up map keys and substitutes a string. It does not perform arithmetic or return a typed object. References must name a fixture or earlier binding; missing nested properties can still fail at execution.
 
-Use synthetic data. Resolved parameters are written to the results file without redaction.
+Use synthetic data. Resolved parameters are written to the results file as resolved; only values under secret-looking keys (`password`, `token`, …) are masked as `***`.
 
 ## 3. Expressions, variables and captures
 

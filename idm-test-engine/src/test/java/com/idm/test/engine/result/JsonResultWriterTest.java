@@ -42,6 +42,40 @@ class JsonResultWriterTest {
     }
 
     @Test
+    @DisplayName("Should mask resolved parameters under secret-looking keys, at any depth, in steps and cleanup")
+    void testMasksSecretParameters(@TempDir Path dir) throws Exception {
+        Map<String, Object> row = new java.util.LinkedHashMap<>();
+        row.put("id", "E1");
+        row.put("password", "hunter2-plain");
+        Map<String, Object> params = new java.util.LinkedHashMap<>();
+        params.put("path", "out.csv");
+        params.put("rows", List.of(row));
+        params.put("headers", Map.of("Authorization", "Bearer tok-in-header"));
+        params.put("attributes", Map.of("userPassword", "ldap-pw-1", "cn", "ada"));
+        StepResult step = new StepResult(0, "file.write", params, true, 5, "ok", null, null, null);
+        CleanupResult cleanup = new CleanupResult(0, "rest.request",
+                Map.of("body", Map.of("client_secret", "cleanup-secret-1")), CleanupStatus.SUCCEEDED, 1, "ok");
+        CleanupResult skipped = new CleanupResult(1, "rest.request",
+                Map.of("apiKey", "skipped-key-1"), CleanupStatus.SKIPPED, 0, "Stopped", null, "engine.run.stopped",
+                List.of(), null);
+        ScenarioResult scenario = new ScenarioResult("Secrets", "secrets.yaml", true, 10, List.of(step),
+                List.of(cleanup), null, null, null, null, true, List.of(skipped));
+
+        Path target = dir.resolve("results.json");
+        JsonResultWriter.write(List.of(scenario), target);
+
+        String json = Files.readString(target);
+        assertThat(json)
+                .doesNotContain("hunter2-plain", "tok-in-header", "ldap-pw-1", "cleanup-secret-1", "skipped-key-1")
+                .contains("\"password\" : \"***\"", "\"Authorization\" : \"***\"", "\"userPassword\" : \"***\"",
+                        "\"client_secret\" : \"***\"", "\"apiKey\" : \"***\"")
+                .contains("\"id\" : \"E1\"", "\"cn\" : \"ada\"", "out.csv");
+        // the results handed in are not changed
+        assertThat(step.resolvedParams()).containsEntry("path", "out.csv");
+        assertThat(row).containsEntry("password", "hunter2-plain");
+    }
+
+    @Test
     @DisplayName("Should write a java.sql.Timestamp parameter as epoch milliseconds")
     void testWritesTimestampAsEpochMillis(@TempDir Path dir) throws Exception {
         StepResult step = new StepResult(0, "db.verify",

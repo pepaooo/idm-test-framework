@@ -1,12 +1,17 @@
 package com.idm.test.runner.ui.lab;
 
 import com.idm.test.connector.database.config.DatabaseProperties;
+import com.idm.test.connector.file.client.DelimitedFileConnector;
+import com.idm.test.connector.file.client.FileProblem;
+import com.idm.test.connector.file.config.FileProperties;
 import com.idm.test.connector.rest.client.RestAuthenticator;
 import com.idm.test.connector.rest.config.RestProperties;
 import com.idm.test.connector.soap.config.SoapProperties;
 import com.idm.test.core.model.ErrorType;
+import com.idm.test.core.model.OperationResult;
 import com.idm.test.engine.i18n.Messages;
 import com.idm.test.engine.spi.Message;
+import com.idm.test.engine.steps.FileProblems;
 import com.idm.test.runner.DriverLoader;
 import com.idm.test.runner.SecretMask;
 import com.idm.test.wiring.RealEnvironmentGuards;
@@ -264,6 +269,9 @@ public final class ConnectionTester implements AutoCloseable {
                 SoapProperties soap = binder.bind("idm.test.soap", SoapProperties.class).orElseGet(SoapProperties::new);
                 RealEnvironmentGuards.requireCredentials(Set.of(), true, new RestProperties(), soap, environment, locale);
             }
+            case FOLDER -> {
+                // the probe checks the folder itself; nothing here to compare with application.yml
+            }
         }
     }
 
@@ -280,6 +288,7 @@ public final class ConnectionTester implements AutoCloseable {
                     ? oauth(system.name(), properties.get(prefix + "oauth-client-name"), properties)
                     : http(properties.get(prefix + "base-url"), properties.get(prefix + "username"),
                     properties.get(prefix + "password"), false);
+            case FOLDER -> folder(system.name(), properties);
             case SOAP -> {
                 String url = properties.get(prefix + "url");
                 if (blank(url)) {
@@ -289,6 +298,31 @@ public final class ConnectionTester implements AutoCloseable {
                         properties.get(prefix + "password"), true);
             }
         };
+    }
+
+    /**
+     * A folder exists and allows what it declares: a {@code read} folder can be listed, a {@code write}
+     * folder accepts a new file (a probe file with the folder's temporary suffix, deleted at once, so a
+     * driver set to ignore that suffix never sees it). Never names the path.
+     */
+    private static Outcome folder(String name, Map<String, String> properties) {
+        ConfigurableEnvironment environment = new AbstractEnvironment() {
+        };
+        environment.getPropertySources().addFirst(new MapPropertySource("lab", new LinkedHashMap<>(properties)));
+        FileProperties files;
+        try {
+            files = Binder.get(environment).bind("idm.test", FileProperties.class).orElseGet(FileProperties::new);
+        } catch (RuntimeException e) {
+            return Outcome.failed("runner.ui.lab.folderSettings", name);
+        }
+        DelimitedFileConnector connector = new DelimitedFileConnector(files.toSettings());
+        OperationResult<Void> result = connector.probe(name);
+        if (result.isSuccess()) {
+            return Outcome.ok("runner.ui.lab.connected.folder",
+                    connector.folder(name).map(f -> f.access().settingsValue()).orElse(""));
+        }
+        Object problem = FileProblem.of(result).<Object>map(FileProblems::of).orElse(result.getMessage());
+        return Outcome.failed("runner.ui.lab.failed", problem);
     }
 
     private Outcome ldap(String url, String userDn, String password) {
@@ -568,6 +602,8 @@ public final class ConnectionTester implements AutoCloseable {
             case DATABASE -> String.valueOf(properties.get(prefix + "jdbc-url"));
             case REST -> where(properties.get(prefix + "base-url"));
             case SOAP -> where(firstNonBlank(properties.get(prefix + "url"), properties.get(prefix + "resource-url")));
+            // the folder's settings name: a path is not shown
+            case FOLDER -> system.name();
         };
     }
 

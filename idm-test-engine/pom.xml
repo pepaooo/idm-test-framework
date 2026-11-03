@@ -50,6 +50,10 @@
             <groupId>com.idm.test</groupId>
             <artifactId>idm-connector-rest</artifactId>
         </dependency>
+        <dependency>
+            <groupId>com.idm.test</groupId>
+            <artifactId>idm-connector-file</artifactId>
+        </dependency>
 
         <dependency>
             <groupId>tools.jackson.dataformat</groupId>

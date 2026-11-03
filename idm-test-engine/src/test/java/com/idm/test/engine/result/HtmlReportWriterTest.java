@@ -1,6 +1,7 @@
 package com.idm.test.engine.result;
 
 import com.idm.test.engine.spi.Evidence;
+import com.idm.test.engine.spi.FileEvidence;
 import com.idm.test.engine.spi.HttpEvidence;
 import com.idm.test.engine.spi.LdapEvidence;
 import com.idm.test.engine.spi.SqlEvidence;
@@ -15,6 +16,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -265,6 +267,34 @@ class HtmlReportWriterTest {
                 .contains("… 5 more rows");
         assertThat(renderStep(withEvidence(true, null, SqlEvidence.update("hr", "DELETE FROM t", new Object[0], 3))))
                 .contains("SQL · 0 parameters · updated 3 rows");
+    }
+
+    @Test
+    @DisplayName("File evidence: operation, file, folder name, size, rows table with selected rows marked")
+    void testFileEvidence() {
+        List<List<String>> rows = new ArrayList<>();
+        for (int i = 0; i < 60; i++) {
+            rows.add(List.of("E" + i, "<b>" + i + "</b>"));
+        }
+        String html = renderStep(withEvidence(true, null,
+                FileEvidence.read("hr-out", "out.csv", 1234, List.of("id", "note"), rows, Set.of(3))));
+
+        assertThat(html).contains("File · read · out.csv · 60 rows · 1 selected")
+                .contains("out.csv · folder hr-out · 1234 bytes")
+                .contains("<tr class=\"selected\"><td>4</td><td>E3</td>")
+                .contains("&lt;b&gt;0&lt;/b&gt;")
+                .contains("… 10 more rows");
+        assertThat(renderStep(withEvidence(true, null, FileEvidence.written("hr-in", "hr.csv", 10,
+                List.of("id"), List.of(List.of("E1"))))))
+                .contains("File · written · hr.csv · 1 row");
+        assertThat(renderStep(withEvidence(false, 3, FileEvidence.notFound("hr-out", "out-*.csv"))))
+                .contains("File · read · out-*.csv · no matching file yet");
+        assertThat(renderStep(withEvidence(true, null, FileEvidence.deleted("hr-in", "hr.csv", false))))
+                .contains("File · deleted · hr.csv · already absent");
+        assertThat(renderStepEs(withEvidence(true, null, FileEvidence.written("hr-in", "hr.csv", 10,
+                List.of("id"), List.of(List.of("E1"))))))
+                .contains("Archivo · escrito · hr.csv · 1 fila")
+                .contains("carpeta hr-in");
     }
 
     @Test

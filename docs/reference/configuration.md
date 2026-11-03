@@ -125,7 +125,7 @@ than 4 characters are not masked, so use real passwords.
 
 ### Connection labels
 
-Every connection block (`ldap`, each entry of `directories`, `databases` and `rest`, and `soap`) may have an
+Every connection block (`ldap`, each entry of `directories`, `databases`, `rest` and `files`, and `soap`) may have an
 optional `label:`, the name the workbench's lab panel shows for it, such as `label: SAP database`. A label is
 set per profile: a profile without one shows the connection's usual name ("Database sap"), and a label in
 `config/application.yml` applies to every profile until a profile file sets its own. The label is never
@@ -282,6 +282,50 @@ A database's pool opens the first time a step uses it (except the embedded `test
 - SQL Server
 - MySQL/MariaDB
 - H2 (for testing)
+
+### Delimited text folders
+
+The [file steps](writing-scenarios.md#files-delimited-text) (`file.write`, `file.verify`,
+`file.delete`) name a folder declared here, for example the input and output folders of a NetIQ
+Delimited Text driver. A scenario never gives a path: it names the folder and a file inside it.
+
+```yaml
+idm:
+  test:
+    files:
+      hr-in:                       # where the driver reads its input
+        path: /mnt/idm/hr/in
+        access: write
+        temp-suffix: .idmtest-tmp  # match the driver's ignore pattern
+      hr-out:                      # where the driver writes
+        path: /mnt/idm/hr/out
+        access: read
+        delimiter: ";"
+        encoding: ISO-8859-1
+```
+
+| Key | Default | Meaning |
+|---|---|---|
+| `path` | — | the folder on this machine: a local directory or a mounted share (NFS, SMB mounted by the OS). A relative path is relative to the working directory |
+| `access` | `read` | what scenarios may do there: `read` (`file.verify`), `write` (`file.write`, `file.delete`) or `read-write` |
+| `delimiter` | `,` | one character |
+| `quote` | `"` | one character, different from the delimiter |
+| `encoding` | `UTF-8` | the files' charset; a UTF-8 byte order mark is accepted on read and never written |
+| `line-ending` | `CRLF` | `CRLF` or `LF`, for writing; reading accepts both |
+| `header` | `true` | whether the first line is a header row; `file.verify` needs one |
+| `temp-suffix` | `.idmtest-tmp` | `file.write` writes `<name><temp-suffix>` and then renames it in one atomic step, so a driver polling the folder never reads half a file; `file.verify` ignores files with this suffix. Set the driver to ignore the same suffix |
+| `clock-skew` | `5s` | how much older than the scenario's start a file may look and still count for `file.verify`, because a share stamps files with the server's clock |
+| `label` | — | the name the workbench shows (see [Connection labels](#connection-labels)) |
+
+A step may override `delimiter`, `quote`, `encoding`, `line-ending` (as `lineEnding`) and `header`
+for one call; it can never change `path`, `access`, `temp-suffix` or `clock-skew`. A share must
+support an atomic rename; one that does not fails `file.write` as a setup problem.
+
+Before a real run starts, the guards refuse it when a folder its scenarios use is not declared,
+does not exist, or does not allow what they do there, as declared and as the operating system
+allows. The guards create nothing in the folder. Messages, results and reports name the folder by
+its key, never by its path. SFTP and SMB access by the framework itself are not supported yet:
+mount the share first.
 
 ### SOAP Configuration
 

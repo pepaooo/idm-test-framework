@@ -35,6 +35,18 @@ const TEMPLATES: Record<Kind, [key: string, label: string, secret?: boolean][]> 
     ['token-uri', 'ui.lab.field.tokenUri'],
     ['scope', 'ui.lab.field.scope'],
   ],
+  folder: [
+    ['label', 'ui.lab.field.label'],
+    ['path', 'ui.lab.field.path'],
+    ['access', 'ui.lab.field.access'],
+    ['delimiter', 'ui.lab.field.delimiter'],
+    ['quote', 'ui.lab.field.quote'],
+    ['encoding', 'ui.lab.field.encoding'],
+    ['line-ending', 'ui.lab.field.lineEnding'],
+    ['header', 'ui.lab.field.header'],
+    ['temp-suffix', 'ui.lab.field.tempSuffix'],
+    ['clock-skew', 'ui.lab.field.clockSkew'],
+  ],
   soap: [
     ['label', 'ui.lab.field.label'],
     ['url', 'ui.lab.field.roleServiceUrl'],
@@ -74,6 +86,9 @@ export function requiredForNew(kind: Kind, valueOf: (key: string) => string): Se
       required.add('url');
       if (filled('username')) required.add('password');
       break;
+    case 'folder':
+      required.add('path');
+      break;
   }
   return required;
 }
@@ -94,6 +109,12 @@ export function templateFields(kind: Kind, valueOf: (key: string) => string = ()
 /** The REST fields that belong to its OAuth client: shown only while "Use OAuth" is on. */
 export const OAUTH_KEYS = new Set(['oauth-client-name', 'client-id', 'client-secret', 'token-uri', 'scope']);
 
+/**
+ * A folder's access, as the runner reads it (FolderAccess): the choices of its select. The empty value
+ * leaves it unset, which the runner reads as `read`.
+ */
+export const FOLDER_ACCESS = ['read', 'write', 'read-write'] as const;
+
 /** Names the server accepts in a system id (LabSettings.NAME). */
 export const SYSTEM_NAME = /^[A-Za-z0-9_-]+$/;
 
@@ -108,5 +129,7 @@ export function newSystemId(kind: Kind, name: string): string {
       return `rest:${name}`;
     case 'soap':
       return 'soap';
+    case 'folder':
+      return `folder:${name}`;
   }
 }

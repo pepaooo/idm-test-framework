@@ -292,6 +292,48 @@ class RunCommandTest {
     }
 
     @Test
+    @DisplayName("Should run the delimited file scenario against a workspace folder, leave it empty, and show no path")
+    void testDelimitedFileRun() throws Exception {
+        Path ws = workspace("ws");
+        Path scratch = Files.createDirectories(temp.resolve("exchange"));
+        LabFixture.folder(ws, "scratch", scratch, "read-write");
+        corpusScenario(ws, "files-delimited-round-trip.yaml");
+
+        int exit = run(ws, "--profile", "lab");
+
+        assertThat(exit).as(out() + err()).isEqualTo(ExitCodes.OK);
+        assertThat(out()).contains("✔ files-delimited-round-trip.yaml  ");
+        try (var left = Files.list(scratch)) {
+            assertThat(left).as("files the run left in the folder").isEmpty();
+        }
+        String results = Files.readString(runFolder(ws).resolve("results.json"));
+        String report = Files.readString(runFolder(ws).resolve("report.html"));
+        assertThat(results).contains("\"kind\" : \"file\"", "\"folder\" : \"scratch\"");
+        assertThat(report).contains("File · written · hr-");
+        for (String text : List.of(results, report, out() + err())) {
+            assertThat(text).doesNotContain(scratch.toAbsolutePath().toString().replace('\\', '/'))
+                    .doesNotContain(scratch.toAbsolutePath().toString());
+        }
+    }
+
+    @Test
+    @DisplayName("Should refuse a run whose scenario writes to a read-only folder, before any scenario runs, and exit 2")
+    void testFolderGuardRefusal() throws Exception {
+        Path ws = workspace("ws");
+        Path scratch = Files.createDirectories(temp.resolve("exchange"));
+        LabFixture.folder(ws, "scratch", scratch, "read");
+        corpusScenario(ws, "files-delimited-round-trip.yaml");
+
+        int exit = run(ws, "--profile", "lab");
+
+        assertThat(exit).as(out() + err()).isEqualTo(ExitCodes.CANNOT_START);
+        assertThat(err()).contains("Scenarios use folder 'scratch', which cannot be used: Folder 'scratch' is "
+                + "declared with access 'read', which does not allow write");
+        assertThat(err()).doesNotContain(scratch.toAbsolutePath().toString());
+        assertThat(runFolder(ws).resolve("results.json")).doesNotExist();
+    }
+
+    @Test
     @DisplayName("Should let --locale beat the profile file's idm.test.report.locale, on the console and in the report")
     void testCommandLineLocaleBeatsProfile() throws Exception {
         Path ws = workspace("ws");

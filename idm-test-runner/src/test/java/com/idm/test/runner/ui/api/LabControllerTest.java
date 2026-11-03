@@ -529,6 +529,82 @@ class LabControllerTest {
     }
 
     @Test
+    @DisplayName("A folder the scenarios use is listed, saved, tested and made ready; its path appears only in its own field")
+    void testFolderSystem() throws IOException {
+        Path ws = openWorkspace(server);
+        Files.writeString(ws.resolve("scenarios/files.yaml"), """
+                name: Files
+                steps:
+                  - file.verify:
+                      folder: hr-out
+                      file: "*.csv"
+                      expect: { rowCount: 1 }
+                """);
+        Path folder = Files.createDirectories(temp.resolve("exchange/hr-out"));
+        String path = folder.toAbsolutePath().toString();
+
+        JsonNode missing = system(lab(server, "lab"), "folder:hr-out");
+        assertThat(missing.get("kind").asString()).isEqualTo("folder");
+        assertThat(missing.get("name").asString()).isEqualTo("Folder hr-out");
+        assertThat(missing.get("usedByScenarios").get(0).asString()).isEqualTo("files.yaml");
+        assertThat(missing.get("status").asString()).isEqualTo("missing");
+        assertThat(field(missing, "path").get("required").asBoolean()).isTrue();
+        assertThat(field(missing, "access").get("required").asBoolean()).isFalse();
+        assertThat(field(missing, "access").get("secret").asBoolean()).isFalse();
+
+        Map<String, Object> form = new LinkedHashMap<>();
+        form.put("systemId", "folder:hr-out");
+        form.put("profile", "lab");
+        form.put("values", Map.of("path", path, "access", "read"));
+        form.put("secrets", Map.of());
+        Response tested = UiHttp.send(server, "POST", "/api/lab/test", JSON.writeValueAsString(form));
+        assertThat(tested.status()).as(tested.body()).isEqualTo(200);
+        assertThat(JSON.readTree(tested.body()).get("message").asString()).isEqualTo("Folder OK · read");
+        assertThat(tested.body()).doesNotContain(path);
+
+        Response saved = put(server, "lab", "folder:hr-out", Map.of("path", path, "access", "read"), Map.of());
+        assertThat(saved.status()).as(saved.body()).isEqualTo(200);
+        assertThat(Files.readString(ws.resolve("config/application-lab.yml")))
+                .contains("    files:\n      hr-out:\n        path: ", "        access: read\n");
+        JsonNode ready = system(lab(server, "lab"), "folder:hr-out");
+        assertThat(ready.get("status").asString()).isEqualTo("ready");
+        assertThat(field(ready, "path").get("value").asString()).isEqualTo(path);
+        JsonNode copy = JSON.readTree(JSON.writeValueAsString(ready));
+        ((tools.jackson.databind.node.ObjectNode) copy).remove("fields");
+        assertThat(copy.toString()).doesNotContain(path);
+    }
+
+    @Test
+    @DisplayName("A folder test reports a missing folder without its path; a value the runner cannot bind is refused unsaved")
+    void testFolderRefusals() throws IOException {
+        Path ws = openWorkspace(server);
+        String path = temp.resolve("nowhere").toAbsolutePath().toString();
+        Map<String, Object> form = new LinkedHashMap<>();
+        form.put("systemId", "folder:hr-in");
+        form.put("profile", "lab");
+        form.put("values", Map.of("path", path, "access", "write"));
+        form.put("secrets", Map.of());
+
+        Response tested = UiHttp.send(server, "POST", "/api/lab/test", JSON.writeValueAsString(form));
+
+        assertThat(tested.status()).as(tested.body()).isEqualTo(200);
+        JsonNode result = JSON.readTree(tested.body());
+        assertThat(result.get("ok").asBoolean()).isFalse();
+        assertThat(result.get("message").asString()).isEqualTo("the test failed: Folder 'hr-in' does not exist");
+        assertThat(tested.body()).doesNotContain(path);
+
+        List<String> before = snapshot(ws);
+        for (Map.Entry<String, String> bad : Map.of("access", "sometimes", "line-ending", "CR", "header", "maybe",
+                "clock-skew", "soon").entrySet()) {
+            Response refused = put(server, "lab", "folder:hr-in", Map.of("path", path, bad.getKey(), bad.getValue()),
+                    Map.of());
+            assertThat(refused.status()).as(refused.body()).isEqualTo(400);
+            assertThat(refused.body()).contains("'" + bad.getValue() + "' is not a valid " + bad.getKey());
+        }
+        assertThat(snapshot(ws)).isEqualTo(before);
+    }
+
+    @Test
     @DisplayName("An OAuth REST system saved by the lab panel gets no plain-text password warning")
     void testOAuthSaveLintsClean() throws IOException {
         Path ws = openWorkspace(server);

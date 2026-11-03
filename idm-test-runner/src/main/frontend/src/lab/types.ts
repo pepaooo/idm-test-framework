@@ -15,9 +15,9 @@ export interface TestResult {
 }
 
 export interface LabSystem {
-  /** `ldap`, `soap`, `directory:<name>`, `database:<name>` or `rest:<name>`. */
+  /** `ldap`, `soap`, `directory:<name>`, `database:<name>`, `rest:<name>` or `folder:<name>`. */
   id: string;
-  kind: 'ldap' | 'database' | 'rest' | 'soap';
+  kind: 'ldap' | 'database' | 'rest' | 'soap' | 'folder';
   name: string;
   usedByScenarios: string[];
   fields: LabField[];

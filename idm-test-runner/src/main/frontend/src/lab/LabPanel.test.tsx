@@ -5,7 +5,7 @@ import { Workbench } from '../workbench/Workbench';
 import { setLanguage } from '../i18n';
 import { WORKSPACE, workbenchServer } from '../test/workbenchServer';
 import { emitServerEvent } from '../test/browserFakes';
-import { defaultDirectoryNeeded, directory, hrDatabase, labRoutes, namedDirectory, rest, type LabRoutesOptions } from '../test/labServer';
+import { defaultDirectoryNeeded, directory, hrDatabase, hrOutFolder, labRoutes, namedDirectory, rest, type LabRoutesOptions } from '../test/labServer';
 import type { Answer } from '../test/fakeServer';
 import type { LabSystem, LabView } from './types';
 
@@ -396,6 +396,46 @@ describe('Lab panel', () => {
     );
     await waitFor(() => expect(within(panel).getByRole('tab', { name: /Database crm/ })).toHaveAttribute('aria-selected', 'true'));
     expect(document.body.innerHTML).not.toContain(TYPED);
+  });
+
+  it('a folder tab offers access as a choice and saves only what changed', async () => {
+    let saved: unknown;
+    const { server } = start({
+      systems: [directory('ready'), hrOutFolder('missing')],
+      onSave: (_p, body) => ((saved = body), { body: { systems: [directory('ready'), hrOutFolder('untested')] } }),
+    });
+    const panel = await openPanel();
+    const form = await selectTab(panel, /Folder hr-out/);
+    const access = within(form).getByLabelText(/^Access/);
+    expect(access.tagName).toBe('SELECT');
+    expect(within(access).getAllByRole('option').map((o) => (o as HTMLOptionElement).value)).toEqual(['', 'read', 'write', 'read-write']);
+    expect(within(form).getByLabelText(/^Path/)).toBeRequired();
+    await userEvent.type(within(form).getByLabelText(/^Path/), '/mnt/idm/hr/out');
+    await userEvent.selectOptions(access, 'read');
+    await userEvent.click(within(form).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(saved).toEqual({ systemId: 'folder:hr-out', values: { path: '/mnt/idm/hr/out', access: 'read' }, secrets: {} }));
+    expect(puts(server)).toHaveLength(1);
+  });
+
+  it('+ add can add a folder, its id folder:<name>, with the path required', async () => {
+    let saved: unknown;
+    start({
+      systems: [directory('ready')],
+      onSave: (_p, body) => ((saved = body), { body: { systems: [directory('ready'), { ...hrOutFolder('untested'), id: 'folder:hr-in', name: 'Folder hr-in' }] } }),
+    });
+    const panel = await openPanel();
+    await userEvent.click(within(panel).getByRole('button', { name: '+ add' }));
+    const form = within(panel).getByRole('tabpanel');
+    await userEvent.selectOptions(within(form).getByLabelText('Kind'), 'folder');
+    expect(within(form).getByLabelText(/^Path/)).toBeRequired();
+    expect(within(form).queryByLabelText(/^Password/)).toBeNull();
+    await userEvent.type(within(form).getByLabelText(/^Name/), 'hr-in');
+    await userEvent.type(within(form).getByLabelText(/^Path/), '/mnt/idm/hr/in');
+    await userEvent.selectOptions(within(form).getByLabelText(/^Access/), 'write');
+    await userEvent.click(within(form).getByRole('button', { name: 'Save' }));
+    await waitFor(() =>
+      expect(saved).toEqual({ systemId: 'folder:hr-in', values: { path: '/mnt/idm/hr/in', access: 'write' }, secrets: {} }),
+    );
   });
 
   it('opening the panel reads the lab again (secrets.env changes have no file event)', async () => {

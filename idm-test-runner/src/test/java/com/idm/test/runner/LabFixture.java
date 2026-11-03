@@ -131,6 +131,14 @@ public final class LabFixture implements AutoCloseable {
                         + "    executor:"));
     }
 
+    /** Adds to the profile {@code lab} the folder {@code name} at {@code path}, with {@code access}. */
+    public static void folder(Path ws, String name, Path path, String access) throws Exception {
+        Path settings = ws.resolve("config/application-lab.yml");
+        Files.writeString(settings, Files.readString(settings).replace("    executor:",
+                "    files:\n      " + name + ":\n        path: " + path.toAbsolutePath().toString().replace('\\', '/')
+                        + "\n        access: " + access + "\n    executor:"));
+    }
+
     /**
      * A file-based H2 database in {@code dir} with the corpus's users table: a database the in-memory
      * guard accepts, created with the password the run reads from secrets.env. Returns its URL.

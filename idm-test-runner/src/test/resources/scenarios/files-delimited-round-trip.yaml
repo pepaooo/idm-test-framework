@@ -1,0 +1,57 @@
+name: Delimited text file round trip
+description: >-
+  Write an HR export as CSV into a named folder, read it back with where:, and delete it in cleanup.
+  The embedded suite has no Delimited Text driver, so the same folder plays both sides: in a lab,
+  file.write targets the driver's input folder and file.verify the folder the driver writes.
+
+fixtures:
+  user:
+    generate: random-user
+    values:
+      department: Sales
+
+steps:
+  - file.write:
+      description: Drop the HR export for the driver
+      folder: scratch
+      file: "hr-${user.userId}.csv"
+      columns: [employeeId, givenName, surname, email, department, note]
+      rows:
+        - employeeId: "${user.userId}"
+          givenName: "${user.firstName}"
+          surname: "${user.lastName}"
+          email: "${user.email}"
+          department: "${user.department}"
+          note: 'Starts Monday, "remote"'
+        - employeeId: "${user.userId}-manager"
+          givenName: Pat
+          surname: Lee
+          email: pat.lee@example.com
+          department: Sales
+      as: written
+
+  - file.verify:
+      description: The user's row is in the file, quoted values intact
+      folder: scratch
+      file: "hr-*.csv"
+      where: { employeeId: "${user.userId}" }
+      expect:
+        rowCount: 1
+        row:
+          email: "${user.email}"
+          department: Sales
+          note: 'Starts Monday, "remote"'
+      wait: true
+
+  - file.verify:
+      description: The manager's row has an empty note
+      folder: scratch
+      file: "${written.name}"
+      where: { employeeId: "${user.userId}-manager" }
+      expect:
+        row: { surname: Lee, note: "" }
+
+cleanup:
+  - file.delete:
+      folder: scratch
+      file: "${written.name}"

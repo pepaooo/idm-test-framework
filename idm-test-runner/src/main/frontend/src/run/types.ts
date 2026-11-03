@@ -50,7 +50,31 @@ export interface LdapEvidence {
   present: boolean | null;
 }
 
-export type Evidence = HttpEvidence | SqlEvidence | LdapEvidence;
+/** One row of a delimited file, as the step kept it (engine `FileEvidence.Row`). */
+export interface FileRow {
+  /** From 1, among the data rows (the header is not counted). */
+  number: number;
+  /** Whether `where:` selected it. */
+  selected: boolean;
+  values: Record<string, unknown>;
+}
+
+/** A delimited file a `file.*` step wrote, read or deleted: the folder by name, never its path. */
+export interface FileEvidence {
+  kind: 'file';
+  folder: string;
+  /** The file name; for a read that found no file, the pattern it looked for. */
+  file: string;
+  operation: 'write' | 'read' | 'delete';
+  present: boolean | null;
+  size: number | null;
+  header: string[];
+  rows: FileRow[];
+  totalRows: number | null;
+  selectedRows: number | null;
+}
+
+export type Evidence = HttpEvidence | SqlEvidence | LdapEvidence | FileEvidence;
 
 /** What one step did (engine `StepResult`, as in results.json). */
 export interface StepResult {

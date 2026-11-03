@@ -1,6 +1,10 @@
 package com.idm.test.wiring;
 
 import com.idm.test.connector.database.config.DatabaseProperties;
+import com.idm.test.connector.file.client.DelimitedFileConnector;
+import com.idm.test.connector.file.client.FileProblem;
+import com.idm.test.core.model.OperationResult;
+import com.idm.test.engine.steps.FileProblems;
 import com.idm.test.connector.ldap.client.LdapDirectories;
 import com.idm.test.connector.ldap.config.LdapProperties;
 import com.idm.test.connector.rest.config.RestProperties;
@@ -40,12 +44,13 @@ public final class RealEnvironmentGuards {
 
     /**
      * Every guard, in order: not the embedded profile, scenarios present, then on the needs of
-     * the {@code selected} scenarios: endpoints, REST targets, databases, credentials.
+     * the {@code selected} scenarios: endpoints, REST targets, databases, folders, credentials.
      *
      * @throws RealEnvironmentGuards.Refusal naming the first problem, in {@code locale}
      */
     public static void check(Environment environment, ScenarioSource source, List<String> selected, Locale locale,
-                             RestProperties rest, DatabaseProperties databases, SoapProperties soap) {
+                             RestProperties rest, DatabaseProperties databases, SoapProperties soap,
+                             DelimitedFileConnector files) {
         requireNotEmbedded(environment, locale);
         List<String> all;
         try {
@@ -63,6 +68,7 @@ public final class RealEnvironmentGuards {
         requireEndpoints(environment, needs, locale);
         requireRestTargets(needs.restTargets(), rest, locale);
         requireDatabases(needs.databases(), databases, locale);
+        requireFolders(needs, files, locale);
         requireCredentials(needs.restTargets(), needs.soap(), rest, soap, environment, locale);
     }
 
@@ -327,6 +333,27 @@ public final class RealEnvironmentGuards {
      * checked, and are never contacted, because their pools open on first use. Messages name
      * properties and variables, never a value.
      */
+    /**
+     * Every folder the scenarios use is declared under {@code idm.test.files}, exists, and allows what
+     * they do there: reading for {@code file.verify}, writing for {@code file.write} and
+     * {@code file.delete}, as declared and as the operating system allows. Creates nothing: a driver may
+     * be watching the folder.
+     */
+    public static void requireFolders(ScenarioNeeds needs, DelimitedFileConnector files, Locale locale) {
+        for (String name : needs.folders()) {
+            if (files == null || files.folder(name).isEmpty()) {
+                throw refusal(locale, Message.of("runner.guard.unknownFolder", name,
+                        files == null ? Set.of() : files.folderNames()));
+            }
+            OperationResult<Void> result = files.inspect(name, needs.readFolders().contains(name),
+                    needs.writeFolders().contains(name));
+            if (!result.isSuccess()) {
+                Object problem = FileProblem.of(result).<Object>map(FileProblems::of).orElse(result.getMessage());
+                throw refusal(locale, Message.of("runner.guard.folder", name, problem));
+            }
+        }
+    }
+
     public static void requireDatabases(Set<String> databases, DatabaseProperties properties) {
         requireDatabases(databases, properties, Locale.ENGLISH);
     }

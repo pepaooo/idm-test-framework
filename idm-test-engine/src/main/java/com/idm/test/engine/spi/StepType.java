@@ -2,6 +2,7 @@ package com.idm.test.engine.spi;
 
 import java.util.LinkedHashSet;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -131,4 +132,31 @@ public interface StepType {
      * non-null sentinel instead of null in that case.
      */
     StepOutcome execute(Map<String, Object> params, boolean captureRequested);
+
+    /**
+     * Runs the step with the scenario's {@link StepContext}. The engine always calls this method;
+     * its default ignores the context and calls {@link #execute(Map, boolean)}, so a step that needs
+     * nothing beyond its parameters implements only that. A step that does need the context (such as
+     * {@code file.verify}, which reads the scenario's start) overrides this one as well, and the same
+     * rules apply: already-resolved parameters, never throw, never return null.
+     *
+     * @param context the scenario's context: the same instance for every step, every attempt of a
+     *                wait and every cleanup entry of one scenario run
+     */
+    default StepOutcome execute(Map<String, Object> params, boolean captureRequested, StepContext context) {
+        return execute(params, captureRequested);
+    }
+
+    /**
+     * A problem with a parameter's value that is plain to see before the scenario runs, such as a
+     * file name that would leave its folder. {@code ScenarioValidator} calls this for every step and
+     * cleanup entry, with the parameters as written: a value may still hold {@code ${...}} or
+     * {@code js:} expressions, which a step must leave alone (they are checked again at run time).
+     * Must not throw.
+     *
+     * @return the problem, or empty when the values written look usable
+     */
+    default Optional<Message> literalProblem(Map<String, Object> params) {
+        return Optional.empty();
+    }
 }

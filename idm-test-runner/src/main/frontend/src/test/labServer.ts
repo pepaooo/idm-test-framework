@@ -52,6 +52,30 @@ export function rest(status: LabSystem['status'] = 'untested'): LabSystem {
   };
 }
 
+/** A folder for the file steps whose path is not set yet; nothing in it is secret. */
+export function hrOutFolder(status: LabSystem['status'] = 'missing'): LabSystem {
+  return {
+    id: 'folder:hr-out',
+    kind: 'folder',
+    name: 'Folder hr-out',
+    usedByScenarios: ['hr-sync.yaml'],
+    fields: [
+      field('label', 'Label', null, 'not set'),
+      field('path', 'Path', null, 'not set', { required: true }),
+      field('access', 'Access (read, write or read-write)', null, 'not set'),
+      field('delimiter', 'Delimiter', null, 'not set'),
+      field('quote', 'Quote character', null, 'not set'),
+      field('encoding', 'Encoding', null, 'not set'),
+      field('line-ending', 'Line ending (CRLF or LF)', null, 'not set'),
+      field('header', 'Header row (true or false)', null, 'not set'),
+      field('temp-suffix', 'Temporary suffix', null, 'not set'),
+      field('clock-skew', 'Clock skew', null, 'not set'),
+    ],
+    status,
+    lastTest: null,
+  };
+}
+
 export function hrDatabase(status: LabSystem['status'] = 'missing'): LabSystem {
   return {
     id: 'database:hr',

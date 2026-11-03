@@ -1,6 +1,7 @@
 package com.idm.test.scenarios.engine;
 
 import com.idm.test.connector.database.client.MultiDatabaseConnector;
+import com.idm.test.connector.file.client.DelimitedFileConnector;
 import com.idm.test.connector.database.config.DatabaseProperties;
 import com.idm.test.connector.ldap.client.LdapDirectories;
 import com.idm.test.connector.rest.client.IdmRestConnector;
@@ -86,6 +87,9 @@ public class RealEnvironmentScenarios {
     private MultiDatabaseConnector databaseConnector;
 
     @Autowired
+    private DelimitedFileConnector fileConnector;
+
+    @Autowired
     private ObjectProvider<RoleServiceConnector> roleServiceConnector;
 
     @Autowired
@@ -135,11 +139,12 @@ public class RealEnvironmentScenarios {
         RealEnvironmentGuards.requireScenarios(source.names(), scenarioDir, locale);
         List<String> selected = ScenarioSupport.selectedScenarioFiles(scenarioDir);
         RealEnvironmentGuards.check(environment, source, selected, locale, restProperties, databaseProperties,
-                soapProperties);
+                soapProperties, fileConnector);
 
         Map<String, StepType> registry = StepRegistry.of(
                 ldapDirectories, databaseConnector, roleServiceConnector.getIfAvailable(),
-                resourceServiceConnector.getIfAvailable(), idmRestConnector, restProperties, restAuthenticator);
+                resourceServiceConnector.getIfAvailable(), idmRestConnector, restProperties, restAuthenticator,
+                fileConnector);
         ScenarioValidator validator = EngineFactory.validator(registry);
         ScenarioEngine engine = EngineFactory.engine(registry, testDataGenerator, testExecutor, executorProperties);
 

@@ -7,6 +7,7 @@ import com.idm.test.engine.result.Secrets;
 import com.idm.test.engine.result.StepResult;
 import com.idm.test.engine.spi.Check;
 import com.idm.test.engine.spi.Evidence;
+import com.idm.test.engine.spi.FileEvidence;
 import com.idm.test.engine.spi.HttpEvidence;
 import com.idm.test.engine.spi.LdapEvidence;
 import com.idm.test.engine.spi.Message;
@@ -183,7 +184,17 @@ public final class SecretMask {
                     rows(sql.rows()), sql.totalRows(), sql.updateCount());
             case LdapEvidence ldap -> new LdapEvidence(ldap.directory(), apply(ldap.dn()), ldap.operation(),
                     map(ldap.attributes()), ldap.present());
+            case FileEvidence file -> new FileEvidence(file.folder(), apply(file.file()), file.operation(),
+                    file.present(), file.size(), file.header().stream().map(this::apply).toList(),
+                    file.rows().stream().map(this::fileRow).toList(), file.totalRows(), file.selectedRows());
         };
+    }
+
+    /** Column names are masked as well as values, so a row's keys keep matching the masked header. */
+    private FileEvidence.Row fileRow(FileEvidence.Row row) {
+        Map<String, Object> masked = new LinkedHashMap<>();
+        row.values().forEach((column, value) -> masked.put(apply(column), value(value)));
+        return new FileEvidence.Row(row.number(), row.selected(), masked);
     }
 
     private Map<String, List<String>> headers(Map<String, List<String>> headers) {

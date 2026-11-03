@@ -27,7 +27,7 @@ class EvidenceReportTest extends BaseIntegrationTest {
     void testEvidenceWritten(@TempDir Path dir) throws Throwable {
         Map<String, StepType> registry = StepRegistry.of(
                 ldapDirectories, databaseConnector, roleServiceConnector,
-                resourceServiceConnector, idmRestConnector, restProperties, restAuthenticator);
+                resourceServiceConnector, idmRestConnector, restProperties, restAuthenticator, fileConnector);
         ScenarioEngine engine = EngineFactory.engine(registry, testDataGenerator, testExecutor, executorProperties);
         Path results = dir.resolve("scenario-results.json");
 

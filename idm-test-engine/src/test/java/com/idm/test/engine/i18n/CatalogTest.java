@@ -32,6 +32,8 @@ class CatalogTest {
     /** Keys whose Spanish text may equal the English (technical words that stay as they are). */
     private static final Set<String> SAME_IN_BOTH = Set.of(
             "report.datePattern",
+            // "<n> bytes" — the word is the same in Spanish
+            "evidence.file.size",
             // "<file>: <detail>" — only punctuation
             "engine.summary.detail",
             // " — <notes>" and "<note>; <note>" — only punctuation around http.verify's check notes

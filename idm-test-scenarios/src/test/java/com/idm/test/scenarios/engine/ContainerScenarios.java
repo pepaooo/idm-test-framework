@@ -19,7 +19,10 @@ import com.idm.test.connector.ldap.config.LdapProperties;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -231,6 +234,16 @@ public class ContainerScenarios extends RealEnvironmentScenarios {
             set(prefix + "password", postgres.getPassword());
             set(prefix + "driver-class-name", "org.postgresql.Driver");
         }
+
+        // The corpus's file.* scenarios use the folder scratch: a fresh directory under target/.
+        try {
+            Path target = Files.createDirectories(Path.of("target"));
+            set("idm.test.files.scratch.path",
+                    Files.createTempDirectory(target, "container-files-").toAbsolutePath().toString());
+        } catch (IOException e) {
+            throw new UncheckedIOException("Could not create the scratch folder for the file steps", e);
+        }
+        set("idm.test.files.scratch.access", "read-write");
 
         // The default profile waits up to 5 minutes, polling every 5 seconds; the corpus was
         // written against the test profile's 60 seconds and 1 second.

@@ -15,6 +15,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.regex.Pattern;
@@ -221,6 +222,10 @@ public final class ScenarioValidator {
                             Message.of("validation.step.unknownParam", supplied, step.type(), new TreeSet<>(accepted)));
                 }
             }
+            Optional<Message> literal = type.literalProblem(step.params());
+            if (literal.isPresent()) {
+                throw new ValidationException(sourceName, i, step.type(), literal.get());
+            }
 
             requireWellFormedExpressions(step.params(),
                     problem -> new ValidationException(sourceName, index, step.type(), problem));
@@ -409,6 +414,10 @@ public final class ScenarioValidator {
             if (!accepted.contains(supplied)) {
                 throw locate.at(Message.of("validation.step.unknownParam", supplied, entry.type(), new TreeSet<>(accepted)));
             }
+        }
+        Optional<Message> literal = type.literalProblem(entry.params());
+        if (literal.isPresent()) {
+            throw locate.at(literal.get());
         }
 
         requireWellFormedExpressions(entry.params(), locate);

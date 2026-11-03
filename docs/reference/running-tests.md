@@ -101,6 +101,8 @@ environment variables name. Before any scenario runs, it refuses:
 - for the LDAP and SOAP services the selected scenarios use: a URL that is unset or still the placeholder
 - for the REST targets and databases they use: one that is unconfigured, or still the placeholder
 - placeholder or half-given credentials for the REST targets and SOAP services they use
+- for the folders the file steps use: one that is not declared under `idm.test.files`, does not
+  exist, or does not allow what the scenarios do there (checked without creating anything)
 
 Nothing the selected scenarios don't use is checked or contacted.
 

@@ -88,10 +88,16 @@ A guarded read such as `typeof created === 'undefined' ? null : created.dn` stil
 
 ## 4. Steps
 
-The framework has 14 step types across LDAP, databases, the SOAP role and resource services,
-REST and raw HTTP. Every step's parameters, what `as:` captures, how it fails and an example
+The framework has 17 step types across LDAP, databases, delimited text files, the SOAP role and
+resource services, REST and raw HTTP. Every step's parameters, what `as:` captures, how it fails and an example
 are in the [authoring reference](../reference/writing-scenarios.md#4-step-reference), which a
 test keeps in step with the code.
+
+For the NetIQ Identity Manager Driver for Delimited Text, the
+[file steps](../reference/writing-scenarios.md#files-delimited-text) write a CSV into a named folder
+(`file.write`), check the file the driver writes (`file.verify`, which waits for it) and remove
+written files in `cleanup:` (`file.delete`). Folders are declared in the settings, never as paths
+in the scenario; see [folders](../reference/configuration.md#delimited-text-folders).
 
 For calling a SOAP service or any API with a raw body, see
 [`http.request`](../reference/writing-scenarios.md#httprequest); for how REST targets

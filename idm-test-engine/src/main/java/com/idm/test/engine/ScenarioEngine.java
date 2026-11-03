@@ -16,6 +16,7 @@ import com.idm.test.engine.spi.Evidence;
 import com.idm.test.engine.spi.FailureKind;
 import com.idm.test.engine.spi.Message;
 import com.idm.test.engine.spi.RunListener;
+import com.idm.test.engine.spi.StepContext;
 import com.idm.test.engine.spi.StepOutcome;
 import com.idm.test.engine.spi.StepType;
 import com.idm.test.engine.spi.WaitObservation;
@@ -24,6 +25,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -98,6 +100,7 @@ public final class ScenarioEngine {
         // Every call goes through the guard: a listener that throws must not change the run.
         RunListener listener = guarded(runListener);
         long started = System.currentTimeMillis();
+        StepContext context = new StepContext(Instant.ofEpochMilli(started));
         Map<String, Object> scope = new LinkedHashMap<>();
 
         List<StepResult> results = new ArrayList<>();
@@ -132,7 +135,7 @@ public final class ScenarioEngine {
                 } else {
                     listener.stepStarted(i, step.type(), describe(step, scope));
                     try {
-                        result = runStep(step, i, scope, listener, stopRequested, stopped);
+                        result = runStep(step, i, scope, context, listener, stopRequested, stopped);
                     } catch (RuntimeException e) {
                         result = failed(i, step.type(), Map.of(), stepStarted,
                                 Message.of("engine.step.threw", step.type(), KeyedArgumentException.typeName(e),
@@ -151,7 +154,7 @@ public final class ScenarioEngine {
                 stopped.set(true);
                 skippedCleanup = skippedByStop(scenario.cleanup(), scope);
             } else {
-                cleanupResults = runCleanup(scenario.cleanup(), scope, listener);
+                cleanupResults = runCleanup(scenario.cleanup(), scope, context, listener);
             }
         }
 
@@ -174,7 +177,8 @@ public final class ScenarioEngine {
     }
 
     @SuppressWarnings("unchecked")
-    private StepResult runStep(StepSpec step, int index, Map<String, Object> scope, RunListener listener,
+    private StepResult runStep(StepSpec step, int index, Map<String, Object> scope, StepContext context,
+                               RunListener listener,
                                BooleanSupplier stopRequested, AtomicBoolean stopped) {
 
         long started = System.currentTimeMillis();
@@ -221,7 +225,7 @@ public final class ScenarioEngine {
         boolean captureRequested = asName != null;
 
         if (wait == null) {
-            StepOutcome outcome = type.execute(resolved, captureRequested);
+            StepOutcome outcome = type.execute(resolved, captureRequested, context);
             outcome = bind(scope, asName, outcome, step.type());
             return new StepResult(index, step.type(), reportable(resolved), outcome.success(),
                     System.currentTimeMillis() - started, outcome.message(), null, null, description,
@@ -241,7 +245,7 @@ public final class ScenarioEngine {
             int attempt = attempts.incrementAndGet();
             StepOutcome outcome;
             try {
-                outcome = type.execute(resolved, captureRequested);
+                outcome = type.execute(resolved, captureRequested, context);
             } catch (RuntimeException e) {
                 // Record the failure and keep polling — TestExecutor.waitUntil already
                 // swallows exceptions from this supplier, but without this the "last"
@@ -494,14 +498,14 @@ public final class ScenarioEngine {
      * name never bound is SKIPPED: what it would tear down never happened. Never throws.
      */
     private List<CleanupResult> runCleanup(List<StepSpec> cleanup, Map<String, Object> scope,
-                                           RunListener listener) {
+                                           StepContext context, RunListener listener) {
         List<CleanupResult> results = new ArrayList<>();
         for (int i = 0; i < cleanup.size(); i++) {
             StepSpec entry = cleanup.get(i);
             long started = System.currentTimeMillis();
             CleanupResult result;
             try {
-                result = runCleanupEntry(entry, i, scope, started);
+                result = runCleanupEntry(entry, i, scope, context, started);
             } catch (RuntimeException e) {
                 result = cleanupResult(i, entry.type(), CleanupStatus.FAILED, started,
                         Message.of("engine.cleanup.threw", entry.type(), KeyedArgumentException.typeName(e), thrown(e)),
@@ -544,7 +548,7 @@ public final class ScenarioEngine {
 
     @SuppressWarnings("unchecked")
     private CleanupResult runCleanupEntry(
-            StepSpec entry, int index, Map<String, Object> scope, long started) {
+            StepSpec entry, int index, Map<String, Object> scope, StepContext context, long started) {
 
         Set<String> unbound = new TreeSet<>(Interpolator.references(withoutDescription(entry.params())));
         unbound.removeAll(scope.keySet());
@@ -563,7 +567,7 @@ public final class ScenarioEngine {
 
         Map<String, Object> resolved =
                 (Map<String, Object>) Interpolator.resolve(withoutDescription(entry.params()), scope, evaluator);
-        StepOutcome outcome = type.execute(resolved, false);
+        StepOutcome outcome = type.execute(resolved, false, context);
 
         return new CleanupResult(index, entry.type(), resolved,
                 outcome.success() ? CleanupStatus.SUCCEEDED : CleanupStatus.FAILED,

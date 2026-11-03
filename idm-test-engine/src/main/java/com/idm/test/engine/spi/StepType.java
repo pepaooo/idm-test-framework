@@ -131,4 +131,18 @@ public interface StepType {
      * non-null sentinel instead of null in that case.
      */
     StepOutcome execute(Map<String, Object> params, boolean captureRequested);
+
+    /**
+     * Runs the step with the scenario's {@link StepContext}. The engine always calls this method;
+     * its default ignores the context and calls {@link #execute(Map, boolean)}, so a step that needs
+     * nothing beyond its parameters implements only that. A step that does need the context (such as
+     * {@code file.verify}, which reads the scenario's start) overrides this one as well, and the same
+     * rules apply: already-resolved parameters, never throw, never return null.
+     *
+     * @param context the scenario's context: the same instance for every step, every attempt of a
+     *                wait and every cleanup entry of one scenario run
+     */
+    default StepOutcome execute(Map<String, Object> params, boolean captureRequested, StepContext context) {
+        return execute(params, captureRequested);
+    }
 }

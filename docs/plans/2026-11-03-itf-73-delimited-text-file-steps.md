@@ -156,14 +156,14 @@ Existing target on write → `CONFIGURATION_ERROR`.
 
 **Files:** `spi/StepContext.java`, `spi/StepType.java`, `ScenarioEngine.java`, engine tests.
 
-- [ ] **Step 1: Failing test** in the engine tests: a test step that overrides the three-argument
+- [x] **Step 1: Failing test** in the engine tests: a test step that overrides the three-argument
   `execute` receives the same `scenarioStartedAt` on every attempt of a wait, in cleanup, and a
   different one in the next scenario; an existing step type still runs through the default overload.
-- [ ] **Step 2: Implement:** `record StepContext(Instant scenarioStartedAt)`; default
+- [x] **Step 2: Implement:** `record StepContext(Instant scenarioStartedAt)`; default
   `execute(params, captureRequested, context)` delegating to the two-argument method; the engine
   builds one context from its existing `started` time and uses it for steps, retries and cleanup.
   Document the rule in the `StepType` javadoc.
-- [ ] **Step 3:** `./mvnw test -pl idm-test-engine -am`; commit `feat(engine): step context with scenario start (ITF-73)`.
+- [x] **Step 3:** `./mvnw test -pl idm-test-engine -am`; commit `feat(engine): step context with scenario start (ITF-73)`.
 
 ### Task 3: `FileEvidence`, masking and messages
 

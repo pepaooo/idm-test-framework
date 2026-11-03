@@ -14,6 +14,7 @@ import com.idm.test.engine.i18n.KeyedArgumentException;
 import com.idm.test.engine.i18n.Messages;
 import com.idm.test.engine.spi.LdapEvidence;
 import com.idm.test.engine.spi.Message;
+import com.idm.test.engine.spi.StepContext;
 import com.idm.test.engine.spi.StepOutcome;
 import com.idm.test.engine.spi.StepType;
 import com.idm.test.utils.data.TestDataGenerator;
@@ -21,6 +22,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -1660,5 +1662,65 @@ class ScenarioEngineTest {
         assertThat(result.steps().get(0).messageKey()).isEqualTo("engine.run.stopped");
         assertThat(result.steps().get(0).attempts()).isEqualTo(1);
         assertThat(elapsed).isLessThan(1500);
+    }
+
+    /** Records the context of every call; fails the first {@code failures} calls, then succeeds. */
+    private static StepType contextRecording(String name, boolean retryable, int failures, List<StepContext> seen) {
+        AtomicInteger calls = new AtomicInteger();
+        return new StepType() {
+            public String name() { return name; }
+            public boolean retryable() { return retryable; }
+            public StepOutcome execute(Map<String, Object> params, boolean captureRequested) {
+                throw new AssertionError("the engine must call the three-argument execute");
+            }
+            public StepOutcome execute(Map<String, Object> params, boolean captureRequested, StepContext context) {
+                seen.add(context);
+                return calls.getAndIncrement() < failures
+                        ? StepOutcome.failure("not yet")
+                        : StepOutcome.success("ok");
+            }
+        };
+    }
+
+    @Test
+    @DisplayName("Should give every step, retry and cleanup entry the same scenario start, and the next scenario a new one")
+    void testStepContextCarriesScenarioStart() throws InterruptedException {
+        List<StepContext> seen = new ArrayList<>();
+        ScenarioEngine engine = engineWith(
+                contextRecording("action", false, 0, seen),
+                contextRecording("check", true, 2, seen),
+                contextRecording("undo", false, 0, seen));
+        Scenario scenario = withCleanup(List.of(
+                        new StepSpec("action", Map.of("dn", "x")),
+                        new StepSpec("check", Map.of("dn", "x", "wait", Boolean.TRUE))),
+                new StepSpec("undo", Map.of("dn", "x")));
+
+        Instant before = Instant.now();
+        ScenarioResult first = engine.run(scenario, "t.yaml");
+        Instant after = Instant.now();
+
+        assertThat(first.success()).isTrue();
+        assertThat(seen).hasSize(5); // action, three attempts of check, undo
+        Instant start = seen.get(0).scenarioStartedAt();
+        assertThat(start).isBetween(before.minusMillis(1), after);
+        assertThat(seen).extracting(StepContext::scenarioStartedAt).containsOnly(start);
+
+        Thread.sleep(5);
+        seen.clear();
+        engine.run(scenario, "t.yaml");
+        assertThat(seen).isNotEmpty();
+        assertThat(seen.get(0).scenarioStartedAt()).isAfter(start);
+    }
+
+    @Test
+    @DisplayName("Should still run a step type that implements only the two-argument execute")
+    void testTwoArgumentStepStillRuns() {
+        ScenarioEngine engine = engineWith(recordingAction("a"));
+
+        ScenarioResult result = engine.run(withCleanup(List.of(new StepSpec("a", Map.of("dn", "step"))),
+                new StepSpec("a", Map.of("dn", "cleanup"))), "t.yaml");
+
+        assertThat(result.success()).isTrue();
+        assertThat(events).containsExactly("run:a:step", "run:a:cleanup");
     }
 }

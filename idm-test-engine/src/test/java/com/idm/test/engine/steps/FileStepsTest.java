@@ -268,7 +268,8 @@ class FileStepsTest {
         @DisplayName("Should select rows with where: and verify one, ignoring the case of column names")
         void testWhereAndRow() {
             StepOutcome outcome = verifyShared("out.csv", Map.of("EMPLOYEEID", "E1"),
-                    Map.of("rowCount", 1, "row", Map.of("Status", "provisioned", "attempts", 1)));
+                    // Ordered, as YAML gives it: checks follow the order the expectations were written in.
+                    row("rowCount", 1, "row", row("Status", "provisioned", "attempts", 1)));
 
             assertThat(outcome.success()).as(outcome.message()).isTrue();
             assertThat(outcome.message()).isEqualTo("verified 1 row(s) in 'out.csv' in folder 'shared'");

@@ -30,6 +30,12 @@ idm:
         password: ${WORKDAY_DB_PASSWORD:}
         max-pool-size: 3
 
+    # Delimited text folders for the file.* steps. The path is a fresh directory under target/,
+    # set by BaseIntegrationTest (and by ContainerScenarios), so a run never meets another's files.
+    files:
+      scratch:
+        access: read-write
+
     soap:
       url: ${IDM_SOAP_URL:http://localhost:8090/IDMProv/role/service}  # WireMock
       connection-timeout: 5000

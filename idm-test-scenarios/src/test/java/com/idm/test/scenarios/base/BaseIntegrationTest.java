@@ -30,6 +30,10 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -104,6 +108,21 @@ public abstract class BaseIntegrationTest {
                     .usingFilesUnderClasspath("wiremock")
                     .globalTemplating(true));
 
+    /**
+     * The folder the file steps' scenarios use as {@code scratch}: a new directory under target/ for
+     * each JVM, so no run reads another run's files and nothing outside the build is touched.
+     */
+    protected static final Path FILES_SCRATCH = createScratchFolder();
+
+    private static Path createScratchFolder() {
+        try {
+            Path target = Files.createDirectories(Path.of("target"));
+            return Files.createTempDirectory(target, "scenario-files-").toAbsolutePath();
+        } catch (IOException e) {
+            throw new UncheckedIOException("Could not create the scratch folder for the file steps", e);
+        }
+    }
+
     static {
         WIREMOCK_SERVER.start();
         LoggerFactory.getLogger(BaseIntegrationTest.class)
@@ -140,6 +159,7 @@ public abstract class BaseIntegrationTest {
         // ResourceServiceConnector is only registered as a bean when this property is set
         // (@ConditionalOnProperty), so it must be non-null here too, even though no scenario
         // executed by this module drives a resource grant/revoke against it.
+        registry.add("idm.test.files.scratch.path", FILES_SCRATCH::toString);
         registry.add("idm.test.soap.resource-url",
                 () -> "http://localhost:" + WIREMOCK_SERVER.port() + "/IDMProv/resource/service");
     }

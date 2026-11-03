@@ -28,10 +28,11 @@ class IdmTestTest {
     }
 
     @Test
-    @DisplayName("Should print the three commands for --help and exit 0")
+    @DisplayName("Should print every command and option for --help, its apostrophes intact, and exit 0")
     void testHelp() {
         assertThat(run("--help")).isEqualTo(ExitCodes.OK);
-        assertThat(outBytes.toString(StandardCharsets.UTF_8)).contains("init", "validate", "run");
+        assertThat(outBytes.toString(StandardCharsets.UTF_8)).contains("init", "validate", "run", "ui",
+                "commands list|approve|revoke", "the profile's registered commands", "--yes");
     }
 
     @Test

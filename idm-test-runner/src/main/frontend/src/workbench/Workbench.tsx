@@ -13,7 +13,7 @@ import { createTabLock, type LockState, type TabLock } from './tabLock';
 import { TopBar } from './TopBar';
 import { NewProfileDialog } from './NewProfileDialog';
 import { LabChip } from '../lab/LabChip';
-import { deriveLabState } from '../lab/labState';
+import { commandsByScenario, deriveLabState } from '../lab/labState';
 import { LabStore } from '../lab/labStore';
 import { isRunFolder, RunButton } from '../run/RunButton';
 import { RunPanel } from '../run/RunPanel';
@@ -87,6 +87,7 @@ export function Workbench({ workspace, warning, lockWait = 300, runPanel, lab, r
   const [showWarning, setShowWarning] = useState(Boolean(warning));
   const labStore = useMemo(() => new LabStore(), [workspace.path]);
   const labView = useSyncExternalStore(labStore.subscribe, labStore.getState);
+  const scenarioCommands = useMemo(() => commandsByScenario(labView.view), [labView.view]);
   const { layout, update: updateLayout, reset: resetLayout } = usePanelLayout(workspace.path);
   const [viewport, setViewport] = useState(() => ({ width: window.innerWidth, height: window.innerHeight }));
   useEffect(() => {
@@ -426,6 +427,7 @@ export function Workbench({ workspace, warning, lockWait = 300, runPanel, lab, r
               // a folder Run folder cannot run (scenarios/, config/…) is not shown as selected
               selectedFolder={isRunFolder(runFolder) ? runFolder : null}
               runStates={runStates}
+              commands={scenarioCommands}
               onOpen={(path) => {
                 setRunFolder(null);
                 void store.open(path);

@@ -1,0 +1,20 @@
+name: Harmless registered command
+description: >-
+  Run the registered command java-version and check what it prints. In a lab, the same two steps start
+  a driver with dxcmd and wait until it reports running; here the command only prints the test JVM's
+  version, on stderr, as java -version does. It runs only because the test setup approves exactly this
+  definition (ADR 0008).
+
+steps:
+  - exec.run:
+      description: Run the registered command
+      command: java-version
+      as: javaVersion
+
+  - exec.verify:
+      description: It exits 0 and names its version on stderr
+      command: java-version
+      expect:
+        exitCode: 0
+        stderr: { contains: "version", ignoreCase: true }
+      wait: { timeout: 30s, poll: 1s }

@@ -70,8 +70,9 @@ class RunnerSettingsTest {
         Workspace ws = workspace(temp, "idm.test.b: profile\n");
 
         assertThat(RunnerSettings.defaultProperties(ws))
-                .containsExactly(Map.entry("spring.config.location", "optional:classpath:/,optional:file:"
-                        + ws.config().toAbsolutePath().normalize() + "/"));
+                .containsOnly(Map.entry("spring.config.location", "optional:classpath:/,optional:file:"
+                        + ws.config().toAbsolutePath().normalize() + "/"),
+                        Map.entry("idm.test.workspace", ws.root().toAbsolutePath().normalize().toString()));
     }
 
     @Test

@@ -583,6 +583,75 @@ cleanup:
       file: "${written.name}"
 ```
 
+### Commands (registered)
+
+For what only a command can do: `dxcmd` to start a driver or read its state, a service restart, a
+site script that prepares data. A step names a **command registered** in the settings under
+`idm.test.commands` (see [Targets and configuration](#7-targets-and-configuration)) and passes
+**parameters**; it never gives an executable or a command line. A command runs without a shell, with
+a timeout and capped output, and **only once its definition is approved on the machine that runs it**
+(`idmtest commands approve`, or the workbench's lab panel): a definition that is new or changed since
+its approval is refused before any step runs (ADR 0008).
+
+Each parameter fills one argument of the definition that is exactly `{name}`, after its value matched
+the pattern the definition declares for it, in full; it is always exactly one argument. On Windows a
+value with a double quote is refused, because Windows would not pass it as written.
+
+#### `exec.run`
+
+**Action.** Runs a registered command.
+
+| Parameter | Required | Meaning |
+|---|---|---|
+| `command` | yes | the registered command's name |
+| `params` | no | a map of parameter name to value (text, a number or true/false), each matching the pattern its definition declares |
+
+**Captures:** `{ exitCode, stdout, stderr, durationMillis }`.
+
+**Fails when:** the exit code is not one of the definition's `exit-codes` (a finding, with the output
+as evidence), or the command times out (a setup problem; it is stopped with the processes it started).
+An unknown or unapproved command, an unknown or missing parameter, a value that does not match its
+pattern, and an executable that cannot be started are setup problems, and nothing runs. Usable in
+`cleanup:`, for example to stop a driver the scenario started.
+
+```yaml
+- exec.run:
+    command: driver-start
+    params: { driver: "cn=HR,cn=Driver Set,o=system" }
+    as: started
+```
+
+#### `exec.verify`
+
+**Assertion (accepts `wait:`).** Runs a registered command on each attempt and checks its result.
+
+| Parameter | Required | Meaning |
+|---|---|---|
+| `command` | yes | the registered command's name |
+| `expect` | yes | a map with `exitCode` (a number or a list of them), `stdout` and/or `stderr`; each output takes `equals`, `contains` or `matches`, and optionally `ignoreCase: true` |
+| `params` | no | a map of parameter name to value, as for `exec.run` |
+
+Output is compared with `\r\n` read as `\n` and trailing line breaks removed, so one check works on
+every operating system. As in `ldap.verify`, `matches` must match the whole output (start a pattern
+with `(?s)` to span lines) and is case-sensitive unless it starts with `(?i)`; `ignoreCase` applies to
+`equals` and `contains`.
+
+**Captures:** `{ exitCode, stdout, stderr, durationMillis }` of the attempt that passed.
+
+**Fails when:** an expectation is not met, or the command times out; both are retried under `wait:`.
+A malformed `expect` (empty, unknown keys, a `null` value, an invalid pattern, `ignoreCase` without
+`equals` or `contains`), an unknown or unapproved command and a bad parameter end the wait at once.
+
+```yaml
+- exec.verify:
+    command: driver-state
+    params: { driver: "cn=HR,cn=Driver Set,o=system" }
+    expect:
+      exitCode: 0
+      stdout: { equals: "2" }      # dxcmd -getstate prints 2 for a running driver
+    wait: { timeout: 2m, poll: 5s }
+```
+
 ### SOAP: roles and resources
 
 These steps call the Identity Manager Role and Resource services. Unlike the LDAP steps, they take
@@ -1021,6 +1090,9 @@ reference; this section says where to look.
   username and password. SOAP steps take full DNs.
 - **Folders:** `folder: hr-in` means `idm.test.files.hr-in`: its path, what scenarios may do there
   and the file format. See [delimited text folders](configuration.md#delimited-text-folders).
+- **Commands:** `command: driver-state` means `idm.test.commands.driver-state`: its executable,
+  arguments, parameter patterns and limits, and it runs only once approved on the machine. See
+  [registered commands](configuration.md#registered-commands).
 - **TLS** (`ldaps://`, `https://`): the servers' CA must be in the test JVM's truststore. See
   [TLS certificates](configuration.md#tls-certificates-ldaps-https).
 - **A real lab:** what to set for each repository your scenarios use, and what the real-environment
@@ -1048,10 +1120,13 @@ the [configuration reference](configuration.md).
 | `rest.<target>.username`, `password` | `rest.*`, `http.*` | Basic authentication for that target |
 | `rest.<target>.use-oauth`, `oauth-client-name` | `rest.*`, `http.*` | an OAuth2 client-credentials token from that `spring.security.oauth2.client.registration` entry |
 | `rest.<target>.connect-timeout`, `read-timeout` | `rest.*`, `http.*` | milliseconds to connect and to wait for the response (10 000 / 30 000); a slow response fails the attempt |
+| `files.<folder>.*` | `file.*` with `folder: <folder>` | a folder: its path, access and file format |
+| `commands.<name>.*` | `exec.*` with `command: <name>` | a registered command: executable, arguments, parameters, environment, limits |
 | `executor.default-timeout-seconds`, `executor.default-poll-interval-seconds` | `wait: true`, and a `wait:` map that leaves `timeout` or `poll` out | the default wait |
 | `report.locale` | runners | `en` (default) or `es`; the report's language, read once per run. See [Report language](configuration.md#report-language) |
 
-Not settable from a scenario, by design: URLs, credentials, timeouts and pool sizes. The command line
+Not settable from a scenario, by design: URLs, credentials, timeouts and pool sizes, folder paths, and
+executables or command lines. The command line
 chooses what runs: `-Dtest=<runner>` and `-Dscenario=<file or glob>`; see
 [running tests](running-tests.md).
 

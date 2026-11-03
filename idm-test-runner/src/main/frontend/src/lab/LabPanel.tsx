@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type Keyboar
 import { Badge, type BadgeStatus } from '../components/Badge';
 import { t } from '../i18n';
 import { useWorkbench } from '../workbench/context';
+import { CommandPanel } from './CommandPanel';
 import { DefaultDirectoryForm } from './DefaultDirectoryForm';
 import { DEFAULT_DIRECTORY_TAB } from './labState';
 import { SystemForm } from './SystemForm';
@@ -237,7 +238,19 @@ export function LabPanel({ view, error, profile, readOnly, selected, onSelect, o
               onDirty={onDirtyFor(DEFAULT_DIRECTORY_TAB)}
             />
           )}
-          {systems.map((system) => (
+          {systems.map((system) =>
+            system.kind === 'command' ? (
+              <CommandPanel
+                key={system.id}
+                system={system}
+                profile={profile}
+                readOnly={readOnly}
+                hidden={current !== system.id}
+                panelId={`lab-tabpanel-${domId(system.id)}`}
+                onSaved={onSaved}
+                onStale={onTested}
+              />
+            ) : (
             <SystemForm
               key={system.id}
               system={system}
@@ -252,7 +265,8 @@ export function LabPanel({ view, error, profile, readOnly, selected, onSelect, o
               onTested={onTested}
               onDirty={onDirtyFor(system.id)}
             />
-          ))}
+            ),
+          )}
           {addKey > 0 && (
             <SystemForm
               key={`add-${addKey}`}

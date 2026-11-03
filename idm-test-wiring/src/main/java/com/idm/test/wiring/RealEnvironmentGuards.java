@@ -1,6 +1,8 @@
 package com.idm.test.wiring;
 
 import com.idm.test.connector.database.config.DatabaseProperties;
+import com.idm.test.connector.exec.client.CommandConnector;
+import com.idm.test.connector.exec.client.RegisteredCommand;
 import com.idm.test.connector.file.client.DelimitedFileConnector;
 import com.idm.test.connector.file.client.FileProblem;
 import com.idm.test.core.model.OperationResult;
@@ -12,6 +14,7 @@ import com.idm.test.connector.soap.config.SoapProperties;
 import com.idm.test.engine.ScenarioLoader;
 import com.idm.test.engine.i18n.Messages;
 import com.idm.test.engine.model.Scenario;
+import com.idm.test.engine.spi.CommandApproval;
 import com.idm.test.engine.spi.Message;
 import org.springframework.boot.context.properties.bind.Bindable;
 import org.springframework.boot.context.properties.bind.Binder;
@@ -44,13 +47,14 @@ public final class RealEnvironmentGuards {
 
     /**
      * Every guard, in order: not the embedded profile, scenarios present, then on the needs of
-     * the {@code selected} scenarios: endpoints, REST targets, databases, folders, credentials.
+     * the {@code selected} scenarios: endpoints, REST targets, databases, folders, commands, credentials.
      *
      * @throws RealEnvironmentGuards.Refusal naming the first problem, in {@code locale}
      */
     public static void check(Environment environment, ScenarioSource source, List<String> selected, Locale locale,
                              RestProperties rest, DatabaseProperties databases, SoapProperties soap,
-                             DelimitedFileConnector files) {
+                             DelimitedFileConnector files, CommandConnector commands,
+                             CommandApproval approval) {
         requireNotEmbedded(environment, locale);
         List<String> all;
         try {
@@ -69,6 +73,7 @@ public final class RealEnvironmentGuards {
         requireRestTargets(needs.restTargets(), rest, locale);
         requireDatabases(needs.databases(), databases, locale);
         requireFolders(needs, files, locale);
+        requireCommands(needs.commands(), commands, approval, locale);
         requireCredentials(needs.restTargets(), needs.soap(), rest, soap, environment, locale);
     }
 
@@ -351,6 +356,29 @@ public final class RealEnvironmentGuards {
                 Object problem = FileProblem.of(result).<Object>map(FileProblems::of).orElse(result.getMessage());
                 throw refusal(locale, Message.of("runner.guard.folder", name, problem));
             }
+        }
+    }
+
+    /**
+     * Every command the scenarios run is registered under {@code idm.test.commands}, and its definition as
+     * it is now is approved on this machine (ADR 0008). Names every unapproved command at once, so one
+     * {@code idmtest commands approve} covers them.
+     */
+    public static void requireCommands(Set<String> needed, CommandConnector commands, CommandApproval approval,
+                                       Locale locale) {
+        Set<String> unapproved = new TreeSet<>();
+        for (String name : new TreeSet<>(needed)) {
+            Optional<RegisteredCommand> command = commands == null ? Optional.empty() : commands.command(name);
+            if (command.isEmpty()) {
+                throw refusal(locale, Message.of("runner.guard.unknownCommand", name,
+                        commands == null ? Set.of() : commands.commandNames()));
+            }
+            if (approval == null || !approval.approved(name, command.get().hash())) {
+                unapproved.add(name);
+            }
+        }
+        if (!unapproved.isEmpty()) {
+            throw refusal(locale, Message.of("runner.guard.commandNotApproved", unapproved));
         }
     }
 

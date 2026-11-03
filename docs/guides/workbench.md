@@ -151,7 +151,8 @@ Below about 760 px wide the columns stack.
 The lab chip shows whether the systems the workspace's scenarios use are ready, for the selected
 profile: "Lab ready", "Lab: 2 of 3 ready", or what is missing, such as "Lab: Directory needs a URL".
 Click it to open the **lab panel**: on the left, the list of the systems the scenarios use and the ones
-the profile configures (directories, databases, REST targets, folders, the SOAP services), with **+ add** for
+the profile configures (directories, databases, REST targets, folders, the SOAP services, registered
+commands), with **+ add** for
 one no scenario uses yet; on the right, the selected system's form. Each entry's badge says ✓ ready,
 ! not tested yet, or ✕ missing. A long list scrolls on its own, and **Find connections** narrows it by
 name, kind or identifier (the form shown stays until you pick another entry); the arrow keys, Home and
@@ -242,6 +243,29 @@ scenarios of the run count — the active scenario for **Run**, the folder's for
 scenario for **Run all scenarios**, the ones with a finding or a setup problem for **Run only the ones
 that found something** — so a system that only other scenarios use does not stop it; the blocked
 entries of the Run menu say why when you point at them.
+
+### Registered commands
+
+Each command the profile registers under `idm.test.commands`, and each one a scenario runs, is an
+entry of the lab panel (`command:driver-state`). Its form is read-only: it shows the definition
+exactly as the settings write it — executable, arguments (a secret as its `${NAME}`), each parameter
+and its pattern, the names of the environment variables it sets, the working folder, the timeout,
+the output cap and the exit codes — because definitions are changed in the settings files and shared
+through Git, not here. It cannot be tested or deleted from the panel.
+
+Its badge is ✓ when the definition is approved on this machine, and ✕ when it was never approved,
+changed since its approval, or is not registered at all (a scenario names a command the settings do
+not define). **Approve on this machine** approves the definition shown, as
+`idmtest commands approve` does, into the same `~/.idmtest/command-approvals.json`. If the definition
+changed after the panel showed it, the approval is refused and the panel shows the new one, so what
+you approve is what you read. The workbench never approves on its own.
+
+A command that is not approved blocks the runs that use it, as a missing setting does: the run panel
+says "Lab: Command driver-state is not approved on this machine" with **Open the lab panel**. A
+scenario that runs commands has a ⚙ next to its name in the tree (pointing at it names the
+commands), and before a run the run panel names the commands it will start on this machine. The
+finding panel shows a command step's evidence: the exit code and duration, the command line as it
+started (secrets masked) and what it wrote.
 
 ### Create a profile
 

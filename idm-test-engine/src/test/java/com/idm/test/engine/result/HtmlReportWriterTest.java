@@ -1,6 +1,7 @@
 package com.idm.test.engine.result;
 
 import com.idm.test.engine.spi.Evidence;
+import com.idm.test.engine.spi.CommandEvidence;
 import com.idm.test.engine.spi.FileEvidence;
 import com.idm.test.engine.spi.HttpEvidence;
 import com.idm.test.engine.spi.LdapEvidence;
@@ -295,6 +296,26 @@ class HtmlReportWriterTest {
                 List.of("id"), List.of(List.of("E1"))))))
                 .contains("Archivo · escrito · hr.csv · 1 fila")
                 .contains("carpeta hr-in");
+    }
+
+    @Test
+    @DisplayName("Command evidence: name, exit code, time-out, the masked command line and both outputs, escaped")
+    void testCommandEvidence() {
+        String html = renderStep(withEvidence(true, null, CommandEvidence.ran("driver-state",
+                List.of("dxcmd", "-password", "fake-pw-9", "-getstate", "cn=HR,o=system", "two words"), Set.of(),
+                0, 1500, false, "<b>2</b>\n", "warning\n", 9, 8)));
+
+        assertThat(html).contains("Command · driver-state · exit 0 · 1.5 s")
+                .contains("dxcmd -password *** -getstate cn=HR,o=system &quot;two words&quot;")
+                .contains("&lt;b&gt;2&lt;/b&gt;")
+                .contains("warning")
+                .doesNotContain("fake-pw-9");
+        assertThat(renderStep(withEvidence(false, null, CommandEvidence.ran("slow", List.of("tool"), Set.of(),
+                -1, 30_000, true, "", "", 0, 0)))).contains("Command · slow · timed out after 30.0 s");
+        assertThat(renderStep(withEvidence(false, null, CommandEvidence.notStarted("ghost"))))
+                .contains("Command · ghost · not started");
+        assertThat(renderStepEs(withEvidence(true, null, CommandEvidence.ran("c", List.of("t"), Set.of(), 3, 10,
+                false, "", "", 0, 0)))).contains("Comando · c · salida 3");
     }
 
     @Test

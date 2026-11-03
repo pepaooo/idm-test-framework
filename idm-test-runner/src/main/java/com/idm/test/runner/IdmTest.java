@@ -3,12 +3,17 @@ package com.idm.test.runner;
 import com.idm.test.engine.i18n.Messages;
 import com.idm.test.engine.i18n.ReportLocale;
 import com.idm.test.engine.spi.Message;
+import com.idm.test.runner.commands.ApprovalStore;
+import com.idm.test.runner.commands.CommandsCommand;
 import com.idm.test.runner.ui.UiCommand;
 
+import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.PrintStream;
 import java.io.UncheckedIOException;
+import java.nio.charset.Charset;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.util.Locale;
@@ -71,6 +76,9 @@ public final class IdmTest {
             case "validate" -> ValidateCommand.run(line, out, err);
             case "run" -> RunCommand.run(line, out, err, Clock.systemDefaultZone());
             case "ui" -> UiCommand.run(line, out, err);
+            case "commands" -> CommandsCommand.run(line,
+                    new BufferedReader(new InputStreamReader(System.in, Charset.defaultCharset())), out, err,
+                    ApprovalStore.inUserHome());
             // CommandLine.parse accepts no other command.
             default -> throw new IllegalStateException("unhandled command " + line.command());
         };

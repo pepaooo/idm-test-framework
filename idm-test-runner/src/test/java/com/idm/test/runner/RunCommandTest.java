@@ -333,6 +333,58 @@ class RunCommandTest {
         assertThat(runFolder(ws).resolve("results.json")).doesNotExist();
     }
 
+    /** Registers java-version in the profile lab: the current JVM's java -version, which prints on stderr. */
+    private static void javaVersionCommand(Path ws) throws Exception {
+        String java = ProcessHandle.current().info().command().orElseThrow().replace("'", "''");
+        Path settings = ws.resolve("config/application-lab.yml");
+        Files.writeString(settings, Files.readString(settings).replace("    executor:",
+                "    commands:\n      java-version:\n        executable: '" + java + "'\n"
+                        + "        args: [\"-version\"]\n    executor:"));
+        LabFixture.scenario(ws, "java-version.yaml", """
+                name: Java version
+                steps:
+                  - exec.verify:
+                      command: java-version
+                      expect:
+                        exitCode: 0
+                        stderr: { contains: "version" }
+                """);
+    }
+
+    @Test
+    @DisplayName("Should refuse a run whose scenario runs an unapproved command, and run it once it is approved here")
+    void testCommandNeedsApproval() throws Exception {
+        String realHome = System.getProperty("user.home");
+        Path home = Files.createDirectories(temp.resolve("home"));
+        System.setProperty("user.home", home.toString());
+        try {
+            Path ws = workspace("ws");
+            javaVersionCommand(ws);
+
+            int refused = run(ws, "--profile", "lab");
+
+            assertThat(refused).as(out() + err()).isEqualTo(ExitCodes.CANNOT_START);
+            assertThat(err()).contains("not approved on this machine", "[java-version]", "idmtest commands approve");
+            assertThat(runFolder(ws).resolve("results.json")).doesNotExist();
+
+            com.idm.test.connector.exec.client.RegisteredCommand command =
+                    com.idm.test.runner.commands.CommandsCommandAccess.load(ws, "lab").get("java-version");
+            com.idm.test.runner.commands.ApprovalStore.inUserHome().approve(ws, "lab", "java-version", command.hash());
+            outBytes.reset();
+            errBytes.reset();
+
+            int passed = run(ws, "--profile", "lab");
+
+            assertThat(passed).as(out() + err()).isEqualTo(ExitCodes.OK);
+            assertThat(out()).contains("✔ java-version.yaml  ");
+            // Same clock, so the second run's folder takes the next free name.
+            Path second = ws.resolve("reports").resolve(RUN_ID + "-2");
+            assertThat(Files.readString(second.resolve("results.json"))).contains("\"kind\" : \"command\"");
+        } finally {
+            System.setProperty("user.home", realHome);
+        }
+    }
+
     @Test
     @DisplayName("Should let --locale beat the profile file's idm.test.report.locale, on the console and in the report")
     void testCommandLineLocaleBeatsProfile() throws Exception {

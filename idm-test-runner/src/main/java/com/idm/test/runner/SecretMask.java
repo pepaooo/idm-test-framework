@@ -6,6 +6,7 @@ import com.idm.test.engine.result.ScenarioResult;
 import com.idm.test.engine.result.Secrets;
 import com.idm.test.engine.result.StepResult;
 import com.idm.test.engine.spi.Check;
+import com.idm.test.engine.spi.CommandEvidence;
 import com.idm.test.engine.spi.Evidence;
 import com.idm.test.engine.spi.FileEvidence;
 import com.idm.test.engine.spi.HttpEvidence;
@@ -187,6 +188,10 @@ public final class SecretMask {
             case FileEvidence file -> new FileEvidence(file.folder(), apply(file.file()), file.operation(),
                     file.present(), file.size(), file.header().stream().map(this::apply).toList(),
                     file.rows().stream().map(this::fileRow).toList(), file.totalRows(), file.selectedRows());
+            case CommandEvidence command -> new CommandEvidence(apply(command.command()),
+                    command.argv().stream().map(this::apply).toList(), command.exitCode(), command.durationMillis(),
+                    command.timedOut(), apply(command.stdout()), apply(command.stderr()), command.stdoutBytes(),
+                    command.stderrBytes());
         };
     }
 

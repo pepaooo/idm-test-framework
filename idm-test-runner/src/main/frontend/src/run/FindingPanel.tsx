@@ -109,6 +109,25 @@ export function evidenceText(evidence: Evidence): string {
       }
       break;
     }
+    case 'command': {
+      const took = seconds(evidence.durationMillis ?? 0);
+      const state =
+        evidence.exitCode === null || evidence.exitCode === undefined
+          ? 'not started'
+          : evidence.timedOut
+            ? `timed out after ${took}`
+            : `exit ${evidence.exitCode} · ${took}`;
+      lines.push(`${evidence.command} · ${state}`);
+      if (evidence.argv?.length) {
+        lines.push(evidence.argv.map((arg) => (arg === '' || /\s/.test(arg) ? `"${arg}"` : arg)).join(' '));
+      }
+      for (const [name, text] of [['stdout', evidence.stdout], ['stderr', evidence.stderr]] as const) {
+        if (text) {
+          lines.push(`${name}:`, text.replace(/\r?\n$/, ''));
+        }
+      }
+      break;
+    }
   }
   return lines.join('\n');
 }

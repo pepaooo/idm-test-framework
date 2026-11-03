@@ -78,7 +78,7 @@ class ScenarioSupportIsolationTest {
                     .filter(method -> method.getName().equals("of"))
                     .findFirst().orElseThrow();
             registry.setAccessible(true);
-            registry.invoke(null, null, null, null, null, null, properties, withoutOAuth, null);
+            registry.invoke(null, null, null, null, null, null, properties, withoutOAuth, null, null, null);
 
             assertThat(files).as("the helper path really ran").isNotEmpty();
             assertThat(loader.hasLoaded(BASE)).as("BaseIntegrationTest loaded").isFalse();

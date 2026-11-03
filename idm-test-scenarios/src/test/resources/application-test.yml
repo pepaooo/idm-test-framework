@@ -36,6 +36,16 @@ idm:
       scratch:
         access: read-write
 
+    # Registered commands for the exec.* steps (ADR 0008). Harmless: prints the JVM's version.
+    # executable is the current JVM's java, set by BaseIntegrationTest (and by ContainerScenarios),
+    # and only those runners approve it; every other runner refuses it.
+    commands:
+      java-version:
+        label: Java version of the test JVM
+        args: ["-version"]
+        exit-codes: [0]
+        timeout: 30s
+
     soap:
       url: ${IDM_SOAP_URL:http://localhost:8090/IDMProv/role/service}  # WireMock
       connection-timeout: 5000

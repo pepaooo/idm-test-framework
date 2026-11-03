@@ -251,3 +251,21 @@
     padding-top: 0;
   }
 }
+
+/* A registered command (ADR 0008): its definition, read-only, and its approval here. */
+.lab-command-state {
+  margin: 10px 14px 0;
+}
+.lab-command-definition {
+  margin: 0;
+}
+.lab-command-definition dt {
+  color: var(--muted);
+}
+.lab-command-definition dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.lab-command-definition code {
+  font-family: var(--mono);
+}

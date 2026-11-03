@@ -227,6 +227,7 @@ An invalid scenario file counts as a failed scenario, and the others still run.
 | `--scenario <glob>` | only scenarios whose name matches |
 | `--locale <en\|es>` | the language of messages and reports |
 | `--verbose` | `run`: also show the framework log on the console, and stack traces for start-up errors |
+| `--yes` | `commands approve`: approve without asking |
 | `--help`, `-h` | the usage text |
 | `--version` | the version |
 
@@ -245,6 +246,46 @@ Exit codes:
 | `0` | every selected scenario passed (or validated) |
 | `1` | at least one scenario failed or did not validate |
 | `2` | the run could not start: bad option, not a workspace, missing profile, unsupported locale, malformed `secrets.env`, missing driver, a refusal from the checks, no matching scenario |
+
+## Registered commands
+
+Scenarios can run commands the settings register under `idm.test.commands` (`dxcmd` to start a
+driver, a site script), with the `exec.run` and `exec.verify` steps; the
+[configuration reference](../reference/configuration.md#registered-commands) describes a definition.
+Because a workspace's settings come through Git, a command runs only once **you have approved its
+exact definition on this machine**. Until then `idmtest run` refuses the run before any step, exit
+code `2`, naming the commands:
+
+```
+Scenarios run commands that are not approved on this machine, or whose definition changed since: [driver-state]. Review them and run idmtest commands approve --profile <profile>, or approve them in the workbench's lab panel.
+```
+
+```bash
+idmtest commands list --profile lab
+```
+
+`list` shows each command of the profile as it will run, and changes nothing: the executable, every
+argument (a secret as its `${NAME}`, never its value), each parameter with its pattern, the names of
+the environment variables it sets, the working folder, the timeout, the output cap and the exit codes,
+and whether it is approved, changed since its approval, or new.
+
+```bash
+idmtest commands approve --profile lab
+```
+
+`approve` shows the same and asks `y/N` for each new or changed command (`s`/`sí` also mean yes).
+Name commands to approve only those: `idmtest commands approve --profile lab driver-state`. `--yes`
+approves without asking, for a pipeline whose operator has reviewed the definitions; it is accepted
+only with `approve`.
+
+```bash
+idmtest commands revoke --profile lab driver-state
+```
+
+`revoke` removes approvals (all of the profile's, without names). Approvals are kept in
+`~/.idmtest/command-approvals.json`, per workspace folder, profile and command, so they are yours and
+this machine's: a colleague who pulls the same workspace approves on their own machine. An approval
+lasts until the definition changes; rotating a secret in `secrets.env` does not ask again.
 
 ## The workbench
 

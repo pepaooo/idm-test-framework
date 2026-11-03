@@ -8,6 +8,7 @@ import com.idm.test.engine.result.ScenarioResult;
 import com.idm.test.engine.result.StepResult;
 import com.idm.test.engine.spi.Check;
 import com.idm.test.engine.spi.HttpEvidence;
+import com.idm.test.engine.spi.CommandEvidence;
 import com.idm.test.engine.spi.FileEvidence;
 import com.idm.test.engine.spi.LdapEvidence;
 import com.idm.test.engine.spi.Message;
@@ -94,7 +95,10 @@ class SecretMaskTest {
         CleanupResult skipped = new CleanupResult(0, "ldap.delete", Map.of("dn", "cn=" + secret),
                 CleanupStatus.SKIPPED, 0, "Stopped — cleanup did not run", "Remove cn=" + secret,
                 "engine.run.stopped", List.of(), null);
-        ScenarioResult result = new ScenarioResult("s.yaml", "s.yaml", false, 9, List.of(http, sql, ldap, file),
+        StepResult command = new StepResult(4, "exec.run", Map.of(), true, 1, null, null, null, null,
+                CommandEvidence.ran("tool-" + secret, List.of("tool", "--for", secret), java.util.Set.of(), 0, 1, false,
+                        "out " + secret, "err " + secret, 1, 1), null, null);
+        ScenarioResult result = new ScenarioResult("s.yaml", "s.yaml", false, 9, List.of(http, sql, ldap, file, command),
                 List.of(cleanup), "detail " + secret, "scenario " + secret, "detail.key", List.of(secret),
                 true, List.of(skipped));
 
@@ -121,6 +125,12 @@ class SecretMaskTest {
                 assertThat(row.selected()).isTrue();
                 assertThat(row.values()).containsEntry("id", "E1").containsEntry("col-****", "v-****");
             });
+        });
+        assertThat(masked.steps().get(4).evidence()).isInstanceOfSatisfying(CommandEvidence.class, evidence -> {
+            assertThat(evidence.command()).isEqualTo("tool-****");
+            assertThat(evidence.argv()).containsExactly("tool", "--for", "****");
+            assertThat(evidence.stdout()).isEqualTo("out ****");
+            assertThat(evidence.stderr()).isEqualTo("err ****");
         });
         assertThat(masked.stopped()).isTrue();
         assertThat(masked.skippedCleanup()).singleElement().satisfies(entry -> {

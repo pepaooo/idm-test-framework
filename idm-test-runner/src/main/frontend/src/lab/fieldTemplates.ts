@@ -1,7 +1,8 @@
 import { t } from '../i18n';
 import type { LabField, LabSystem } from './types';
 
-type Kind = LabSystem['kind'];
+/** The kinds the lab panel edits: a registered command is read-only (CommandPanel). */
+type Kind = Exclude<LabSystem['kind'], 'command'>;
 
 /**
  * The fields of a system not configured yet ("+ add"), as LabSettings lists them per kind (its

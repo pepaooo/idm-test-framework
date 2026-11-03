@@ -45,11 +45,11 @@ class StepSchemaTest {
     }
 
     @Test
-    @DisplayName("A step is a single-key map whose key is one of the 17 step types (or set)")
+    @DisplayName("A step is a single-key map whose key is one of the 19 step types (or set)")
     void testStepsListAllTypes() {
         JsonNode step = schema().at("/$defs/step");
 
-        assertThat(REGISTRY).hasSize(17);
+        assertThat(REGISTRY).hasSize(19);
         assertThat(step.get("minProperties").asInt()).isEqualTo(1);
         assertThat(step.get("maxProperties").asInt()).isEqualTo(1);
         assertThat(step.get("additionalProperties").asBoolean()).isFalse();

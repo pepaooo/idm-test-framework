@@ -2,7 +2,7 @@ import { useEffect, useSyncExternalStore } from 'react';
 import { withWorkspace } from '../api/client';
 import { Badge, type BadgeStatus } from '../components/Badge';
 import { currentLanguage, t, useLanguage } from '../i18n';
-import { missingFor } from '../lab/labState';
+import { commandsFor, missingFor } from '../lab/labState';
 import { useWorkbench } from '../workbench/context';
 import { isScenario, scopeScenarios } from './RunButton';
 import { seconds, timeLabel } from './copyFinding';
@@ -250,6 +250,10 @@ export function RunPanel({ store }: { store: RunStore }) {
     wb.lab,
     scopeScenarios(isScenario(wb.activePath) ? { kind: 'scenario', path: wb.activePath } : { kind: 'all' }, wb.tree),
   );
+  // the registered commands that run would start on this machine (ADR 0008), said before it starts
+  const commands = block === null && !busy
+    ? commandsFor(wb.lab, scopeScenarios(isScenario(wb.activePath) ? { kind: 'scenario', path: wb.activePath } : { kind: 'all' }, wb.tree))
+    : [];
   const rerunBlocked =
     busy || wb.readOnly || wb.profile === null || (selected !== null && missingFor(wb.lab, [selected.name]) !== null);
 
@@ -264,6 +268,12 @@ export function RunPanel({ store }: { store: RunStore }) {
             {t('ui.run.openLab')}
           </button>
         </div>
+      )}
+      {commands.length > 0 && (
+        <p className="run-notice run-commands" role="status">
+          <span aria-hidden="true">⚙ </span>
+          {t('ui.run.commands', { names: commands.join(', ') })}
+        </p>
       )}
       {lab.error && (
         <p className="run-notice" role="status">

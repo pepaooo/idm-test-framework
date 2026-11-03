@@ -103,6 +103,8 @@ environment variables name. Before any scenario runs, it refuses:
 - placeholder or half-given credentials for the REST targets and SOAP services they use
 - for the folders the file steps use: one that is not declared under `idm.test.files`, does not
   exist, or does not allow what the scenarios do there (checked without creating anything)
+- every registered command the selected scenarios run: this runner keeps no approvals, so a scenario
+  with an `exec.*` step is refused (run it with `idmtest`, which asks for an approval on the machine)
 
 Nothing the selected scenarios don't use is checked or contacted.
 

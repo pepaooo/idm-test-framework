@@ -157,6 +157,8 @@ Actions change state; assertions check it and may retry.
 | `file.write` | action | `folder`, `file`, `rows` | `columns`, `delimiter`, `quote`, `encoding`, `lineEnding`, `header` |
 | `file.verify` | assertion | `folder`, `file` (an exact name or a glob), `expect` (`rowCount` and/or `row`) | `where`, `delimiter`, `quote`, `encoding`, `header`, `wait` |
 | `file.delete` | action | `folder`, `file` | — |
+| `exec.run` | action | `command` (a registered command's name) | `params` |
+| `exec.verify` | assertion | `command`, `expect` (`exitCode`, `stdout`, `stderr`) | `params`, `wait` |
 | `roles.grant` | action | `user`, `roles` | `reason` |
 | `roles.revoke` | action | `assignments` | — |
 | `resources.grant` | action | `user`, `resource` | `reason` |
@@ -168,7 +170,9 @@ Actions change state; assertions check it and may retry.
 
 Every step also accepts `as:` to capture its result and `description:` to say why the step exists. `rest.*` and `http.request` address a named
 target (`idm.test.rest.<target>.base-url`) and authenticate with that target's settings — basic,
-OAuth2 client credentials, or none — unless the step writes its own `Authorization` header. The
+OAuth2 client credentials, or none — unless the step writes its own `Authorization` header.
+`exec.*` run a command registered under `idm.test.commands.<name>`, and only once its definition is
+approved on the machine (`idmtest commands approve`, or the workbench's lab panel). The
 [authoring guide](docs/guides/scenario-authoring.md) walks through it. The
 [authoring reference](docs/reference/writing-scenarios.md) documents every parameter, capture and failure mode.
 
@@ -232,6 +236,7 @@ idm-test-framework/
 ├── idm-connector-rest/      REST connector, JDK HTTP client, target authentication (basic, OAuth2)
 ├── idm-connector-soap/      Role and Resource service connectors (NetIQ SOAP)
 ├── idm-connector-file/      Delimited text files in named folders (Delimited Text driver)
+├── idm-connector-exec/      Registered local commands, no shell (dxcmd, scripts)
 ├── idm-connector-idm/       Placeholder — no sources yet
 ├── idm-test-scenarios/      Java scenario tests, YAML scenarios, the JUnit adapter
 ├── docker-compose.yml       Optional local services; the test suite does not use them

@@ -2,6 +2,7 @@ package com.idm.test.runner.run;
 
 import com.idm.test.connector.database.client.MultiDatabaseConnector;
 import com.idm.test.connector.database.config.DatabaseProperties;
+import com.idm.test.connector.exec.client.CommandConnector;
 import com.idm.test.connector.file.client.DelimitedFileConnector;
 import com.idm.test.connector.ldap.client.LdapDirectories;
 import com.idm.test.connector.rest.client.IdmRestConnector;
@@ -26,6 +27,7 @@ import com.idm.test.engine.result.StepResult;
 import com.idm.test.engine.spi.FailureKind;
 import com.idm.test.engine.spi.Message;
 import com.idm.test.engine.spi.RunListener;
+import com.idm.test.engine.spi.CommandApproval;
 import com.idm.test.engine.spi.StepType;
 import com.idm.test.runner.DriverCheck;
 import com.idm.test.runner.DriverLoader;
@@ -34,6 +36,7 @@ import com.idm.test.runner.GitTracking;
 import com.idm.test.runner.RunLog;
 import com.idm.test.runner.RunnerApplication;
 import com.idm.test.runner.RunnerSettings;
+import com.idm.test.runner.commands.ApprovalStore;
 import com.idm.test.runner.SecretMask;
 import com.idm.test.runner.SecretsEnv;
 import com.idm.test.runner.SecretsInitializer;
@@ -352,7 +355,8 @@ public final class RunService {
                 requireNotEmbedded(environment);
                 RealEnvironmentGuards.check(environment, source, names, locale,
                         context.getBean(RestProperties.class), context.getBean(DatabaseProperties.class),
-                        soapProperties(environment), context.getBean(DelimitedFileConnector.class));
+                        soapProperties(environment), context.getBean(DelimitedFileConnector.class),
+                        context.getBean(CommandConnector.class), commandApproval());
             } catch (UsageException e) {
                 String message = mask.apply(Messages.render(e.detail(), locale));
                 LOG.error("The run could not start: {}", message);
@@ -526,6 +530,11 @@ public final class RunService {
             return new Loaded(scenarios, failures);
         }
 
+        /** The approvals of this machine for this workspace and profile (ADR 0008). */
+        private CommandApproval commandApproval() {
+            return ApprovalStore.inUserHome().forWorkspace(workspace.root(), request.profile());
+        }
+
         private ScenarioEngine engine() {
             Map<String, StepType> registry = StepRegistry.of(
                     context.getBean(LdapDirectories.class),
@@ -535,7 +544,9 @@ public final class RunService {
                     context.getBean(IdmRestConnector.class),
                     context.getBean(RestProperties.class),
                     context.getBean(RestAuthenticator.class),
-                    context.getBean(DelimitedFileConnector.class));
+                    context.getBean(DelimitedFileConnector.class),
+                    context.getBean(CommandConnector.class),
+                    commandApproval());
             return EngineFactory.engine(registry, context.getBean(TestDataGenerator.class),
                     context.getBean(TestExecutor.class), context.getBean(TestExecutorProperties.class));
         }

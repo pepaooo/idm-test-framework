@@ -2,6 +2,7 @@ package com.idm.test.engine.spi;
 
 import java.util.LinkedHashSet;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -144,5 +145,18 @@ public interface StepType {
      */
     default StepOutcome execute(Map<String, Object> params, boolean captureRequested, StepContext context) {
         return execute(params, captureRequested);
+    }
+
+    /**
+     * A problem with a parameter's value that is plain to see before the scenario runs, such as a
+     * file name that would leave its folder. {@code ScenarioValidator} calls this for every step and
+     * cleanup entry, with the parameters as written: a value may still hold {@code ${...}} or
+     * {@code js:} expressions, which a step must leave alone (they are checked again at run time).
+     * Must not throw.
+     *
+     * @return the problem, or empty when the values written look usable
+     */
+    default Optional<Message> literalProblem(Map<String, Object> params) {
+        return Optional.empty();
     }
 }

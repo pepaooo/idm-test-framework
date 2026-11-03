@@ -323,7 +323,7 @@ public final class DelimitedFileConnector {
      * glob character; and, when it is an existing symbolic link, one that resolves inside the folder.
      */
     private static void checkName(Folder folder, String file) throws Refusal {
-        if (!isPlainName(file) || containsAny(file, GLOB_CHARACTERS)) {
+        if (!isPlainName(file) || hasGlob(file)) {
             throw refusal(Kind.UNSAFE_NAME, folder.name, file);
         }
         Path path;
@@ -347,7 +347,13 @@ public final class DelimitedFileConnector {
         }
     }
 
-    private static boolean isPlainName(String name) {
+    /**
+     * @return true when {@code name} is a plain name inside a folder: not empty, not {@code .} or
+     * {@code ..}, without a separator, drive, control character, or leading or trailing blank. Glob
+     * characters are allowed here; see {@link #hasGlob}. The scenario validator uses this to reject a
+     * literal file name before anything runs; the connector checks every name again at run time.
+     */
+    public static boolean isPlainName(String name) {
         if (name == null || name.isBlank() || name.equals(".") || name.equals("..")) {
             return false;
         }
@@ -359,6 +365,11 @@ public final class DelimitedFileConnector {
         }
         // Leading or trailing blanks are almost always a typo, and Windows drops trailing ones.
         return name.equals(name.strip());
+    }
+
+    /** @return true when {@code name} contains a glob character ({@code * ? [ ] { }}) */
+    public static boolean hasGlob(String name) {
+        return name != null && containsAny(name, GLOB_CHARACTERS);
     }
 
     private static boolean containsAny(String text, String characters) {

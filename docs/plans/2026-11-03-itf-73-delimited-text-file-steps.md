@@ -194,11 +194,11 @@ a row's keys keep matching the header) was done here rather than in Task 7.
 **Files:** the step classes in the file map, `ScenarioValidator.java`; `FileStepsTest` and validator
 tests.
 
-- [ ] **Step 1: Shared expectations.** If `rejectMalformedExpect` and the row comparison in
+- [x] **Step 1: Shared expectations.** If `rejectMalformedExpect` and the row comparison in
   `DbVerifyStep` can move to `RowExpectations` with **identical** `db.verify` messages (the message
   keys are passed in), extract them and run `DbStepsTest` unchanged. Otherwise copy into
   `FileVerifyStep` and note why in its javadoc.
-- [ ] **Step 2: Failing `FileStepsTest`** against a real `DelimitedFileConnector` over `@TempDir`,
+- [x] **Step 2: Failing `FileStepsTest`** against a real `DelimitedFileConnector` over `@TempDir`,
   one test per row of spec §4.4, plus:
   - `file.write`: column order from `columns` and from the first row; extra key → final failure;
     missing key → empty field; null → empty; numbers and booleans as text; empty `rows` without
@@ -210,13 +210,21 @@ tests.
   - `file.delete`: present → deleted; absent → success "already absent"; read folder → final failure.
   - Format overrides accepted per step; `path`, `access`, `temp-suffix`, `clock-skew` rejected as
     unknown parameters.
-- [ ] **Step 3: Validator rules** (failing tests first): `file.delete` with a literal `file`
+- [x] **Step 3: Validator rules** (failing tests first): `file.delete` with a literal `file`
   containing a glob character is rejected; a literal `file` with a separator, `..` or a root is
   rejected on all three steps; interpolated values are checked by the connector at run time.
-- [ ] **Step 4: Implement** until green. `acceptedParams`: write `folder file rows columns delimiter
+- [x] **Step 4: Implement** until green. `acceptedParams`: write `folder file rows columns delimiter
   quote encoding lineEnding header`; verify `folder file expect where wait delimiter quote encoding
   header`; delete `folder file`.
-- [ ] **Step 5:** `./mvnw test -pl idm-test-engine -am`; commit `feat(engine): file.write, file.verify, file.delete (ITF-73)`.
+- [x] **Step 5:** `./mvnw test -pl idm-test-engine -am`; commit `feat(engine): file.write, file.verify, file.delete (ITF-73)`.
+
+**As built:** `RowExpectations` holds `db.verify`'s expect checks and comparison, with each step's
+message keys passed in a `Keys` record; `DbStepsTest` passes unchanged. Literal file names are
+checked through a new default `StepType.literalProblem(params)` hook, which `ScenarioValidator`
+calls for steps and cleanup entries, so the validator names no step type (messages
+`validation.file.notPlain` and `validation.file.glob`). `file.verify`'s two-argument `execute`, used
+only outside the engine, counts files from the moment it is called. A `where:` with a null value is
+refused like a null in `row:`. The engine module now depends on `idm-connector-file`.
 
 ### Task 5: Wiring and guards
 

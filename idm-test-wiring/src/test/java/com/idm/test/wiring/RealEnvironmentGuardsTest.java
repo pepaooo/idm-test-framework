@@ -1,7 +1,11 @@
 package com.idm.test.wiring;
 
 import com.idm.test.connector.database.config.DatabaseProperties;
+import com.idm.test.connector.exec.client.CommandConnector;
+import com.idm.test.connector.exec.client.CommandDefinition;
+import com.idm.test.connector.exec.client.RegisteredCommand;
 import com.idm.test.connector.file.client.DelimitedFileConnector;
+import com.idm.test.engine.spi.CommandApproval;
 import com.idm.test.connector.file.client.FolderAccess;
 import com.idm.test.connector.file.client.FolderSettings;
 import com.idm.test.connector.rest.config.RestProperties;
@@ -805,7 +809,8 @@ class RealEnvironmentGuardsTest {
 
         assertThatThrownBy(() -> RealEnvironmentGuards.check(target(REAL_LDAP, REAL_SOAP, "dev"), source, List.of(),
                 Locale.ENGLISH, new RestProperties(), new DatabaseProperties(), new SoapProperties(),
-                new DelimitedFileConnector(Map.of())))
+                new DelimitedFileConnector(Map.of()),
+                new CommandConnector(Map.of(), null), CommandApproval.NONE))
                 .isInstanceOf(RealEnvironmentGuards.Refusal.class)
                 .hasMessage("No .yaml scenarios found in " + source.describe() + ". Add a scenario there.");
     }
@@ -825,7 +830,8 @@ class RealEnvironmentGuardsTest {
 
         assertThatThrownBy(() -> RealEnvironmentGuards.check(target(null, null, "dev"), source, List.of("one.yaml"),
                 Locale.ENGLISH, new RestProperties(), new DatabaseProperties(), new SoapProperties(),
-                new DelimitedFileConnector(Map.of())))
+                new DelimitedFileConnector(Map.of()),
+                new CommandConnector(Map.of(), null), CommandApproval.NONE))
                 .isInstanceOf(RealEnvironmentGuards.Refusal.class)
                 .hasMessageContaining("idm.test.ldap.url is not set")
                 .hasMessageContaining("IDM_TEST_LDAP_URL");
@@ -908,8 +914,88 @@ class RealEnvironmentGuardsTest {
 
         assertThatThrownBy(() -> RealEnvironmentGuards.check(target(REAL_LDAP, REAL_SOAP, "dev"), source,
                 List.of("files.yaml"), Locale.ENGLISH, new RestProperties(), new DatabaseProperties(),
-                new SoapProperties(), new DelimitedFileConnector(Map.of())))
+                new SoapProperties(), new DelimitedFileConnector(Map.of()),
+                new CommandConnector(Map.of(), null), CommandApproval.NONE))
                 .isInstanceOf(RealEnvironmentGuards.Refusal.class)
                 .hasMessageContaining("Scenarios use folder 'hr-out', which is not configured under idm.test.files");
+    }
+    // ------------------------------------------------------------------
+    // Commands
+    // ------------------------------------------------------------------
+
+    private static CommandConnector commands(String... names) {
+        Map<String, RegisteredCommand> registered = new java.util.LinkedHashMap<>();
+        for (String name : names) {
+            CommandDefinition definition = new CommandDefinition("tool-" + name, List.of(), Map.of(), null, null,
+                    null, null, null, null);
+            registered.put(name, RegisteredCommand.of(definition, definition));
+        }
+        return new CommandConnector(registered, null);
+    }
+
+    @Test
+    @DisplayName("Commands: passes when every command used is registered and its definition approved here")
+    void testCommandsPass() {
+        CommandConnector connector = commands("start", "state");
+        String stateHash = connector.command("state").orElseThrow().hash();
+        String startHash = connector.command("start").orElseThrow().hash();
+        CommandApproval approval = (name, hash) -> hash.equals(stateHash) || hash.equals(startHash);
+
+        assertThatCode(() -> RealEnvironmentGuards.requireCommands(Set.of("start", "state"), connector, approval,
+                Locale.ENGLISH)).doesNotThrowAnyException();
+        assertThatCode(() -> RealEnvironmentGuards.requireCommands(Set.of(), null, null, Locale.ENGLISH))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("Commands: refuses an unregistered command, naming the registered ones")
+    void testCommandsUnknown() {
+        assertThatThrownBy(() -> RealEnvironmentGuards.requireCommands(Set.of("stop"), commands("start"),
+                CommandApproval.NONE, Locale.ENGLISH))
+                .isInstanceOf(RealEnvironmentGuards.Refusal.class)
+                .hasMessage("Scenarios run command 'stop', which is not registered under idm.test.commands. "
+                        + "Registered commands: [start]");
+        assertThatThrownBy(() -> RealEnvironmentGuards.requireCommands(Set.of("stop"), commands(),
+                CommandApproval.NONE, Locale.ENGLISH))
+                .hasMessageContaining("Registered commands: []");
+    }
+
+    @Test
+    @DisplayName("Commands: refuses unapproved or changed definitions, naming them all, in either language")
+    void testCommandsUnapproved() {
+        CommandConnector connector = commands("start", "state", "stop");
+        String startHash = connector.command("start").orElseThrow().hash();
+        CommandApproval onlyStart = (name, hash) -> name.equals("start") && hash.equals(startHash);
+
+        assertThatThrownBy(() -> RealEnvironmentGuards.requireCommands(Set.of("start", "state", "stop"), connector,
+                onlyStart, Locale.ENGLISH))
+                .isInstanceOf(RealEnvironmentGuards.Refusal.class)
+                .hasMessageStartingWith("Scenarios run commands that are not approved on this machine, or whose "
+                        + "definition changed since: [state, stop].")
+                .hasMessageContaining("idmtest commands approve --profile <profile>");
+        // An approval for another definition of the same name does not count.
+        CommandApproval stale = (name, hash) -> name.equals("start") && hash.equals("0".repeat(64));
+        assertThatThrownBy(() -> RealEnvironmentGuards.requireCommands(Set.of("start"), connector, stale,
+                Locale.ENGLISH)).hasMessageContaining("[start]");
+        assertThatThrownBy(() -> RealEnvironmentGuards.requireCommands(Set.of("start"), connector,
+                CommandApproval.NONE, Locale.forLanguageTag("es"))).hasMessageContaining("no están aprobados");
+    }
+
+    @Test
+    @DisplayName("check runs the command guard on the selected scenarios")
+    void testCheckRefusesUnapprovedCommand(@TempDir Path folder) throws IOException {
+        Files.writeString(folder.resolve("cmd.yaml"), """
+                name: cmd
+                steps:
+                  - exec.run:
+                      command: start
+                """);
+        DirectoryScenarioSource source = new DirectoryScenarioSource(folder);
+
+        assertThatThrownBy(() -> RealEnvironmentGuards.check(target(REAL_LDAP, REAL_SOAP, "dev"), source,
+                List.of("cmd.yaml"), Locale.ENGLISH, new RestProperties(), new DatabaseProperties(),
+                new SoapProperties(), new DelimitedFileConnector(Map.of()), commands("start"), CommandApproval.NONE))
+                .isInstanceOf(RealEnvironmentGuards.Refusal.class)
+                .hasMessageContaining("not approved on this machine");
     }
 }

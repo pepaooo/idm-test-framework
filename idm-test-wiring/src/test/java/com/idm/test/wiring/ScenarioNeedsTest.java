@@ -242,4 +242,32 @@ class ScenarioNeedsTest {
                       file: a.csv
                 """)))).containsExactly(ScenarioNeeds.FILE);
     }
+
+    @Test
+    @DisplayName("Should collect the commands exec.run and exec.verify use, cleanup included")
+    void testCommands() {
+        ScenarioNeeds needs = needs("""
+                name: n
+                steps:
+                  - exec.run:
+                      command: driver-start
+                  - exec.verify:
+                      command: driver-state
+                      expect: { exitCode: 0 }
+                  - exec.run:
+                      command: ${dynamic}
+                cleanup:
+                  - exec.run:
+                      command: driver-stop
+                """);
+
+        assertThat(needs.commands()).containsExactly("driver-start", "driver-state", "driver-stop");
+        assertThat(needs.folders()).isEmpty();
+        assertThat(ScenarioNeeds.unresolvedKinds(List.of(scenario("""
+                name: n
+                steps:
+                  - exec.run:
+                      command: ${dynamic}
+                """)))).containsExactly(ScenarioNeeds.EXEC);
+    }
 }

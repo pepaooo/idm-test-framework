@@ -14,13 +14,14 @@ import java.util.TreeSet;
  * What the selected scenarios use: LDAP directories (by name; {@link #DEFAULT_DIRECTORY} for a
  * step that names none), named databases, the Role and Resource services, REST targets, and the
  * named folders the file steps read ({@code file.verify}) and write ({@code file.write},
- * {@code file.delete}). The real-environment guards check, and the run contacts, only these. Read
+ * {@code file.delete}), and the registered commands the exec steps run. The real-environment guards check, and the run contacts, only these. Read
  * from every scenario's steps and cleanup. A name containing {@code ${} is only known at run
  * time and is skipped; a null name is skipped; anything else is converted with
  * {@code String.valueOf}, as the steps themselves do.
  */
 public record ScenarioNeeds(Set<String> directories, Set<String> databases, boolean roles, boolean resources,
-                     Set<String> restTargets, Set<String> readFolders, Set<String> writeFolders) {
+                     Set<String> restTargets, Set<String> readFolders, Set<String> writeFolders,
+                     Set<String> commands) {
 
     /** Stands for "the default directory" in {@link #directories()}: an ldap.* step that names none. */
     public static final String DEFAULT_DIRECTORY = "<default>";
@@ -29,11 +30,12 @@ public record ScenarioNeeds(Set<String> directories, Set<String> databases, bool
     public static final String DB = "db";
     public static final String REST = "rest";
     public static final String FILE = "file";
+    public static final String EXEC = "exec";
     private static final String ROLES = "roles";
     private static final String RESOURCES = "resources";
     /** The parameter that names the connection a step of each named kind uses. */
     private static final Map<String, String> NAME_KEYS =
-            Map.of(LDAP, "directory", DB, "database", REST, "target", FILE, "folder");
+            Map.of(LDAP, "directory", DB, "database", REST, "target", FILE, "folder", EXEC, "command");
     /** The one file step that reads; every other file step writes. */
     private static final String FILE_VERIFY = "file.verify";
 
@@ -43,12 +45,19 @@ public record ScenarioNeeds(Set<String> directories, Set<String> databases, bool
         restTargets = Collections.unmodifiableSortedSet(new TreeSet<>(restTargets));
         readFolders = Collections.unmodifiableSortedSet(new TreeSet<>(readFolders == null ? Set.of() : readFolders));
         writeFolders = Collections.unmodifiableSortedSet(new TreeSet<>(writeFolders == null ? Set.of() : writeFolders));
+        commands = Collections.unmodifiableSortedSet(new TreeSet<>(commands == null ? Set.of() : commands));
+    }
+
+    /** Needs without commands. */
+    public ScenarioNeeds(Set<String> directories, Set<String> databases, boolean roles, boolean resources,
+                         Set<String> restTargets, Set<String> readFolders, Set<String> writeFolders) {
+        this(directories, databases, roles, resources, restTargets, readFolders, writeFolders, Set.of());
     }
 
     /** Needs without folders. */
     public ScenarioNeeds(Set<String> directories, Set<String> databases, boolean roles, boolean resources,
                          Set<String> restTargets) {
-        this(directories, databases, roles, resources, restTargets, Set.of(), Set.of());
+        this(directories, databases, roles, resources, restTargets, Set.of(), Set.of(), Set.of());
     }
 
     public static ScenarioNeeds of(List<Scenario> scenarios) {
@@ -59,6 +68,7 @@ public record ScenarioNeeds(Set<String> directories, Set<String> databases, bool
         Set<String> targets = new TreeSet<>();
         Set<String> readFolders = new TreeSet<>();
         Set<String> writeFolders = new TreeSet<>();
+        Set<String> commands = new TreeSet<>();
         for (StepSpec step : entries(scenarios)) {
             String kind = kind(step.type());
             if (kind == null) {
@@ -76,17 +86,19 @@ public record ScenarioNeeds(Set<String> directories, Set<String> databases, bool
                 case DB -> addLiteral(databases, name);
                 case REST -> addLiteral(targets, name);
                 case FILE -> addLiteral(FILE_VERIFY.equals(step.type()) ? readFolders : writeFolders, name);
+                case EXEC -> addLiteral(commands, name);
                 case ROLES -> roles = true;
                 default -> resources = true;
             }
         }
-        return new ScenarioNeeds(directories, databases, roles, resources, targets, readFolders, writeFolders);
+        return new ScenarioNeeds(directories, databases, roles, resources, targets, readFolders, writeFolders,
+                commands);
     }
 
     /**
-     * The kinds of connection ({@value #LDAP}, {@value #DB}, {@value #REST}, {@value #FILE}) that a
-     * step of the scenarios names only at run time: a name containing {@code ${}, or a db.*, rest.* or
-     * file.* step that names none. {@link #of} skips those names, so such a step may use any connection of its kind.
+     * The kinds of connection ({@value #LDAP}, {@value #DB}, {@value #REST}, {@value #FILE},
+     * {@value #EXEC}) that a step of the scenarios names only at run time: a name containing {@code ${},
+     * or a db.*, rest.*, file.* or exec.* step that names none. {@link #of} skips those names, so such a step may use any connection of its kind.
      */
     public static Set<String> unresolvedKinds(List<Scenario> scenarios) {
         Set<String> kinds = new TreeSet<>();
@@ -127,6 +139,8 @@ public record ScenarioNeeds(Set<String> directories, Set<String> databases, bool
             return REST;
         } else if (type.startsWith("file.")) {
             return FILE;
+        } else if (type.startsWith("exec.")) {
+            return EXEC;
         }
         return null;
     }

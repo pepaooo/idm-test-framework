@@ -15,11 +15,13 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 class StepRegistryTest {
 
     @Test
-    @DisplayName("Should register the 17 step types, and validate without any connector")
+    @DisplayName("Should register the 19 step types, and validate without any connector")
     void testForValidation() {
         var registry = StepRegistry.forValidation();
-        assertThat(registry).hasSize(17).containsKeys("ldap.create", "db.verify", "rest.request", "http.verify",
-                "roles.grant", "resources.revoke", "file.write", "file.verify", "file.delete");
+        assertThat(registry).hasSize(19).containsKeys("ldap.create", "db.verify", "rest.request", "http.verify",
+                "roles.grant", "resources.revoke", "file.write", "file.verify", "file.delete", "exec.run", "exec.verify");
+        assertThat(registry.get("exec.verify").retryable()).isTrue();
+        assertThat(registry.get("exec.run").retryable()).isFalse();
         assertThat(registry.get("file.verify").retryable()).isTrue();
         assertThat(registry.get("file.write").retryable()).isFalse();
         assertThat(registry.get("file.delete").retryable()).isFalse();

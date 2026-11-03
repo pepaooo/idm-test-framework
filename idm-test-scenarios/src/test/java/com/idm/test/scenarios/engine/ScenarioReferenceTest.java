@@ -53,7 +53,7 @@ class ScenarioReferenceTest {
     static void load() throws IOException {
         lines = Files.readAllLines(PAGE, StandardCharsets.UTF_8);
         registry = StepRegistry.of(null, null, null, null, null,
-                new RestProperties(), RestAuthenticator.withoutOAuth(), null);
+                new RestProperties(), RestAuthenticator.withoutOAuth(), null, null, null);
     }
 
     /** step name → (parameter → required?), from each step section's first table. */

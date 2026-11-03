@@ -1,7 +1,9 @@
 package com.idm.test.scenarios.engine;
 
 import com.idm.test.connector.database.client.MultiDatabaseConnector;
+import com.idm.test.connector.exec.client.CommandConnector;
 import com.idm.test.connector.file.client.DelimitedFileConnector;
+import com.idm.test.engine.spi.CommandApproval;
 import com.idm.test.connector.database.config.DatabaseProperties;
 import com.idm.test.connector.ldap.client.LdapDirectories;
 import com.idm.test.connector.rest.client.IdmRestConnector;
@@ -90,6 +92,12 @@ public class RealEnvironmentScenarios {
     private DelimitedFileConnector fileConnector;
 
     @Autowired
+    private CommandConnector commandConnector;
+
+    /** This runner keeps no approvals: every command is refused (ADR 0008). */
+    private final CommandApproval commandApproval = CommandApproval.NONE;
+
+    @Autowired
     private ObjectProvider<RoleServiceConnector> roleServiceConnector;
 
     @Autowired
@@ -139,12 +147,12 @@ public class RealEnvironmentScenarios {
         RealEnvironmentGuards.requireScenarios(source.names(), scenarioDir, locale);
         List<String> selected = ScenarioSupport.selectedScenarioFiles(scenarioDir);
         RealEnvironmentGuards.check(environment, source, selected, locale, restProperties, databaseProperties,
-                soapProperties, fileConnector);
+                soapProperties, fileConnector, commandConnector, commandApproval);
 
         Map<String, StepType> registry = StepRegistry.of(
                 ldapDirectories, databaseConnector, roleServiceConnector.getIfAvailable(),
                 resourceServiceConnector.getIfAvailable(), idmRestConnector, restProperties, restAuthenticator,
-                fileConnector);
+                fileConnector, commandConnector, commandApproval);
         ScenarioValidator validator = EngineFactory.validator(registry);
         ScenarioEngine engine = EngineFactory.engine(registry, testDataGenerator, testExecutor, executorProperties);
 

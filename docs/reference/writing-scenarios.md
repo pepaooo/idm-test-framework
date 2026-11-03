@@ -583,6 +583,75 @@ cleanup:
       file: "${written.name}"
 ```
 
+### Commands (registered)
+
+For what only a command can do: `dxcmd` to start a driver or read its state, a service restart, a
+site script that prepares data. A step names a **command registered** in the settings under
+`idm.test.commands` (see [Targets and configuration](#7-targets-and-configuration)) and passes
+**parameters**; it never gives an executable or a command line. A command runs without a shell, with
+a timeout and capped output, and **only once its definition is approved on the machine that runs it**
+(`idmtest commands approve`, or the workbench's lab panel): a definition that is new or changed since
+its approval is refused before any step runs (ADR 0008).
+
+Each parameter fills one argument of the definition that is exactly `{name}`, after its value matched
+the pattern the definition declares for it, in full; it is always exactly one argument. On Windows a
+value with a double quote is refused, because Windows would not pass it as written.
+
+#### `exec.run`
+
+**Action.** Runs a registered command.
+
+| Parameter | Required | Meaning |
+|---|---|---|
+| `command` | yes | the registered command's name |
+| `params` | no | a map of parameter name to value (text, a number or true/false), each matching the pattern its definition declares |
+
+**Captures:** `{ exitCode, stdout, stderr, durationMillis }`.
+
+**Fails when:** the exit code is not one of the definition's `exit-codes` (a finding, with the output
+as evidence), or the command times out (a setup problem; it is stopped with the processes it started).
+An unknown or unapproved command, an unknown or missing parameter, a value that does not match its
+pattern, and an executable that cannot be started are setup problems, and nothing runs. Usable in
+`cleanup:`, for example to stop a driver the scenario started.
+
+```yaml
+- exec.run:
+    command: driver-start
+    params: { driver: "cn=HR,cn=Driver Set,o=system" }
+    as: started
+```
+
+#### `exec.verify`
+
+**Assertion (accepts `wait:`).** Runs a registered command on each attempt and checks its result.
+
+| Parameter | Required | Meaning |
+|---|---|---|
+| `command` | yes | the registered command's name |
+| `expect` | yes | a map with `exitCode` (a number or a list of them), `stdout` and/or `stderr`; each output takes `equals`, `contains` or `matches`, and optionally `ignoreCase: true` |
+| `params` | no | a map of parameter name to value, as for `exec.run` |
+
+Output is compared with `\r\n` read as `\n` and trailing line breaks removed, so one check works on
+every operating system. As in `ldap.verify`, `matches` must match the whole output (start a pattern
+with `(?s)` to span lines) and is case-sensitive unless it starts with `(?i)`; `ignoreCase` applies to
+`equals` and `contains`.
+
+**Captures:** `{ exitCode, stdout, stderr, durationMillis }` of the attempt that passed.
+
+**Fails when:** an expectation is not met, or the command times out; both are retried under `wait:`.
+A malformed `expect` (empty, unknown keys, a `null` value, an invalid pattern, `ignoreCase` without
+`equals` or `contains`), an unknown or unapproved command and a bad parameter end the wait at once.
+
+```yaml
+- exec.verify:
+    command: driver-state
+    params: { driver: "cn=HR,cn=Driver Set,o=system" }
+    expect:
+      exitCode: 0
+      stdout: { equals: "2" }      # dxcmd -getstate prints 2 for a running driver
+    wait: { timeout: 2m, poll: 5s }
+```
+
 ### SOAP: roles and resources
 
 These steps call the Identity Manager Role and Resource services. Unlike the LDAP steps, they take

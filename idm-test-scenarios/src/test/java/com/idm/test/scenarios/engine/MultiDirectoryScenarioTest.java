@@ -46,7 +46,8 @@ class MultiDirectoryScenarioTest extends BaseIntegrationTest {
     Stream<DynamicTest> scenarios() throws Exception {
         Map<String, StepType> registry = StepRegistry.of(
                 ldapDirectories, databaseConnector, roleServiceConnector,
-                resourceServiceConnector, idmRestConnector, restProperties, restAuthenticator, fileConnector);
+                resourceServiceConnector, idmRestConnector, restProperties, restAuthenticator, fileConnector,
+                commandConnector, commandApproval);
         ScenarioValidator validator = EngineFactory.validator(registry);
         ScenarioEngine engine = EngineFactory.engine(registry, testDataGenerator, testExecutor, executorProperties);
 

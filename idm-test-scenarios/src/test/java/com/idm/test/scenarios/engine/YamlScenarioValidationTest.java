@@ -50,7 +50,8 @@ class YamlScenarioValidationTest extends BaseIntegrationTest {
     void testFactoryHandlesMixOfValidAndInvalidFiles(@TempDir Path tempDir) throws Exception {
         Map<String, StepType> registry = StepRegistry.of(
                 ldapDirectories, databaseConnector, roleServiceConnector,
-                resourceServiceConnector, idmRestConnector, restProperties, restAuthenticator, fileConnector);
+                resourceServiceConnector, idmRestConnector, restProperties, restAuthenticator, fileConnector,
+                commandConnector, commandApproval);
         ScenarioValidator validator = EngineFactory.validator(registry);
         ScenarioEngine engine = EngineFactory.engine(registry, testDataGenerator, testExecutor, executorProperties);
         Path results = tempDir.resolve("scenario-results.json");
@@ -104,7 +105,8 @@ class YamlScenarioValidationTest extends BaseIntegrationTest {
     void testRunInfoFailureDoesNotAbortFactory(@TempDir Path tempDir) throws Exception {
         Map<String, StepType> registry = StepRegistry.of(
                 ldapDirectories, databaseConnector, roleServiceConnector,
-                resourceServiceConnector, idmRestConnector, restProperties, restAuthenticator, fileConnector);
+                resourceServiceConnector, idmRestConnector, restProperties, restAuthenticator, fileConnector,
+                commandConnector, commandApproval);
         ScenarioValidator validator = EngineFactory.validator(registry);
         ScenarioEngine engine = EngineFactory.engine(registry, testDataGenerator, testExecutor, executorProperties);
         Path results = tempDir.resolve("scenario-results.json");
@@ -126,7 +128,8 @@ class YamlScenarioValidationTest extends BaseIntegrationTest {
     void testUnsupportedLocaleStopsTheRun(@TempDir Path tempDir) {
         Map<String, StepType> registry = StepRegistry.of(
                 ldapDirectories, databaseConnector, roleServiceConnector,
-                resourceServiceConnector, idmRestConnector, restProperties, restAuthenticator, fileConnector);
+                resourceServiceConnector, idmRestConnector, restProperties, restAuthenticator, fileConnector,
+                commandConnector, commandApproval);
         ScenarioValidator validator = EngineFactory.validator(registry);
         ScenarioEngine engine = EngineFactory.engine(registry, testDataGenerator, testExecutor, executorProperties);
         Path results = tempDir.resolve("scenario-results.json");
@@ -145,7 +148,8 @@ class YamlScenarioValidationTest extends BaseIntegrationTest {
     void testSpanishFailureText(@TempDir Path tempDir) throws Exception {
         Map<String, StepType> registry = StepRegistry.of(
                 ldapDirectories, databaseConnector, roleServiceConnector,
-                resourceServiceConnector, idmRestConnector, restProperties, restAuthenticator, fileConnector);
+                resourceServiceConnector, idmRestConnector, restProperties, restAuthenticator, fileConnector,
+                commandConnector, commandApproval);
         ScenarioValidator validator = EngineFactory.validator(registry);
         ScenarioEngine engine = EngineFactory.engine(registry, testDataGenerator, testExecutor, executorProperties);
         RunInfo spanish = RunInfo.minimal("Escenarios").withLocale(Locale.of("es"));
@@ -171,7 +175,8 @@ class YamlScenarioValidationTest extends BaseIntegrationTest {
     void testFullVocabularyValidates() {
         Map<String, StepType> registry = StepRegistry.of(
                 ldapDirectories, databaseConnector, roleServiceConnector,
-                resourceServiceConnector, idmRestConnector, restProperties, restAuthenticator, fileConnector);
+                resourceServiceConnector, idmRestConnector, restProperties, restAuthenticator, fileConnector,
+                commandConnector, commandApproval);
         ScenarioValidator validator =
                 EngineFactory.validator(registry);
 

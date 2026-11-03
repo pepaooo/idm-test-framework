@@ -1,5 +1,6 @@
 package com.idm.test.engine.result;
 
+import com.idm.test.engine.spi.CommandEvidence;
 import com.idm.test.engine.spi.FileEvidence;
 import com.idm.test.engine.spi.LdapEvidence;
 import com.idm.test.engine.spi.Message;
@@ -154,6 +155,22 @@ class JsonResultWriterTest {
         assertThat(json).contains("\"kind\" : \"sql\"").contains("\"database\" : \"hr\"")
                 .contains("\"totalRows\" : 1").contains("\"STATUS\" : \"ACTIVE\"");
         assertThat(json.split("\"evidence\"", -1)).hasSize(2);
+    }
+
+    @Test
+    @DisplayName("Writes command evidence with its kind, masked command line and outputs")
+    void testWritesCommandEvidence(@TempDir Path dir) throws Exception {
+        StepResult step = new StepResult(0, "exec.run", Map.of(), true, 5, "ok", null, null, null,
+                CommandEvidence.ran("driver-state", List.of("dxcmd", "-password", "fake-pw-9"), java.util.Set.of(),
+                        0, 7, false, "running", "", 7, 0));
+        ScenarioResult scenario = new ScenarioResult("S", "s.yaml", true, 10, List.of(step), null);
+
+        Path target = dir.resolve("r.json");
+        JsonResultWriter.write(List.of(scenario), target);
+
+        String json = Files.readString(target);
+        assertThat(json).contains("\"kind\" : \"command\"").contains("\"command\" : \"driver-state\"")
+                .contains("\"exitCode\" : 0").contains("\"stdout\" : \"running\"").doesNotContain("fake-pw-9");
     }
 
     @Test

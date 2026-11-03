@@ -1,6 +1,7 @@
 package com.idm.test.engine.result;
 
 import com.idm.test.engine.spi.JsonMappers;
+import com.idm.test.engine.spi.CommandEvidence;
 import com.idm.test.engine.spi.Evidence;
 import com.idm.test.engine.spi.FileEvidence;
 import com.idm.test.engine.spi.HttpEvidence;
@@ -50,6 +51,7 @@ final class EvidenceHtml {
             case SqlEvidence sql -> appendSql(html, sql, locale);
             case LdapEvidence ldap -> appendLdap(html, ldap, locale);
             case FileEvidence file -> appendFile(html, file, locale);
+            case CommandEvidence command -> appendCommand(html, command, locale);
         }
         html.append("</details>\n");
     }
@@ -69,6 +71,7 @@ final class EvidenceHtml {
                     : label("evidence.noResult", locale));
             case LdapEvidence ldap -> ldapSummary(ldap, locale);
             case FileEvidence file -> fileSummary(file, locale);
+            case CommandEvidence command -> commandSummary(command, locale);
         };
     }
 
@@ -172,6 +175,38 @@ final class EvidenceHtml {
             html.append("<div class=\"more\">").append(esc(label("evidence.moreRows", locale, more)))
                     .append("</div>\n");
         }
+    }
+
+    private static String commandSummary(CommandEvidence command, Locale locale) {
+        String summary = label("evidence.command", locale) + " · " + command.command() + " · ";
+        if (command.exitCode() == null) {
+            return summary + label("evidence.command.notStarted", locale);
+        }
+        if (Boolean.TRUE.equals(command.timedOut())) {
+            return summary + label("evidence.command.timedOut", locale,
+                    duration(command.durationMillis() == null ? 0 : command.durationMillis(), locale));
+        }
+        return summary + label("evidence.command.exit", locale, String.valueOf(command.exitCode())) + " · "
+                + duration(command.durationMillis() == null ? 0 : command.durationMillis(), locale);
+    }
+
+    private static void appendCommand(StringBuilder html, CommandEvidence command, Locale locale) {
+        if (command.argv().isEmpty()) {
+            return;
+        }
+        html.append("<pre>").append(esc(String.join(" ", command.argv().stream()
+                .map(arg -> arg.isEmpty() || arg.chars().anyMatch(Character::isWhitespace) ? "\"" + arg + "\"" : arg)
+                .toList()))).append("</pre>\n");
+        appendStream(html, label("evidence.command.stdout", locale), command.stdout());
+        appendStream(html, label("evidence.command.stderr", locale), command.stderr());
+    }
+
+    private static void appendStream(StringBuilder html, String name, String text) {
+        if (text == null || text.isEmpty()) {
+            return;
+        }
+        html.append("<div class=\"more\">").append(esc(name)).append("</div><pre>").append(esc(text))
+                .append("</pre>\n");
     }
 
     private static String fileSummary(FileEvidence file, Locale locale) {

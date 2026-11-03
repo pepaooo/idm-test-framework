@@ -13,8 +13,9 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
         @JsonSubTypes.Type(value = HttpEvidence.class, name = "http"),
         @JsonSubTypes.Type(value = SqlEvidence.class, name = "sql"),
         @JsonSubTypes.Type(value = LdapEvidence.class, name = "ldap"),
-        @JsonSubTypes.Type(value = FileEvidence.class, name = "file")})
-public sealed interface Evidence permits HttpEvidence, SqlEvidence, LdapEvidence, FileEvidence {
+        @JsonSubTypes.Type(value = FileEvidence.class, name = "file"),
+        @JsonSubTypes.Type(value = CommandEvidence.class, name = "command")})
+public sealed interface Evidence permits HttpEvidence, SqlEvidence, LdapEvidence, FileEvidence, CommandEvidence {
 
     /** Characters kept of each HTTP request or response body. */
     int MAX_BODY_CHARS = 16_384;

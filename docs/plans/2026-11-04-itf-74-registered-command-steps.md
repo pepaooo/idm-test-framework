@@ -168,13 +168,20 @@ CI green on all three systems at `e33b071` (draft PR #3).
 
 ### Task 3: `CommandEvidence` and messages
 
-- [ ] **Failing tests:** `CommandEvidence.of(name, argv, result)` masks secret values passed in, and
+- [x] **Failing tests:** `CommandEvidence.of(name, argv, result)` masks secret values passed in, and
   arguments that follow a secret-looking option (`-password`, `--token`, `/p:`), and secret-named
   parameters; caps output with a truncation note; is idempotent (as `FileEvidence`); renders in HTML
   and JSON; `SecretMask` masks it (runner test).
-- [ ] **Implement:** `Evidence` permits `CommandEvidence` (JSON kind `command`); `EvidenceHtml` and
+- [x] **Implement:** `Evidence` permits `CommandEvidence` (JSON kind `command`); `EvidenceHtml` and
   `SecretMask` handle it; only the `evidence.command.*` keys now.
-- [ ] Commit `feat(engine): command evidence (ITF-74)`.
+- [x] Commit `feat(engine): command evidence (ITF-74)`.
+
+**As built:** `CommandEvidence(command, argv, exitCode, durationMillis, timedOut, stdout, stderr,
+stdoutBytes, stderrBytes)`, plain values only (the engine's evidence does not know connector types);
+factories `ran(…, secretPositions, …)` and `notStarted(name)`. Masked: the argument after a
+secret-looking option (`-password x`), an inline value (`--token=x`, `/ApiKey:x`), and the positions
+a secret-named parameter filled; output cut at `MAX_BODY_CHARS` per stream. The front-end type comes
+with Task 8.
 
 ### Task 4: The two steps
 

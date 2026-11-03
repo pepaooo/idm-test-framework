@@ -74,6 +74,7 @@ class SecretMaskTest {
         params.put("path", "/t-" + secret);
         params.put("nested", Map.of("list", List.of("x" + secret)));
         params.put("count", 3);
+        params.put("password", "plain-named-pw");
         StepResult http = new StepResult(0, "rest.verify", params, false, 5, "failed at " + secret, null, null,
                 "desc " + secret, new HttpEvidence("GET", "http://h/" + secret, Map.of("X-Trace", List.of(secret)),
                         "body " + secret, null, null, Map.of("id", secret), 4, "error " + secret),
@@ -99,6 +100,9 @@ class SecretMaskTest {
 
         String written = Files.readString(json);
         assertThat(written).doesNotContain(secret).contains("****", "s.yaml", "rest.verify", "step.key", "inner");
+        // A value the mask does not know, under a secret-looking key, is masked by name when written.
+        assertThat(masked.steps().get(0).resolvedParams()).containsEntry("password", "plain-named-pw");
+        assertThat(written).doesNotContain("plain-named-pw").contains("\"password\" : \"***\"");
         assertThat(masked.steps().get(0).resolvedParams()).containsEntry("count", 3);
         assertThat(masked.steps().get(0).failureKind()).isEqualTo("SETUP");
         assertThat(masked.cleanup().get(0).failureKind()).isEqualTo("FINDING");

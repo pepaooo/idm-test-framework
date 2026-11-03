@@ -101,7 +101,7 @@ Scenario duration includes fixture preparation and cleanup. Step durations do no
 
 The JSON writer belongs to the engine module but is called by the adapter. `ScenarioEngine.run()` itself writes no report files. JSON write failures can still fail the JUnit test. Parallel execution and atomic concurrent report publication are not promised.
 
-Resolved parameter values are included without redaction. Shared examples and demonstration results should use synthetic identity data. Reports describe YAML runs; Surefire reports cover the wider Java suite as well.
+Resolved parameter values are included as resolved, except values under secret-looking keys, which the JSON results and the HTML report both mask as `***`. Shared examples and demonstration results should use synthetic identity data. Reports describe YAML runs; Surefire reports cover the wider Java suite as well.
 
 ## 7. Expressions and state isolation
 

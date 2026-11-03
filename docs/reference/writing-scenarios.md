@@ -111,14 +111,15 @@ A parameter's value can be:
     greeting: "Hello ${surname}"
 ```
 
-Resolved values are written to the results file **unredacted**. Use synthetic data, and keep
-passwords and tokens in target settings, never in scenario YAML.
+Resolved values are written to the results file as resolved, except that a value under a key
+that looks secret (`password`, `token`, …; see §9) is written as `***`. Masking goes by key name
+only, so use synthetic data, and keep passwords and tokens in target settings, never in scenario YAML.
 
 **Describing steps.** Any step or cleanup entry may say why it exists with `description:`.
 It's text, `${…}` references are resolved, and `js:{ … }` is not allowed. It appears in the
 results (`*-results.json`) and in a failing step's message, so a reader who never opens the
 YAML still knows what the step was for. On `set:`, `description` is the step's description,
-not a name to bind. Like parameters, a description is written to the results unredacted, so never put
+not a name to bind. A description is written to the results as resolved, with no masking by name, so never put
 secrets in it. A `${…}` that can't be resolved fails the step; in `cleanup:` the description is recorded
 as written instead. Reference a field (for example `${user.userId}`) rather than a whole fixture, which
 would print as a map.
@@ -996,7 +997,8 @@ rewritten after every scenario, so an interrupted run still has one.
   status. A failed step or cleanup entry carries a **Finding** (amber) or **Setup problem** (red)
   badge; see *Findings and setup problems* below. Parameter values under keys containing `password`, `passwd`, `pwd`, `secret`, `token`,
   `authorization`, `credential`, `apikey`, `api_key`, `api-key` or `cookie` (matched anywhere in the
-  key, case-insensitive) are shown as `***` in the report; the JSON keeps them as recorded.
+  key, case-insensitive, at any depth) are shown as `***` in the report, and written as `***` in the
+  JSON results too, in steps and cleanup entries alike.
   Masking is by parameter name only, so a secret written into a description, a message, or a
   value under an ordinary key appears as written — keep secrets in target and database settings.
 - **Printing** or saving as PDF expands every scenario.
@@ -1038,14 +1040,14 @@ the step's `evidence` key (`"kind": "http"`, `"sql"` or `"ldap"`).
 Each scenario record has:
 - its source file, status, duration and `description` (null when none)
 - every step: its type, its `description` (null when none), the **resolved** parameters
-  (unredacted), success, message, and for a waited step the number of attempts and the time waited
+  (values under secret-looking keys written as `***`, as in the report), success, message, and for a waited step the number of attempts and the time waited
 - on a failed step, `failureKind`: `FINDING` or `SETUP` (absent on a passing step)
 - on a step that waited, `waitHistory`: the attempts whose message changed (the first always), each
   `{attempt, elapsedMillis, message}`, at most 50, messages cut at 300 characters
 - on `ldap.verify`, `db.verify`, `rest.verify` and `http.verify`, `checks`: one
   `{name, expected, found, matched}` per comparison, matched ones included; `found` is null when the
   value was absent, and a check under a secret-looking name shows `••••`
-- every cleanup entry: its type, its `description` (null when none), resolved parameters, status
+- every cleanup entry: its type, its `description` (null when none), resolved parameters (masked the same way), status
   (SUCCEEDED, FAILED or SKIPPED), message, and `failureKind` when it failed
 - when the run was stopped during this scenario (the workbench's Stop): `stopped: true` and
   `skippedCleanup`, the cleanup entries that did not run, SKIPPED, with the values they would have

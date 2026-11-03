@@ -16,6 +16,9 @@ import java.util.List;
  * <p>
  * The only thing in the engine that produces output. An HTML renderer, CLI console output
  * and any future UI all read this same shape, which is why its structure is pinned by test.
+ * <p>
+ * Every resolved parameter under a secret-looking key ({@link Secrets#isSecret}), at any depth, is
+ * written as {@value Secrets#MASK}, the same rule the HTML report applies.
  */
 public final class JsonResultWriter {
 
@@ -32,7 +35,7 @@ public final class JsonResultWriter {
             if (parent != null) {
                 Files.createDirectories(parent);
             }
-            JSON.writeValue(target.toFile(), results);
+            JSON.writeValue(target.toFile(), results.stream().map(Secrets::paramsMasked).toList());
         } catch (IOException e) {
             throw new UncheckedIOException("Could not write results to " + target, e);
         } catch (JacksonException e) {

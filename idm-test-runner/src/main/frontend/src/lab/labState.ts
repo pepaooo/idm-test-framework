@@ -40,6 +40,10 @@ export function deriveLabState(view: LabView | null, error: string | null, hasPr
 }
 
 function missingState(missing: LabSystem): LabState {
+  if (missing.kind === 'command') {
+    const key = missing.command?.approval === 'not-registered' ? 'ui.lab.chip.commandUnknown' : 'ui.lab.chip.commandNotApproved';
+    return { state: 'missing', missingSystemId: missing.id, message: t(key, { system: missing.name }) };
+  }
   const field = missingField(missing);
   const label = field ? inSentence(field.label) : '';
   const key = /^[aeio]/i.test(label) ? 'ui.lab.chip.missingAn' : 'ui.lab.chip.missing';
@@ -85,6 +89,30 @@ export function missingFor(view: LabView | null, scenarios: readonly string[] | 
       : counted.filter((system) => system.usedByScenarios.some((name) => scenarios.includes(name)));
   const missing = needed.find((system) => system.status === 'missing');
   return missing ? missingState(missing) : null;
+}
+
+/**
+ * The registered commands a run of `scenarios` (null: all) starts on this machine, by name, sorted:
+ * those whose command system a selected scenario uses.
+ */
+export function commandsFor(view: LabView | null, scenarios: readonly string[] | null): string[] {
+  return (view?.systems ?? [])
+    .filter((system) => system.kind === 'command' && system.usedByScenarios.length > 0)
+    .filter((system) => scenarios === null || system.usedByScenarios.some((name) => scenarios.includes(name)))
+    .map((system) => system.id.slice('command:'.length))
+    .sort();
+}
+
+/** The commands each scenario runs (names as under scenarios/), for the tree's marker. */
+export function commandsByScenario(view: LabView | null): Map<string, string[]> {
+  const byScenario = new Map<string, string[]>();
+  for (const system of view?.systems ?? []) {
+    if (system.kind !== 'command') continue;
+    for (const scenario of system.usedByScenarios) {
+      byScenario.set(scenario, [...(byScenario.get(scenario) ?? []), system.id.slice('command:'.length)].sort());
+    }
+  }
+  return byScenario;
 }
 
 function fromView(view: LabView): LabState {

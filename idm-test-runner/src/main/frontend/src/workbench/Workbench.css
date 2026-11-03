@@ -668,3 +668,8 @@
     height: 70vh;
   }
 }
+
+/* ⚙: the scenario runs registered commands on this machine. */
+.tree-commands {
+  color: var(--muted, inherit);
+}

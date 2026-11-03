@@ -261,14 +261,25 @@ of input is no. `RunService` asks the store for its workspace and profile, and s
 
 ### Task 8: Workbench
 
-- [ ] **Back end:** `command:<name>` lab systems (fields shown read-only from the settings, plus the
+- [x] **Back end:** `command:<name>` lab systems (fields shown read-only from the settings, plus the
   approval state: approved, changed, not approved); `POST /api/lab/commands/approve` for one command
   and profile, approving the definition hash the panel showed (409 if it changed since); usage per
   scenario for the tree marker; the run start refused with the guard's message for unapproved commands.
-- [ ] **Front end:** the lab system with the full definition and **Approve on this machine**; a marker
+- [x] **Front end:** the lab system with the full definition and **Approve on this machine**; a marker
   on scenarios that use commands; the run panel's notice naming the commands before a run; English and
   Spanish; Vitest and controller tests (no secret value in any response).
-- [ ] Commit `feat(workbench): command systems and approval (ITF-74)`.
+- [x] Commit `feat(workbench): command systems and approval (ITF-74)`.
+- As built: `WorkspaceCommands` (runner `commands/`) binds a profile's commands as a run does
+  (`CommandsCommand.load`, a lazy Spring context) and keeps the answer while no file under `config/` and
+  `secrets.env` changes (SHA-256 of names and content); the approvals file is read on every call, so a
+  terminal approval shows at once. `LabSettings` binds only when the settings define
+  `idm.test.commands` (or an `IDM_TEST_COMMANDS_*` variable is set). A command system has no fields, a
+  `command` object (definition as written, `approval`, `hash`), status `ready` only when approved, and
+  cannot be saved, tested or deleted (`ui.lab.command.readOnly`); a command a scenario names but the
+  settings do not register shows as `not-registered`. Unapproved commands block Run through the lab
+  chip (`missingFor`), so the guard's refusal is the backstop. The pre-run notice and the ⚙ tree
+  marker come from `usedByScenarios` of the command systems. Front-end evidence text mirrors
+  `EvidenceHtml` (English, as the other kinds).
 
 ### Task 9: Documentation
 

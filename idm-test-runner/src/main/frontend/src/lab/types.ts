@@ -14,16 +14,40 @@ export interface TestResult {
   millis: number;
 }
 
+/**
+ * A registered command (LabSettings.CommandView, ADR 0008) as written: a secret by its `${NAME}`, the
+ * environment by variable name only. Read-only in the lab panel; `hash` is what Approve approves. For
+ * `not-registered` (a scenario names a command the settings do not define) every other field is null.
+ */
+export interface CommandInfo {
+  executable: string | null;
+  args: string[] | null;
+  /** Parameter name → the pattern its value must match in full. */
+  params: Record<string, string> | null;
+  /** The names of the variables it sets, never their values. */
+  env: string[] | null;
+  /** Null: the workspace folder. */
+  workingDir: string | null;
+  timeoutSeconds: number | null;
+  maxOutputBytes: number | null;
+  exitCodes: number[] | null;
+  encoding: string | null;
+  approval: 'approved' | 'changed' | 'not-approved' | 'not-registered';
+  hash: string | null;
+}
+
 export interface LabSystem {
-  /** `ldap`, `soap`, `directory:<name>`, `database:<name>`, `rest:<name>` or `folder:<name>`. */
+  /** `ldap`, `soap`, `directory:<name>`, `database:<name>`, `rest:<name>`, `folder:<name>` or `command:<name>`. */
   id: string;
-  kind: 'ldap' | 'database' | 'rest' | 'soap' | 'folder';
+  kind: 'ldap' | 'database' | 'rest' | 'soap' | 'folder' | 'command';
   name: string;
   usedByScenarios: string[];
   fields: LabField[];
   status: 'ready' | 'untested' | 'missing';
   lastTest: TestResult | null;
   deletion?: { allowed: boolean; reason: string | null; files: string[] };
+  /** Only for a `command` system. */
+  command?: CommandInfo | null;
 }
 
 /**

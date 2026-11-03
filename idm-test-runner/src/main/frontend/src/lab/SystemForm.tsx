@@ -26,7 +26,8 @@ interface Props {
 }
 
 const DOTS = '••••••••';
-type Kind = LabSystem['kind'];
+/** The kinds the lab panel edits: a registered command is read-only (CommandPanel). */
+type Kind = Exclude<LabSystem['kind'], 'command'>;
 
 /** A secret the server has: it shows as dots and can only be replaced ("Change"). */
 function hasSavedSecret(field: LabField) {

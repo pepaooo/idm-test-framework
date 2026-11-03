@@ -25,7 +25,8 @@ import java.util.Map;
  * {@code secrets.env}) and answers with the lab as GET does; {@code PUT /api/lab/default-directory?profile=}
  * saves {@code name} as the default directory (one of the lab's {@code defaultDirectory.choices}) into the
  * profile file and answers as GET does; {@code POST /api/lab/test} tests a system
- * with the form's values without saving anything. All act on the session's current workspace (400
+ * with the form's values without saving anything; {@code POST /api/lab/commands/approve?profile=} approves a
+ * registered command's definition on this machine. All act on the session's current workspace (400
  * {@code ui.workspace.none} while none is open); the rules are {@link LabSettings}'s. GET only reads.
  */
 @RestController
@@ -50,6 +51,9 @@ class LabController {
     }
 
     record DefaultDirectoryRequest(String name) {
+    }
+
+    record ApproveRequest(String name, String hash) {
     }
 
     record TestRequest(String systemId, String profile, Map<String, String> values, Map<String, String> secrets) {
@@ -80,6 +84,19 @@ class LabController {
         Path workspace = workspace();
         String name = profile(profile);
         lab.saveDefaultDirectory(workspace, name, request.name());
+        return lab.read(workspace, name, locale(http));
+    }
+
+    /**
+     * Approves on this machine the registered command {@code name} with the definition the panel showed
+     * ({@code hash}; 409 when it changed since) and answers as GET does (ADR 0008).
+     */
+    @PostMapping("/api/lab/commands/approve")
+    LabSettings.View approveCommand(@RequestParam String profile, @RequestBody ApproveRequest request,
+                                    HttpServletRequest http) {
+        Path workspace = workspace();
+        String name = profile(profile);
+        lab.approveCommand(workspace, name, request.name(), request.hash());
         return lab.read(workspace, name, locale(http));
     }
 

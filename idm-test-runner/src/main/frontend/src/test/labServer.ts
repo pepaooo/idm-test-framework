@@ -1,5 +1,5 @@
 import type { Answer } from './fakeServer';
-import type { DefaultDirectory, LabField, LabSystem, LabView, TestResult } from '../lab/types';
+import type { CommandInfo, DefaultDirectory, LabField, LabSystem, LabView, TestResult } from '../lab/types';
 
 /** Lab fixtures and the `/api/lab` routes of a fake server (secret values never in a view, as on the server). */
 
@@ -104,6 +104,34 @@ export function namedDirectory(name: string, status: LabSystem['status'] = 'read
   return { ...directory(status), id: `directory:${name}`, name: `Directory ${name}`, usedByScenarios };
 }
 
+/** The registered command `java-version` (`command:java-version`), as GET /api/lab shows it. */
+export function javaCommand(approval: CommandInfo['approval'] = 'not-approved', usedByScenarios: string[] = ['java.yaml']): LabSystem {
+  const registered = approval !== 'not-registered';
+  return {
+    id: 'command:java-version',
+    kind: 'command',
+    name: 'Command java-version',
+    usedByScenarios,
+    fields: [],
+    status: approval === 'approved' ? 'ready' : 'missing',
+    lastTest: null,
+    deletion: { allowed: false, reason: 'command', files: [] },
+    command: {
+      executable: registered ? '/opt/java/bin/java' : null,
+      args: registered ? ['-version', 'two words'] : null,
+      params: registered ? { driver: '[a-z]+' } : null,
+      env: registered ? ['CMD_TOKEN'] : null,
+      workingDir: null,
+      timeoutSeconds: registered ? 60 : null,
+      maxOutputBytes: registered ? 65536 : null,
+      exitCodes: registered ? [0] : null,
+      encoding: null,
+      approval,
+      hash: registered ? 'a'.repeat(64) : null,
+    },
+  };
+}
+
 export interface LabRoutesOptions {
   /** The view per profile (a function: computed per request). */
   views: Record<string, LabView | (() => LabView)>;
@@ -113,13 +141,15 @@ export interface LabRoutesOptions {
   /** What `PUT /api/lab/default-directory` answers; default the profile's view as it is. */
   onSaveDefault?: (profile: string, body: unknown) => Answer;
   onDelete?: (profile: string, systemId: string) => Answer;
+  /** What `POST /api/lab/commands/approve` answers; default the profile's view as it is. */
+  onApprove?: (profile: string, body: unknown) => Answer;
 }
 
 function profileOf(url: string) {
   return new URL(url, 'http://127.0.0.1').searchParams.get('profile') ?? '';
 }
 
-export function labRoutes({ views, onSave, onTest, onSaveDefault, onDelete }: LabRoutesOptions) {
+export function labRoutes({ views, onSave, onTest, onSaveDefault, onDelete, onApprove }: LabRoutesOptions) {
   const view = (profile: string): Answer => {
     const found = views[profile];
     if (!found) {
@@ -137,6 +167,8 @@ export function labRoutes({ views, onSave, onTest, onSaveDefault, onDelete }: La
       const answer = onTest ? onTest(request.body) : { ok: true, message: 'Connected · bind OK', millis: 112 };
       return 'ok' in answer ? { body: answer } : answer;
     },
+    'POST /api/lab/commands/approve': (request: { url: string; body: unknown }) =>
+      onApprove ? onApprove(profileOf(request.url), request.body) : view(profileOf(request.url)),
     'DELETE /api/lab': (request: { url: string }) =>
       onDelete ? onDelete(profileOf(request.url), new URL(request.url, 'http://127.0.0.1').searchParams.get('systemId') ?? '')
         : view(profileOf(request.url)),

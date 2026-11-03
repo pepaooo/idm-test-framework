@@ -1,5 +1,7 @@
 package com.idm.test.runner.ui.lab;
 
+import com.idm.test.connector.exec.client.CommandDefinition;
+import com.idm.test.connector.exec.client.RegisteredCommand;
 import com.idm.test.connector.file.config.FileProperties;
 import com.idm.test.connector.ldap.client.LdapDirectories;
 import com.idm.test.engine.ScenarioLoader;
@@ -11,6 +13,7 @@ import com.idm.test.runner.SecretMask;
 import com.idm.test.runner.SecretsEnv;
 import com.idm.test.runner.UsageException;
 import com.idm.test.runner.Workspace;
+import com.idm.test.runner.commands.WorkspaceCommands;
 import com.idm.test.runner.ui.WorkspaceFiles;
 import com.idm.test.runner.ui.api.ApiError;
 import com.idm.test.wiring.DirectoryScenarioSource;
@@ -81,8 +84,15 @@ public final class LabSettings {
     private static final int MAX_RESULTS = 1000;
 
     /** @param environment the server's environment variables (System.getenv() in production) */
+    private final WorkspaceCommands commands;
+
     public LabSettings(Map<String, String> environment) {
+        this(environment, WorkspaceCommands.standard());
+    }
+
+    public LabSettings(Map<String, String> environment, WorkspaceCommands commands) {
         this.environment = Map.copyOf(environment);
+        this.commands = commands;
     }
 
     // --- systems and fields ---------------------------------------------------------------------
@@ -246,7 +256,19 @@ public final class LabSettings {
     }
 
     public record SystemView(String id, String kind, String name, List<String> usedByScenarios, List<Field> fields,
-                             String status, ConnectionTester.Result lastTest, Deletion deletion) {
+                             String status, ConnectionTester.Result lastTest, Deletion deletion, CommandView command) {
+    }
+
+    /**
+     * A registered command ({@code command:<name>}, ADR 0008), shown as written: a secret by its
+     * {@code ${NAME}}, the environment by variable name only. It is read-only here (definitions are shared
+     * through Git); {@code approval} is {@code approved}, {@code changed} (since its approval),
+     * {@code not-approved}, or {@code not-registered} when a scenario names a command the settings do not
+     * define (then the definition fields are null). {@code hash} is what Approve approves.
+     */
+    public record CommandView(String executable, List<String> args, Map<String, String> params, List<String> env,
+                              String workingDir, Long timeoutSeconds, Long maxOutputBytes, List<Integer> exitCodes,
+                              String encoding, String approval, String hash) {
     }
 
     /**
@@ -303,6 +325,7 @@ public final class LabSettings {
             views.add(view(snapshot, ref, new ArrayList<>(users.get(ref.id())), usage.soapUse(), locale, mask,
                     defaultChoice, usage));
         }
+        views.addAll(commandViews(snapshot, users, locale, mask));
         // a run fails to start on an invalid default-directory (the directories are built up front), even
         // when every step names its directory or no scenario has an ldap.* step: then usedByScenarios may be empty
         boolean invalid = "invalid".equals(defaultChoice.state());
@@ -351,6 +374,7 @@ public final class LabSettings {
             needs.databases().forEach(db -> use(users, "database:" + db, entry.getKey()));
             needs.restTargets().forEach(target -> use(users, "rest:" + target, entry.getKey()));
             needs.folders().forEach(folder -> use(users, "folder:" + folder, entry.getKey()));
+            needs.commands().forEach(command -> use(users, COMMAND_PREFIX + command, entry.getKey()));
             if (needs.soap()) {
                 use(users, "soap", entry.getKey());
                 soapUse[0] |= needs.roles();
@@ -358,6 +382,73 @@ public final class LabSettings {
             }
         }
         return new Usage(users, needDefault, ldapUsers, soapUse, unresolved, unreadable);
+    }
+
+    // --- registered commands --------------------------------------------------------------------
+
+    /** The id prefix of a registered command's system. */
+    public static final String COMMAND_PREFIX = "command:";
+
+    /**
+     * The registered commands, after the other systems, by name: those the settings define and those a
+     * scenario names (an unknown one as {@code not-registered}). None when the settings do not load: the
+     * run then reports that itself.
+     */
+    private List<SystemView> commandViews(Snapshot snapshot, Map<String, Set<String>> users, Locale locale,
+                                          SecretMask mask) {
+        // binding starts a Spring context: only when the settings define commands at all
+        boolean defined = merged(snapshot).stream()
+                .anyMatch(key -> ProfileYamlEditor.uniform(key).startsWith("idm.test.commands."))
+                || environment.keySet().stream().anyMatch(key -> key.startsWith("IDM_TEST_COMMANDS_"));
+        WorkspaceCommands.Loaded loaded = defined
+                ? commands.load(snapshot.workspace().root(), snapshot.profile())
+                : new WorkspaceCommands.Loaded(Map.of(), null);
+        Set<String> names = new TreeSet<>(loaded.commands().keySet());
+        users.keySet().stream().filter(id -> id.startsWith(COMMAND_PREFIX))
+                .map(id -> id.substring(COMMAND_PREFIX.length())).forEach(names::add);
+        List<SystemView> views = new ArrayList<>();
+        for (String name : names) {
+            String id = COMMAND_PREFIX + name;
+            List<String> usedBy = new ArrayList<>(users.getOrDefault(id, Set.of()));
+            RegisteredCommand command = loaded.commands().get(name);
+            CommandView view;
+            if (command == null) {
+                if (loaded.error() != null) {
+                    continue;
+                }
+                view = new CommandView(null, null, null, null, null, null, null, null, null, "not-registered", null);
+            } else {
+                CommandDefinition written = command.asWritten();
+                Map<String, String> params = new LinkedHashMap<>();
+                written.params().forEach((param, pattern) -> params.put(param, mask.apply(pattern)));
+                view = new CommandView(mask.apply(written.executable()),
+                        written.args().stream().map(mask::apply).toList(), params,
+                        List.copyOf(new TreeSet<>(written.env().keySet())), mask.apply(written.workingDir()),
+                        written.timeout().toSeconds(), written.maxOutput(), written.exitCodes(), written.encoding(),
+                        commands.approval(snapshot.workspace().root(), snapshot.profile(), name, command).json(),
+                        command.hash());
+            }
+            String status = "approved".equals(view.approval()) ? "ready" : "missing";
+            views.add(new SystemView(id, "command", Messages.render(Message.of("runner.ui.lab.name.command", name), locale),
+                    usedBy, List.of(), status, null, new Deletion(false, "command", List.of()), view));
+        }
+        return views;
+    }
+
+    /**
+     * Approves on this machine the definition of {@code name} the panel showed ({@code hash}): refused
+     * (409) when the definition changed since, so what is approved is always what the person saw.
+     */
+    public void approveCommand(Path root, String profile, String name, String hash) {
+        WorkspaceCommands.Loaded loaded = commands.load(root, profile);
+        RegisteredCommand command = name == null ? null : loaded.commands().get(name);
+        if (command == null) {
+            throw ApiError.badRequest("runner.ui.lab.command.unknown", String.valueOf(name), profile);
+        }
+        if (hash == null || !hash.equals(command.hash())) {
+            throw new ApiError(HttpStatus.CONFLICT, Message.of("runner.ui.lab.command.changed", name));
+        }
+        commands.approve(root, profile, name, hash);
     }
 
     private static void use(Map<String, Set<String>> users, String id, String scenario) {
@@ -386,7 +477,7 @@ public final class LabSettings {
         String status = missing ? "missing" : last != null && last.ok() ? "ready" : "untested";
         String display = blank(effective.get("label")) ? Messages.render(ref.displayName(), locale) : mask.apply(effective.get("label"));
         return new SystemView(ref.id(), ref.kind().json(), display, usedBy, fields,
-                status, last, deletion(snapshot, ref, defaultChoice, usage));
+                status, last, deletion(snapshot, ref, defaultChoice, usage), null);
     }
 
     private Deletion deletion(Snapshot snapshot, SystemRef ref, DefaultChoice defaultChoice, Usage usage) {
@@ -1162,6 +1253,9 @@ public final class LabSettings {
     // --- helpers --------------------------------------------------------------------------------
 
     private static SystemRef system(String id) {
+        if (id != null && id.startsWith(COMMAND_PREFIX)) {
+            throw ApiError.badRequest("runner.ui.lab.command.readOnly", id);
+        }
         try {
             return SystemRef.parse(id);
         } catch (IllegalArgumentException e) {

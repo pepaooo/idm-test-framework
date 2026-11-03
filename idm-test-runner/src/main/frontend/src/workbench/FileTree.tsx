@@ -27,6 +27,8 @@ interface Props {
   selectedFolder?: string | null;
   /** The scenarios of the current run still to finish, by workspace-relative path. */
   runStates?: ReadonlyMap<string, 'running' | 'waiting'>;
+  /** The registered commands each scenario runs, by its name under scenarios/ (a ⚙ marker on its row). */
+  commands?: ReadonlyMap<string, readonly string[]>;
   onOpen(path: string): void;
   /** A folder row was clicked (it also folds or unfolds). */
   onSelectFolder?(path: string): void;
@@ -58,6 +60,7 @@ const nameOf = (path: string) => path.slice(path.lastIndexOf('/') + 1);
 const copyName = (name: string) => name.replace(/(\.ya?ml)?$/, (ext) => `-copy${ext}`);
 
 const NO_RUN: ReadonlyMap<string, 'running' | 'waiting'> = new Map();
+const NO_COMMANDS: ReadonlyMap<string, readonly string[]> = new Map();
 
 const isYaml = (name: string) => /\.ya?ml$/i.test(name);
 
@@ -81,6 +84,7 @@ export function FileTree({
   revealFolder = null,
   selectedFolder = null,
   runStates = NO_RUN,
+  commands = NO_COMMANDS,
   onOpen,
   onSelectFolder,
   onAdded,
@@ -316,6 +320,7 @@ export function FileTree({
     }
     const result = node.kind === 'scenario' && node.lastResult ? node.lastResult : null;
     const runState = runStates.get(node.path);
+    const runs = node.kind === 'scenario' ? commands.get(node.path.slice('scenarios/'.length)) : undefined;
     return (
       <li key={node.path} className={node.kind === 'scenario' ? 'tree-file' : undefined}>
         <button
@@ -329,6 +334,11 @@ export function FileTree({
           {dirty.has(node.path) && (
             <span className="unsaved-dot" role="img" aria-label={t('ui.tree.unsaved')}>
               {' ●'}
+            </span>
+          )}
+          {runs && runs.length > 0 && (
+            <span className="tree-commands" role="img" aria-label={t('ui.tree.commands', { names: runs.join(', ') })} title={t('ui.tree.commands', { names: runs.join(', ') })}>
+              {' ⚙'}
             </span>
           )}
           {runState === 'running' && (

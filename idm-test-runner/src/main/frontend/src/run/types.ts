@@ -74,7 +74,25 @@ export interface FileEvidence {
   selectedRows: number | null;
 }
 
-export type Evidence = HttpEvidence | SqlEvidence | LdapEvidence | FileEvidence;
+/**
+ * A registered command an `exec.*` step ran (engine `CommandEvidence`): the command line it started,
+ * masked; null fields and an empty `argv` when it never started (not approved, unknown, cannot start).
+ */
+export interface CommandEvidence {
+  kind: 'command';
+  command: string;
+  argv: string[];
+  /** -1 when it was stopped at its timeout. */
+  exitCode: number | null;
+  durationMillis: number | null;
+  timedOut: boolean | null;
+  stdout: string | null;
+  stderr: string | null;
+  stdoutBytes: number | null;
+  stderrBytes: number | null;
+}
+
+export type Evidence = HttpEvidence | SqlEvidence | LdapEvidence | FileEvidence | CommandEvidence;
 
 /** What one step did (engine `StepResult`, as in results.json). */
 export interface StepResult {

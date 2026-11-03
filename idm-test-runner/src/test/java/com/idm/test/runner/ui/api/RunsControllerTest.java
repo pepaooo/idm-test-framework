@@ -209,6 +209,48 @@ class RunsControllerTest {
     }
 
     @Test
+    @DisplayName("Should refuse a run whose scenario runs a command not approved here, and run it once the lab approves it")
+    void testCommandApprovalFromLab() throws Exception {
+        Path ws = workspace();
+        String java = Path.of(System.getProperty("java.home"), "bin", "java").toString().replace("'", "''");
+        Path settings = ws.resolve("config/application-lab.yml");
+        Files.writeString(settings, Files.readString(settings).replace("    executor:",
+                "    commands:\n      java-version:\n        executable: '" + java + "'\n"
+                        + "        args: [\"-version\"]\n    executor:"));
+        scenario(ws, "java-version.yaml", """
+                name: Java version
+                steps:
+                  - exec.verify:
+                      command: java-version
+                      expect:
+                        exitCode: 0
+                        stderr: { contains: "version" }
+                """);
+
+        startRun(Map.of("profile", "lab", "scenarios", List.of("scenarios/java-version.yaml")));
+        List<Sse> refused = runToEnd();
+        assertThat(names(refused).getLast()).isEqualTo("refused");
+        assertThat(refused.getLast().data().get("message").asString())
+                .contains("not approved on this machine", "java-version");
+
+        Response lab = UiHttp.get(server, "/api/lab?profile=lab");
+        String hash = null;
+        for (JsonNode system : JSON.readTree(lab.body()).get("systems")) {
+            if (system.get("id").asString().equals("command:java-version")) {
+                hash = system.get("command").get("hash").asString();
+            }
+        }
+        assertThat(hash).as(lab.body()).isNotNull();
+        Response approved = post("/api/lab/commands/approve?profile=lab", Map.of("name", "java-version", "hash", hash));
+        assertThat(approved.status()).as(approved.body()).isEqualTo(200);
+
+        startRun(Map.of("profile", "lab", "scenarios", List.of("scenarios/java-version.yaml")));
+        List<Sse> ran = runToEnd();
+        assertThat(names(ran).getLast()).isEqualTo("runFinished");
+        assertThat(ran.getLast().data().get("passed").asInt()).isEqualTo(1);
+    }
+
+    @Test
     @DisplayName("Should refuse a second run while one is active (409), and a stop when none is")
     void testSecondRunRefused() throws Exception {
         Path ws = workspace();

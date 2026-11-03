@@ -107,7 +107,7 @@ public final class CommandsCommand {
     }
 
     /** The profile's commands as a run binds them: the same settings, secrets and Spring configuration. */
-    static Map<String, RegisteredCommand> load(Workspace workspace, String profile) {
+    public static Map<String, RegisteredCommand> load(Workspace workspace, String profile) {
         Map<String, String> secrets = SecretsEnv.read(workspace.secretsFile());
         List<String> args = new ArrayList<>(List.of(RunnerSettings.commandLineArgs(profile, null)));
         args.add("--spring.main.lazy-initialization=true");

@@ -528,6 +528,102 @@ class LabControllerTest {
         assertThat(field(hr, "password").get("state").asString()).isEqualTo("set");
     }
 
+    /** The value of CMD_TOKEN in secrets.env: no response may carry it. */
+    private static final String COMMAND_TOKEN = "fake-command-token-7Qp";
+
+    /** Registers java-version (with a secret argument by reference) in the lab profile, and a scenario using it. */
+    private static void commandWorkspace(Path ws, String extraArg) throws IOException {
+        String java = Path.of(System.getProperty("java.home"), "bin", "java").toString().replace("'", "''");
+        Path settings = ws.resolve("config/application-lab.yml");
+        Path template = ws.resolve("config/application-lab.yml.orig");
+        if (!Files.exists(template)) {
+            Files.copy(settings, template);
+        }
+        Files.writeString(settings, Files.readString(template)
+                + "idm:\n  test:\n    commands:\n      java-version:\n        executable: '" + java + "'\n"
+                + "        args: [\"-version\"" + extraArg + "]\n"
+                + "        env:\n          CMD_TOKEN: ${CMD_TOKEN}\n"
+                + "        params:\n          driver: '[a-z]+'\n");
+        Files.writeString(ws.resolve("secrets.env"), "CMD_TOKEN=" + COMMAND_TOKEN + "\n");
+        Files.writeString(ws.resolve("scenarios/java.yaml"), """
+                name: Java
+                steps:
+                  - exec.verify:
+                      command: java-version
+                      expect: { exitCode: 0 }
+                  - exec.run:
+                      command: ghost
+                """);
+    }
+
+    @Test
+    @DisplayName("A registered command is listed as written, read-only, and approved on this machine only as the panel showed it")
+    void testCommandSystem() throws IOException {
+        Path ws = openWorkspace(server);
+        commandWorkspace(ws, "");
+        Path approvals = home.resolve(".idmtest/command-approvals.json");
+
+        Response first = UiHttp.get(server, "/api/lab?profile=lab");
+        assertThat(first.status()).as(first.body()).isEqualTo(200);
+        assertThat(first.body()).doesNotContain(COMMAND_TOKEN);
+        JsonNode command = system(JSON.readTree(first.body()), "command:java-version");
+        assertThat(command.get("kind").asString()).isEqualTo("command");
+        assertThat(command.get("name").asString()).isEqualTo("Command java-version");
+        assertThat(command.get("usedByScenarios").toString()).isEqualTo("[\"java.yaml\"]");
+        assertThat(command.get("status").asString()).isEqualTo("missing");
+        assertThat(command.get("fields")).isEmpty();
+        assertThat(command.get("deletion").get("allowed").asBoolean()).isFalse();
+        JsonNode definition = command.get("command");
+        assertThat(definition.get("approval").asString()).isEqualTo("not-approved");
+        assertThat(definition.get("args").toString()).isEqualTo("[\"-version\"]");
+        assertThat(definition.get("env").toString()).isEqualTo("[\"CMD_TOKEN\"]");
+        assertThat(definition.get("params").get("driver").asString()).isEqualTo("[a-z]+");
+        assertThat(definition.get("timeoutSeconds").asLong()).isEqualTo(60);
+        assertThat(definition.get("exitCodes").toString()).isEqualTo("[0]");
+        String hash = definition.get("hash").asString();
+        assertThat(hash).matches("[0-9a-f]{64}");
+        JsonNode ghost = system(JSON.readTree(first.body()), "command:ghost").get("command");
+        assertThat(ghost.get("approval").asString()).isEqualTo("not-registered");
+        assertThat(ghost.get("hash").isNull()).isTrue();
+
+        Response edit = put(server, "lab", "command:java-version", Map.of("executable", "/bin/sh"), Map.of());
+        assertThat(edit.status()).isEqualTo(400);
+        assertThat(key(edit)).isEqualTo("ui.lab.command.readOnly");
+        Response unknown = approve(server, "ghost", hash);
+        assertThat(unknown.status()).isEqualTo(400);
+        assertThat(key(unknown)).isEqualTo("ui.lab.command.unknown");
+        Response stale = approve(server, "java-version", "0".repeat(64));
+        assertThat(stale.status()).as(stale.body()).isEqualTo(409);
+        assertThat(key(stale)).isEqualTo("ui.lab.command.changed");
+        assertThat(approvals).doesNotExist();
+
+        Response approved = approve(server, "java-version", hash);
+        assertThat(approved.status()).as(approved.body()).isEqualTo(200);
+        assertThat(approved.body()).doesNotContain(COMMAND_TOKEN);
+        JsonNode ready = system(JSON.readTree(approved.body()), "command:java-version");
+        assertThat(ready.get("status").asString()).isEqualTo("ready");
+        assertThat(ready.get("command").get("approval").asString()).isEqualTo("approved");
+        assertThat(Files.readString(approvals)).contains(hash).doesNotContain(COMMAND_TOKEN);
+
+        // a changed definition is no longer approved, and shows a new hash to approve
+        commandWorkspace(ws, ", \"-showversion\"");
+        JsonNode changed = system(lab(server, "lab"), "command:java-version");
+        assertThat(changed.get("status").asString()).isEqualTo("missing");
+        assertThat(changed.get("command").get("approval").asString()).isEqualTo("changed");
+        assertThat(changed.get("command").get("hash").asString()).isNotEqualTo(hash);
+        Response old = approve(server, "java-version", hash);
+        assertThat(old.status()).isEqualTo(409);
+    }
+
+    private static Response approve(UiServer on, String name, String hash) throws IOException {
+        return UiHttp.send(on, "POST", "/api/lab/commands/approve?profile=lab",
+                JSON.writeValueAsString(Map.of("name", name, "hash", hash)));
+    }
+
+    private static String key(Response response) {
+        return JSON.readTree(response.body()).get("key").asString();
+    }
+
     @Test
     @DisplayName("A folder the scenarios use is listed, saved, tested and made ready; its path appears only in its own field")
     void testFolderSystem() throws IOException {

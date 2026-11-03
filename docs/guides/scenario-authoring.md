@@ -88,8 +88,8 @@ A guarded read such as `typeof created === 'undefined' ? null : created.dn` stil
 
 ## 4. Steps
 
-The framework has 17 step types across LDAP, databases, delimited text files, the SOAP role and
-resource services, REST and raw HTTP. Every step's parameters, what `as:` captures, how it fails and an example
+The framework has 19 step types across LDAP, databases, delimited text files, registered commands,
+the SOAP role and resource services, REST and raw HTTP. Every step's parameters, what `as:` captures, how it fails and an example
 are in the [authoring reference](../reference/writing-scenarios.md#4-step-reference), which a
 test keeps in step with the code.
 
@@ -98,6 +98,14 @@ For the NetIQ Identity Manager Driver for Delimited Text, the
 (`file.write`), check the file the driver writes (`file.verify`, which waits for it) and remove
 written files in `cleanup:` (`file.delete`). Folders are declared in the settings, never as paths
 in the scenario; see [folders](../reference/configuration.md#delimited-text-folders).
+
+For what only a command can do, such as starting a driver with `dxcmd` or waiting until it reports
+running, the [command steps](../reference/writing-scenarios.md#commands-registered) run a command
+registered in the settings by name (`exec.run`), or run it until its exit code and output match
+(`exec.verify`, which accepts `wait:`). A scenario passes only declared parameters, each checked
+against its pattern; it never writes a command line. A command runs only once its definition is
+approved on the machine that runs it; see
+[registered commands](../reference/configuration.md#registered-commands).
 
 For calling a SOAP service or any API with a raw body, see
 [`http.request`](../reference/writing-scenarios.md#httprequest); for how REST targets

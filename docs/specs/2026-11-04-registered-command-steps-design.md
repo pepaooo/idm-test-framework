@@ -27,7 +27,8 @@ on a consultant's machine. Section 3 is the core of this design.
 - Output and command lines are masked like all other evidence: no secret value in any response,
   event, log, report or DOM.
 - Windows, Linux and macOS, local commands only. Differences between operating systems (paths,
-  `.exe` or `.cmd`, encodings, exit codes) live in each machine's profile, never in scenarios.
+  `.exe`, encodings, exit codes) live in each machine's profile, never in scenarios. On Windows a
+  batch file (`.cmd`, `.bat`) is refused (see §10).
 - The engine stays Spring-free.
 - **Out of scope:** commands on another host over SSH (a follow-up ticket: credentials from
   `secrets.env`, a pinned host key, its own design); interactive commands; shell features such as
@@ -62,8 +63,8 @@ So the decision to run a definition is made **outside the workspace**, on each m
   its state (approved, changed since approval, not approved) and **Approve on this machine**. A
   scenario that uses commands carries a visible marker in the tree, and a run that includes one names
   the commands it will run before it starts. The workbench never approves on its own.
-- A workspace with no `idm.test.commands` has the feature off: the two steps fail validation of the
-  run (no such command) like any unknown name.
+- A workspace with no `idm.test.commands` has the feature off: a run whose scenarios use the two
+  steps is refused before any step (the command is not registered), like any unknown name.
 
 Approval is per machine and per user, not per run: once approved, a definition runs until it changes
 or is revoked.
@@ -197,3 +198,21 @@ workbench guide (command systems and approval); the capability matrix; README an
 - The two steps registered, validated and documented.
 - A harmless registered command runs in tests on Windows, Linux and macOS CI, and an unregistered
   command and an unapproved definition are refused.
+
+## 10. As built (corrections)
+
+- **Windows arguments.** `ProcessBuilder` does not escape a double quote inside an argument, so a
+  Windows program would split it differently from what was written. The connector refuses any
+  argument or parameter value containing `"` on Windows, and refuses batch files (`.cmd`, `.bat`),
+  which Windows runs through `cmd.exe` and would read again as a command line. A Java child on Windows
+  receives its arguments in the ANSI code page; the configuration reference says so.
+- **Secret output.** Besides masking the arguments a secret-named parameter filled, the evidence masks
+  those values (four characters or more) wherever the command echoed them in stdout or stderr.
+- **Approvals in the JUnit runners.** `RealEnvironmentScenarios` refuses every command. The embedded
+  suite and `ContainerScenarios` register `java-version` and approve only the definition their context
+  bound (`TestCommands`), so a test cannot approve a definition it did not register.
+- **Workbench.** An unapproved, changed or unregistered command marks its lab entry missing, which
+  blocks the runs that use it through the lab chip, before the guard would refuse them. The lab binds
+  commands as a run does, and keeps the answer until a file under `config/` or `secrets.env` changes.
+- **Timeout.** A timed-out command is a setup failure with exit code `-1` in the evidence; its message
+  gives the timeout in seconds.

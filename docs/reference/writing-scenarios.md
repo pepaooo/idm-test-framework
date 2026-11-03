@@ -1090,6 +1090,9 @@ reference; this section says where to look.
   username and password. SOAP steps take full DNs.
 - **Folders:** `folder: hr-in` means `idm.test.files.hr-in`: its path, what scenarios may do there
   and the file format. See [delimited text folders](configuration.md#delimited-text-folders).
+- **Commands:** `command: driver-state` means `idm.test.commands.driver-state`: its executable,
+  arguments, parameter patterns and limits, and it runs only once approved on the machine. See
+  [registered commands](configuration.md#registered-commands).
 - **TLS** (`ldaps://`, `https://`): the servers' CA must be in the test JVM's truststore. See
   [TLS certificates](configuration.md#tls-certificates-ldaps-https).
 - **A real lab:** what to set for each repository your scenarios use, and what the real-environment
@@ -1117,10 +1120,13 @@ the [configuration reference](configuration.md).
 | `rest.<target>.username`, `password` | `rest.*`, `http.*` | Basic authentication for that target |
 | `rest.<target>.use-oauth`, `oauth-client-name` | `rest.*`, `http.*` | an OAuth2 client-credentials token from that `spring.security.oauth2.client.registration` entry |
 | `rest.<target>.connect-timeout`, `read-timeout` | `rest.*`, `http.*` | milliseconds to connect and to wait for the response (10 000 / 30 000); a slow response fails the attempt |
+| `files.<folder>.*` | `file.*` with `folder: <folder>` | a folder: its path, access and file format |
+| `commands.<name>.*` | `exec.*` with `command: <name>` | a registered command: executable, arguments, parameters, environment, limits |
 | `executor.default-timeout-seconds`, `executor.default-poll-interval-seconds` | `wait: true`, and a `wait:` map that leaves `timeout` or `poll` out | the default wait |
 | `report.locale` | runners | `en` (default) or `es`; the report's language, read once per run. See [Report language](configuration.md#report-language) |
 
-Not settable from a scenario, by design: URLs, credentials, timeouts and pool sizes. The command line
+Not settable from a scenario, by design: URLs, credentials, timeouts and pool sizes, folder paths, and
+executables or command lines. The command line
 chooses what runs: `-Dtest=<runner>` and `-Dscenario=<file or glob>`; see
 [running tests](running-tests.md).
 

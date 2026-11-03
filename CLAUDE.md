@@ -98,18 +98,19 @@ idm-test-framework/
 ├── pom.xml                  # Maven parent POM (multi-module)
 ├── idm-test-core/           # TestExecutor (waitUntil, executeWithRetry), OperationResult, ErrorType
 ├── idm-test-utils/          # Test data generators, assertions, EmbeddedLdapServer
-├── idm-test-engine/         # YAML scenario engine: loader, validator, engine, 17 step types (Spring-free)
+├── idm-test-engine/         # YAML scenario engine: loader, validator, engine, 19 step types (Spring-free)
 ├── idm-connector-ldap/      # eDirectory/LDAP (EdirectoryConnector)
 ├── idm-connector-database/  # Multi-DB raw SQL (MultiDatabaseConnector)
 ├── idm-connector-rest/      # IdmRestConnector, RestAuthenticator (basic/OAuth2), JDK HTTP client
 ├── idm-connector-soap/      # Role and Resource service connectors (JAX-WS)
 ├── idm-connector-file/      # Delimited text files in named folders (DelimitedFileConnector, Commons CSV)
+├── idm-connector-exec/      # Registered local commands, no shell, per-machine approval (CommandConnector)
 ├── idm-connector-idm/       # Placeholder, no sources
 ├── idm-test-wiring/         # Spring wiring shared by runners: StepRegistry, EngineFactory, ScenarioNeeds,
 │                            # RealEnvironmentGuards, scenario sources, RunRecorder
 ├── idm-test-scenarios/      # Java workflow tests; YAML corpus (scenarios/, scenarios-real/);
 │                            # runners: YamlScenarioTest, ContainerScenarios, RealEnvironmentScenarios
-├── idm-test-runner/         # End-user runner `idmtest` (init/validate/run/ui), run/RunService,
+├── idm-test-runner/         # End-user runner `idmtest` (init/validate/run/commands/ui), run/RunService,
 │                            # ui/ = local web workbench server; src/main/frontend = React+TS+Vite app;
 │                            # `dist` profile builds the jlink ZIPs
 └── docs/                    # reference/, guides/, architecture/, specs/ and plans/ per ticket
@@ -132,11 +133,12 @@ Each connector does ONE thing:
 - **RestAuthenticator**: Authorization header from a REST target's settings (basic, or OAuth2 client credentials via Spring Security)
 - **RoleServiceConnector** / **ResourceServiceConnector**: SOAP clients for the NetIQ Role and Resource services
 - **DelimitedFileConnector**: delimited text files in named, access-controlled folders (`idm.test.files`)
+- **CommandConnector**: registered commands by name (`idm.test.commands`), argv without a shell, timeout kills the process tree; runs only definitions approved on the machine (ADR 0008, `~/.idmtest/command-approvals.json`)
 
 ### 3. Runner and Workbench (`idm-test-runner`)
 - **RunService** (`run/`): the one run path shared by `idmtest run` and the workbench (settings, secrets, guards, drivers, masking, `reports/<run-id>/`).
 - **`idmtest ui`** (`ui/`): loopback-only Spring MVC server with a session token (cookie per port, Host/Origin/Sec-Fetch-Site checks); JSON API + SSE for workspaces, files (versioned saves, 409 on stale), validation, lab settings, runs. Every workspace-scoped request carries `X-Idmtest-Workspace`.
-- Rules that bind changes here: no secret value in any response, event, log, report or DOM; saves never overwrite a changed file silently; the engine stays Spring-free.
+- Rules that bind changes here: no secret value in any response, event, log, report or DOM; saves never overwrite a changed file silently; the engine stays Spring-free; the workbench never approves a command on its own (only **Approve on this machine**, by the hash the panel showed).
 
 ### 4. Test Scenarios (Explicit Workflows)
 Tests orchestrate their own flows step-by-step:

@@ -327,6 +327,80 @@ allows. The guards create nothing in the folder. Messages, results and reports n
 its key, never by its path. SFTP and SMB access by the framework itself are not supported yet:
 mount the share first.
 
+### Registered commands
+
+The [command steps](writing-scenarios.md#commands-registered) (`exec.run`, `exec.verify`) run a
+command registered here, by name: `dxcmd` to start a driver or read its state, a service restart, a
+site script. A scenario never gives an executable or a command line; it names the command and passes
+the parameters its definition declares. A command runs on this machine, without a shell, and **only
+once its definition is approved on this machine** (see [Approving commands](#approving-commands)).
+
+```yaml
+idm:
+  test:
+    commands:
+      driver-state:
+        executable: /opt/novell/eDirectory/bin/dxcmd
+        args: ["-user", "admin.sa.system", "-password", "${IDM_DXCMD_PASSWORD}",
+               "-getstate", "{driver}"]
+        params:
+          driver: "[A-Za-z0-9 ._=,-]+"
+        timeout: 30s
+        exit-codes: [0]
+        label: Driver state
+```
+
+| Key | Default | Meaning |
+|---|---|---|
+| `executable` | — (required) | an absolute path, or a name looked up on `PATH` when the process starts |
+| `args` | `[]` | the arguments, in order, each passed as one argument. An argument that is exactly `{name}` is replaced by the parameter `name`; braces anywhere else are literal. `${NAME}` reads `secrets.env` or the environment, as in all settings |
+| `params` | `{}` | each parameter a scenario may pass, with a Java regular expression its value must match **in full**. Every `{name}` in `args` must be declared here, and every declared name used |
+| `env` | `{}` | extra environment variables for the process; values may use `${NAME}` |
+| `working-dir` | the workspace folder | where the process starts; it must exist |
+| `timeout` | `60s` | after this the process and every process it started are stopped, and the step fails as a setup problem |
+| `max-output` | `64KB` | bytes kept of stdout and of stderr each; the rest is read and counted, not kept |
+| `exit-codes` | `[0]` | the exit codes `exec.run` treats as success |
+| `encoding` | the platform's | how stdout and stderr are decoded |
+| `label` | — | the name the workbench shows |
+
+A parameter value only ever fills an `args` entry that is exactly `{name}`, as one argument: it never
+reaches the executable, `env`, `working-dir`, a `${…}` reference or a secret. There is no shell: pipes,
+redirection, wildcards, `&&` and `%VAR%` / `$VAR` arrive as plain text. For those, register a script
+that does them.
+
+Standard input is closed, so a command that asks a question gets end of file instead of waiting.
+
+**Arguments are visible to other users of the machine.** While a command runs, the operating system
+shows its full command line in the process list (`ps`, Task Manager), including an argument that
+came from `secrets.env`. Masking covers results, reports and logs, not the process list. Where the
+tool allows it, pass a secret in an `env` variable or a password file instead of an argument.
+
+**Windows.** A batch file (`.cmd`, `.bat`) is refused: Windows would run it through `cmd.exe`, which
+reads the arguments again as a command line. Register the program itself, or
+`powershell.exe -NoProfile -File <script>.ps1`. An argument or parameter value that contains a double
+quote (`"`) is refused, because Windows programs split such an argument differently from what was
+written. A Java program started on Windows receives its arguments in the system's ANSI code page, so
+characters outside it arrive as `?`; set the program's own option for UTF-8 where it has one.
+
+#### Approving commands
+
+A workspace's settings are shared through Git, so a pulled commit can add a command and a scenario
+that runs it together. The decision to run a definition is therefore made on each machine, by the
+person who runs it (ADR 0008):
+
+- **Approvals** are kept in `~/.idmtest/command-approvals.json`, per workspace folder, profile and
+  command name, as a SHA-256 of the definition as written. A `${NAME}` counts by its name, so rotating
+  a secret does not ask again; changing anything else in the definition does.
+- A run whose scenarios use a command that is not registered, never approved here, or changed since
+  its approval is refused before any step runs, naming the commands and how to approve them.
+- **`idmtest commands approve --profile <p>`** shows each definition as it will run and asks y/N for
+  each new or changed one; the [runner guide](../guides/runner.md#registered-commands) has the details.
+  In the workbench, each command's entry in the lab panel has **Approve on this machine**.
+
+The JUnit runners in `idm-test-scenarios` keep no approvals file: `RealEnvironmentScenarios` refuses
+every command, and the embedded suite and `ContainerScenarios` approve only their own harmless
+`java-version` command.
+
 ### SOAP Configuration
 
 For NetIQ Identity Manager SOAP services (Role Service, Resource Service):

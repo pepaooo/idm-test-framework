@@ -283,10 +283,18 @@ of input is no. `RunService` asks the store for its workspace and profile, and s
 
 ### Task 9: Documentation
 
-- [ ] Authoring guide; reference §7 and §8; configuration reference (`idm.test.commands`, every key,
+- [x] Authoring guide; reference §7 and §8; configuration reference (`idm.test.commands`, every key,
   the process-list warning); runner guide (`idmtest commands`); workbench guide; capability matrix
   (with limits: local only, no shell, approvals per machine); README; `CLAUDE.md`; spec corrections.
-- [ ] Commit `docs: command steps (ITF-74)`.
+- [x] Commit `docs: command steps (ITF-74)`.
+- As built: configuration reference "Registered commands" (every key, no shell, closed stdin, the
+  process-list warning, Windows batch files, quotes and ANSI code page) and "Approving commands";
+  writing-scenarios §7 (bullet and settings table, which also gained `files.<folder>.*`); §8 unchanged,
+  since the exec steps reject nothing at load; running-tests and the real-environment README (that
+  runner refuses every command); runner guide "Registered commands" and `--yes`; workbench guide
+  "Registered commands"; capability matrix rows for the steps and the connector, and the runner,
+  workbench, real-environment runner and report rows; README step table and module tree; `CLAUDE.md`;
+  spec §2, §3 and a new §10 "As built".
 
 ### Task 10: Final check
 

@@ -231,30 +231,47 @@ refused like a null in `row:`. The engine module now depends on `idm-connector-f
 **Files:** `StepRegistry.java`, `ScenarioNeeds.java`, `RealEnvironmentGuards.java`,
 `idm-test-wiring/pom.xml`, their tests.
 
-- [ ] **Step 1: Failing tests:** `StepRegistry.of(...)` and `forValidation()` list 17 types;
+- [x] **Step 1: Failing tests:** `StepRegistry.of(...)` and `forValidation()` list 17 types;
   `ScenarioNeeds` collects literal `folder` names with the access the steps need (write for
   `file.write`/`file.delete` in steps and cleanup, read for `file.verify`); the guards refuse an
   undeclared folder, a missing directory and a declared access weaker than needed, each with its own
   `runner.guard.*` message in both locales.
-- [ ] **Step 2: Implement.** `StepRegistry.of` takes the `DelimitedFileConnector`; update every caller
+- [x] **Step 2: Implement.** `StepRegistry.of` takes the `DelimitedFileConnector`; update every caller
   (`RunService`, the scenario module's configuration, `ValidateCommand` via `forValidation`).
-- [ ] **Step 3:** `./mvnw test -pl idm-test-wiring -am`; commit `feat(wiring): register file steps and folder guards (ITF-73)`.
+- [x] **Step 3:** `./mvnw test -pl idm-test-wiring -am`; commit `feat(wiring): register file steps and folder guards (ITF-73)`.
+
+**As built:** `ScenarioNeeds` gains `readFolders` and `writeFolders` (and `folders()`), with a
+five-argument constructor kept for callers without folders; `FILE` is a new kind for
+`unresolvedKinds`. The guard uses a new `DelimitedFileConnector.inspect(folder, read, write)`, which
+checks declared access and operating-system permissions without creating anything (a driver may be
+watching the folder); the workbench's connection test keeps `probe`. The wording of connector
+problems moved to a public `FileProblems`, so the wiring can use it. `ScenarioReferenceTest` requires
+every registered step to be documented, so the three sections of `docs/reference/writing-scenarios.md`
+were written here, ahead of Task 9. `ScenarioSupportIsolationTest` calls `StepRegistry.of` by
+reflection and needed the new argument too.
 
 ### Task 6: Default-suite scenario
 
 **Files:** `idm-test-scenarios/pom.xml`, its test configuration, `application.yml` /
 `application-test.yml`, `scenarios/files-delimited-round-trip.yaml`.
 
-- [ ] **Step 1:** declare `idm.test.files.scratch` (`access: read-write`, `path:
+- [x] **Step 1:** declare `idm.test.files.scratch` (`access: read-write`, `path:
   ${IDM_TEST_FILES_SCRATCH:target/scenario-files}`) and create and empty that directory before the
   suite runs, in the same place the embedded LDAP and H2 are prepared.
-- [ ] **Step 2:** write the scenario: a `random-user` fixture, `file.write` of two rows (one with a
+- [x] **Step 2:** write the scenario: a `random-user` fixture, `file.write` of two rows (one with a
   comma and quotes in a value), `file.verify` with `where:` on the generated user id, `rowCount: 1`,
   `row:` on two columns and `wait: true`, then `file.delete` in `cleanup:`. Assert in `YamlScenarioTest`
   output that the folder is empty afterwards.
-- [ ] **Step 3:** `./mvnw test -pl idm-test-scenarios -am -Dtest=YamlScenarioTest -Dsurefire.failIfNoSpecifiedTests=false -Dscenario=files-delimited-round-trip.yaml`,
+- [x] **Step 3:** `./mvnw test -pl idm-test-scenarios -am -Dtest=YamlScenarioTest -Dsurefire.failIfNoSpecifiedTests=false -Dscenario=files-delimited-round-trip.yaml`,
   then the whole default suite; `ContainerScenarios` must still pass where Docker is available (it
   does not need the folder unless a scenario uses it). Commit `test(scenarios): delimited file round trip (ITF-73)`.
+
+**As built:** the test profile declares `scratch` with `access: read-write` only; its path is a
+fresh `target/scenario-files-*` directory set by `BaseIntegrationTest` (and
+`target/container-files-*` by `ContainerScenarios`), never an existing folder that would need
+emptying. The scenario also checks a second row's empty field, and `DelimitedFileScenarioTest`
+checks that cleanup left the folder empty and that the evidence names `scratch`, never its path.
+`ContainerScenarios` needs Docker and was not run here.
 
 ### Task 7: Runner and workbench back end
 

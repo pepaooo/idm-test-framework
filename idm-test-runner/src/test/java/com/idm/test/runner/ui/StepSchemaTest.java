@@ -45,11 +45,11 @@ class StepSchemaTest {
     }
 
     @Test
-    @DisplayName("A step is a single-key map whose key is one of the 14 step types (or set)")
+    @DisplayName("A step is a single-key map whose key is one of the 17 step types (or set)")
     void testStepsListAllTypes() {
         JsonNode step = schema().at("/$defs/step");
 
-        assertThat(REGISTRY).hasSize(14);
+        assertThat(REGISTRY).hasSize(17);
         assertThat(step.get("minProperties").asInt()).isEqualTo(1);
         assertThat(step.get("maxProperties").asInt()).isEqualTo(1);
         assertThat(step.get("additionalProperties").asBoolean()).isFalse();
@@ -99,5 +99,17 @@ class StepSchemaTest {
             }
         });
         assertThat(cleanup.has("set")).isFalse();
+    }
+
+    @Test
+    @DisplayName("The file steps are in the schema with their parameters; file.delete is allowed in cleanup, file.verify is not")
+    void testFileSteps() {
+        JsonNode schema = schema();
+
+        assertThat(schema.at("/$defs/step/properties").propertyNames())
+                .contains("file.write", "file.verify", "file.delete");
+        assertThat(schema.at("/$defs/cleanupEntry/properties").propertyNames())
+                .contains("file.write", "file.delete").doesNotContain("file.verify");
+        assertThat(schema.toString()).contains("\"where\"", "\"lineEnding\"", "\"columns\"");
     }
 }

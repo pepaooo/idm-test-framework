@@ -1,5 +1,6 @@
 package com.idm.test.runner.ui.lab;
 
+import com.idm.test.connector.file.config.FileProperties;
 import com.idm.test.connector.ldap.client.LdapDirectories;
 import com.idm.test.engine.ScenarioLoader;
 import com.idm.test.engine.i18n.Messages;
@@ -15,6 +16,8 @@ import com.idm.test.runner.ui.api.ApiError;
 import com.idm.test.wiring.DirectoryScenarioSource;
 import com.idm.test.wiring.RealEnvironmentGuards;
 import com.idm.test.wiring.ScenarioNeeds;
+import org.springframework.boot.context.properties.bind.Binder;
+import org.springframework.boot.context.properties.source.MapConfigurationPropertySource;
 import org.springframework.core.env.MapPropertySource;
 import org.springframework.core.env.MutablePropertySources;
 import org.springframework.core.env.PropertySourcesPropertyResolver;
@@ -85,7 +88,7 @@ public final class LabSettings {
     // --- systems and fields ---------------------------------------------------------------------
 
     public enum Kind {
-        LDAP, DATABASE, REST, SOAP;
+        LDAP, DATABASE, REST, SOAP, FOLDER;
 
         public String json() {
             return name().toLowerCase(Locale.ROOT);
@@ -126,9 +129,22 @@ public final class LabSettings {
             new FieldSpec("username", "runner.ui.lab.field.username", false, false),
             new FieldSpec("password", "runner.ui.lab.field.password", true, false));
 
+    /** A folder for the file steps: where it is, what scenarios may do there, and its file format. */
+    private static final List<FieldSpec> FOLDER_FIELDS = List.of(
+            new FieldSpec("label", "runner.ui.lab.field.label", false, false),
+            new FieldSpec("path", "runner.ui.lab.field.path", false, false),
+            new FieldSpec("access", "runner.ui.lab.field.access", false, false),
+            new FieldSpec("delimiter", "runner.ui.lab.field.delimiter", false, false),
+            new FieldSpec("quote", "runner.ui.lab.field.quote", false, false),
+            new FieldSpec("encoding", "runner.ui.lab.field.encoding", false, false),
+            new FieldSpec("line-ending", "runner.ui.lab.field.lineEnding", false, false),
+            new FieldSpec("header", "runner.ui.lab.field.header", false, false),
+            new FieldSpec("temp-suffix", "runner.ui.lab.field.tempSuffix", false, false),
+            new FieldSpec("clock-skew", "runner.ui.lab.field.clockSkew", false, false));
+
     /**
      * A lab system by id: {@code ldap} (the {@code idm.test.ldap} block), {@code directory:<name>},
-     * {@code database:<name>}, {@code rest:<name>} or {@code soap}. Names are letters, digits, {@code -}
+     * {@code database:<name>}, {@code rest:<name>}, {@code folder:<name>} or {@code soap}. Names are letters, digits, {@code -}
      * and {@code _}.
      */
     public record SystemRef(String id, Kind kind, String name) {
@@ -153,6 +169,7 @@ public final class LabSettings {
                 case "directory" -> new SystemRef(id, Kind.LDAP, name);
                 case "database" -> new SystemRef(id, Kind.DATABASE, name);
                 case "rest" -> new SystemRef(id, Kind.REST, name);
+                case "folder" -> new SystemRef(id, Kind.FOLDER, name);
                 default -> throw new IllegalArgumentException("not a system id: " + id);
             };
         }
@@ -164,6 +181,7 @@ public final class LabSettings {
                 case DATABASE -> "idm.test.databases." + name;
                 case REST -> "idm.test.rest." + name;
                 case SOAP -> "idm.test.soap";
+                case FOLDER -> "idm.test.files." + name;
             };
         }
 
@@ -173,6 +191,7 @@ public final class LabSettings {
                 case DATABASE -> DATABASE_FIELDS;
                 case REST -> REST_FIELDS;
                 case SOAP -> SOAP_FIELDS;
+                case FOLDER -> FOLDER_FIELDS;
             };
         }
 
@@ -202,6 +221,7 @@ public final class LabSettings {
                 case DATABASE -> Message.of("runner.ui.lab.name.database", name);
                 case REST -> Message.of("runner.ui.lab.name.rest", name);
                 case SOAP -> Message.of("runner.ui.lab.name.soap");
+                case FOLDER -> Message.of("runner.ui.lab.name.folder", name);
             };
         }
 
@@ -211,6 +231,7 @@ public final class LabSettings {
                 case DATABASE -> 2;
                 case REST -> 3;
                 case SOAP -> 4;
+                case FOLDER -> 5;
             };
         }
     }
@@ -329,6 +350,7 @@ public final class LabSettings {
             }
             needs.databases().forEach(db -> use(users, "database:" + db, entry.getKey()));
             needs.restTargets().forEach(target -> use(users, "rest:" + target, entry.getKey()));
+            needs.folders().forEach(folder -> use(users, "folder:" + folder, entry.getKey()));
             if (needs.soap()) {
                 use(users, "soap", entry.getKey());
                 soapUse[0] |= needs.roles();
@@ -401,6 +423,7 @@ public final class LabSettings {
             case LDAP -> ScenarioNeeds.LDAP;
             case DATABASE -> ScenarioNeeds.DB;
             case REST -> ScenarioNeeds.REST;
+            case FOLDER -> ScenarioNeeds.FILE;
             case SOAP -> null;
         };
         Set<String> uncertain = new TreeSet<>(usage.unreadable());
@@ -476,6 +499,7 @@ public final class LabSettings {
                     required.add("password");
                 }
             }
+            case FOLDER -> required.add("path");
             case SOAP -> {
                 if (soapUse[0] || !soapUse[1]) {
                     required.add("url");
@@ -646,6 +670,11 @@ public final class LabSettings {
                 case "rest" -> {
                     if (parts.length >= 5) {
                         ids.add("rest:" + parts[3]);
+                    }
+                }
+                case "files" -> {
+                    if (parts.length >= 5) {
+                        ids.add("folder:" + parts[3]);
                     }
                 }
                 default -> {
@@ -970,12 +999,45 @@ public final class LabSettings {
             }
         }
         checkValues(plain, secret);
+        if (ref.kind() == Kind.FOLDER) {
+            checkFolderValues(plain);
+        }
         for (Map.Entry<String, String> entry : all) {
             Resolved r = resolved.get(entry.getKey());
             if (ENVIRONMENT.equals(r.state())) {
                 throw ApiError.badRequest("runner.ui.lab.fromEnvironment", entry.getKey(), variableOf(snapshot, ref, entry.getKey()));
             }
         }
+    }
+
+    /**
+     * Refuses a folder value the runner could not bind ({@code access: readwrite}, {@code clock-skew: soon}):
+     * saved, it would stop the next run before any step. Each value is bound on its own, as the runner
+     * binds {@code idm.test.files}.
+     */
+    private static void checkFolderValues(Map<String, String> plain) {
+        for (Map.Entry<String, String> entry : plain.entrySet()) {
+            if (blank(entry.getValue())) {
+                continue;
+            }
+            Map<String, String> one = Map.of("idm.test.files.probe." + entry.getKey(), entry.getValue().strip());
+            try {
+                new Binder(new MapConfigurationPropertySource(one)).bind("idm.test", FileProperties.class);
+            } catch (RuntimeException e) {
+                throw ApiError.badRequest("runner.ui.lab.badFolderValue", entry.getKey(), entry.getValue(),
+                        allowedFolderValues(entry.getKey()));
+            }
+        }
+    }
+
+    private static String allowedFolderValues(String key) {
+        return switch (key) {
+            case "access" -> "read, write, read-write";
+            case "line-ending" -> "CRLF, LF";
+            case "header" -> "true, false";
+            case "clock-skew" -> "5s, 1m, PT30S";
+            default -> "";
+        };
     }
 
     /**

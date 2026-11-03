@@ -14,6 +14,7 @@ import java.io.IOException;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -443,5 +444,35 @@ class ConnectionTesterTest {
 
         assertThat(result.ok()).isFalse();
         assertThat(result.message()).doesNotContain("fake-url-secret");
+    }
+
+    @Test
+    @DisplayName("A folder: read and write folders pass, leaving nothing; a missing one fails; the path is never shown")
+    void testFolder() throws IOException {
+        Path in = Files.createDirectories(temp.resolve("files/in"));
+        Path out = Files.createDirectories(temp.resolve("files/out"));
+
+        ConnectionTester.Result write = test("folder:in", props("idm.test.files.in.path", in.toString(),
+                "idm.test.files.in.access", "write"));
+        ConnectionTester.Result read = test("folder:out", props("idm.test.files.out.path", out.toString()));
+        ConnectionTester.Result gone = test("folder:gone", props("idm.test.files.gone.path",
+                temp.resolve("files/gone").toString(), "idm.test.files.gone.access", "read-write"));
+        ConnectionTester.Result broken = test("folder:in", props("idm.test.files.in.path", in.toString(),
+                "idm.test.files.in.access", "sometimes"));
+
+        assertThat(write.ok()).as(write.message()).isTrue();
+        assertThat(write.message()).isEqualTo("Folder OK · write");
+        assertThat(read.ok()).as(read.message()).isTrue();
+        assertThat(read.message()).isEqualTo("Folder OK · read");
+        try (var left = Files.list(in)) {
+            assertThat(left).as("the probe file is removed").isEmpty();
+        }
+        assertThat(gone.ok()).isFalse();
+        assertThat(gone.message()).isEqualTo("the test failed: Folder 'gone' does not exist");
+        assertThat(broken.ok()).isFalse();
+        assertThat(broken.message()).contains("the settings of folder 'in' cannot be read");
+        for (ConnectionTester.Result result : List.of(write, read, gone, broken)) {
+            assertThat(result.message()).doesNotContain(temp.toString());
+        }
     }
 }

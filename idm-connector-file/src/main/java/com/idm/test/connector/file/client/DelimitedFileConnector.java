@@ -275,6 +275,32 @@ public final class DelimitedFileConnector {
         }
     }
 
+    /**
+     * Checks, without creating anything, that a folder is configured, exists and allows what a run
+     * needs, both as declared and as the operating system reports it. For the real-environment guards,
+     * which run before anything else and must not drop files into a folder a driver is watching.
+     */
+    public OperationResult<Void> inspect(String folder, boolean read, boolean write) {
+        try {
+            Folder target = open(folder, null);
+            if (read) {
+                open(folder, NEED_READ);
+                if (!Files.isReadable(target.real)) {
+                    throw refusal(Kind.NOT_READABLE, folder, "the operating system does not allow it");
+                }
+            }
+            if (write) {
+                open(folder, NEED_WRITE);
+                if (!Files.isWritable(target.real)) {
+                    throw refusal(Kind.NOT_WRITABLE, folder, "the operating system does not allow it");
+                }
+            }
+            return OperationResult.success(null, "Folder '" + folder + "' is usable");
+        } catch (Refusal refusal) {
+            return refusal.problem.toResult();
+        }
+    }
+
     // ---------------------------------------------------------------- folders and names
 
     /** A configured folder, resolved to its real path on this attempt. */

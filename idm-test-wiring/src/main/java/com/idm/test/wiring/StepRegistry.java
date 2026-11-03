@@ -1,6 +1,7 @@
 package com.idm.test.wiring;
 
 import com.idm.test.connector.database.client.MultiDatabaseConnector;
+import com.idm.test.connector.file.client.DelimitedFileConnector;
 import com.idm.test.connector.ldap.client.LdapDirectories;
 import com.idm.test.connector.rest.client.IdmRestConnector;
 import com.idm.test.connector.rest.client.RestAuthenticator;
@@ -10,6 +11,9 @@ import com.idm.test.connector.soap.client.RoleServiceConnector;
 import com.idm.test.engine.spi.StepType;
 import com.idm.test.engine.steps.DbExecuteStep;
 import com.idm.test.engine.steps.DbVerifyStep;
+import com.idm.test.engine.steps.FileDeleteStep;
+import com.idm.test.engine.steps.FileVerifyStep;
+import com.idm.test.engine.steps.FileWriteStep;
 import com.idm.test.engine.steps.HttpRequestStep;
 import com.idm.test.engine.steps.HttpVerifyStep;
 import com.idm.test.engine.steps.LdapCreateStep;
@@ -27,7 +31,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/** The 14 step types, by name, wired to the connectors a run uses. */
+/** The 17 step types, by name, wired to the connectors a run uses. */
 public final class StepRegistry {
 
     private StepRegistry() {
@@ -40,7 +44,8 @@ public final class StepRegistry {
             ResourceServiceConnector resourceServiceConnector,
             IdmRestConnector restConnector,
             RestProperties restProperties,
-            RestAuthenticator restAuthenticator) {
+            RestAuthenticator restAuthenticator,
+            DelimitedFileConnector fileConnector) {
         Map<String, StepType> registry = new LinkedHashMap<>();
         for (StepType type : List.of(
                 new LdapCreateStep(ldapDirectories),
@@ -56,7 +61,10 @@ public final class StepRegistry {
                 new RestRequestStep(restConnector, restProperties, restAuthenticator),
                 new RestVerifyStep(restConnector, restProperties, restAuthenticator),
                 new HttpRequestStep(restConnector, restProperties, restAuthenticator),
-                new HttpVerifyStep(restConnector, restProperties, restAuthenticator))) {
+                new HttpVerifyStep(restConnector, restProperties, restAuthenticator),
+                new FileWriteStep(fileConnector),
+                new FileVerifyStep(fileConnector),
+                new FileDeleteStep(fileConnector))) {
             registry.put(type.name(), type);
         }
         return registry;
@@ -68,6 +76,6 @@ public final class StepRegistry {
      * {@code requiredParams()} and {@code acceptedParams()}.
      */
     public static Map<String, StepType> forValidation() {
-        return of(null, null, null, null, null, null, null);
+        return of(null, null, null, null, null, null, null, null);
     }
 }

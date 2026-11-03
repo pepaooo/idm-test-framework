@@ -200,4 +200,46 @@ class ScenarioNeedsTest {
                 .containsExactly(ScenarioNeeds.DB, ScenarioNeeds.LDAP, ScenarioNeeds.REST);
         assertThat(ScenarioNeeds.unresolvedKinds(List.of(literal))).isEmpty();
     }
+
+    @Test
+    @DisplayName("Should collect the folders file.verify reads and file.write and file.delete write, cleanup included")
+    void testFolders() {
+        ScenarioNeeds needs = needs("""
+                name: n
+                steps:
+                  - file.write:
+                      folder: hr-in
+                      file: a.csv
+                      rows: [{ id: E1 }]
+                  - file.verify:
+                      folder: hr-out
+                      file: "*.csv"
+                      expect: { rowCount: 1 }
+                  - file.verify:
+                      folder: shared
+                      file: a.csv
+                      expect: { rowCount: 1 }
+                  - file.verify:
+                      folder: ${dynamic}
+                      file: a.csv
+                      expect: { rowCount: 1 }
+                cleanup:
+                  - file.delete:
+                      folder: shared
+                      file: a.csv
+                """);
+
+        assertThat(needs.readFolders()).containsExactly("hr-out", "shared");
+        assertThat(needs.writeFolders()).containsExactly("hr-in", "shared");
+        assertThat(needs.folders()).containsExactly("hr-in", "hr-out", "shared");
+        assertThat(needs.databases()).isEmpty();
+        assertThat(needs.ldap()).isFalse();
+        assertThat(ScenarioNeeds.unresolvedKinds(List.of(scenario("""
+                name: n
+                steps:
+                  - file.delete:
+                      folder: ${dynamic}
+                      file: a.csv
+                """)))).containsExactly(ScenarioNeeds.FILE);
+    }
 }

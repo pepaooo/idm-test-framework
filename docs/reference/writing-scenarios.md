@@ -468,6 +468,120 @@ rules (collation, case, types) and returns only what the check needs.
 `row:` matches column names ignoring case, so `n` matches a database that returns `N`.
 `COUNT(DISTINCT …)` keeps duplicate rows (READ twice, no WRITE) from passing.
 
+### Files (delimited text)
+
+For scenarios around the NetIQ Identity Manager Driver for Delimited Text: drop a CSV where the
+driver reads, or check the file it writes. A step names a **folder** declared in the settings under
+`idm.test.files` (see [Targets and configuration](#7-targets-and-configuration)) and a **file name
+inside it**; it never takes a path. A name with `/`, `\`, `:`, `..` or leading or trailing blanks
+is rejected when the scenario is validated (or, when built from `${...}`, when the step runs). Each
+folder declares what scenarios may do there (`access: read`, `write` or `read-write`; `read` when
+not given), and the steps hold to it.
+
+The format (delimiter, quote, encoding, line ending, header row) comes from the folder's settings;
+a step can override it for one call with the parameters below. It can never change the folder's
+path, access, temporary suffix or clock skew.
+
+#### `file.write`
+
+**Action.** Writes a delimited file: the header (unless `header: false`), then one line per row.
+
+| Parameter | Required | Meaning |
+|---|---|---|
+| `folder` | yes | the configured folder name; it must allow `write` |
+| `file` | yes | the file name inside the folder; it must not exist yet |
+| `rows` | yes | a list of maps of column name to value, literal or from a fixture; may be empty when `columns` is given (a file with only a header) |
+| `columns` | no | the header, in order; when absent, the first row's keys, in order |
+| `delimiter` | no | one character, for example `";"` or a tab; default from the folder (`,`) |
+| `quote` | no | one character, different from the delimiter; default from the folder (`"`) |
+| `encoding` | no | a charset such as `UTF-8` or `ISO-8859-1`; default from the folder (`UTF-8`) |
+| `lineEnding` | no | `CRLF` or `LF`; default from the folder (`CRLF`) |
+| `header` | no | `true` or `false`: whether to write the header row; default from the folder (`true`) |
+
+**Captures:** `{ folder, name, rows, size }`: the folder name, the file name, the number of data rows
+and the size in bytes.
+
+**Fails when:** the folder is unknown, missing or does not allow `write`; the file already exists (it
+is never overwritten); a row has a key that is not one of the columns (a typo is never dropped); a
+value is a list or map; or a value cannot be written in the encoding. All of these are setup problems.
+A missing value or `null` writes an empty field; numbers and booleans are written as their YAML text.
+
+The file is written under a temporary name in the same folder and then renamed in one atomic step, so
+a driver polling the folder never reads half a file. Remove it with a `file.delete` in `cleanup:`.
+
+```yaml
+- file.write:
+    folder: hr-in
+    file: "hr-${user.userId}.csv"
+    rows:
+      - employeeId: "${user.userId}"
+        givenName: "${user.firstName}"
+        surname: "${user.lastName}"
+        email: "${user.email}"
+    as: written
+```
+
+#### `file.verify`
+
+**Assertion (accepts `wait:`).** Reads a delimited file and checks its rows.
+
+| Parameter | Required | Meaning |
+|---|---|---|
+| `folder` | yes | the configured folder name; it must allow `read` |
+| `file` | yes | an exact file name or a glob such as `hr-out-*.csv` (`*`, `?`, `[...]`, `{a,b}`), matching names in the folder only |
+| `expect` | yes | a map with `rowCount` (the number of rows selected) and/or `row` (a map of column name to value, which needs exactly one row selected) |
+| `where` | no | a map of column name to value that selects the rows to check; without it, every row is selected |
+| `delimiter` | no | one character; default from the folder |
+| `quote` | no | one character; default from the folder |
+| `encoding` | no | a charset; default from the folder |
+| `header` | no | must be `true` (the default): rows are matched by column name |
+
+**Which file:** only files modified since the scenario started count (less the folder's
+`clock-skew`, 5 seconds by default, for a share whose clock differs), so a file left by an earlier run
+can never make the step pass. Temporary files, subfolders and symbolic links are ignored. Of the files
+that count, the newest is read; of two equally new, the later name.
+
+**Captures:** `{ name, rows }`: the file read and the selected rows, as maps of column name to value.
+
+**Fails when:** no file matches yet (the message says how many older matches it ignored), the file does
+not parse yet (the driver may still be writing it), the folder cannot be read for the moment, or the
+selected rows differ from `expect`. These are retried under `wait:`. An unknown or missing folder, one
+that does not allow `read`, a malformed `expect` or `where` (empty, unknown keys, a `null` value, usually
+a misspelled column), and a `where` column the file does not have end the wait at once. Column names
+match ignoring case, and values compare as in `db.verify`: `1` matches `"1"`.
+
+```yaml
+- file.verify:
+    folder: hr-out
+    file: "hr-out-*.csv"
+    where: { employeeId: "${user.userId}" }
+    expect:
+      rowCount: 1
+      row: { status: provisioned }
+    wait: { timeout: 2m, poll: 5s }
+```
+
+#### `file.delete`
+
+**Action.** Deletes one file, usually in `cleanup:`.
+
+| Parameter | Required | Meaning |
+|---|---|---|
+| `folder` | yes | the configured folder name; it must allow `write` |
+| `file` | yes | one exact file name (a pattern is rejected) |
+
+**Captures:** `true` when a file was deleted, `false` when it was already absent.
+
+**Fails when:** the folder is unknown, missing or does not allow `write`, or the name is a directory.
+A file that is already absent is a success: the driver usually moves or deletes its input itself.
+
+```yaml
+cleanup:
+  - file.delete:
+      folder: hr-in
+      file: "${written.name}"
+```
+
 ### SOAP: roles and resources
 
 These steps call the Identity Manager Role and Resource services. Unlike the LDAP steps, they take

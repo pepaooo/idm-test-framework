@@ -3,6 +3,7 @@ package com.idm.test.scenarios.base;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
 import com.idm.test.connector.database.client.MultiDatabaseConnector;
+import com.idm.test.connector.file.client.DelimitedFileConnector;
 import com.idm.test.connector.ldap.client.EdirectoryConnector;
 import com.idm.test.connector.ldap.client.LdapDirectories;
 import com.idm.test.connector.rest.client.IdmRestConnector;
@@ -158,6 +159,9 @@ public abstract class BaseIntegrationTest {
 
     @Autowired
     protected MultiDatabaseConnector databaseConnector;
+
+    @Autowired
+    protected DelimitedFileConnector fileConnector;
 
     @Autowired
     protected RoleServiceConnector roleServiceConnector;

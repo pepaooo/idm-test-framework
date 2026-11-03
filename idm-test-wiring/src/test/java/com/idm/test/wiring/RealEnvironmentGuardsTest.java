@@ -1,6 +1,9 @@
 package com.idm.test.wiring;
 
 import com.idm.test.connector.database.config.DatabaseProperties;
+import com.idm.test.connector.file.client.DelimitedFileConnector;
+import com.idm.test.connector.file.client.FolderAccess;
+import com.idm.test.connector.file.client.FolderSettings;
 import com.idm.test.connector.rest.config.RestProperties;
 import com.idm.test.connector.soap.config.SoapProperties;
 import com.idm.test.engine.ScenarioLoader;
@@ -801,7 +804,8 @@ class RealEnvironmentGuardsTest {
         DirectoryScenarioSource source = new DirectoryScenarioSource(folder);
 
         assertThatThrownBy(() -> RealEnvironmentGuards.check(target(REAL_LDAP, REAL_SOAP, "dev"), source, List.of(),
-                Locale.ENGLISH, new RestProperties(), new DatabaseProperties(), new SoapProperties()))
+                Locale.ENGLISH, new RestProperties(), new DatabaseProperties(), new SoapProperties(),
+                new DelimitedFileConnector(Map.of())))
                 .isInstanceOf(RealEnvironmentGuards.Refusal.class)
                 .hasMessage("No .yaml scenarios found in " + source.describe() + ". Add a scenario there.");
     }
@@ -820,10 +824,92 @@ class RealEnvironmentGuardsTest {
         DirectoryScenarioSource source = new DirectoryScenarioSource(folder);
 
         assertThatThrownBy(() -> RealEnvironmentGuards.check(target(null, null, "dev"), source, List.of("one.yaml"),
-                Locale.ENGLISH, new RestProperties(), new DatabaseProperties(), new SoapProperties()))
+                Locale.ENGLISH, new RestProperties(), new DatabaseProperties(), new SoapProperties(),
+                new DelimitedFileConnector(Map.of())))
                 .isInstanceOf(RealEnvironmentGuards.Refusal.class)
                 .hasMessageContaining("idm.test.ldap.url is not set")
                 .hasMessageContaining("IDM_TEST_LDAP_URL");
     }
 
+    // ------------------------------------------------------------------
+    // Folders
+    // ------------------------------------------------------------------
+
+    private static ScenarioNeeds folders(Set<String> read, Set<String> write) {
+        return new ScenarioNeeds(Set.of(), Set.of(), false, false, Set.of(), read, write);
+    }
+
+    @Test
+    @DisplayName("Folders: passes when each folder exists and allows what the scenarios do there")
+    void testFoldersPass(@TempDir Path root) throws IOException {
+        Path in = Files.createDirectory(root.resolve("in"));
+        Path out = Files.createDirectory(root.resolve("out"));
+        DelimitedFileConnector files = new DelimitedFileConnector(Map.of(
+                "hr-in", FolderSettings.of(in.toString(), FolderAccess.WRITE),
+                "hr-out", FolderSettings.of(out.toString(), FolderAccess.READ)));
+
+        assertThatCode(() -> RealEnvironmentGuards.requireFolders(folders(Set.of("hr-out"), Set.of("hr-in")), files,
+                Locale.ENGLISH)).doesNotThrowAnyException();
+        assertThat(Files.list(in)).as("the guard creates nothing in a watched folder").isEmpty();
+        assertThatCode(() -> RealEnvironmentGuards.requireFolders(NOTHING, null, Locale.ENGLISH))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("Folders: refuses an undeclared folder, naming the configured ones")
+    void testFoldersUnknown(@TempDir Path root) {
+        DelimitedFileConnector files = new DelimitedFileConnector(Map.of(
+                "hr-in", FolderSettings.of(root.toString(), FolderAccess.WRITE)));
+
+        assertThatThrownBy(() -> RealEnvironmentGuards.requireFolders(folders(Set.of("hr-out"), Set.of()), files,
+                Locale.ENGLISH))
+                .isInstanceOf(RealEnvironmentGuards.Refusal.class)
+                .hasMessage("Scenarios use folder 'hr-out', which is not configured under idm.test.files. "
+                        + "Configured folders: [hr-in]");
+    }
+
+    @Test
+    @DisplayName("Folders: refuses a missing folder and one whose declared access is too weak")
+    void testFoldersUnusable(@TempDir Path root) {
+        DelimitedFileConnector files = new DelimitedFileConnector(Map.of(
+                "gone", FolderSettings.of(root.resolve("gone").toString(), FolderAccess.READ_WRITE),
+                "out", FolderSettings.of(root.toString(), FolderAccess.READ),
+                "in", FolderSettings.of(root.toString(), FolderAccess.WRITE)));
+
+        assertThatThrownBy(() -> RealEnvironmentGuards.requireFolders(folders(Set.of("gone"), Set.of()), files,
+                Locale.ENGLISH))
+                .isInstanceOf(RealEnvironmentGuards.Refusal.class)
+                .hasMessage("Scenarios use folder 'gone', which cannot be used: Folder 'gone' does not exist")
+                .hasMessageNotContaining(root.toString());
+        assertThatThrownBy(() -> RealEnvironmentGuards.requireFolders(folders(Set.of(), Set.of("out")), files,
+                Locale.ENGLISH))
+                .hasMessage("Scenarios use folder 'out', which cannot be used: Folder 'out' is declared with "
+                        + "access 'read', which does not allow write");
+        assertThatThrownBy(() -> RealEnvironmentGuards.requireFolders(folders(Set.of("in"), Set.of()), files,
+                Locale.ENGLISH))
+                .hasMessageContaining("Folder 'in' is declared with access 'write', which does not allow read");
+        assertThatThrownBy(() -> RealEnvironmentGuards.requireFolders(folders(Set.of("gone"), Set.of()), files,
+                Locale.forLanguageTag("es")))
+                .hasMessage("Los escenarios usan la carpeta 'gone', que no se puede usar: La carpeta 'gone' no existe");
+    }
+
+    @Test
+    @DisplayName("check runs the folder guard on the selected scenarios")
+    void testCheckRefusesUnknownFolder(@TempDir Path folder) throws IOException {
+        Files.writeString(folder.resolve("files.yaml"), """
+                name: files
+                steps:
+                  - file.verify:
+                      folder: hr-out
+                      file: "*.csv"
+                      expect: { rowCount: 1 }
+                """);
+        DirectoryScenarioSource source = new DirectoryScenarioSource(folder);
+
+        assertThatThrownBy(() -> RealEnvironmentGuards.check(target(REAL_LDAP, REAL_SOAP, "dev"), source,
+                List.of("files.yaml"), Locale.ENGLISH, new RestProperties(), new DatabaseProperties(),
+                new SoapProperties(), new DelimitedFileConnector(Map.of())))
+                .isInstanceOf(RealEnvironmentGuards.Refusal.class)
+                .hasMessageContaining("Scenarios use folder 'hr-out', which is not configured under idm.test.files");
+    }
 }

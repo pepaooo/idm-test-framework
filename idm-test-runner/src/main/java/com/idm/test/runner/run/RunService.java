@@ -2,6 +2,7 @@ package com.idm.test.runner.run;
 
 import com.idm.test.connector.database.client.MultiDatabaseConnector;
 import com.idm.test.connector.database.config.DatabaseProperties;
+import com.idm.test.connector.file.client.DelimitedFileConnector;
 import com.idm.test.connector.ldap.client.LdapDirectories;
 import com.idm.test.connector.rest.client.IdmRestConnector;
 import com.idm.test.connector.rest.client.RestAuthenticator;
@@ -351,7 +352,7 @@ public final class RunService {
                 requireNotEmbedded(environment);
                 RealEnvironmentGuards.check(environment, source, names, locale,
                         context.getBean(RestProperties.class), context.getBean(DatabaseProperties.class),
-                        soapProperties(environment));
+                        soapProperties(environment), context.getBean(DelimitedFileConnector.class));
             } catch (UsageException e) {
                 String message = mask.apply(Messages.render(e.detail(), locale));
                 LOG.error("The run could not start: {}", message);
@@ -533,7 +534,8 @@ public final class RunService {
                     context.getBeanProvider(ResourceServiceConnector.class).getIfAvailable(),
                     context.getBean(IdmRestConnector.class),
                     context.getBean(RestProperties.class),
-                    context.getBean(RestAuthenticator.class));
+                    context.getBean(RestAuthenticator.class),
+                    context.getBean(DelimitedFileConnector.class));
             return EngineFactory.engine(registry, context.getBean(TestDataGenerator.class),
                     context.getBean(TestExecutor.class), context.getBean(TestExecutorProperties.class));
         }

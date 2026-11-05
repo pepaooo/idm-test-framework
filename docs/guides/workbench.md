@@ -15,6 +15,11 @@ The design is in the [workbench design](../specs/2026-10-19-local-workbench-desi
 idmtest ui
 ```
 
+For internal LDAPS or HTTPS services, import the issuing CA once with
+`idmtest trust import /path/to/lab-ca.pem` before opening the workbench. The same per-user
+truststore is used by `idmtest ui` and `idmtest run`; see
+[Trust internal LDAPS and HTTPS certificates](runner.md#trust-internal-ldaps-and-https-certificates).
+
 The workbench starts on a free port of this computer and opens your default browser there. The console
 prints the address, in case the browser does not open:
 

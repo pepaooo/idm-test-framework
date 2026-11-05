@@ -686,6 +686,18 @@ class RunsControllerTest {
         for (String path : List.of("/reports/..%2F..%2Fsecrets.env/report.pdf", "/reports/%2e%2e/report.pdf")) {
             assertThat(UiHttp.get(server, path).status()).as(path).isIn(400, 404);
         }
+
+        // a real run folder whose results.json or run.json is a link to a file outside reports/
+        Files.writeString(outside.resolve("run.json"), "{}");
+        Path linkedResults = Files.createDirectories(reports.resolve("20261105-101533-lab"));
+        Files.createSymbolicLink(linkedResults.resolve("results.json"), outside.resolve("results.json"));
+        Path linkedRun = finishedRun(ws, "20261105-101534-lab");
+        Files.createSymbolicLink(linkedRun.resolve("run.json"), outside.resolve("run.json"));
+        for (String id : List.of("20261105-101533-lab", "20261105-101534-lab")) {
+            Response refused = UiHttp.get(server, "/reports/" + id + "/report.pdf?kind=detailed");
+            assertThat(refused.status()).as(id).isEqualTo(404);
+            assertThat(refused.body()).as(id).doesNotStartWith("%PDF");
+        }
     }
 
     @Test
@@ -731,14 +743,31 @@ class RunsControllerTest {
     }
 
     @Test
-    @DisplayName("Should refuse a PDF request without the workspace token as it does the HTML report")
+    @DisplayName("Should require the workspace for a PDF as for the HTML report, by header or ?workspace=")
     void pdfRequiresWorkspace() throws Exception {
         Path ws = workspace();
-        finishedRun(ws, PDF_RUN);
-        Response noToken = UiHttp.request("GET", "/reports/" + PDF_RUN + "/report.pdf",
-                "127.0.0.1:" + server.port(), Map.of(), null, server.port());
+        Path folder = finishedRun(ws, PDF_RUN);
+        Files.writeString(folder.resolve("report.html"), "<html>report</html>");
+        Map<String, String> cookieOnly = Map.of("Cookie", UiHttp.cookie(server));
+        String host = "127.0.0.1:" + server.port();
+
+        Response noToken = UiHttp.request("GET", "/reports/" + PDF_RUN + "/report.pdf", host, Map.of(), null,
+                server.port());
         assertThat(noToken.status()).isEqualTo(403);
-        assertThat(noToken.body()).doesNotStartWith("%PDF");
+
+        Response pdf = UiHttp.request("GET", "/reports/" + PDF_RUN + "/report.pdf", host, cookieOnly, null,
+                server.port());
+        Response html = UiHttp.request("GET", "/reports/" + PDF_RUN + "/report.html", host, cookieOnly, null,
+                server.port());
+        assertThat(pdf.status()).as(pdf.body()).isEqualTo(409);
+        assertThat(key(pdf)).isEqualTo("ui.workspace.missing");
+        assertThat(html.status()).isEqualTo(pdf.status());
+        assertThat(key(html)).isEqualTo(key(pdf));
+
+        Response byParameter = UiHttp.request("GET", "/reports/" + PDF_RUN + "/report.pdf?workspace="
+                + UiHttp.encode(ws), host, cookieOnly, null, server.port());
+        assertThat(byParameter.status()).isEqualTo(200);
+        assertThat(byParameter.body()).startsWith("%PDF");
     }
 
     @Test

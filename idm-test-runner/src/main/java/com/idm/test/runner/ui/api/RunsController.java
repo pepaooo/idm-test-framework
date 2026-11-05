@@ -178,6 +178,8 @@ class RunsController {
         if (runId.equals(runs.activeRunId())) {
             throw new ApiError(HttpStatus.CONFLICT, Message.of("runner.ui.run.busy"));
         }
+        contained(folder, "results.json", true);
+        contained(folder, "run.json", false);
         byte[] bytes;
         try {
             RunFolder read = RunFolder.read(folder, null, session.locale());
@@ -195,6 +197,28 @@ class RunsController {
                 .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.attachment()
                         .filename(PdfReportWriter.fileName(runId, parsed)).build().toString())
                 .body(bytes);
+    }
+
+    /**
+     * Requires {@code folder/name}, when it exists (always when {@code required}), to be a regular file
+     * whose real location is in {@code folder}, as {@code report.html} is: the PDF is rendered from these
+     * files, which {@link RunFolder} would follow wherever a link points.
+     *
+     * @throws ApiError 404 when it is not
+     */
+    private static void contained(Path folder, String name, boolean required) {
+        Path file = folder.resolve(name);
+        if (!required && !Files.exists(file, LinkOption.NOFOLLOW_LINKS)) {
+            return;
+        }
+        try {
+            Path real = file.toRealPath();
+            if (!real.startsWith(folder) || !Files.isRegularFile(real, LinkOption.NOFOLLOW_LINKS)) {
+                throw notFound();
+            }
+        } catch (IOException e) {
+            throw notFound();
+        }
     }
 
     /**

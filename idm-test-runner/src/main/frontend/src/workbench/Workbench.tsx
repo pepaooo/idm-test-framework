@@ -351,6 +351,7 @@ export function Workbench({ workspace, warning, lockWait = 300, runPanel, lab, r
         />
         {runsOpen && (
           <RunsView
+            activeRunId={runState.phase === 'starting' || runState.phase === 'running' ? runState.runId : null}
             onClose={() => {
               setRunsOpen(false);
               runsOpener.current?.focus();

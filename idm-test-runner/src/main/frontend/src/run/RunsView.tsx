@@ -11,10 +11,11 @@ const RESULT_BADGE: Record<string, BadgeStatus> = { passed: 'ok', finding: 'find
 
 /**
  * The workspace's earlier runs, newest first (`GET /api/runs/history`): each with its report and its
- * PDFs. A run whose results cannot be read says so and offers neither. A dialog: the focus starts on
+ * PDFs. A run whose results cannot be read says so and offers neither. The run in progress (`activeRunId`)
+ * shows as running, with neither: its results are not final. A dialog: the focus starts on
  * Close and Escape closes it.
  */
-export function RunsView({ onClose }: { onClose: () => void }) {
+export function RunsView({ onClose, activeRunId = null }: { onClose: () => void; activeRunId?: string | null }) {
   useLanguage();
   const [runs, setRuns] = useState<HistoryEntry[] | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
@@ -65,7 +66,11 @@ export function RunsView({ onClose }: { onClose: () => void }) {
                 <span className="runs-id">{run.runId}</span>
                 <span className="muted">{whenLabel(run.at, now)}</span>
                 <span className="muted">{run.profile ?? ''}</span>
-                {run.result === null ? (
+                {run.runId === activeRunId ? (
+                  <span>
+                    <Badge status="warn" label={t('ui.run.state.running')} /> {t('ui.run.state.running')}
+                  </span>
+                ) : run.result === null ? (
                   <span className="muted">{t('ui.runs.unreadable')}</span>
                 ) : (
                   <>

@@ -171,8 +171,9 @@ idmtest report <run-folder> --pdf summary|detailed [--out <file>] [--locale en|e
   English.
 - It is added to `CommandLine`, the `IdmTest` dispatch and the help text, like the existing commands.
   It reads no settings and needs no secrets and no connection.
-- Exit codes follow `ExitCodes`: 0 written; usage error for bad arguments; a distinct failure when the
-  folder has no readable `results.json`.
+- Exit codes follow `ExitCodes`: 0 written; usage error for bad arguments; code 2 (`CANNOT_START`, shared with the other
+  commands, not a distinct code) when the folder has no readable `results.json`, for a refused overwrite
+  and for an unexpected rendering failure.
 
 The JUnit runners (`RealEnvironmentScenarios`, `ContainerScenarios`) are unchanged. Their output
 folders can be passed to `idmtest report` if they contain `results.json`. That is not a goal and is

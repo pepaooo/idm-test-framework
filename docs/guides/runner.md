@@ -245,7 +245,7 @@ Exit codes:
 |---|---|
 | `0` | every selected scenario passed (or validated) |
 | `1` | at least one scenario failed or did not validate |
-| `2` | the run could not start: bad option, not a workspace, missing profile, unsupported locale, malformed `secrets.env`, missing driver, a refusal from the checks, no matching scenario |
+| `2` | the run could not start: bad option, not a workspace, missing profile, unsupported locale, malformed `secrets.env`, missing driver, a refusal from the checks, no matching scenario. For `idmtest report`: bad arguments, a missing or unreadable `results.json`, a refused overwrite, or an unexpected failure while rendering |
 
 ## Registered commands
 
@@ -305,7 +305,7 @@ Every run writes its own folder, `reports/<run-id>/`, where `<run-id>` is `yyyyM
 |---|---|
 | `report.html` | the report: open it in a browser |
 | `results.json` | the structured results |
-| `run.json` | who ran it, when, where and with which language: what `idmtest report` reads for the PDF header |
+| `run.json` | the runner kind, start time, profiles, filter, sanitised endpoints and language (not the user): what `idmtest report` reads for the PDF header |
 | `run.log` | the framework log, with secret values masked, and the JDBC driver jars that were loaded |
 
 `results.json` and `report.html` are rewritten after each scenario, so a run that stops half-way still
@@ -331,9 +331,9 @@ idmtest report reports/20261105-101500-lab --pdf detailed --out evidence.pdf --l
 `report` reads no settings or secrets and contacts nothing. Values are masked exactly as in
 `report.html`. A run from before `run.json` existed still works: the header fields it lacks read "Not
 recorded". It overwrites a file only if that file is a PDF `idmtest` wrote earlier; any other existing
-file is left alone and named in the error. The PDF is written readable by its owner only. Exit code 0
-means written; a missing or unreadable `results.json`, or an unwritable target, is a failure, and bad
-arguments are a usage error. `reports/` is already in the `.gitignore` that `init` writes, so PDFs
+file is left alone and named in the error. On POSIX systems the PDF is written readable by its owner only (0600). Exit code 0
+means written. Exit code 2 covers bad arguments, a missing or unreadable `results.json`, a refused
+overwrite and an unexpected failure while rendering. `reports/` is already in the `.gitignore` that `init` writes, so PDFs
 written there stay out of Git.
 
 ## Other databases

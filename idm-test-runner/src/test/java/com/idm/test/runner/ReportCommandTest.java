@@ -50,6 +50,21 @@ class ReportCommandTest {
     }
 
     @Test
+    @DisplayName("Should exit 2 with a one-line error, not a stack trace, when the results cannot be rendered")
+    void unexpectedFailureIsOneLine(@TempDir Path dir) throws Exception {
+        Path folder = dir.resolve("run-1");
+        Files.createDirectory(folder);
+        Files.writeString(folder.resolve("results.json"), "[null]");
+
+        int code = report("report", folder.toString(), "--pdf", "summary");
+
+        assertThat(code).isEqualTo(ExitCodes.CANNOT_START);
+        assertThat(err()).startsWith("the report could not be written").doesNotContain("\tat ")
+                .doesNotContain("Exception").hasLineCount(1);
+        assertThat(out()).isEmpty();
+    }
+
+    @Test
     @DisplayName("Should write <runId>-summary.pdf into the run folder by default")
     void writesDefaultPath(@TempDir Path dir) throws Exception {
         Path folder = runFolder(dir);

@@ -38,6 +38,17 @@ describe('RunsView', () => {
     expect(server.calls()).toEqual(['GET /api/runs/history']);
   });
 
+  it('shows the run in progress as running, with no report link and no PDF menu', async () => {
+    fakeServer({ 'GET /api/runs/history': { body: HISTORY } });
+    render(<RunsView onClose={() => undefined} activeRunId="20261020-091000-lab" />);
+    const rows = await screen.findAllByRole('listitem');
+    expect(rows[0]).toHaveTextContent('Running');
+    expect(rows[0]).not.toHaveTextContent('Finding');
+    expect(within(rows[0]).queryByRole('button')).not.toBeInTheDocument();
+    expect(within(rows[0]).queryByRole('link')).not.toBeInTheDocument();
+    expect(within(rows[1]).getByRole('button', { name: /Download PDF/ })).toBeInTheDocument();
+  });
+
   it('says the results cannot be read, with no report link and no PDF menu', async () => {
     fakeServer({ 'GET /api/runs/history': { body: HISTORY } });
     render(<RunsView onClose={() => undefined} />);

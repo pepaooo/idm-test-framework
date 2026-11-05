@@ -57,6 +57,10 @@ public final class ReportCommand {
         } catch (ReportLocale.UnsupportedLocaleException e) {
             err.println(e.getMessage());
             return ExitCodes.CANNOT_START;
+        } catch (RuntimeException e) {
+            // an unexpected failure reading or rendering: one line, no stack trace, like the other refusals
+            err.println(Messages.render(Message.of("runner.report.failed", String.valueOf(e.getMessage())), messages));
+            return ExitCodes.CANNOT_START;
         }
     }
 

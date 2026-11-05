@@ -490,9 +490,9 @@ active there is no menu, and asking for its PDF answers 409.
 ### Runs: every earlier run
 
 **Runs** in the top bar opens a list of every run in the workspace's `reports/`, newest first (up to
-200), with its id, date, profile and result (passed, findings or setup problems), **Open report** and
+200), with its id, date, profile and result (passed, findings, setup problems or stopped), **Open report** and
 **Download PDF**. Runs where everything passed and runs from earlier sessions are here too. A run
-whose `results.json` cannot be read is listed with "The results cannot be read" and has no download.
+whose `results.json` cannot be read is listed with "The results cannot be read" and has no download. The run in progress shows as running and has no download either.
 
 ## Look and language
 

@@ -107,6 +107,34 @@ describe('Run panel', () => {
     expect(openRunStreams()).toHaveLength(0);
   });
 
+  it('showsPdfMenuWhenFinished: the end line offers the PDF links for the run', async () => {
+    const server = runServer();
+    render(<Workbench workspace={WORKSPACE} lockWait={10} />);
+    await runAll(server);
+    act(() => {
+      emit('runStarted', { runId: RUN_ID, scenarios: NAMES.slice(0, 1), locale: 'en' });
+      expect(screen.queryByRole('button', { name: /Download PDF/ })).not.toBeInTheDocument();
+      playScenario(passed(NAMES[0]));
+      emit('runFinished', { runId: RUN_ID, total: 1, passed: 1, findings: 0, setupProblems: 0, stopped: false, exitCode: 0, reportUrl: `/reports/${RUN_ID}/report.html` });
+    });
+    await userEvent.click(within(panel()).getByRole('button', { name: /Download PDF/ }));
+    expect(within(panel()).getByRole('link', { name: 'Detailed' })).toHaveAttribute(
+      'href',
+      `/reports/${RUN_ID}/report.pdf?kind=detailed&workspace=${encodeURIComponent(WORKSPACE.path)}`,
+    );
+  });
+
+  it('noPdfMenuWhileRunning: no PDF menu until the run has finished', async () => {
+    const server = runServer();
+    render(<Workbench workspace={WORKSPACE} lockWait={10} />);
+    await runAll(server);
+    act(() => {
+      emit('runStarted', { runId: RUN_ID, scenarios: NAMES.slice(0, 2), locale: 'en' });
+      playScenario(passed(NAMES[0]));
+    });
+    expect(within(panel()).queryByRole('button', { name: /Download PDF/ })).not.toBeInTheDocument();
+  });
+
   it('counts setup problems on their own, singular and plural', async () => {
     const server = runServer();
     render(<Workbench workspace={WORKSPACE} lockWait={10} />);

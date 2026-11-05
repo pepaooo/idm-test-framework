@@ -7,6 +7,7 @@ import { useWorkbench } from '../workbench/context';
 import { isScenario, scopeScenarios } from './RunButton';
 import { seconds, timeLabel } from './copyFinding';
 import { stepLines } from './scenarioYaml';
+import { PdfMenu } from './PdfMenu';
 import { CleanupList, FindingPanel, SetupPanel, StoppedView, stepTitle } from './FindingPanel';
 import type { RunState, RunStore, ScenarioRun } from './runStore';
 import { interruptedStep, isStopped, scenarioPath, type StepResult } from './types';
@@ -351,6 +352,12 @@ export function RunPanel({ store }: { store: RunStore }) {
                   <a href={withWorkspace(run.outcome.reportUrl)} target="_blank" rel="noopener noreferrer">
                     {t('ui.run.openReport')}
                   </a>
+                  {run.runId && run.phase === 'finished' && (
+                    <>
+                      {' · '}
+                      <PdfMenu runId={run.runId} />
+                    </>
+                  )}
                 </>
               )}
             </p>

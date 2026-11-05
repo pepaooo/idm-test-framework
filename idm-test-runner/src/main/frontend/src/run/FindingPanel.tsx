@@ -8,7 +8,7 @@ import { stepLines } from './scenarioYaml';
 import { isConnectionProblem, systemOf } from './systems';
 import { scenarioPath, type CleanupResult, type Evidence, type HistoryEntry, type StepResult } from './types';
 
-const HISTORY_BADGE: Record<HistoryEntry['result'], BadgeStatus> = { passed: 'ok', finding: 'finding', setup: 'error', stopped: 'warn' };
+const HISTORY_BADGE: Record<NonNullable<HistoryEntry['result']>, BadgeStatus> = { passed: 'ok', finding: 'finding', setup: 'error', stopped: 'warn' };
 
 /** A value as one line of text (objects as JSON); the server masked it. */
 export function valueText(value: unknown): string {
@@ -396,7 +396,7 @@ export function FindingPanel({ scenario, step, runId, profile, reportUrl, canRer
           <ol className="finding-history" aria-label={historyText(history, now)}>
             {[...history].reverse().map((entry) => (
               <li key={entry.runId}>
-                <Badge status={HISTORY_BADGE[entry.result]} label={t(`ui.run.state.${entry.result}`)} /> {whenLabel(entry.at, now)}
+                {entry.result !== null && <Badge status={HISTORY_BADGE[entry.result]} label={t(`ui.run.state.${entry.result}`)} />} {whenLabel(entry.at, now)}
               </li>
             ))}
           </ol>

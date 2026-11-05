@@ -39,7 +39,7 @@ class CommandLineTest {
     @DisplayName("Should reject unknown commands, unknown options and missing values")
     void testErrors() {
         assertThatThrownBy(() -> CommandLine.parse("deploy")).isInstanceOf(UsageException.class)
-                .hasMessage("unknown command 'deploy' (expected init, validate, run or ui)");
+                .hasMessage("unknown command 'deploy' (expected init, validate, run, ui, commands or report)");
         assertThatThrownBy(() -> CommandLine.parse("run", "--colour")).isInstanceOf(UsageException.class)
                 .hasMessage("unknown option '--colour'");
         assertThatThrownBy(() -> CommandLine.parse("run", "--profile")).isInstanceOf(UsageException.class)
@@ -122,5 +122,33 @@ class CommandLineTest {
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> CommandLine.parse("run", "--yes"))
                 .isInstanceOf(UsageException.class);
         org.assertj.core.api.Assertions.assertThat(CommandLine.parse("run", "--profile", "lab").names()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("Should parse report with its folder, --pdf, --out and --locale")
+    void parsesReport() {
+        CommandLine line = CommandLine.parse("report", "reports/x", "--pdf", "detailed", "--out", "a.pdf",
+                "--locale", "es");
+        assertThat(line.command()).isEqualTo("report");
+        assertThat(line.runFolder()).isEqualTo(Path.of("reports/x").toAbsolutePath().normalize());
+        assertThat(line.pdf()).isEqualTo("detailed");
+        assertThat(line.out()).isEqualTo(Path.of("a.pdf").toAbsolutePath());
+        assertThat(line.locale()).isEqualTo("es");
+        assertThat(CommandLine.parse("report", "x", "--pdf", "summary").out()).isNull();
+    }
+
+    @Test
+    @DisplayName("Should reject a bad --pdf, a missing folder or --pdf, and options report does not take")
+    void reportRejectsBadPdf() {
+        assertThatThrownBy(() -> CommandLine.parse("report", "x", "--pdf", "full"))
+                .isInstanceOf(UsageException.class).hasMessageContaining("summary or detailed");
+        assertThatThrownBy(() -> CommandLine.parse("report", "--pdf", "summary"))
+                .isInstanceOf(UsageException.class).hasMessageContaining("run folder");
+        assertThatThrownBy(() -> CommandLine.parse("report", "x"))
+                .isInstanceOf(UsageException.class).hasMessageContaining("--pdf");
+        assertThatThrownBy(() -> CommandLine.parse("report", "x", "--pdf", "summary", "--workspace", "w"))
+                .isInstanceOf(UsageException.class);
+        assertThatThrownBy(() -> CommandLine.parse("run", "--pdf", "summary"))
+                .isInstanceOf(UsageException.class).hasMessage("unknown option '--pdf'");
     }
 }

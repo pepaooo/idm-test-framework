@@ -35,7 +35,7 @@ public final class PdfReportWriter {
          * @param value {@code summary} or {@code detailed}
          * @throws IllegalArgumentException for anything else, including null
          */
-        static Kind parse(String value) {
+        public static Kind parse(String value) {
             for (Kind kind : values()) {
                 if (kind.word.equals(value)) {
                     return kind;

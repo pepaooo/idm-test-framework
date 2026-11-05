@@ -79,6 +79,7 @@ public final class IdmTest {
             case "commands" -> CommandsCommand.run(line,
                     new BufferedReader(new InputStreamReader(System.in, Charset.defaultCharset())), out, err,
                     ApprovalStore.inUserHome());
+            case "report" -> ReportCommand.run(line, out, err);
             // CommandLine.parse accepts no other command.
             default -> throw new IllegalStateException("unhandled command " + line.command());
         };

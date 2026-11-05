@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 import java.io.IOException;
 import java.time.Instant;
 import java.util.ArrayList;
+import com.idm.test.engine.spi.HttpEvidence;
 import com.idm.test.engine.spi.LdapEvidence;
 import com.idm.test.engine.spi.SqlEvidence;
 import java.util.LinkedHashMap;
@@ -58,7 +59,7 @@ class PdfReportWriterTest {
     private static final List<ScenarioResult> RESULTS = List.of(passed(), finding(), stoppedOnly());
 
     private static RunFolder folder(Locale locale) {
-        return new RunFolder(RUN_ID, RUN.withLocale(locale), STARTED.plusSeconds(102), RESULTS);
+        return new RunFolder(RUN_ID, RUN.withLocale(locale), STARTED.plusSeconds(102), RESULTS, true);
     }
 
     private static String text(byte[] pdf) throws IOException {
@@ -144,9 +145,9 @@ class PdfReportWriterTest {
     @DisplayName("a run without recorded details says so")
     void notRecordedFields() throws IOException {
         RunInfo bare = new RunInfo(null, Instant.EPOCH, List.of(), null, Map.of());
-        String text = summary(new RunFolder("odd-folder", bare, Instant.EPOCH, RESULTS));
+        String text = summary(new RunFolder("odd-folder", bare, Instant.EPOCH, RESULTS, false));
 
-        assertThat(text).contains("Not recorded").contains("None recorded.").doesNotContain("1970");
+        assertThat(text).containsPattern("Filter\\s*Not recorded").contains("Not recorded").contains("None recorded.").doesNotContain("1970");
     }
 
     @Test
@@ -179,7 +180,7 @@ class PdfReportWriterTest {
     }
 
     private static RunFolder folderOf(List<ScenarioResult> results) {
-        return new RunFolder(RUN_ID, RUN, STARTED.plusSeconds(102), results);
+        return new RunFolder(RUN_ID, RUN, STARTED.plusSeconds(102), results, true);
     }
 
     @Test
@@ -262,8 +263,8 @@ class PdfReportWriterTest {
     }
 
     @Test
-    @DisplayName("SQL evidence with thousands of rows keeps the last row")
-    void longSqlEvidenceKeepsLastRow() throws IOException {
+    @DisplayName("SQL evidence with 2,000 rows keeps the last row")
+    void longSqlResultKeepsLastRow() throws IOException {
         List<Map<String, Object>> rows = new ArrayList<>();
         for (int i = 0; i < 2000; i++) {
             rows.add(Map.of("uid", "user-" + i, "mail", "user-" + i + "@lab.example.com"));
@@ -276,6 +277,44 @@ class PdfReportWriterTest {
                 List.of(step), List.of(), null, null)))));
 
         assertThat(text).contains(last + "@lab.example.com");
+    }
+
+    @Test
+    @DisplayName("a SQL row wider than a line is written as column: value lines, every value present")
+    void wideSqlRowBecomesRecord() throws IOException {
+        String longMail = "x".repeat(150) + "@lab.example.com";
+        SqlEvidence sql = SqlEvidence.query("db", "SELECT uid, mail FROM users", new Object[0],
+                List.of(Map.of("uid", "wide-uid-1", "mail", longMail)));
+        StepResult step = new StepResult(0, "db.query", Map.of(), true, 5, "ok", null, null, null, sql);
+
+        String text = text(detailed(folderOf(List.of(new ScenarioResult("S", "s.yaml", true, 5,
+                List.of(step), List.of(), null, null)))));
+
+        // the long value wraps at the line's end, so compare without the wrap's space
+        assertThat(text).contains("uid: wide-uid-1").doesNotContain("uid | mail");
+        assertThat(text.replace(" ", "")).contains("mail:" + longMail);
+    }
+
+    @Test
+    @DisplayName("an HTTP body near the size limit continues across pages and keeps its last line")
+    void longHttpBodyKeepsLastLine() throws IOException {
+        StringBuilder body = new StringBuilder();
+        int i = 0;
+        while (body.length() < 16_000) {
+            body.append("line-").append(i++).append(" some response text\n");
+        }
+        body.append("THE-LAST-BODY-LINE");
+        HttpEvidence http = new HttpEvidence("GET", "http://idm/x", Map.of(), null, 200, Map.of(), body.toString(),
+                12, null);
+        StepResult step = new StepResult(0, "rest.get", Map.of(), true, 5, "ok", null, null, null, http);
+
+        byte[] pdf = detailed(folderOf(List.of(new ScenarioResult("S", "s.yaml", true, 5,
+                List.of(step), List.of(), null, null))));
+
+        try (PDDocument doc = Loader.loadPDF(pdf)) {
+            assertThat(doc.getNumberOfPages()).isGreaterThan(2);
+        }
+        assertThat(text(pdf)).contains("THE-LAST-BODY-LINE");
     }
 
     @Test

@@ -118,7 +118,14 @@ final class EvidencePdf {
         }
     }
 
-    /** Columns padded to their widest value, so the block reads as a table and still splits line by line. */
+    /** Characters one 8 pt DejaVu Sans Mono line holds across the page's text width, about 104. */
+    private static final int MONO_LINE = 100;
+
+    /**
+     * Columns padded to their widest value, so the block reads as a table and still splits line by line. When
+     * the padded table is wider than a mono line it would wrap into noise, so each record is written as
+     * {@code column: value} lines with a blank line between records.
+     */
     private static String grid(List<String> header, List<List<String>> rows) {
         int[] widths = new int[header.size()];
         List<List<String>> all = new ArrayList<>();
@@ -130,6 +137,19 @@ final class EvidencePdf {
             }
         }
         StringBuilder out = new StringBuilder();
+        int width = (widths.length - 1) * 3;
+        for (int w : widths) {
+            width += w;
+        }
+        if (width > MONO_LINE) {
+            for (List<String> row : all.subList(1, all.size())) {
+                for (int i = 0; i < widths.length; i++) {
+                    out.append(all.getFirst().get(i)).append(": ").append(row.get(i)).append('\n');
+                }
+                out.append('\n');
+            }
+            return out.toString();
+        }
         for (List<String> row : all) {
             for (int i = 0; i < widths.length; i++) {
                 String value = row.get(i);

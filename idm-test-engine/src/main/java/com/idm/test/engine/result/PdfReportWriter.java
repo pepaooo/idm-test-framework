@@ -95,7 +95,8 @@ public final class PdfReportWriter {
                 row(HtmlReportWriter.label("report.profiles", locale),
                         run.profiles().isEmpty() ? none : String.join(", ", run.profiles())),
                 row(HtmlReportWriter.label("report.filter", locale),
-                        run.scenarioFilter() == null ? none : run.scenarioFilter())), 0.25f, 0.75f);
+                        run.scenarioFilter() != null ? run.scenarioFilter()
+                                : folder.recorded() ? none : notRecorded)), 0.25f, 0.75f);
 
         HtmlReportWriter.Totals totals = HtmlReportWriter.Totals.of(results);
         pages.tiles(List.of(

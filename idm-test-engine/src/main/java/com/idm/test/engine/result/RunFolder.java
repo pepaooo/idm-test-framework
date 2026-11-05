@@ -28,8 +28,10 @@ import java.util.regex.Pattern;
  * @param run        the run's description; its locale is the one the report is rendered in
  * @param finishedAt when the run finished
  * @param results    the scenario results, secret parameters already masked
+ * @param recorded   true when {@code run.json} was read; false when the run's details were inferred
  */
-public record RunFolder(String runId, RunInfo run, Instant finishedAt, List<ScenarioResult> results) {
+public record RunFolder(String runId, RunInfo run, Instant finishedAt, List<ScenarioResult> results,
+                        boolean recorded) {
 
     /** The folder cannot be read as a run: {@code results.json} is missing or does not parse. */
     public static final class Unreadable extends RuntimeException {
@@ -75,7 +77,7 @@ public record RunFolder(String runId, RunInfo run, Instant finishedAt, List<Scen
         } else if (record == null) {
             run = run.withLocale(defaultLocale);
         }
-        return new RunFolder(runId, run, finishedAt, List.copyOf(results));
+        return new RunFolder(runId, run, finishedAt, List.copyOf(results), record != null);
     }
 
     private static List<ScenarioResult> readResults(Path file) {

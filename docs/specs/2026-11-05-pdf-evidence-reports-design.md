@@ -267,8 +267,9 @@ Where the build differs from, or adds to, the design above:
   read, and `StepResult`, `CleanupResult` and `ScenarioResult` apply it to their message arguments, so
   a nested message re-renders in the PDF's language (§4).
 - **Emoji.** The design had a character the font lacks become `?`. DejaVu Sans does have emoji such as
-  U+1F600, so in proportional text an emoji renders as itself. `?` remains for characters neither font
-  has (CJK, for example) and for any non-ASCII-Latin character in DejaVu Sans Mono (evidence blocks).
+  U+1F600, so in proportional text an emoji renders as itself. `?` remains for any character the font in
+  use lacks: CJK in either font, and emoji in evidence blocks (DejaVu Sans Mono has neither). Accented
+  Latin renders in both fonts.
 - **SQL evidence is already capped.** `Evidence.MAX_ROWS` (20) cuts a SQL result when the evidence is
   recorded, so a result in `results.json` never has the 2,000 rows that Review focus 2 imagines. The
   block continuation across pages is still implemented and tested for long blocks (a large HTTP body).

@@ -69,6 +69,12 @@ public final class PdfReportWriter {
             pages.info(title, creator);
             pages.title(title);
             header(pages, folder, locale, notRecorded);
+            if (kind == Kind.DETAILED) {
+                for (ScenarioResult scenario : folder.results()) {
+                    pages.newPage();
+                    scenario(pages, scenario, locale);
+                }
+            }
             return pages.finish();
         }
     }
@@ -121,15 +127,113 @@ public final class PdfReportWriter {
         }
     }
 
+    private static void scenario(PdfPages pages, ScenarioResult scenario, Locale locale) {
+        String name = scenario.name() != null && !scenario.name().equals(scenario.sourceName())
+                ? scenario.sourceName() + " · " + scenario.name() : scenario.sourceName();
+        pages.heading((scenario.success() ? "✔ " : "✘ ") + name);
+        List<String> facts = new ArrayList<>();
+        String badge = scenarioBadge(scenario, locale);
+        if (!badge.isEmpty()) {
+            facts.add(badge);
+        }
+        if (scenario.description() != null) {
+            facts.add(scenario.description());
+        }
+        facts.add(HtmlReportWriter.duration(scenario.durationMillis(), locale));
+        pages.muted(String.join(" · ", facts));
+        if (!scenario.success()) {
+            pages.paragraph(scenario.failureSummary(locale));
+        }
+
+        for (StepResult step : scenario.steps()) {
+            step(pages, step, locale);
+            if (!step.success()) {
+                pages.muted(HtmlReportWriter.label("report.notRun", locale));
+            }
+        }
+
+        if (!scenario.cleanup().isEmpty()) {
+            pages.heading(HtmlReportWriter.label("report.cleanup", locale));
+            for (CleanupResult entry : scenario.cleanup()) {
+                cleanup(pages, entry, locale);
+            }
+        }
+    }
+
+    private static void step(PdfPages pages, StepResult step, Locale locale) {
+        // The step a stop interrupted: the engine marks it SETUP, but it is no setup problem.
+        boolean interrupted = !step.success() && ScenarioResult.STOPPED_KEY.equals(step.messageKey());
+        String badge = interrupted ? HtmlReportWriter.label("report.kind.stopped", locale)
+                : kindLabel(step.kind(), locale);
+        String time = step.attempts() != null
+                ? HtmlReportWriter.label(step.attempts() == 1 ? "report.attempts.one" : "report.attempts.other",
+                locale, step.attempts()) + " · "
+                + HtmlReportWriter.duration(step.waitedMillis() == null ? 0 : step.waitedMillis(), locale)
+                : HtmlReportWriter.duration(step.durationMillis(), locale);
+        // Only short, bounded values in the row: a table row cannot split across pages.
+        pages.table(List.of(List.of(
+                new Cell(step.success() ? "✔" : "✘", step.success() ? Style.PASS : Style.FAIL),
+                new Cell(badge, step.success() ? Style.NORMAL : Style.BADGE),
+                new Cell(String.valueOf(step.index() + 1), Style.MUTED),
+                new Cell(step.type(), Style.BOLD),
+                new Cell(time, Style.MUTED))), 0.05f, 0.17f, 0.06f, 0.42f, 0.30f);
+        if (step.description() != null) {
+            pages.paragraph(step.description());
+        }
+        if (step.message() != null) {
+            pages.paragraph(HtmlReportWriter.text(step.message(), step.messageDetail(), locale));
+        }
+        if (step.resolvedParams() != null && !step.resolvedParams().isEmpty()) {
+            pages.muted(HtmlReportWriter.label("report.parameters", locale));
+            pages.mono(EvidenceHtml.pretty(HtmlReportWriter.mask(step.resolvedParams())));
+        }
+        EvidencePdf.append(pages, step, locale);
+    }
+
+    private static void cleanup(PdfPages pages, CleanupResult entry, Locale locale) {
+        boolean failed = entry.status() == CleanupStatus.FAILED;
+        String status = HtmlReportWriter.label(switch (entry.status()) {
+            case SUCCEEDED -> "report.status.succeeded";
+            case FAILED -> "report.status.failed";
+            case SKIPPED -> "report.status.skipped";
+        }, locale);
+        pages.table(List.of(List.of(
+                new Cell(status, failed ? Style.BADGE : Style.BOLD),
+                // Every failed cleanup entry is a finding: something may be left in the lab.
+                new Cell(failed ? kindLabel(FailureKind.FINDING, locale) : "", failed ? Style.BADGE : Style.NORMAL),
+                new Cell(entry.type(), Style.BOLD),
+                new Cell(HtmlReportWriter.duration(entry.durationMillis(), locale), Style.MUTED))),
+                0.2f, 0.17f, 0.43f, 0.20f);
+        if (entry.description() != null) {
+            pages.paragraph(entry.description());
+        }
+        if (entry.message() != null) {
+            pages.paragraph(HtmlReportWriter.text(entry.message(), entry.messageDetail(), locale));
+        }
+    }
+
+    private static String scenarioBadge(ScenarioResult scenario, Locale locale) {
+        if (scenario.success()) {
+            return "";
+        }
+        return scenario.stoppedOnly() ? HtmlReportWriter.label("report.kind.stopped", locale)
+                : kindLabel(scenario.failureKind(), locale);
+    }
+
+    /** The kind's label; empty for null (nothing failed). */
+    private static String kindLabel(FailureKind kind, Locale locale) {
+        if (kind == null) {
+            return "";
+        }
+        return HtmlReportWriter.label(kind == FailureKind.FINDING ? "report.kind.finding" : "report.kind.setup", locale);
+    }
+
     private static List<Cell> row(String label, String value) {
         return List.of(new Cell(label, Style.BOLD), new Cell(value, Style.NORMAL));
     }
 
     private static List<Cell> scenarioRow(ScenarioResult scenario, Locale locale) {
-        String badge = scenario.success() ? "" : scenario.stoppedOnly()
-                ? HtmlReportWriter.label("report.kind.stopped", locale)
-                : HtmlReportWriter.label(scenario.failureKind() == FailureKind.FINDING
-                ? "report.kind.finding" : "report.kind.setup", locale);
+        String badge = scenarioBadge(scenario, locale);
         String name = scenario.name() != null && !scenario.name().equals(scenario.sourceName())
                 ? scenario.sourceName() + " · " + scenario.name() : scenario.sourceName();
         return List.of(

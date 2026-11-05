@@ -8,6 +8,9 @@ import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 import java.time.Instant;
+import java.util.ArrayList;
+import com.idm.test.engine.spi.LdapEvidence;
+import com.idm.test.engine.spi.SqlEvidence;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -155,5 +158,138 @@ class PdfReportWriterTest {
         assertThatThrownBy(() -> PdfReportWriter.Kind.parse(null)).isInstanceOf(IllegalArgumentException.class);
         assertThat(PdfReportWriter.fileName(RUN_ID, PdfReportWriter.Kind.SUMMARY)).isEqualTo(RUN_ID + "-summary.pdf");
         assertThat(PdfReportWriter.fileName(RUN_ID, PdfReportWriter.Kind.DETAILED)).isEqualTo(RUN_ID + "-detailed.pdf");
+    }
+
+    private static byte[] detailed(RunFolder folder) {
+        return PdfReportWriter.render(folder, PdfReportWriter.Kind.DETAILED, "idmtest test");
+    }
+
+    private static String page(byte[] pdf, int number) throws IOException {
+        try (PDDocument doc = Loader.loadPDF(pdf)) {
+            PDFTextStripper stripper = new PDFTextStripper();
+            stripper.setStartPage(number);
+            stripper.setEndPage(number);
+            return stripper.getText(doc);
+        }
+    }
+
+    /** The first line of the page that is not the running header. */
+    private static String firstHeading(byte[] pdf, int number) throws IOException {
+        return page(pdf, number).lines().filter(line -> !line.contains(RUN_ID)).findFirst().orElseThrow();
+    }
+
+    private static RunFolder folderOf(List<ScenarioResult> results) {
+        return new RunFolder(RUN_ID, RUN, STARTED.plusSeconds(102), results);
+    }
+
+    @Test
+    @DisplayName("the detailed PDF opens with the same header as the summary")
+    void detailedStartsWithSummaryHeader() throws IOException {
+        RunFolder folder = folder(Locale.ENGLISH);
+        String summaryPage = page(PdfReportWriter.render(folder, PdfReportWriter.Kind.SUMMARY, "x"), 1)
+                .replaceAll("Page \\d+ of \\d+", "").replace("Summary", "KIND").replaceAll("\\s+", " ");
+        String detailedPage = page(detailed(folder), 1)
+                .replaceAll("Page \\d+ of \\d+", "").replace("Detailed", "KIND").replaceAll("\\s+", " ");
+
+        assertThat(detailedPage).isEqualTo(summaryPage);
+    }
+
+    @Test
+    @DisplayName("the detailed PDF has every step with its number, type, description and message")
+    void detailedHasEveryStep() throws IOException {
+        String text = text(detailed(folder(Locale.ENGLISH)));
+
+        assertThat(text).contains("1 resources.grant").contains("Grant AppA").contains("EVIDENCE-MESSAGE-OK")
+                .contains("1 ldap.create").contains("Create the test account").contains("created")
+                .contains("2 roles.grant").contains("Grant the Finance roles").contains("Role service error")
+                .contains("Any later steps were not run.");
+        // only the failed step is followed by the not-run line (finding and stopped scenarios fail a step)
+        assertThat(text.split("Any later steps were not run\\.", -1)).hasSize(3);
+    }
+
+    @Test
+    @DisplayName("a step that waited shows its attempts, wait time and the last-attempt note")
+    void detailedHasAttempts() throws IOException {
+        StepResult waited = new StepResult(0, "ldap.verify", Map.of(), true, 5_000, "found", 5, 4_000L, "Wait for it",
+                new LdapEvidence("edir", "cn=a,o=d", "read", Map.of("cn", "a"), true));
+        String text = text(detailed(folderOf(List.of(new ScenarioResult("S", "s.yaml", true, 5_000,
+                List.of(waited), List.of(), null, null)))));
+
+        assertThat(text).contains("5 attempts").contains("4.0 s").contains("(last attempt)");
+    }
+
+    @Test
+    @DisplayName("parameters are shown as JSON with secret values masked")
+    void parametersAreMasked() throws IOException {
+        Map<String, Object> params = Map.of("password", "hunter2", "nested", Map.of("apiToken", "abc"),
+                "dn", "cn=visible");
+        StepResult step = new StepResult(0, "ldap.create", params, true, 5, "ok", null, null);
+        String text = text(detailed(folderOf(List.of(new ScenarioResult("S", "s.yaml", true, 5,
+                List.of(step), List.of(), null, null)))));
+
+        assertThat(text).doesNotContain("hunter2").doesNotContain("abc").contains("***").contains("cn=visible")
+                .contains("Parameters");
+    }
+
+    @Test
+    @DisplayName("cleanup entries show status, type, description and message; a failed one gets the finding badge")
+    void cleanupListed() throws IOException {
+        List<CleanupResult> cleanup = List.of(
+                new CleanupResult(0, "ldap.delete", Map.of(), CleanupStatus.SUCCEEDED, 12, "gone", "Delete user"),
+                new CleanupResult(1, "file.delete", Map.of(), CleanupStatus.FAILED, 30, "CLEANUP-BOOM", "Remove file"),
+                new CleanupResult(2, "db.update", Map.of(), CleanupStatus.SKIPPED, 0, "skipped earlier", null));
+        String text = text(detailed(folderOf(List.of(new ScenarioResult("S", "s.yaml", true, 5,
+                List.of(), cleanup, null, null)))));
+
+        assertThat(text).contains("Cleanup").contains("SUCCEEDED").contains("ldap.delete").contains("Delete user")
+                .contains("FAILED Finding file.delete").contains("Remove file").contains("CLEANUP-BOOM")
+                .contains("SKIPPED").contains("db.update").contains("skipped earlier");
+    }
+
+    @Test
+    @DisplayName("each scenario starts on a new page, with its heading first")
+    void eachScenarioStartsNewPage() throws IOException {
+        byte[] pdf = detailed(folder(Locale.ENGLISH));
+        try (PDDocument doc = Loader.loadPDF(pdf)) {
+            assertThat(doc.getNumberOfPages()).isGreaterThanOrEqualTo(4);
+        }
+
+        // page 1 is the header; then one page per scenario (running header line first, then the heading)
+        assertThat(firstHeading(pdf, 2)).contains("provisioning-resources.yaml");
+        assertThat(firstHeading(pdf, 3)).contains("provisioning-user-1.yaml");
+        assertThat(firstHeading(pdf, 4)).contains("stopped.yaml");
+        assertThat(page(pdf, 2)).doesNotContain("provisioning-user-1.yaml");
+    }
+
+    @Test
+    @DisplayName("SQL evidence with thousands of rows keeps the last row")
+    void longSqlEvidenceKeepsLastRow() throws IOException {
+        List<Map<String, Object>> rows = new ArrayList<>();
+        for (int i = 0; i < 2000; i++) {
+            rows.add(Map.of("uid", "user-" + i, "mail", "user-" + i + "@lab.example.com"));
+        }
+        SqlEvidence sql = SqlEvidence.query("db", "SELECT uid, mail FROM users", new Object[0], rows);
+        String last = String.valueOf(sql.rows().getLast().get("uid"));
+        StepResult step = new StepResult(0, "db.query", Map.of(), true, 5, "ok", null, null, null, sql);
+
+        String text = text(detailed(folderOf(List.of(new ScenarioResult("S", "s.yaml", true, 5,
+                List.of(step), List.of(), null, null)))));
+
+        assertThat(text).contains(last + "@lab.example.com");
+    }
+
+    @Test
+    @DisplayName("a scenario with no steps and a step with no evidence both render, with the failure summary")
+    void scenarioWithoutStepsAndStepWithoutEvidence() throws IOException {
+        ScenarioResult noSteps = new ScenarioResult("Setup died", "broken.yaml", false, 10, List.of(), List.of(),
+                "could not resolve NOSTEPS-CAUSE", null);
+        StepResult bare = new StepResult(0, "ldap.create", Map.of(), true, 5, "ok", null, null);
+        ScenarioResult noEvidence = new ScenarioResult("Plain", "plain.yaml", true, 5, List.of(bare), List.of(), null,
+                null);
+
+        String text = text(detailed(folderOf(List.of(noSteps, noEvidence))));
+
+        assertThat(text).contains("broken.yaml").contains("NOSTEPS-CAUSE").contains("plain.yaml")
+                .contains("ldap.create");
     }
 }

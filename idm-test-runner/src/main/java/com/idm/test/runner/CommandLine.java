@@ -135,7 +135,7 @@ public record CommandLine(String command, Path workspace, String profile, String
             if (workspace != null || profile != null || scenario != null || port != null || verbose || yes) {
                 throw new UsageException(Message.of("runner.trust.options"));
             }
-            if (!(("import".equals(action) && names.size() == 1)
+            if (!((("import".equals(action) || "import-server".equals(action)) && names.size() == 1)
                     || ("refresh".equals(action) && names.isEmpty()))) {
                 throw new UsageException(Message.of("runner.trust.badAction"));
             }

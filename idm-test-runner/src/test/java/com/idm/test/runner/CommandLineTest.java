@@ -136,6 +136,12 @@ class CommandLineTest {
                 .isInstanceOf(UsageException.class);
         assertThatThrownBy(() -> CommandLine.parse("trust", "refresh", "extra"))
                 .isInstanceOf(UsageException.class);
+        assertThat(CommandLine.parse("trust", "import-server", "lab.example:443").names())
+                .containsExactly("lab.example:443");
+        assertThatThrownBy(() -> CommandLine.parse("trust", "import-server", "lab.example:443", "extra"))
+                .isInstanceOf(UsageException.class);
+        assertThatThrownBy(() -> CommandLine.parse("trust", "import-server", "lab.example:443", "--yes"))
+                .isInstanceOf(UsageException.class);
     }
 
     @Test

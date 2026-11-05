@@ -9,8 +9,11 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.AbstractDataSource;
 
 import javax.sql.DataSource;
+import java.sql.Connection;
+import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -90,6 +93,14 @@ public class DatabaseConfiguration implements DisposableBean {
      * @return configured DataSource
      */
     private DataSource createDataSource(String name, DatabaseProperties.DatabaseConfig config) {
+        String driverClassName = config.getDriverClassName();
+        if (driverClassName != null && !driverClassName.isBlank() && !driverLoads(driverClassName.strip())) {
+            // HikariConfig loads the class right away, which would stop every run over a database
+            // no scenario uses. Only this database fails, on first use; idmtest run checks the
+            // databases its scenarios use before starting, and names the drivers folder.
+            log.warn("No JDBC driver class '{}' for database '{}'; it fails when used", driverClassName, name);
+            return new MissingDriverDataSource(name, driverClassName.strip());
+        }
         HikariConfig hikariConfig = new HikariConfig();
 
         hikariConfig.setPoolName("HikariPool-" + name);
@@ -119,5 +130,45 @@ public class DatabaseConfiguration implements DisposableBean {
             dataSources.add(dataSource);
         }
         return dataSource;
+    }
+
+    /** Whether the class loads as HikariCP loads it: its own class loader, then the context class loader. */
+    private static boolean driverLoads(String className) {
+        for (ClassLoader loader : new ClassLoader[] {HikariConfig.class.getClassLoader(),
+                Thread.currentThread().getContextClassLoader()}) {
+            if (loader == null) {
+                continue;
+            }
+            try {
+                Class.forName(className, false, loader);
+                return true;
+            } catch (ClassNotFoundException | LinkageError e) {
+                // try the next loader
+            }
+        }
+        return false;
+    }
+
+    /** A database whose driver class is missing: every connection request says which, and for which database. */
+    private static final class MissingDriverDataSource extends AbstractDataSource {
+
+        private final String name;
+        private final String driverClassName;
+
+        MissingDriverDataSource(String name, String driverClassName) {
+            this.name = name;
+            this.driverClassName = driverClassName;
+        }
+
+        @Override
+        public Connection getConnection() throws SQLException {
+            throw new SQLException("no JDBC driver class '" + driverClassName + "' for database '" + name
+                    + "'; add the driver jar (for idmtest, to the workspace's drivers/ folder)");
+        }
+
+        @Override
+        public Connection getConnection(String username, String password) throws SQLException {
+            return getConnection();
+        }
     }
 }

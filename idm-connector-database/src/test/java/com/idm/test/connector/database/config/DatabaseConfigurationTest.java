@@ -79,6 +79,24 @@ class DatabaseConfigurationTest {
     }
 
     @Test
+    @DisplayName("A driver class that does not load stops only that database, when it is used, naming both")
+    void testMissingDriverFailsOnlyOnUse() {
+        DatabaseProperties.DatabaseConfig missing = h2("jdbc:h2:mem:missing-driver");
+        missing.setDriverClassName("com.example.NoSuchDriver");
+        DatabaseProperties properties = new DatabaseProperties();
+        properties.setDatabases(Map.of("test-db", missing, "up", h2("jdbc:h2:mem:missing-driver-up")));
+
+        Map<String, JdbcTemplate> templates = new DatabaseConfiguration().jdbcTemplates(properties);
+        MultiDatabaseConnector connector = new MultiDatabaseConnector(templates);
+
+        OperationResult<List<Map<String, Object>>> up = connector.executeQuery("up", "SELECT 1 AS one");
+        assertThat(up.isSuccess()).as(up.getMessage()).isTrue();
+        OperationResult<List<Map<String, Object>>> used = connector.executeQuery("test-db", "SELECT 1 AS one");
+        assertThat(used.isFailure()).isTrue();
+        assertThat(used.getMessage()).contains("com.example.NoSuchDriver").contains("test-db");
+    }
+
+    @Test
     @DisplayName("Closing the configuration closes every pool it built, used or not")
     void testDestroyClosesPools() throws InterruptedException {
         DatabaseProperties properties = new DatabaseProperties();

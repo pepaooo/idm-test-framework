@@ -584,6 +584,12 @@ forked test JVM:
 
 In an IDE, add the same three `-Djavax.net.ssl.*` options to the run configuration's VM options.
 
+For the packaged `idmtest` program, import an internal CA with
+`idmtest trust import /path/to/ca.pem`. It creates a per-user store based on the active
+Java runtime's public CAs, and `idmtest run` and `idmtest ui` load it automatically.
+Use `idmtest trust refresh` after changing that runtime. An explicit JVM truststore
+property still takes precedence. See [the runner guide](../guides/runner.md#trust-internal-ldaps-and-https-certificates).
+
 **Things to know:**
 
 - **`javax.net.ssl.trustStore` replaces the JDK's default truststore; it does not add to it.**

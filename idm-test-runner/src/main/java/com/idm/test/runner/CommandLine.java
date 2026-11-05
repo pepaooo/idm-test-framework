@@ -54,7 +54,7 @@ public record CommandLine(String command, Path workspace, String profile, String
             case "--version" -> {
                 return of("version", null, null, null, null, false, null, null, false);
             }
-            case "init", "validate", "run", "ui", "commands", "report" -> {
+            case "init", "validate", "run", "ui", "commands", "trust", "report" -> {
             }
             default -> throw new UsageException(first.startsWith("-")
                     ? Message.of("runner.cli.unknownOption", first)
@@ -119,7 +119,7 @@ public record CommandLine(String command, Path workspace, String profile, String
                         initTarget = Path.of(arg);
                     } else if (first.equals("report") && !arg.startsWith("-") && runFolder == null) {
                         runFolder = Path.of(arg).toAbsolutePath().normalize();
-                    } else if (first.equals("commands") && !arg.startsWith("-")) {
+                    } else if ((first.equals("commands") || first.equals("trust")) && !arg.startsWith("-")) {
                         if (action == null) {
                             action = arg;
                         } else {
@@ -129,6 +129,15 @@ public record CommandLine(String command, Path workspace, String profile, String
                         throw new UsageException(Message.of("runner.cli.unknownOption", arg));
                     }
                 }
+            }
+        }
+        if (first.equals("trust")) {
+            if (workspace != null || profile != null || scenario != null || port != null || verbose || yes) {
+                throw new UsageException(Message.of("runner.trust.options"));
+            }
+            if (!(("import".equals(action) && names.size() == 1)
+                    || ("refresh".equals(action) && names.isEmpty()))) {
+                throw new UsageException(Message.of("runner.trust.badAction"));
             }
         }
         if (first.equals("report")) {

@@ -6,6 +6,8 @@ import com.idm.test.engine.spi.Message;
 import com.idm.test.runner.commands.ApprovalStore;
 import com.idm.test.runner.commands.CommandsCommand;
 import com.idm.test.runner.ui.UiCommand;
+import com.idm.test.runner.trust.TrustCommand;
+import com.idm.test.runner.trust.UserTrustStore;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -40,7 +42,13 @@ public final class IdmTest {
             return ExitCodes.CANNOT_START;
         }
         try {
+            if (line.command().equals("run") || line.command().equals("ui") || line.command().equals("commands")) {
+                UserTrustStore.current().selectForCurrentJvm();
+            }
             return dispatch(line, out, err, locale);
+        } catch (UserTrustStore.TrustException e) {
+            err.println(Messages.render(Message.of("runner.trust.error", e.getMessage()), locale));
+            return ExitCodes.CANNOT_START;
         } catch (UsageException e) {
             err.println(Messages.render(e.detail(), locale));
             return ExitCodes.CANNOT_START;
@@ -80,6 +88,7 @@ public final class IdmTest {
                     new BufferedReader(new InputStreamReader(System.in, Charset.defaultCharset())), out, err,
                     ApprovalStore.inUserHome());
             case "report" -> ReportCommand.run(line, out, err);
+            case "trust" -> TrustCommand.run(line, out, err, locale, UserTrustStore.current());
             // CommandLine.parse accepts no other command.
             default -> throw new IllegalStateException("unhandled command " + line.command());
         };

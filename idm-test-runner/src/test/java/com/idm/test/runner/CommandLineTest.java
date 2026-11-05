@@ -39,7 +39,7 @@ class CommandLineTest {
     @DisplayName("Should reject unknown commands, unknown options and missing values")
     void testErrors() {
         assertThatThrownBy(() -> CommandLine.parse("deploy")).isInstanceOf(UsageException.class)
-                .hasMessage("unknown command 'deploy' (expected init, validate, run, ui, commands or report)");
+                .hasMessage("unknown command 'deploy' (expected init, validate, run, ui, commands, trust or report)");
         assertThatThrownBy(() -> CommandLine.parse("run", "--colour")).isInstanceOf(UsageException.class)
                 .hasMessage("unknown option '--colour'");
         assertThatThrownBy(() -> CommandLine.parse("run", "--profile")).isInstanceOf(UsageException.class)
@@ -122,6 +122,20 @@ class CommandLineTest {
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> CommandLine.parse("run", "--yes"))
                 .isInstanceOf(UsageException.class);
         org.assertj.core.api.Assertions.assertThat(CommandLine.parse("run", "--profile", "lab").names()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("Should parse trust import with a certificate path containing spaces and trust refresh")
+    void testTrust() {
+        CommandLine imported = CommandLine.parse("trust", "import", "/tmp/lab ca.pem");
+        assertThat(imported.command()).isEqualTo("trust");
+        assertThat(imported.action()).isEqualTo("import");
+        assertThat(imported.names()).containsExactly("/tmp/lab ca.pem");
+        assertThat(CommandLine.parse("trust", "refresh").action()).isEqualTo("refresh");
+        assertThatThrownBy(() -> CommandLine.parse("trust", "import"))
+                .isInstanceOf(UsageException.class);
+        assertThatThrownBy(() -> CommandLine.parse("trust", "refresh", "extra"))
+                .isInstanceOf(UsageException.class);
     }
 
     @Test

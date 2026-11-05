@@ -77,6 +77,20 @@ database, put its driver jar in either:
 By default `idmtest` uses the bundled `runtime/`. To use a different Java 25 or newer, set
 `IDM_TEST_JAVA_HOME` to its folder (the one that contains `bin/java` and `release`).
 
+## Trust internal TLS certificates
+
+Import the issuing CA certificate for an internal LDAPS or HTTPS service once:
+
+```
+idmtest trust import /path/to/lab-ca.pem
+```
+
+The user's store is `~/.idmtest/truststore.p12`. The command copies the current Java runtime's
+public CAs into that store and adds the certificate. `idmtest ui` and `idmtest run` load it
+automatically. After updating the bundled runtime or changing `IDM_TEST_JAVA_HOME`, run
+`idmtest trust refresh` to update the public CAs while keeping imported certificates.
+An explicit JVM `javax.net.ssl.trustStore` setting takes precedence.
+
 ## Licences
 
 See `LICENSE-THIRD-PARTY` for the software included in this distribution and its licences.

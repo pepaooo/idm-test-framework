@@ -85,6 +85,31 @@ java -jar idm-test-runner-<version>.jar run --profile lab
 
 To give the jar extra JDBC drivers, add `-Dloader.path=<folder with jars>` before `-jar`.
 
+### Trust internal LDAPS and HTTPS certificates
+
+Import the issuing CA certificate once, outside any workspace:
+
+```bash
+idmtest trust import /path/to/lab-ca.pem
+```
+
+`idmtest` stores it with a copy of the current Java runtime's public CAs at
+`~/.idmtest/truststore.p12`. Every subsequent `idmtest run` and `idmtest ui` uses this
+per-user store automatically. Import another CA with the same command. A PEM file containing
+multiple certificates imports each one; DER certificates also work. The command prints each
+certificate's subject and SHA-256 fingerprint.
+
+After replacing the bundled Java runtime or changing `IDM_TEST_JAVA_HOME`, refresh the public
+CAs while preserving certificates you imported:
+
+```bash
+idmtest trust refresh
+```
+
+An explicit JVM `javax.net.ssl.trustStore` property takes precedence over this automatic
+selection. If the per-user store is corrupt or unreadable, `idmtest` stops with recovery
+instructions rather than connecting with different trust settings.
+
 ## Create a workspace
 
 A workspace is the folder that holds your scenarios, settings and results. Create one:

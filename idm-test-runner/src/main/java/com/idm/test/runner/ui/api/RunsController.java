@@ -1,13 +1,20 @@
 package com.idm.test.runner.ui.api;
 
+import com.idm.test.engine.result.PdfReportWriter;
+import com.idm.test.engine.result.RunFolder;
 import com.idm.test.engine.spi.Message;
+import com.idm.test.runner.IdmTest;
 import com.idm.test.runner.ui.LastRuns;
 import com.idm.test.runner.ui.RunSessions;
 import com.idm.test.runner.ui.UiSession;
 import com.idm.test.runner.ui.WorkspaceFiles;
 import com.idm.test.wiring.DirectoryScenarioSource;
 import jakarta.annotation.PreDestroy;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.CacheControl;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -56,10 +63,14 @@ import java.util.regex.Pattern;
  *       {@code runFinished} (the outcome without the folder, with {@code reportUrl}).</li>
  *   <li>{@code POST /api/runs/current/stop} stops the active run at once (202 {@code {runId}}); 409
  *       {@code ui.run.none} when no run is active — a conflict with the workbench's state, like busy.</li>
- *   <li>{@code GET /api/runs/history?scenario=} the newest 10 runs of {@code reports/}, or of one
- *       scenario, as {@code {runId, at, profile, result}}.</li>
+ *   <li>{@code GET /api/runs/history?scenario=} the newest 200 runs of {@code reports/} (a run whose
+ *       results file cannot be read has a null {@code result}), or the newest 10 of one scenario (unreadable
+ *       ones left out), as {@code {runId, at, profile, result}}.</li>
  *   <li>{@code GET /reports/<runId>/report.html} a run's report; 404 unless {@code runId} is a run id and
  *       the file's real location is in the workspace's {@code reports/<runId>/}.</li>
+ *   <li>{@code GET /reports/<runId>/report.pdf?kind=summary|detailed} the run's PDF, built in memory on
+ *       request and never stored; 404 as for the HTML report or when {@code results.json} is unreadable,
+ *       409 while that run is active, 400 for another {@code kind}.</li>
  * </ul>
  * Paths follow {@link WorkspaceFiles}'s rules (400 {@code ui.file.badPath}). GETs only read.
  */
@@ -67,9 +78,12 @@ import java.util.regex.Pattern;
 class RunsController {
 
     private static final int HISTORY = 10;
+    private static final int HISTORY_ALL = 200;
     /** A run folder's name ({@code yyyyMMdd-HHmmss-<profile>}, maybe {@code -<n>}); the profile as runs accept it. */
     private static final Pattern RUN_ID = Pattern.compile("\\d{8}-\\d{6}-[A-Za-z0-9_.-]+");
     private static final String REPORT = "report" + ".html";
+    private static final String PDF = "report" + ".pdf";
+    private static final Logger LOG = LoggerFactory.getLogger(RunsController.class);
 
     private final UiSession session;
     private final RunSessions runs;
@@ -129,17 +143,13 @@ class RunsController {
     List<LastRuns.HistoryEntry> history(@RequestParam(required = false) String scenario) {
         Path workspace = workspace();
         String name = scenario == null || scenario.isBlank() ? null : scenarioName(workspace, scenario);
-        return LastRuns.history(workspace, name, HISTORY);
+        return LastRuns.history(workspace, name, name == null ? HISTORY_ALL : HISTORY);
     }
 
     @GetMapping("/reports/{runId}/" + REPORT)
     ResponseEntity<byte[]> report(@PathVariable String runId) {
-        Path workspace = session.workspace();
-        if (workspace == null || !RUN_ID.matcher(runId).matches() || runId.contains("..")) {
-            throw notFound();
-        }
+        Path folder = runFolder(runId);
         try {
-            Path folder = workspace.resolve("reports").toRealPath().resolve(runId);
             Path file = folder.resolve(REPORT).toRealPath();
             if (!file.startsWith(folder) || !Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)) {
                 throw notFound();
@@ -152,6 +162,60 @@ class RunsController {
                     .body(Files.readAllBytes(file));
         } catch (IOException e) {
             // missing, unreadable (access denied), a loop of links: no report to serve
+            throw notFound();
+        }
+    }
+
+    @GetMapping("/reports/{runId}/" + PDF)
+    ResponseEntity<byte[]> pdf(@PathVariable String runId, @RequestParam(defaultValue = "summary") String kind) {
+        Path folder = runFolder(runId);
+        PdfReportWriter.Kind parsed;
+        try {
+            parsed = PdfReportWriter.Kind.parse(kind);
+        } catch (IllegalArgumentException e) {
+            throw ApiError.badRequest("runner.ui.request.invalid", "kind");
+        }
+        if (runId.equals(runs.activeRunId())) {
+            throw new ApiError(HttpStatus.CONFLICT, Message.of("runner.ui.run.busy"));
+        }
+        byte[] bytes;
+        try {
+            RunFolder read = RunFolder.read(folder, null, session.locale());
+            bytes = PdfReportWriter.render(read, parsed, "idmtest " + IdmTest.version());
+        } catch (RunFolder.Unreadable e) {
+            throw notFound();
+        } catch (RuntimeException e) {
+            // Nothing of the exception goes out or into the log: its message may carry run data.
+            LOG.warn("PDF report of run {} could not be rendered", runId);
+            throw new ApiError(HttpStatus.INTERNAL_SERVER_ERROR, Message.of("runner.ui.unexpected", e.getClass().getSimpleName()));
+        }
+        return ResponseEntity.ok()
+                .contentType(MediaType.APPLICATION_PDF)
+                .cacheControl(CacheControl.noStore())
+                .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.attachment()
+                        .filename(PdfReportWriter.fileName(runId, parsed)).build().toString())
+                .body(bytes);
+    }
+
+    /**
+     * The real folder {@code reports/<runId>/} of the open workspace.
+     *
+     * @throws ApiError 404 unless {@code runId} is a run id and the folder's real location is in the
+     *                  workspace's {@code reports/}
+     */
+    private Path runFolder(String runId) {
+        Path workspace = session.workspace();
+        if (workspace == null || !RUN_ID.matcher(runId).matches() || runId.contains("..")) {
+            throw notFound();
+        }
+        try {
+            Path reports = workspace.resolve("reports").toRealPath();
+            Path folder = reports.resolve(runId).toRealPath();
+            if (!folder.equals(reports.resolve(runId))) {
+                throw notFound();
+            }
+            return folder;
+        } catch (IOException e) {
             throw notFound();
         }
     }

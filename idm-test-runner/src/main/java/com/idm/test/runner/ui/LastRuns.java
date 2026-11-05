@@ -28,7 +28,9 @@ import java.util.regex.Pattern;
 
 /**
  * Reads what a workspace's runs left in {@code reports/<run-id>/results.json}. Never throws: a
- * folder or file that cannot be read, or is not a results file, is passed over.
+ * folder or file that cannot be read, or is not a results file, is passed over (except in the
+ * workspace-wide {@link #history}, which lists it without a result). A run folder with no
+ * {@code results.json} at all is never listed: runs are found by their results files.
  */
 public final class LastRuns {
 
@@ -113,7 +115,8 @@ public final class LastRuns {
      *
      * @param at      as {@link LastRun#at}
      * @param profile as {@link LastRun#profile}
-     * @param result  for a scenario's history, its outcome in that run; for the workspace's, the run's
+     * @param result  null only in the workspace-wide history, for a run whose {@code results.json} cannot be
+     *                read; for a scenario's history, its outcome in that run; for the workspace's, the run's
      *                worst: {@code setup} when a scenario had a setup problem, else {@code finding} when
      *                one had a finding, else {@code stopped} when one was stopped, else {@code passed}
      */
@@ -122,7 +125,8 @@ public final class LastRuns {
 
     /**
      * The newest {@code limit} runs, newest first: every run, or only those that ran {@code scenario}
-     * (a source name, the path under {@code scenarios/}) when it is not null.
+     * (a source name, the path under {@code scenarios/}) when it is not null. A run whose results file
+     * cannot be read is listed with a null result when {@code scenario} is null, and passed over otherwise.
      */
     public static List<HistoryEntry> history(Path workspace, String scenario, int limit) {
         List<HistoryEntry> entries = new ArrayList<>();
@@ -131,11 +135,13 @@ public final class LastRuns {
                 break;
             }
             Optional<List<ScenarioOutcome>> scenarios = scenarios(file);
-            if (scenarios.isEmpty()) {
+            if (scenarios.isEmpty() && scenario != null) {
                 continue;
             }
             String result;
-            if (scenario == null) {
+            if (scenarios.isEmpty()) {
+                result = null;
+            } else if (scenario == null) {
                 Set<Outcome> outcomes = EnumSet.noneOf(Outcome.class);
                 scenarios.get().forEach(s -> outcomes.add(s.outcome()));
                 result = (outcomes.contains(Outcome.SETUP) ? Outcome.SETUP

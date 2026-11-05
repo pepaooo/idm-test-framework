@@ -23,11 +23,16 @@ public final class TrustCommand {
 
     public static int run(CommandLine line, PrintStream out, PrintStream err, Locale locale, UserTrustStore store) {
         return run(line, new BufferedReader(new InputStreamReader(System.in, Charset.defaultCharset())), out, err,
-                locale, store, new ServerCertificateFetcher()::fetch);
+                locale, store, new ServerCertificateFetcher()::fetch, System.console() != null);
     }
 
     public static int run(CommandLine line, BufferedReader in, PrintStream out, PrintStream err, Locale locale,
                           UserTrustStore store, Function<ServerEndpoint, X509Certificate> fetcher) {
+        return run(line, in, out, err, locale, store, fetcher, true);
+    }
+
+    static int run(CommandLine line, BufferedReader in, PrintStream out, PrintStream err, Locale locale,
+                   UserTrustStore store, Function<ServerEndpoint, X509Certificate> fetcher, boolean interactive) {
         try {
             if ("import".equals(line.action())) {
                 UserTrustStore.ImportResult result = store.importCertificates(Path.of(line.names().getFirst()));
@@ -37,6 +42,7 @@ public final class TrustCommand {
                 }
                 out.println(Messages.render(Message.of("runner.trust.path", store.path()), locale));
             } else if ("import-server".equals(line.action())) {
+                if (!interactive) throw new UserTrustStore.TrustException("import-server requires an interactive terminal");
                 ServerEndpoint endpoint = ServerEndpoint.parse(line.names().getFirst());
                 X509Certificate leaf = fetcher.apply(endpoint);
                 out.println(Messages.render(Message.of("runner.trust.serverDetails", endpoint,

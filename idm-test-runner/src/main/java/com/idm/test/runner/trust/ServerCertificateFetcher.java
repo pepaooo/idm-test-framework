@@ -9,10 +9,15 @@ import javax.net.ssl.X509TrustManager;
 import java.net.InetSocketAddress;
 import java.net.InetAddress;
 import java.net.Socket;
+import java.net.SocketTimeoutException;
 import java.security.GeneralSecurityException;
 import java.security.cert.Certificate;
 import java.security.cert.X509Certificate;
 import java.util.Collection;
+import java.util.concurrent.Callable;
+import java.util.concurrent.FutureTask;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import javax.naming.ldap.LdapName;
 import javax.naming.ldap.Rdn;
 
@@ -21,21 +26,33 @@ public final class ServerCertificateFetcher {
     private static final int TIMEOUT_MILLIS = 5000;
 
     public X509Certificate fetch(ServerEndpoint endpoint) {
+        long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(TIMEOUT_MILLIS);
         try {
             SSLContext context = SSLContext.getInstance("TLS");
             context.init(null, new TrustManager[]{new CaptureTrustManager()}, null);
+            InetAddress address = resolveWithDeadline(() -> InetAddress.getByName(endpoint.host()), deadline);
             try (Socket tcp = new Socket()) {
-                tcp.connect(new InetSocketAddress(endpoint.host(), endpoint.port()), TIMEOUT_MILLIS);
-                tcp.setSoTimeout(TIMEOUT_MILLIS);
+                tcp.connect(new InetSocketAddress(address, endpoint.port()), remainingMillis(deadline));
+                tcp.setSoTimeout(remainingMillis(deadline));
                 try (SSLSocket tls = (SSLSocket) context.getSocketFactory()
                         .createSocket(tcp, endpoint.host(), endpoint.port(), true)) {
-                    tls.setSoTimeout(TIMEOUT_MILLIS);
+                    tls.setSoTimeout(remainingMillis(deadline));
                     if (!endpoint.host().contains(":") && !endpoint.host().matches("[0-9.]+")) {
                         SSLParameters params = tls.getSSLParameters();
                         params.setServerNames(java.util.List.of(new SNIHostName(endpoint.host())));
                         tls.setSSLParameters(params);
                     }
-                    tls.startHandshake();
+                    Thread watchdog = Thread.ofVirtual().start(() -> {
+                        try {
+                            long wait = deadline - System.nanoTime();
+                            if (wait > 0) TimeUnit.NANOSECONDS.sleep(wait);
+                            tcp.close();
+                        }
+                        catch (InterruptedException ignored) { }
+                        catch (java.io.IOException ignored) { }
+                    });
+                    try { tls.startHandshake(); }
+                    finally { watchdog.interrupt(); }
                     Certificate[] chain = tls.getSession().getPeerCertificates();
                     if (chain.length == 0 || !(chain[0] instanceof X509Certificate leaf)) {
                         throw new UserTrustStore.TrustException("server did not present an X.509 certificate");
@@ -58,6 +75,24 @@ public final class ServerCertificateFetcher {
         }
     }
 
+    static InetAddress resolveWithDeadline(Callable<InetAddress> lookup, long deadline) throws Exception {
+        FutureTask<InetAddress> task = new FutureTask<>(lookup);
+        Thread.ofVirtual().start(task);
+        try {
+            long remaining = deadline - System.nanoTime();
+            if (remaining <= 0) throw new TimeoutException("TLS connection deadline exceeded during name resolution");
+            return task.get(remaining, TimeUnit.NANOSECONDS);
+        } finally {
+            task.cancel(true);
+        }
+    }
+
+    private static int remainingMillis(long deadline) throws SocketTimeoutException {
+        long remaining = deadline - System.nanoTime();
+        if (remaining <= 0) throw new SocketTimeoutException("TLS connection deadline exceeded");
+        return (int) Math.max(1, TimeUnit.NANOSECONDS.toMillis(remaining));
+    }
+
     private static boolean matchesHost(X509Certificate leaf, String host) throws Exception {
         boolean ip = host.contains(":") || host.matches("[0-9.]+");
         Collection<java.util.List<?>> names = leaf.getSubjectAlternativeNames();
@@ -78,15 +113,13 @@ public final class ServerCertificateFetcher {
         return false;
     }
 
-    private static boolean dnsMatches(String host, String pattern) {
+    static boolean dnsMatches(String host, String pattern) {
         String name = java.net.IDN.toASCII(host).toLowerCase(java.util.Locale.ROOT);
-        String expected = java.net.IDN.toASCII(pattern.replace("*.", "wildcard.")).toLowerCase(java.util.Locale.ROOT)
-                .replace("wildcard.", "*.");
-        if (expected.startsWith("*.")) {
-            String suffix = expected.substring(1);
+        if (pattern.startsWith("*.")) {
+            String suffix = "." + java.net.IDN.toASCII(pattern.substring(2)).toLowerCase(java.util.Locale.ROOT);
             return name.endsWith(suffix) && name.substring(0, name.length() - suffix.length()).indexOf('.') < 0;
         }
-        return name.equals(expected);
+        return name.equals(java.net.IDN.toASCII(pattern).toLowerCase(java.util.Locale.ROOT));
     }
 
     private static final class CaptureTrustManager implements X509TrustManager {

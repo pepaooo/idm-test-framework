@@ -101,6 +101,7 @@ idmtest trust import-server lab.example:636
 
 It connects with direct TLS, displays the presented leaf certificate's subject, issuer,
 validity, alternative names, and SHA-256 fingerprint, then asks before importing it.
+Run it in an interactive terminal; piping `yes` into the command cannot approve an import.
 This first connection does **not** authenticate the server. Compare the fingerprint with
 one obtained through a trusted channel when possible. A confirmation alone cannot detect
 an intercepted first connection. The command checks that the certificate is valid and

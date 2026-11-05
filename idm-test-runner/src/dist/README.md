@@ -92,6 +92,7 @@ idmtest trust import-server lab.example:636
 ```
 
 The command shows the certificate and SHA-256 fingerprint, then asks for explicit confirmation.
+Run it in an interactive terminal; redirected input cannot approve the import.
 It cannot authenticate the server from a hostname and port alone; compare the fingerprint
 with a trusted source when possible. It accepts direct TLS (HTTPS or LDAPS), not STARTTLS.
 After a server renews its certificate, repeat the command. Older imports remain in the store.

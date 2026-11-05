@@ -50,6 +50,22 @@ class TrustCommandTest {
     }
 
     @Test
+    void redirectedYesCannotImportServerCertificate() throws Exception {
+        UserTrustStore store = new UserTrustStore(temp.resolve("redirected-home"), fakeJavaHome(root(0)));
+        ByteArrayOutputStream err = new ByteArrayOutputStream();
+        int code = TrustCommand.run(CommandLine.parse("trust", "import-server", "lab.example:443"),
+                new BufferedReader(new StringReader("yes\n")), new PrintStream(new ByteArrayOutputStream()),
+                new PrintStream(err), Locale.ENGLISH, store, endpoint -> rootUnchecked(), false);
+        assertThat(code).isEqualTo(ExitCodes.CANNOT_START);
+        assertThat(store.exists()).isFalse();
+        assertThat(err.toString()).contains("terminal");
+    }
+
+    private static X509Certificate rootUnchecked() {
+        try { return root(1); } catch (Exception e) { throw new AssertionError(e); }
+    }
+
+    @Test
     void importReportsCertificateAndRefreshSucceeds() throws Exception {
         X509Certificate cert = root(1);
         Path input = temp.resolve("lab.der");

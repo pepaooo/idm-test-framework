@@ -20,6 +20,14 @@ class UserTrustStoreTest {
     @TempDir Path temp;
 
     @Test
+    void importsInMemoryCertificateWithoutTemporaryFile() throws Exception {
+        List<X509Certificate> roots = roots();
+        UserTrustStore store = new UserTrustStore(temp.resolve("memory-home"), javaHome(roots.get(0)));
+        assertThat(store.importCertificates(List.of(roots.get(1))).imported()).isEqualTo(1);
+        assertThat(entries(store.path())).hasSize(2);
+    }
+
+    @Test
     void firstImportKeepsPublicRootsAndDeduplicatesByFingerprint() throws Exception {
         List<X509Certificate> roots = roots();
         Path javaHome = javaHome(roots.get(0));

@@ -72,7 +72,15 @@ public final class UserTrustStore {
     }
 
     public ImportResult importCertificates(Path file) {
-        List<X509Certificate> incoming = readCertificates(file);
+        return importCertificates(readCertificates(file), file.toString());
+    }
+
+    public ImportResult importCertificates(List<X509Certificate> incoming) {
+        if (incoming == null || incoming.isEmpty()) throw new TrustException("no X.509 certificates supplied");
+        return importCertificates(incoming, "server");
+    }
+
+    private ImportResult importCertificates(List<X509Certificate> incoming, String source) {
         boolean hadStore = exists();
         KeyStore store = hadStore ? readStore(path) : readBase();
         List<CertificateInfo> infos = new ArrayList<>();
@@ -87,7 +95,7 @@ public final class UserTrustStore {
                     if (existingAlias != null) store.deleteEntry(existingAlias);
                     store.setCertificateEntry(USER_PREFIX + fingerprint, cert);
                 } catch (GeneralSecurityException e) {
-                    throw new TrustException("cannot add certificate from " + file + ": " + e.getMessage(), e);
+                    throw new TrustException("cannot add certificate from " + source + ": " + e.getMessage(), e);
                 }
                 added++;
             }
@@ -182,7 +190,7 @@ public final class UserTrustStore {
         }
     }
 
-    private static String fingerprint(X509Certificate cert) {
+    public static String fingerprint(X509Certificate cert) {
         try {
             return HexFormat.of().withUpperCase().formatHex(MessageDigest.getInstance("SHA-256").digest(cert.getEncoded()));
         } catch (GeneralSecurityException e) {

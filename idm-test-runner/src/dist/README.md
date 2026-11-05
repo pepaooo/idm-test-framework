@@ -85,6 +85,17 @@ Import the issuing CA certificate for an internal LDAPS or HTTPS service once:
 idmtest trust import /path/to/lab-ca.pem
 ```
 
+If you only know the server hostname and port, retrieve its leaf certificate interactively:
+
+```
+idmtest trust import-server lab.example:636
+```
+
+The command shows the certificate and SHA-256 fingerprint, then asks for explicit confirmation.
+It cannot authenticate the server from a hostname and port alone; compare the fingerprint
+with a trusted source when possible. It accepts direct TLS (HTTPS or LDAPS), not STARTTLS.
+After a server renews its certificate, repeat the command. Older imports remain in the store.
+
 The user's store is `~/.idmtest/truststore.p12`. The command copies the current Java runtime's
 public CAs into that store and adds the certificate. `idmtest ui` and `idmtest run` load it
 automatically. After updating the bundled runtime or changing `IDM_TEST_JAVA_HOME`, run

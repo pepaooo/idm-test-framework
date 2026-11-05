@@ -6,7 +6,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.ByteArrayOutputStream;
+import java.io.BufferedReader;
 import java.io.PrintStream;
+import java.io.StringReader;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.KeyStore;
@@ -18,6 +20,34 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class TrustCommandTest {
     @TempDir Path temp;
+
+    @Test
+    void importServerRequiresExplicitConfirmation() throws Exception {
+        X509Certificate cert = root(1);
+        for (String answer : new String[]{"", "no\n", "\n"}) {
+            UserTrustStore store = new UserTrustStore(temp.resolve("home-" + answer.length()), fakeJavaHome(root(0)));
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            int code = TrustCommand.run(CommandLine.parse("trust", "import-server", "lab.example:443"),
+                    new BufferedReader(new StringReader(answer)), new PrintStream(out),
+                    new PrintStream(new ByteArrayOutputStream()), Locale.ENGLISH, store, endpoint -> cert);
+            assertThat(code).isEqualTo(ExitCodes.OK);
+            assertThat(store.exists()).isFalse();
+            assertThat(out.toString()).contains("SHA-256", "Trust this certificate");
+        }
+    }
+
+    @Test
+    void importServerYesWritesLeafToUserStore() throws Exception {
+        X509Certificate cert = root(1);
+        UserTrustStore store = new UserTrustStore(temp.resolve("approved-home"), fakeJavaHome(root(0)));
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        int code = TrustCommand.run(CommandLine.parse("trust", "import-server", "lab.example:443"),
+                new BufferedReader(new StringReader("yes\n")), new PrintStream(out),
+                new PrintStream(new ByteArrayOutputStream()), Locale.ENGLISH, store, endpoint -> cert);
+        assertThat(code).isEqualTo(ExitCodes.OK);
+        assertThat(store.exists()).isTrue();
+        assertThat(out.toString()).contains("lab.example:443", "SHA-256", cert.getSubjectX500Principal().getName());
+    }
 
     @Test
     void importReportsCertificateAndRefreshSucceeds() throws Exception {

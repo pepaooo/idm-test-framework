@@ -93,6 +93,22 @@ Import the issuing CA certificate once, outside any workspace:
 idmtest trust import /path/to/lab-ca.pem
 ```
 
+If you have only the server hostname and port, use the interactive command instead:
+
+```bash
+idmtest trust import-server lab.example:636
+```
+
+It connects with direct TLS, displays the presented leaf certificate's subject, issuer,
+validity, alternative names, and SHA-256 fingerprint, then asks before importing it.
+This first connection does **not** authenticate the server. Compare the fingerprint with
+one obtained through a trusted channel when possible. A confirmation alone cannot detect
+an intercepted first connection. The command checks that the certificate is valid and
+matches the hostname before offering to import it. It does not support STARTTLS or proxies.
+If the leaf is renewed, repeat the command; older imported certificates stay trusted.
+Import the issuing CA with `trust import` when you have its certificate and want trust to
+survive leaf renewal.
+
 `idmtest` stores it with a copy of the current Java runtime's public CAs at
 `~/.idmtest/truststore.p12`. Every subsequent `idmtest run` and `idmtest ui` uses this
 per-user store automatically. Import another CA with the same command. A PEM file containing

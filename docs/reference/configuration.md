@@ -587,6 +587,11 @@ In an IDE, add the same three `-Djavax.net.ssl.*` options to the run configurati
 For the packaged `idmtest` program, import an internal CA with
 `idmtest trust import /path/to/ca.pem`. It creates a per-user store based on the active
 Java runtime's public CAs, and `idmtest run` and `idmtest ui` load it automatically.
+With only a direct TLS server hostname and port, `idmtest trust import-server lab.example:636`
+retrieves and displays its leaf certificate, then asks for confirmation before trusting it.
+That retrieval does not authenticate the server; compare the displayed SHA-256 fingerprint
+with a trusted source when possible. Renewed leaf certificates must be imported again,
+and old imports remain in the store.
 Use `idmtest trust refresh` after changing that runtime. An explicit JVM truststore
 property still takes precedence. See [the runner guide](../guides/runner.md#trust-internal-ldaps-and-https-certificates).
 

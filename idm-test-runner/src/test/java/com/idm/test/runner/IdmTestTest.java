@@ -35,6 +35,7 @@ class IdmTestTest {
     void testHelp() {
         assertThat(run("--help")).isEqualTo(ExitCodes.OK);
         assertThat(outBytes.toString(StandardCharsets.UTF_8)).contains("init", "validate", "run", "ui", "trust import",
+                "trust import-server <host:port>",
                 "commands list|approve|revoke", "the profile's registered commands", "--yes");
     }
 

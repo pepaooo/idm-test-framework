@@ -305,10 +305,36 @@ Every run writes its own folder, `reports/<run-id>/`, where `<run-id>` is `yyyyM
 |---|---|
 | `report.html` | the report: open it in a browser |
 | `results.json` | the structured results |
+| `run.json` | who ran it, when, where and with which language: what `idmtest report` reads for the PDF header |
 | `run.log` | the framework log, with secret values masked, and the JDBC driver jars that were loaded |
 
 `results.json` and `report.html` are rewritten after each scenario, so a run that stops half-way still
 leaves a readable report of the scenarios that ran.
+
+## PDF evidence reports
+
+A run writes no PDF. Make one from a finished run folder when you need a file to attach to a ticket or
+hand to an auditor:
+
+```
+idmtest report reports/20261105-101500-lab --pdf summary
+idmtest report reports/20261105-101500-lab --pdf detailed --out evidence.pdf --locale es
+```
+
+| Option | Meaning |
+|---|---|
+| `<run-folder>` | a `reports/<run-id>/` folder that has a `results.json` |
+| `--pdf summary\|detailed` | required. `summary` is the header, the totals and one line per scenario. `detailed` adds every step, its evidence (HTTP and SOAP exchanges, SQL and rows, LDAP entries) and the cleanup, each scenario starting on a new page |
+| `--out <file>` | where to write it. The default is `<run-folder>/<run-id>-summary.pdf` or `<run-id>-detailed.pdf` |
+| `--locale en\|es` | the language of the PDF. Without it the run's own language (from `run.json`) is used, else English |
+
+`report` reads no settings or secrets and contacts nothing. Values are masked exactly as in
+`report.html`. A run from before `run.json` existed still works: the header fields it lacks read "Not
+recorded". It overwrites a file only if that file is a PDF `idmtest` wrote earlier; any other existing
+file is left alone and named in the error. The PDF is written readable by its owner only. Exit code 0
+means written; a missing or unreadable `results.json`, or an unwritable target, is a failure, and bad
+arguments are a usage error. `reports/` is already in the `.gitignore` that `init` writes, so PDFs
+written there stay out of Git.
 
 ## Other databases
 

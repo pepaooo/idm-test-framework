@@ -257,3 +257,29 @@ not tested.
 - The run history lists unreadable runs instead of hiding them, and is capped at no fewer than 200
   (§5.1).
 - The CLI exit code for a missing `results.json` is left to the builder, within `ExitCodes` (§5.2).
+
+## 11. As built
+
+Where the build differs from, or adds to, the design above:
+
+- **`Message.revived`.** A message argument that is itself a message is written to `results.json` as a
+  map of `key` and `args`. `Message.revived(List)` turns it back into a `Message` when the records are
+  read, and `StepResult`, `CleanupResult` and `ScenarioResult` apply it to their message arguments, so
+  a nested message re-renders in the PDF's language (§4).
+- **Emoji.** The design had a character the font lacks become `?`. DejaVu Sans does have emoji such as
+  U+1F600, so in proportional text an emoji renders as itself. `?` remains for characters neither font
+  has (CJK, for example) and for any non-ASCII-Latin character in DejaVu Sans Mono (evidence blocks).
+- **SQL evidence is already capped.** `Evidence.MAX_ROWS` (20) cuts a SQL result when the evidence is
+  recorded, so a result in `results.json` never has the 2,000 rows that Review focus 2 imagines. The
+  block continuation across pages is still implemented and tested for long blocks (a large HTTP body).
+- **409 reuses `runner.ui.run.busy`.** The PDF endpoint answers a run in progress with the existing
+  message and no new key.
+- **New key `ui.runs.close`** (en and es) labels the Runs dialog's close button; the other `ui.runs.*`
+  and `ui.run.pdf*` keys are as designed.
+- **`PdfReportWriter.Kind.parse` is public.** The CLI and the endpoint share it and it throws
+  `IllegalArgumentException` for anything but `summary` or `detailed`.
+- **Containment of the inputs.** The PDF endpoint checks that `results.json` and `run.json` are
+  regular files inside the run folder (real path, no symlinks) as it does for the folder itself, not
+  only the run id.
+- **Owner-only files.** The CLI writes through a temp file beside the target (created with mode 0600 on
+  POSIX) and moves it into place, so a PDF written by `idmtest report` is readable only by its owner.

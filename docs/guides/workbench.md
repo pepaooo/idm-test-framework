@@ -479,6 +479,21 @@ behind the session cookie). It is the same report `idmtest run` writes, in
 `reports/<run-id>/report.html`: the file to share. The run panel and the finding panel are the
 in-app view of it.
 
+### Download a PDF
+
+Next to **Open full report** in the run panel's end line, **Download PDF** offers **Summary** and
+**Detailed**. They are the PDFs `idmtest report` makes (see [the runner guide](runner.md#pdf-evidence-reports)),
+built on request and streamed to your browser: nothing is written into `reports/<run-id>/`. The PDF is
+in the run's own language, or the workbench's for a run from before `run.json` existed. While a run is
+active there is no menu, and asking for its PDF answers 409.
+
+### Runs: every earlier run
+
+**Runs** in the top bar opens a list of every run in the workspace's `reports/`, newest first (up to
+200), with its id, date, profile and result (passed, findings or setup problems), **Open report** and
+**Download PDF**. Runs where everything passed and runs from earlier sessions are here too. A run
+whose `results.json` cannot be read is listed with "The results cannot be read" and has no download.
+
 ## Look and language
 
 - **Light and dark**: the workbench follows the operating system's setting until you use the switch in

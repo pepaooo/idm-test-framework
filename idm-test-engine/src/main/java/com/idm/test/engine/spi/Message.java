@@ -26,6 +26,31 @@ public record Message(String key, List<Object> args) {
         return new Message(key, list);
     }
 
+    /**
+     * {@code args} as they were before being written as JSON: a nested message reads back as a map of
+     * its {@code key} and {@code args}, and is turned into a {@link Message} again. Null stays null.
+     */
+    public static List<Object> revived(List<Object> args) {
+        if (args == null) {
+            return null;
+        }
+        List<Object> list = new ArrayList<>(args.size());
+        for (Object arg : args) {
+            list.add(revive(arg));
+        }
+        return list;
+    }
+
+    private static Object revive(Object value) {
+        if (value instanceof java.util.Map<?, ?> map && map.size() == 2 && map.get("key") instanceof String key
+                && map.get("args") instanceof List<?> nested) {
+            @SuppressWarnings("unchecked")
+            List<Object> inner = (List<Object>) nested;
+            return new Message(key, revived(inner));
+        }
+        return value;
+    }
+
     private static Object plain(Object value) {
         return value == null || value instanceof String || value instanceof Number
                 || value instanceof Boolean || value instanceof Message ? value : String.valueOf(value);

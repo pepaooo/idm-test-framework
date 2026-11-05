@@ -44,12 +44,17 @@ public final class HtmlReportWriter {
     }
 
     public static void write(RunInfo run, List<ScenarioResult> results, Path target) {
+        write(run, results, Instant.now(), target);
+    }
+
+    /** As {@link #write(RunInfo, List, Path)}, measuring the run's duration up to {@code now}. */
+    public static void write(RunInfo run, List<ScenarioResult> results, Instant now, Path target) {
         try {
             Path parent = target.getParent();
             if (parent != null) {
                 Files.createDirectories(parent);
             }
-            Files.writeString(target, render(run, results, Instant.now()), StandardCharsets.UTF_8);
+            Files.writeString(target, render(run, results, now), StandardCharsets.UTF_8);
         } catch (IOException e) {
             throw new UncheckedIOException("Could not write the report to " + target, e);
         }

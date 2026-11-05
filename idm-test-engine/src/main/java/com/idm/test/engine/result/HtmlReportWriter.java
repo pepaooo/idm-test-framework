@@ -38,7 +38,7 @@ public final class HtmlReportWriter {
         return Messages.render(Message.of(key, args), locale);
     }
 
-    private static String started(RunInfo run) {
+    static String started(RunInfo run) {
         return DateTimeFormatter.ofPattern(label("report.datePattern", run.locale()), run.locale())
                 .withZone(ZoneId.systemDefault()).format(run.startedAt());
     }
@@ -60,14 +60,25 @@ public final class HtmlReportWriter {
         }
     }
 
+    /** The counts both the HTML and the PDF report show, counted once. */
+    record Totals(long scenarios, long passed, long failed, long findings, long setup, long stopped,
+                  long durationMillis) {
+
+        static Totals of(List<ScenarioResult> results) {
+            long passed = results.stream().filter(ScenarioResult::success).count();
+            // A scenario only the stop failed counts as stopped; one whose step failed first, by that kind.
+            long stopped = results.stream().filter(ScenarioResult::stoppedOnly).count();
+            long findings = results.stream()
+                    .filter(r -> !r.stoppedOnly() && r.failureKind() == FailureKind.FINDING).count();
+            long setup = results.stream()
+                    .filter(r -> !r.stoppedOnly() && r.failureKind() == FailureKind.SETUP).count();
+            return new Totals(results.size(), passed, results.size() - passed, findings, setup, stopped,
+                    results.stream().mapToLong(ScenarioResult::durationMillis).sum());
+        }
+    }
+
     static String render(RunInfo run, List<ScenarioResult> results, Instant now) {
-        long passed = results.stream().filter(ScenarioResult::success).count();
-        long failed = results.size() - passed;
-        // A scenario only the stop failed counts as stopped; one whose step failed first, by that kind.
-        long stopped = results.stream().filter(ScenarioResult::stoppedOnly).count();
-        long findings = results.stream()
-                .filter(r -> !r.stoppedOnly() && r.failureKind() == FailureKind.FINDING).count();
-        long setup = results.stream().filter(r -> !r.stoppedOnly() && r.failureKind() == FailureKind.SETUP).count();
+        Totals totals = Totals.of(results);
         Locale locale = run.locale();
         String title = label("report.title", locale, run.runner());
 
@@ -103,15 +114,14 @@ public final class HtmlReportWriter {
         }
         html.append("</details>\n");
 
-        long total = results.stream().mapToLong(ScenarioResult::durationMillis).sum();
         html.append("<div class=\"tiles\">")
-                .append(tile("scenarios", label("report.tile.scenarios", locale), String.valueOf(results.size())))
-                .append(tile("passed", label("report.tile.passed", locale), String.valueOf(passed)))
-                .append(tile("failed", label("report.tile.failed", locale), String.valueOf(failed)))
-                .append(tile("findings", label("report.tile.findings", locale), String.valueOf(findings)))
-                .append(tile("setup", label("report.tile.setup", locale), String.valueOf(setup)))
-                .append(tile("stopped", label("report.tile.stopped", locale), String.valueOf(stopped)))
-                .append(tile("duration", label("report.tile.duration", locale), duration(total, locale)))
+                .append(tile("scenarios", label("report.tile.scenarios", locale), String.valueOf(totals.scenarios())))
+                .append(tile("passed", label("report.tile.passed", locale), String.valueOf(totals.passed())))
+                .append(tile("failed", label("report.tile.failed", locale), String.valueOf(totals.failed())))
+                .append(tile("findings", label("report.tile.findings", locale), String.valueOf(totals.findings())))
+                .append(tile("setup", label("report.tile.setup", locale), String.valueOf(totals.setup())))
+                .append(tile("stopped", label("report.tile.stopped", locale), String.valueOf(totals.stopped())))
+                .append(tile("duration", label("report.tile.duration", locale), duration(totals.durationMillis(), locale)))
                 .append("</div>\n");
 
         html.append("<div class=\"controls\">")

@@ -149,4 +149,39 @@ class LdapConfigurationTest {
             assertThatThrownBy(pool::getReadOnlyContext).isInstanceOf(RuntimeException.class);
         }
     }
+
+    @Test
+    @DisplayName("A pooled directory that cannot be reached reports why, not only that the pool failed")
+    void testPooledConnectionFailureShowsCause() throws Exception {
+        int closedPort;
+        try (ServerSocket socket = new ServerSocket(0)) {
+            closedPort = socket.getLocalPort();
+        }
+        LdapDirectories directories = new LdapConfiguration().ldapDirectories(directory(null),
+                directories(null, Map.of("edirectory", directory("ldap://127.0.0.1:" + closedPort))));
+
+        assertThatThrownBy(() -> directories.template("edirectory").orElseThrow().lookup(""))
+                .hasMessageNotContaining("borrow")
+                .hasMessageContaining("127.0.0.1:" + closedPort)
+                .hasMessageContaining("Connection refused");
+        directories.close();
+    }
+
+    @Test
+    @DisplayName("A pooled directory that refuses the login reports the directory's reason")
+    void testPooledBindFailureShowsCause() throws Exception {
+        try (EmbeddedLdapServer server = EmbeddedLdapServer.start(
+                "dc=test,dc=com", "cn=admin,dc=test,dc=com", "secret", 0, null)) {
+            LdapProperties pooled = directory(server.getUrl());
+            pooled.setUserDn("cn=admin,dc=test,dc=com");
+            pooled.setPassword("wrong");
+            LdapDirectories directories = new LdapConfiguration().ldapDirectories(directory(null),
+                    directories(null, Map.of("pooled", pooled)));
+
+            assertThatThrownBy(() -> directories.template("pooled").orElseThrow().lookup(""))
+                    .hasMessageNotContaining("borrow")
+                    .hasMessageContaining("49");
+            directories.close();
+        }
+    }
 }

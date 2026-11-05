@@ -6,6 +6,7 @@ import com.idm.test.core.model.OperationResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataAccessException;
+import org.springframework.jdbc.CannotGetJdbcConnectionException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
@@ -378,7 +379,19 @@ public class MultiDatabaseConnector {
             return notConfigured(databaseName);
         }
         return DatabaseProblem.of(e instanceof DataAccessException ? dataAccess : DatabaseProblem.Kind.UNEXPECTED,
-                e.getMessage());
+                detail(e));
+    }
+
+    /**
+     * The exception's text; for a connection that could not be opened, with the driver's reason,
+     * which Spring's "Failed to obtain JDBC Connection" alone does not give.
+     */
+    private static String detail(Throwable e) {
+        if (e instanceof CannotGetJdbcConnectionException && e.getCause() != null
+                && e.getCause().getMessage() != null) {
+            return e.getMessage() + ": " + e.getCause().getMessage();
+        }
+        return e.getMessage();
     }
 
     private DatabaseProblem notConfigured(String databaseName) {

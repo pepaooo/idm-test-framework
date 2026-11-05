@@ -104,7 +104,7 @@ public class LdapConfiguration {
             // Pool 1 behaviour made explicit: callers block when the pool is exhausted, and no JMX beans.
             poolConfig.setBlockWhenExhausted(true);
             poolConfig.setJmxEnabled(false);
-            PooledContextSource pool = new PooledContextSource(contextSource, poolConfig);
+            PooledContextSource pool = new CauseReportingPooledContextSource(contextSource, poolConfig);
             pool.setDirContextValidator(new DefaultDirContextValidator());
             template = new LdapTemplate(pool);
         } else {

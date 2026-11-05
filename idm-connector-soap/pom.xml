@@ -85,6 +85,8 @@
                             <wsdlFiles>
                                 <wsdlFile>idmprov-role.wsdl</wsdlFile>
                             </wsdlFiles>
+                            <!-- Classpath location: without it wsimport bakes the build machine's absolute path into RoleService -->
+                            <wsdlLocation>/idmprov-role.wsdl</wsdlLocation>
                             <wsdlDirectory>${project.basedir}/src/main/resources</wsdlDirectory>
                             <packageName>com.idm.test.connector.soap.generated.role</packageName>
                             <sourceDestDir>${project.build.directory}/generated-sources/jaxws</sourceDestDir>
@@ -104,6 +106,8 @@
                             <wsdlFiles>
                                 <wsdlFile>idmprov-resource.wsdl</wsdlFile>
                             </wsdlFiles>
+                            <!-- Classpath location: without it wsimport bakes the build machine's absolute path into ResourceService -->
+                            <wsdlLocation>/idmprov-resource.wsdl</wsdlLocation>
                             <wsdlDirectory>${project.basedir}/src/main/resources</wsdlDirectory>
                             <packageName>com.idm.test.connector.soap.generated.resource</packageName>
                             <sourceDestDir>${project.build.directory}/generated-sources/jaxws</sourceDestDir>

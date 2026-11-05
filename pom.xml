@@ -29,6 +29,7 @@
         <wiremock.version>3.10.0</wiremock.version>
         <rhino.version>1.8.0</rhino.version>
         <commons-csv.version>1.14.0</commons-csv.version>
+        <pdfbox.version>3.0.8</pdfbox.version>
     </properties>
 
     <modules>
@@ -141,6 +142,13 @@
                 <groupId>org.apache.commons</groupId>
                 <artifactId>commons-csv</artifactId>
                 <version>${commons-csv.version}</version>
+            </dependency>
+
+            <!-- Apache PDFBox - on-demand PDF evidence reports -->
+            <dependency>
+                <groupId>org.apache.pdfbox</groupId>
+                <artifactId>pdfbox</artifactId>
+                <version>${pdfbox.version}</version>
             </dependency>
 
             <!-- WireMock -->

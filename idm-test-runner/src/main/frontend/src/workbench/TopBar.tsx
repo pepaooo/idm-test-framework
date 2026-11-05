@@ -16,6 +16,8 @@ interface Props {
   saving: boolean;
   onSave(): void;
   onResetLayout?(): void;
+  /** Opens the Runs view. */
+  onRuns?(): void;
   /** The lab chip (Task 13). */
   lab?: ReactNode;
   /** The Run split button (Task 14). */
@@ -23,7 +25,7 @@ interface Props {
 }
 
 /** Mockup B's top bar: workspace · profile · lab chip · unsaved · Save · Run, then language and theme. */
-export function TopBar({ name, path, profiles, profile, onProfile, onNewProfile, canCreateProfile, unsaved, canSave, saving, onSave, onResetLayout, lab, run }: Props) {
+export function TopBar({ name, path, profiles, profile, onProfile, onNewProfile, canCreateProfile, unsaved, canSave, saving, onSave, onResetLayout, onRuns, lab, run }: Props) {
   return (
     <header className="top">
       <span className="logo">{t('ui.app.name')}</span>
@@ -49,6 +51,7 @@ export function TopBar({ name, path, profiles, profile, onProfile, onNewProfile,
         {saving ? t('ui.top.saving') : t('ui.top.save')}
       </button>
       <div className="slot-run">{run}</div>
+      {onRuns && <button type="button" className="pill" onClick={onRuns}>{t('ui.runs.button')}</button>}
       {onResetLayout && <button type="button" className="pill" onClick={onResetLayout}>{t('ui.layout.reset')}</button>}
       <LanguageSelect />
       <ThemeSwitch />

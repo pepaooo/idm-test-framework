@@ -49,7 +49,7 @@ public record ScenarioResult(
     public ScenarioResult {
         cleanup = cleanup == null ? List.of() : cleanup;
         failureDetailArgs = failureDetailArgs == null
-                ? null : Collections.unmodifiableList(new ArrayList<>(failureDetailArgs));
+                ? null : Collections.unmodifiableList(Message.revived(failureDetailArgs));
         skippedCleanup = skippedCleanup == null ? List.of() : List.copyOf(skippedCleanup);
     }
 

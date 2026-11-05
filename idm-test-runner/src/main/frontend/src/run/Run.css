@@ -372,3 +372,38 @@
 .tree-running {
   margin-left: auto;
 }
+
+.pdf-menu {
+  position: relative;
+  display: inline-block;
+}
+
+.pdf-menu-links {
+  display: inline-flex;
+  gap: 10px;
+  margin-left: 8px;
+}
+
+.pdf-menu-links a,
+.runs-row a {
+  color: var(--accent);
+}
+
+.runs-list {
+  list-style: none;
+  margin: 12px 0;
+  padding: 0;
+}
+
+.runs-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 14px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.runs-id {
+  font-family: var(--mono, monospace);
+}

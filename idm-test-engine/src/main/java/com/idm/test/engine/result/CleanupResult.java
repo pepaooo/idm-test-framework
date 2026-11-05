@@ -4,7 +4,6 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.idm.test.engine.spi.Message;
 
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -38,7 +37,7 @@ public record CleanupResult(
         @JsonInclude(JsonInclude.Include.NON_NULL) String failureKind) {
 
     public CleanupResult {
-        messageArgs = messageArgs == null ? null : Collections.unmodifiableList(new ArrayList<>(messageArgs));
+        messageArgs = messageArgs == null ? null : Collections.unmodifiableList(Message.revived(messageArgs));
     }
 
     /** A result without a failure kind. */

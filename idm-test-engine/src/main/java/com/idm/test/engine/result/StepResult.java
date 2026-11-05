@@ -8,7 +8,6 @@ import com.idm.test.engine.spi.FailureKind;
 import com.idm.test.engine.spi.Message;
 import com.idm.test.engine.spi.WaitObservation;
 
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -54,7 +53,7 @@ public record StepResult(
     public static final int MAX_WAIT_HISTORY = 50;
 
     public StepResult {
-        messageArgs = messageArgs == null ? null : Collections.unmodifiableList(new ArrayList<>(messageArgs));
+        messageArgs = messageArgs == null ? null : Collections.unmodifiableList(Message.revived(messageArgs));
         waitHistory = waitHistory == null ? null : List.copyOf(waitHistory);
         checks = checks == null ? List.of() : List.copyOf(checks);
     }

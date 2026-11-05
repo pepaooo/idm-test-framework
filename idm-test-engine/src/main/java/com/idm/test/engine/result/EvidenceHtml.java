@@ -122,7 +122,7 @@ final class EvidenceHtml {
     }
 
     /** JSON pretty-printed; any other text as it is. */
-    private static String pretty(Object body) {
+    static String pretty(Object body) {
         try {
             if (body instanceof String text) {
                 String trimmed = text.strip();
@@ -194,11 +194,16 @@ final class EvidenceHtml {
         if (command.argv().isEmpty()) {
             return;
         }
-        html.append("<pre>").append(esc(String.join(" ", command.argv().stream()
-                .map(arg -> arg.isEmpty() || arg.chars().anyMatch(Character::isWhitespace) ? "\"" + arg + "\"" : arg)
-                .toList()))).append("</pre>\n");
+        html.append("<pre>").append(esc(commandLine(command))).append("</pre>\n");
         appendStream(html, label("evidence.command.stdout", locale), command.stdout());
         appendStream(html, label("evidence.command.stderr", locale), command.stderr());
+    }
+
+    /** The argv on one line, an argument with spaces (or none) in quotes. */
+    static String commandLine(CommandEvidence command) {
+        return String.join(" ", command.argv().stream()
+                .map(arg -> arg.isEmpty() || arg.chars().anyMatch(Character::isWhitespace) ? "\"" + arg + "\"" : arg)
+                .toList());
     }
 
     private static void appendStream(StringBuilder html, String name, String text) {
@@ -293,7 +298,7 @@ final class EvidenceHtml {
         html.append("</table>\n");
     }
 
-    private static String path(String url) {
+    static String path(String url) {
         try {
             URI uri = URI.create(url);
             if (uri.getRawPath() == null || uri.getRawPath().isEmpty()) {
@@ -305,11 +310,11 @@ final class EvidenceHtml {
         }
     }
 
-    private static String count(int n, String oneKey, String otherKey, Locale locale) {
+    static String count(int n, String oneKey, String otherKey, Locale locale) {
         return label(n == 1 ? oneKey : otherKey, locale, n);
     }
 
-    private static String compact(Object value) {
+    static String compact(Object value) {
         try {
             return COMPACT.writeValueAsString(value);
         } catch (JacksonException e) {

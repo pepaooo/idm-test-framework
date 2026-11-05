@@ -17,6 +17,7 @@ import { commandsByScenario, deriveLabState } from '../lab/labState';
 import { LabStore } from '../lab/labStore';
 import { isRunFolder, RunButton } from '../run/RunButton';
 import { RunPanel } from '../run/RunPanel';
+import { RunsView } from '../run/RunsView';
 import { readScenarioFile, RunStore } from '../run/runStore';
 import type { TreeNode } from './types';
 import { clampPanelLayout, usePanelLayout } from './panelLayout';
@@ -81,6 +82,8 @@ export function Workbench({ workspace, warning, lockWait = 300, runPanel, lab, r
   const [revealFolder, setRevealFolder] = useState<'config' | 'scenarios' | null>(null);
   const [profile, setProfile] = useState<string | null>(workspace.profiles[0] ?? null);
   const [profiles, setProfiles] = useState<string[]>(workspace.profiles);
+  const [runsOpen, setRunsOpen] = useState(false);
+  const runsOpener = useRef<HTMLElement | null>(null);
   const [newProfileOpen, setNewProfileOpen] = useState(false);
   const [newProfileBusy, setNewProfileBusy] = useState(false);
   const [newProfileError, setNewProfileError] = useState<string | null>(null);
@@ -339,9 +342,22 @@ export function Workbench({ workspace, warning, lockWait = 300, runPanel, lab, r
           saving={active?.saving ?? false}
           onSave={() => void store.save().catch(() => undefined)}
           onResetLayout={resetLayout}
+          onRuns={() => {
+            runsOpener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+            setRunsOpen(true);
+          }}
           lab={lab === undefined ? <LabChip store={labStore} /> : lab}
           run={run === undefined ? <RunButton store={runStore} runFolder={runFolder} /> : run}
         />
+        {runsOpen && (
+          <RunsView
+            activeRunId={runState.phase === 'starting' || runState.phase === 'running' ? runState.runId : null}
+            onClose={() => {
+              setRunsOpen(false);
+              runsOpener.current?.focus();
+            }}
+          />
+        )}
         <NewProfileDialog open={newProfileOpen} busy={newProfileBusy} error={newProfileError}
           profiles={profiles} onCancel={() => setNewProfileOpen(false)} onCreate={(name) => {
             setNewProfileBusy(true);

@@ -168,7 +168,8 @@ export interface HistoryEntry {
   runId: string;
   at: string;
   profile: string | null;
-  result: 'passed' | 'finding' | 'setup' | 'stopped';
+  /** Null when the run's results.json cannot be read. */
+  result: 'passed' | 'finding' | 'setup' | 'stopped' | null;
 }
 
 export type Outcome = 'passed' | 'finding' | 'setup';

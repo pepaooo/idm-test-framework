@@ -473,7 +473,7 @@ class RunsControllerTest {
     }
 
     @Test
-    @DisplayName("Should list the newest 10 runs first, of the workspace or of one scenario")
+    @DisplayName("Should list the workspace's runs, newest first, and the newest 10 of one scenario")
     void testHistoryNewestFirst() throws Exception {
         Path ws = workspace();
         Instant base = Instant.parse("2026-09-01T08:00:00Z");
@@ -488,7 +488,7 @@ class RunsControllerTest {
         Response all = UiHttp.get(server, "/api/runs/history");
         assertThat(all.status()).as(all.body()).isEqualTo(200);
         JsonNode runs = JSON.readTree(all.body());
-        assertThat(runs).hasSize(10);
+        assertThat(runs).hasSize(13);
         assertThat(runs.get(0).get("runId").asString()).isEqualTo("20261003-090000-uat");
         assertThat(runs.get(0).get("profile").asString()).isEqualTo("uat");
         assertThat(runs.get(0).get("result").asString()).isEqualTo("setup");
@@ -496,7 +496,7 @@ class RunsControllerTest {
         assertThat(runs.get(1).get("result").asString()).isEqualTo("finding");
         assertThat(runs.get(2).get("runId").asString()).isEqualTo("20261001-090000-lab");
         assertThat(runs.get(2).get("result").asString()).isEqualTo("passed");
-        assertThat(runs.get(9).get("runId").asString()).isEqualTo("20260904-080000-lab");
+        assertThat(runs.get(12).get("runId").asString()).isEqualTo("20260901-080000-lab");
 
         JsonNode x = JSON.readTree(UiHttp.get(server, "/api/runs/history?scenario=scenarios/x.yaml").body());
         assertThat(x).hasSize(2);
@@ -598,6 +598,176 @@ class RunsControllerTest {
         } finally {
             Files.setPosixFilePermissions(folder, PosixFilePermissions.fromString("rwx------"));
         }
+    }
+
+    @Test
+    @DisplayName("Should list an unreadable run with a null result when not filtered by scenario")
+    void historyAllListsUnreadable() throws Exception {
+        Path ws = workspace();
+        results(ws, "20261101-090000-lab", Instant.parse("2026-11-01T09:00:00Z"), "[" + passed("x.yaml") + "]");
+        results(ws, "20261102-090000-lab", Instant.parse("2026-11-02T09:00:00Z"), "{ not json");
+        JsonNode runs = JSON.readTree(UiHttp.get(server, "/api/runs/history").body());
+        assertThat(runs).hasSize(2);
+        assertThat(runs.get(0).get("runId").asString()).isEqualTo("20261102-090000-lab");
+        assertThat(runs.get(0).get("result").isNull()).isTrue();
+        assertThat(runs.get(1).get("result").asString()).isEqualTo("passed");
+    }
+
+    @Test
+    @DisplayName("Should keep the history of a scenario at 10 runs and skip unreadable ones")
+    void historyByScenarioUnchanged() throws Exception {
+        Path ws = workspace();
+        Instant base = Instant.parse("2026-09-01T08:00:00Z");
+        for (int i = 0; i < 12; i++) {
+            results(ws, "202609%02d-080000-lab".formatted(i + 1), base.plus(Duration.ofDays(i)), "[" + passed("x.yaml") + "]");
+        }
+        results(ws, "20261001-080000-lab", Instant.parse("2026-10-01T08:00:00Z"), "garbage");
+        JsonNode runs = JSON.readTree(UiHttp.get(server, "/api/runs/history?scenario=scenarios/x.yaml").body());
+        assertThat(runs).hasSize(10);
+        assertThat(runs).allSatisfy(run -> assertThat(run.get("result").asString()).isEqualTo("passed"));
+        assertThat(runs.get(0).get("runId").asString()).isEqualTo("20260912-080000-lab");
+    }
+
+    private static final String PDF_RUN = "20261105-101530-lab";
+
+    private Path finishedRun(Path ws, String runId) throws IOException {
+        results(ws, runId, Instant.parse("2026-11-05T10:16:00Z"), "[" + finding("x.yaml") + "]");
+        return ws.resolve("reports").resolve(runId);
+    }
+
+    @Test
+    @DisplayName("Should download a summary PDF of a finished run, without storing it")
+    void pdfSummaryDownload() throws Exception {
+        Path ws = workspace();
+        Path folder = finishedRun(ws, PDF_RUN);
+        List<String> before;
+        try (var files = Files.list(folder)) {
+            before = files.map(Path::toString).sorted().toList();
+        }
+        Response pdf = UiHttp.get(server, "/reports/" + PDF_RUN + "/report.pdf?kind=summary");
+        assertThat(pdf.status()).isEqualTo(200);
+        assertThat(pdf.header("Content-Type")).isEqualTo("application/pdf");
+        assertThat(pdf.header("Cache-Control")).contains("no-store");
+        assertThat(pdf.header("Content-Disposition")).contains("attachment")
+                .contains("filename=\"" + PDF_RUN + "-summary.pdf\"");
+        assertThat(pdf.body()).startsWith("%PDF");
+        // no kind: the summary
+        assertThat(UiHttp.get(server, "/reports/" + PDF_RUN + "/report.pdf").header("Content-Disposition"))
+                .contains(PDF_RUN + "-summary.pdf");
+        try (var files = Files.list(folder)) {
+            assertThat(files.map(Path::toString).sorted().toList()).isEqualTo(before);
+        }
+    }
+
+    @Test
+    @DisplayName("Should download a detailed PDF")
+    void pdfDetailedDownload() throws Exception {
+        Path ws = workspace();
+        finishedRun(ws, PDF_RUN);
+        Response pdf = UiHttp.get(server, "/reports/" + PDF_RUN + "/report.pdf?kind=detailed");
+        assertThat(pdf.status()).isEqualTo(200);
+        assertThat(pdf.header("Content-Disposition")).contains("filename=\"" + PDF_RUN + "-detailed.pdf\"");
+        assertThat(pdf.body()).startsWith("%PDF");
+    }
+
+    @Test
+    @DisplayName("Should answer 404 for a PDF of a run id with path tricks or a folder linked outside reports/")
+    void pdfRejectsEscapingRunId() throws Exception {
+        Path ws = workspace();
+        Path reports = Files.createDirectories(ws.resolve("reports"));
+        Path outside = Files.createDirectories(temp.resolve("outside"));
+        Files.writeString(outside.resolve("results.json"), "[" + passed("x.yaml") + "]");
+        Files.createSymbolicLink(reports.resolve("20261105-101532-lab"), outside);
+        for (String path : List.of("/reports/20261105-101532-lab/report.pdf", "/reports/not-a-run/report.pdf",
+                "/reports/20261105-101530-..lab/report.pdf")) {
+            Response refused = UiHttp.get(server, path);
+            assertThat(refused.status()).as(path).isEqualTo(404);
+        }
+        for (String path : List.of("/reports/..%2F..%2Fsecrets.env/report.pdf", "/reports/%2e%2e/report.pdf")) {
+            assertThat(UiHttp.get(server, path).status()).as(path).isIn(400, 404);
+        }
+
+        // a real run folder whose results.json or run.json is a link to a file outside reports/
+        Files.writeString(outside.resolve("run.json"), "{}");
+        Path linkedResults = Files.createDirectories(reports.resolve("20261105-101533-lab"));
+        Files.createSymbolicLink(linkedResults.resolve("results.json"), outside.resolve("results.json"));
+        Path linkedRun = finishedRun(ws, "20261105-101534-lab");
+        Files.createSymbolicLink(linkedRun.resolve("run.json"), outside.resolve("run.json"));
+        for (String id : List.of("20261105-101533-lab", "20261105-101534-lab")) {
+            Response refused = UiHttp.get(server, "/reports/" + id + "/report.pdf?kind=detailed");
+            assertThat(refused.status()).as(id).isEqualTo(404);
+            assertThat(refused.body()).as(id).doesNotStartWith("%PDF");
+        }
+    }
+
+    @Test
+    @DisplayName("Should answer 404 for a PDF of a run without a readable results.json")
+    void pdfMissingResults404() throws Exception {
+        Path ws = workspace();
+        Files.createDirectories(ws.resolve("reports").resolve(PDF_RUN));
+        assertThat(UiHttp.get(server, "/reports/" + PDF_RUN + "/report.pdf").status()).isEqualTo(404);
+        results(ws, "20261105-101531-lab", Instant.parse("2026-11-05T10:16:00Z"), "{ not json");
+        assertThat(UiHttp.get(server, "/reports/20261105-101531-lab/report.pdf").status()).isEqualTo(404);
+    }
+
+    @Test
+    @DisplayName("Should answer 409 for the PDF of the run that is still going")
+    void pdfWhileRunning409() throws Exception {
+        Path ws = workspace();
+        slowWaits(ws);
+        scenario(ws, "a-wrong-sn.yaml", WRONG_SN);
+        corpusScenario(ws, "provisioning-user-to-ldap.yaml");
+        String runId = startRun(Map.of("profile", "lab", "scenarios", "all"));
+        try (RunEventStream stream = new RunEventStream(server)) {
+            stream.until("attempt");
+            assertThat(runId).isNotNull();
+            Response pdf;
+            try {
+                pdf = UiHttp.get(server, "/reports/" + runId + "/report.pdf");
+            } finally {
+                post("/api/runs/current/stop", null);
+                stream.all();
+            }
+            assertThat(pdf.status()).as(pdf.body()).isEqualTo(409);
+        }
+    }
+
+    @Test
+    @DisplayName("Should answer 400 for a PDF kind other than summary or detailed")
+    void pdfBadKind400() throws Exception {
+        Path ws = workspace();
+        finishedRun(ws, PDF_RUN);
+        Response bad = UiHttp.get(server, "/reports/" + PDF_RUN + "/report.pdf?kind=full");
+        assertThat(bad.status()).isEqualTo(400);
+        assertThat(key(bad)).isEqualTo("ui.request.invalid");
+    }
+
+    @Test
+    @DisplayName("Should require the workspace for a PDF as for the HTML report, by header or ?workspace=")
+    void pdfRequiresWorkspace() throws Exception {
+        Path ws = workspace();
+        Path folder = finishedRun(ws, PDF_RUN);
+        Files.writeString(folder.resolve("report.html"), "<html>report</html>");
+        Map<String, String> cookieOnly = Map.of("Cookie", UiHttp.cookie(server));
+        String host = "127.0.0.1:" + server.port();
+
+        Response noToken = UiHttp.request("GET", "/reports/" + PDF_RUN + "/report.pdf", host, Map.of(), null,
+                server.port());
+        assertThat(noToken.status()).isEqualTo(403);
+
+        Response pdf = UiHttp.request("GET", "/reports/" + PDF_RUN + "/report.pdf", host, cookieOnly, null,
+                server.port());
+        Response html = UiHttp.request("GET", "/reports/" + PDF_RUN + "/report.html", host, cookieOnly, null,
+                server.port());
+        assertThat(pdf.status()).as(pdf.body()).isEqualTo(409);
+        assertThat(key(pdf)).isEqualTo("ui.workspace.missing");
+        assertThat(html.status()).isEqualTo(pdf.status());
+        assertThat(key(html)).isEqualTo(key(pdf));
+
+        Response byParameter = UiHttp.request("GET", "/reports/" + PDF_RUN + "/report.pdf?workspace="
+                + UiHttp.encode(ws), host, cookieOnly, null, server.port());
+        assertThat(byParameter.status()).isEqualTo(200);
+        assertThat(byParameter.body()).startsWith("%PDF");
     }
 
     @Test
